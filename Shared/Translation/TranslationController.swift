@@ -171,19 +171,14 @@ enum TranslationScript {
 		Task { await performToggle() }
 	}
 
-	/// 翻到另一篇文章时调用。
+	/// 换到另一篇文章时调用,把按钮图标重置成"未翻译"。
 	///
-	/// 每篇文章有自己独立的网页,所以"有没有翻译过"这件事要重新问一次网页,
-	/// 不能靠 Swift 这边记着。
-	func refreshForCurrentArticle() {
-		Task {
-			guard let webViewController = currentWebViewController() else {
-				state = .original
-				return
-			}
-			let isShowing = (try? await webViewController.nnwTranslationIsShowingTranslation()) ?? false
-			state = isShowing ? .translated : .original
-		}
+	/// 为什么可以直接重置、而不用去问网页:
+	/// 换文章一定会导致网页重新加载(要么是新建的 WebViewController,
+	/// 要么是同一个控制器调 setArticle 重新渲染),新页面里必然没有译文。
+	/// 直接重置是同步的,不会出现"页面已经换了、图标过一会儿才跟上"的闪烁。
+	func resetForNewArticle() {
+		state = .original
 	}
 
 	private func performToggle() async {
@@ -192,8 +187,15 @@ enum TranslationScript {
 			return
 		}
 
+		// 关键:不相信 Swift 这边记的状态,每次都先问网页当前真实显示的是什么。
+		//
+		// 为什么要这样:页面可能在我们不知情的情况下被重新渲染(比如切换阅读视图、
+		// 改字号、换主题),那时译文已经没了,但 Swift 这边还以为在显示译文。
+		// 图标可以短暂不准,但"点下去的行为"必须永远正确。
+		let isShowingTranslation = (try? await webViewController.nnwTranslationIsShowingTranslation()) ?? false
+
 		// 已经在看译文 → 切回原文。原文存在网页里,所以是瞬间的。
-		if state == .translated {
+		if isShowingTranslation {
 			let didRestore = (try? await webViewController.nnwTranslationRestore()) ?? false
 			state = didRestore ? .original : .failed
 			return

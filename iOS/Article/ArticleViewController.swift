@@ -87,6 +87,13 @@ final class ArticleViewController: UIViewController {
 					}
 				}
 			}
+			// [翻译] 本 fork 新增:换文章时重置翻译按钮图标。
+			// 挂在这里是因为**所有**切换文章的入口(手指滑动、右上角上下箭头、
+			// 底部下一篇未读、列表点选)最终都会走到这个 didSet。
+			if oldValue != article {
+				translationController.resetForNewArticle()
+			}
+
 			updateUI()
 		}
 	}
@@ -534,7 +541,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 
 		coordinator.selectArticle(article, animations: [.select, .scroll, .navigation])
 		articleExtractorButton.buttonState = currentWebViewController?.articleExtractorButtonState ?? .off
-		translationController.refreshForCurrentArticle()	// [翻译] 本 fork 新增:翻页后按钮状态要重新问网页
+		translationController.resetForNewArticle()	// [翻译] 本 fork 新增:滑动翻页后重置按钮图标
 
 		for viewController in previousViewControllers {
 			if let webViewController = viewController as? WebViewController {
