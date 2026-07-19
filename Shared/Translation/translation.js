@@ -3,10 +3,10 @@
 //  NetNewsWire — AI 翻译 fork
 //
 //  这个文件跑在文章页面的网页里(不是 Swift)。
-//  它只干三件事:找到正文、把正文换成译文、把正文换回原文。
+//  它负责三件事:把正文切成若干组、把译文替换回去、事后检查哪些组没翻好。
 //
-//  为什么放在网页里做,而不是在 Swift 里做:
-//  1. 浏览器自带 HTML 解析器,替换内容不会破坏结构(CLAUDE.md 第 5 节的要求)
+//  为什么这些活在网页里做,而不是在 Swift 里做:
+//  1. 浏览器自带 HTML 解析器,切分和替换不会破坏结构(CLAUDE.md 第 5 节的地基条款)
 //  2. 原地替换 → 页面不闪、滚动位置不丢
 //  3. 原文存在网页里,切回原文是瞬间的,不用重新翻译
 //
@@ -28,11 +28,19 @@
 	//   - Biblioteca 主题            → id="body-container"   ← 不一样!
 	// 用户还能自己装第三方主题,名字完全不可控,所以最后用 <article> 兜底。
 	var BODY_SELECTORS = [
-		"#bodyContainer",     // 默认主题
-		"#body-container",    // Biblioteca 主题
-		".articleBody",       // 按 class 找
+		"#bodyContainer",		// 默认主题
+		"#body-container",		// Biblioteca 主题
+		".articleBody",			// 按 class 找
 		".article-body",
-		"article"             // 最后的兜底
+		"article"				// 最后的兜底
+	];
+
+	// 标题容器的候选名单,同样要兼容不同主题。
+	var TITLE_SELECTORS = [
+		".articleTitle",
+		".article-title",
+		"article h1",
+		"h1"
 	];
 
 	function findBodyElement() {
@@ -45,32 +53,140 @@
 		return null;
 	}
 
+	function findTitleElement() {
+		for (var i = 0; i < TITLE_SELECTORS.length; i++) {
+			var element = document.querySelector(TITLE_SELECTORS[i]);
+			if (element) {
+				return element;
+			}
+		}
+		return null;
+	}
+
+	function normalizeSpace(text) {
+		return (text || "").replace(/\s+/g, " ").trim();
+	}
+
+	/// 判断一段文字"看起来还是英文"(= 没被翻译)。
+	///
+	/// 判据:中文字符极少 + 英文字母很多。
+	/// 太短的不判断 —— 短句子可能本来就是人名、代码、数字,误判代价高。
+	function looksUntranslated(text) {
+
+		var t = normalizeSpace(text);
+		if (t.length < 40) {
+			return false;
+		}
+
+		var latin = 0;
+		var cjk = 0;
+
+		for (var i = 0; i < t.length; i++) {
+			var code = t.charCodeAt(i);
+			if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+				latin++;
+			} else if (code >= 0x4e00 && code <= 0x9fff) {
+				cjk++;
+			}
+		}
+
+		return cjk < t.length * 0.05 && latin > t.length * 0.4;
+	}
+
+	/// 判断译文里"混进了英文原文"(模型做了中英对照)。
+	///
+	/// 做法:从原文中段取一段 60 字符当探针,看它是否原样出现在当前内容里。
+	/// 用中段而不是开头,是因为开头常有专有名词,正常译文里也可能保留。
+	function containsOriginalEcho(currentText, originalText) {
+
+		var original = normalizeSpace(originalText);
+		if (original.length < 120) {
+			return false;
+		}
+
+		var start = Math.floor(original.length / 2) - 30;
+		var probe = original.substr(start, 60);
+		if (probe.length < 60) {
+			return false;
+		}
+
+		return normalizeSpace(currentText).indexOf(probe) >= 0;
+	}
+
 	window.nnwTranslation = {
 
-		// 原文备份。第一次翻译时存下来,用于切回原文。
+		// 正文原文备份,用于切回原文。
 		originalHTML: null,
+
+		// 标题的原文备份。标题在正文容器**外面**,所以要单独存。
+		originalTitleHTML: null,
+
+		// 每一组的原文 HTML 与纯文字。事后检查、重翻时要用。
+		groupOriginalHTML: {},
+		groupOriginalText: {},
 
 		// 当前显示的是译文还是原文。
 		isShowingTranslation: false,
 
-		/// 读取当前正文的 HTML,交给 Swift 拿去翻译。
-		/// 找不到正文容器时返回 null。
+		/// 读取文章标题的 HTML。标题在正文容器外面,splitBody 切不到。
+		readTitle: function () {
+			var element = findTitleElement();
+			if (!element) {
+				return null;
+			}
+			if (this.originalTitleHTML === null) {
+				this.originalTitleHTML = element.innerHTML;
+			}
+			return element.innerHTML;
+		},
+
+		/// 把标题换成译文。
+		applyTitle: function (translatedHTML) {
+			var element = findTitleElement();
+			if (!element) {
+				return false;
+			}
+			if (this.originalTitleHTML === null) {
+				this.originalTitleHTML = element.innerHTML;
+			}
+			element.innerHTML = translatedHTML;
+			return true;
+		},
+
+		/// 读取当前正文的完整 HTML。
+		/// 翻译前调用 → 拿到原文(用于算缓存键);
+		/// 翻译完调用 → 拿到译文(用于存缓存)。
 		readBody: function () {
 			var element = findBodyElement();
 			if (!element) {
 				return null;
 			}
+			if (this.originalHTML === null) {
+				this.originalHTML = element.innerHTML;
+			}
 			return element.innerHTML;
 		},
 
-		/// 把正文换成译文。
-		/// 返回 true 表示换成功了。
+		/// 正文的"指纹":规范化空白后的纯文字。
+		///
+		/// 为什么不用 innerHTML 当指纹:页面加载后,NetNewsWire 自带的脚本
+		/// 会异步地改 HTML(图片查看器装饰、图片懒加载等),点按钮早晚不同,
+		/// HTML 就不同 —— 拿它当指纹,缓存会"时中时不中"。
+		/// 纯文字不受这些影响,才是稳定的。
+		bodyFingerprint: function () {
+			var element = findBodyElement();
+			if (!element) {
+				return null;
+			}
+			return normalizeSpace(element.textContent);
+		},
+
+		/// 把整个正文一次性换成给定内容(缓存命中时用,零请求秒开)。
 		apply: function (translatedHTML) {
 			var element = findBodyElement();
 			if (!element) {
 				return false;
 			}
-			// 只在第一次备份,避免"译文覆盖了原文备份"
 			if (this.originalHTML === null) {
 				this.originalHTML = element.innerHTML;
 			}
@@ -79,13 +195,236 @@
 			return true;
 		},
 
+		/// 把正文切成若干组,交给 Swift 拿去翻译。
+		///
+		/// 切法:
+		///   - 第 0 组是"先导块",累计到 leadChars 个字符就收手 ——
+		///     它单独先翻,让你几秒内就有东西可读
+		///   - 其余内容**渐进式**分组:第 1 组最小(firstGroupChars),
+		///     之后逐组翻倍,到 maxGroupChars 封顶。
+		///     读者是从前往后读的:读完先导块马上就需要第 1 组,
+		///     所以第 1 组必须小、必须快;越靠后的内容读到越晚,
+		///     组可以越大,靠"大块"省请求数和重复的提示词开销。
+		///
+		/// 为什么按组而不是按段:一段一次请求的话,系统提示词要重复十几遍,
+		/// 开销比正文本身还大;而且每段互相看不见,术语容易前后不一致。
+		///
+		/// 返回 JSON 字符串:[{"group":0,"html":"..."}, ...]
+		/// 找不到正文容器时返回 null。
+		splitBody: function (leadChars, firstGroupChars, maxGroupChars) {
+
+			var element = findBodyElement();
+			if (!element) {
+				return null;
+			}
+
+			if (this.originalHTML === null) {
+				this.originalHTML = element.innerHTML;
+			}
+
+			this.groupOriginalHTML = {};
+			this.groupOriginalText = {};
+
+			// 先挑出需要翻译的单元(没有文字的纯图片、分隔线跳过 —— 省钱也省时间)。
+			//
+			// 特殊处理:超大的单个元素(典型:引用型博客里一整段几千字符的 <blockquote>)
+			// 按顶层切分切不动,谁分到它谁就巨慢。
+			// 所以对"文字超过 maxGroupChars 一半、且内容主要在子元素里"的大元素,
+			// 下钻一层,把它的子元素当作切分单元。
+			var translatable = [];
+			(function collect(container) {
+				var children = container.children;
+				for (var i = 0; i < children.length; i++) {
+					var child = children[i];
+					var text = normalizeSpace(child.textContent);
+					if (text.length === 0) {
+						continue;
+					}
+					if (text.length > maxGroupChars / 2 && child.children.length >= 2) {
+						var childrenTextLength = 0;
+						for (var j = 0; j < child.children.length; j++) {
+							childrenTextLength += normalizeSpace(child.children[j].textContent).length;
+						}
+						// 子元素承载了 ≥90% 的文字才下钻,否则会丢掉直挂在大元素里的裸文本
+						if (childrenTextLength >= text.length * 0.9) {
+							collect(child);
+							continue;
+						}
+					}
+					translatable.push({ node: child, length: text.length, parent: container });
+				}
+			})(element);
+
+			if (translatable.length === 0) {
+				return JSON.stringify([]);
+			}
+
+			// 第 0 组:先导块。至少含一个单元,累计到 leadChars 为止。
+			// 同一组的单元必须共享同一个父节点(替换时按共同父节点插回),父节点一变就收手。
+			var assignments = [];
+			var cursor = 0;
+			var leadLength = 0;
+			while (cursor < translatable.length) {
+				if (cursor > 0 && translatable[cursor].parent !== translatable[0].parent) {
+					break;
+				}
+				assignments.push(0);
+				leadLength += translatable[cursor].length;
+				cursor++;
+				if (leadLength >= leadChars) {
+					break;
+				}
+			}
+
+			// 其余内容:渐进式分组 —— 第 1 组最小,之后逐组翻倍,到上限封顶。
+			// 父节点变化时强制开新组(同一组必须共享父节点,替换才安全)。
+			var currentGroup = 1;
+			var currentSize = 0;
+			var targetSize = Math.max(firstGroupChars, 1);
+			for (var k = cursor; k < translatable.length; k++) {
+				var parentChanged = k > cursor && translatable[k].parent !== translatable[k - 1].parent;
+				// 当前组已经装够了(或父节点变了)就开新组,但不能把组开成空的
+				if (currentSize > 0 && (parentChanged || currentSize + translatable[k].length > targetSize)) {
+					currentGroup++;
+					currentSize = 0;
+					targetSize = Math.min(targetSize * 2, maxGroupChars);
+				}
+				assignments.push(currentGroup);
+				currentSize += translatable[k].length;
+			}
+
+			// 打记号 + 收集每组的 HTML
+			var grouped = {};
+			for (var m = 0; m < translatable.length; m++) {
+				var group = assignments[m];
+				var node = translatable[m].node;
+				node.setAttribute("data-nnw-group", String(group));
+				if (!grouped[group]) {
+					grouped[group] = { html: "", text: "" };
+				}
+				// 注意:这里用 outerHTML(含外层标签)。
+				// 一组里有多个元素,必须把标签一起给模型,否则它不知道段落边界。
+				grouped[group].html += node.outerHTML;
+				grouped[group].text += " " + normalizeSpace(node.textContent);
+			}
+
+			var result = [];
+			var keys = Object.keys(grouped).sort(function (a, b) { return a - b; });
+			for (var n = 0; n < keys.length; n++) {
+				var g = keys[n];
+				this.groupOriginalHTML[g] = grouped[g].html;
+				this.groupOriginalText[g] = normalizeSpace(grouped[g].text);
+				result.push({ group: parseInt(g, 10), html: grouped[g].html });
+			}
+
+			return JSON.stringify(result);
+		},
+
+		/// 某一组的译文回来了,替换掉这一组。
+		///
+		/// 每组回来就立刻替换,所以译文是"逐块浮现"的,不用等全文翻完。
+		applyGroup: function (group, translatedHTML) {
+
+			var element = findBodyElement();
+			if (!element) {
+				return false;
+			}
+
+			var oldNodes = element.querySelectorAll('[data-nnw-group="' + group + '"]');
+			if (oldNodes.length === 0) {
+				return false;
+			}
+
+			// 先在临时容器里解析译文,并给新元素补上同样的记号 ——
+			// 否则替换之后就找不到这一组了,事后检查和重翻都没法做。
+			var temp = document.createElement("div");
+			temp.innerHTML = translatedHTML;
+			if (temp.children.length === 0) {
+				// 模型偶尔会把标签吞掉、只回裸文本。
+				// 有文字就用原来第一个节点的标签包回去;连文字都没有才算失败。
+				if ((temp.textContent || "").trim().length === 0) {
+					return false;
+				}
+				var wrapper = document.createElement(oldNodes[0].tagName);
+				wrapper.innerHTML = translatedHTML;
+				temp.innerHTML = "";
+				temp.appendChild(wrapper);
+			}
+			for (var i = 0; i < temp.children.length; i++) {
+				temp.children[i].setAttribute("data-nnw-group", String(group));
+			}
+
+			var anchor = oldNodes[0];
+			var parent = anchor.parentNode;
+			while (temp.firstChild) {
+				parent.insertBefore(temp.firstChild, anchor);
+			}
+			for (var j = 0; j < oldNodes.length; j++) {
+				oldNodes[j].parentNode.removeChild(oldNodes[j]);
+			}
+
+			this.isShowingTranslation = true;
+			return true;
+		},
+
+		/// 事后检查:哪些组没翻好,需要重翻?
+		///
+		/// 两种情况会被挑出来:
+		///   ① 这一组还是英文 —— 请求失败过,或者模型原样返回了原文
+		///   ② 这一组里混进了英文原文 —— 模型做了中英对照
+		///
+		/// 这两种检查都是纯本地判断,不花一分钱、不发一个请求。
+		///
+		/// 返回 JSON 字符串:[{"group":3,"html":"<原文>"}, ...]
+		findGroupsNeedingRetranslation: function () {
+
+			var element = findBodyElement();
+			if (!element) {
+				return JSON.stringify([]);
+			}
+
+			var result = [];
+			var keys = Object.keys(this.groupOriginalHTML);
+
+			for (var i = 0; i < keys.length; i++) {
+
+				var group = keys[i];
+				var nodes = element.querySelectorAll('[data-nnw-group="' + group + '"]');
+				if (nodes.length === 0) {
+					continue;
+				}
+
+				var currentText = "";
+				for (var j = 0; j < nodes.length; j++) {
+					currentText += " " + normalizeSpace(nodes[j].textContent);
+				}
+				currentText = normalizeSpace(currentText);
+
+				var originalText = this.groupOriginalText[group] || "";
+
+				if (looksUntranslated(currentText) || containsOriginalEcho(currentText, originalText)) {
+					result.push({ group: parseInt(group, 10), html: this.groupOriginalHTML[group] });
+				}
+			}
+
+			return JSON.stringify(result);
+		},
+
 		/// 换回原文。因为原文一直存在内存里,所以是瞬间完成的。
 		restore: function () {
+
 			var element = findBodyElement();
 			if (!element || this.originalHTML === null) {
 				return false;
 			}
 			element.innerHTML = this.originalHTML;
+
+			// 标题也要一起换回来
+			var titleElement = findTitleElement();
+			if (titleElement && this.originalTitleHTML !== null) {
+				titleElement.innerHTML = this.originalTitleHTML;
+			}
+
 			this.isShowingTranslation = false;
 			return true;
 		},

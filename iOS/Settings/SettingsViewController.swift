@@ -65,6 +65,17 @@ final class SettingsViewController: UITableViewController {
 		case about = 4
 	}
 
+	/// [翻译] 本 fork 新增:翻译相关的两行排在 Articles 分区最后面。
+	/// iPhone 上 Articles 有 4 行静态 cell,iPad 上少一行(Full Screen Articles 是 iPhone 专有),
+	/// 所以这两个索引要跟着变。
+	private var translationModelRowIndex: Int {
+		traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1
+	}
+
+	private var translationAPIKeyRowIndex: Int {
+		translationModelRowIndex + 1
+	}
+
 	private weak var opmlAccount: Account?
 
 	@IBOutlet var timelineSortOrderSwitch: UISwitch!
@@ -181,7 +192,8 @@ final class SettingsViewController: UITableViewController {
 			return defaultNumberOfRows
 		case .articles:
 			// The Full Screen Articles row is iPhone-only.
-			return traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1
+			// [翻译] 本 fork 新增:末尾多两行(翻译模型、翻译 API Key),所以 + 2
+			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 2
 		case .troubleshooting:
 			let defaultNumberOfRows = super.tableView(tableView, numberOfRowsInSection: section)
 			if !AccountManager.shared.hasiCloudAccount {
@@ -211,6 +223,18 @@ final class SettingsViewController: UITableViewController {
 				acctCell.comboNameLabel?.text = account.nameForDisplay
 				cell = acctCell
 			}
+		// [翻译] 本 fork 新增:Articles 分区末尾两行由我们自己出 cell,
+		// 其余行仍然交给 Storyboard 的静态 cell(走 default 分支)。
+		case .articles where indexPath.row == translationModelRowIndex:
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "翻译模型"
+			cell.detailTextLabel?.text = TranslationConfigStore.displayName(for: TranslationConfigStore.selectedModel)
+			cell.accessoryType = .disclosureIndicator
+		case .articles where indexPath.row == translationAPIKeyRowIndex:
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "翻译 API Key"
+			cell.detailTextLabel?.text = TranslationConfigStore.hasAPIKey ? "已设置" : "未设置"
+			cell.accessoryType = .disclosureIndicator
 		default:
 			cell = super.tableView(tableView, cellForRowAt: indexPath)
 
@@ -263,6 +287,13 @@ final class SettingsViewController: UITableViewController {
 			default:
 				break
 			}
+		// [翻译] 本 fork 新增:点这两行进入各自的设置页
+		case .articles where indexPath.row == translationModelRowIndex:
+			let picker = TranslationModelPickerViewController(style: .insetGrouped)
+			self.navigationController?.pushViewController(picker, animated: true)
+		case .articles where indexPath.row == translationAPIKeyRowIndex:
+			let keyEditor = TranslationAPIKeyViewController(style: .insetGrouped)
+			self.navigationController?.pushViewController(keyEditor, animated: true)
 		case .articles:
 			switch ArticlesRow(rawValue: indexPath.row) {
 			case .theme:

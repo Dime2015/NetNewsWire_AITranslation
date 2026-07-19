@@ -92,3 +92,8 @@ fastlane/test_output
 
 .claude/
 
+
+# [翻译] 本 fork 新增:防误提交的保险。
+# API key 现在存在 Keychain 里(设置 → Articles → 翻译 API Key),
+# 项目里本来就不该出现这个文件;留着这条是防止将来有人手工造一个出来。
+/Shared/Translation/TranslationConfig.local.json

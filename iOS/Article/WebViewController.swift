@@ -972,6 +972,54 @@ extension WebViewController {
 		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.apply(\(literal))")
 	}
 
+	/// 让网页把正文切成若干组,返回 JSON 字符串 [{"group":0,"html":"..."}, ...]。
+	/// 找不到正文容器时返回 nil。
+	///
+	/// - Parameters:
+	///   - leadChars: 第 0 组(先导块)的目标字符数。它单独先翻,让用户尽快有东西可读。
+	///   - firstGroupChars: 第 1 组的目标字符数。之后逐组翻倍 —— 读者顺序阅读,
+	///     越靠前的组越要小而快,越靠后的组越可以大而省。
+	///   - maxGroupChars: 单组字符上限。超长文章会自动多分几组,避免单次输出被截断。
+	func nnwTranslationSplitBody(leadChars: Int, firstGroupChars: Int, maxGroupChars: Int) async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString(
+			"window.nnwTranslation.splitBody(\(leadChars), \(firstGroupChars), \(maxGroupChars))")
+	}
+
+	/// 某一组的译文回来了,替换掉这一组。
+	func nnwTranslationApplyGroup(group: Int, translatedHTML: String) async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		let literal = try nnwTranslationJavaScriptStringLiteral(translatedHTML)
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.applyGroup(\(group), \(literal))")
+	}
+
+	/// 事后检查:哪些组还是英文、或者混进了英文原文,需要重翻。
+	/// 纯本地判断,不发请求、不花钱。
+	/// 返回 JSON 字符串 [{"group":3,"html":"<原文>"}, ...]。
+	func nnwTranslationFindGroupsNeedingRetranslation() async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.findGroupsNeedingRetranslation()")
+	}
+
+	/// 正文的稳定指纹(纯文字,不含 HTML)。用于缓存的"内容变没变"校验。
+	func nnwTranslationBodyFingerprint() async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.bodyFingerprint()")
+	}
+
+	/// 读取文章标题的 HTML。标题在正文容器外面,所以要单独取。
+	func nnwTranslationReadTitle() async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.readTitle()")
+	}
+
+	/// 把标题换成译文。
+	func nnwTranslationApplyTitle(_ translatedHTML: String) async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		let literal = try nnwTranslationJavaScriptStringLiteral(translatedHTML)
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.applyTitle(\(literal))")
+	}
+
 	/// 把正文换回原文。
 	func nnwTranslationRestore() async throws -> Bool {
 		try await nnwTranslationEnsureScriptInjected()

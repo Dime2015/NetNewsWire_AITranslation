@@ -2,46 +2,92 @@
 //  TranslationService.swift
 //  NetNewsWire — AI 翻译 fork
 //
-//  Phase 1:只定义"翻译服务"长什么样,并给一个不联网的假实现。
-//  真正调用后端在 Phase 3。
+//  定义"翻译服务"长什么样。
+//
+//  Phase 3 起,接口的单位是**一个 HTML 片段**,不是整篇文章。
+//  因为文章会先由 JavaScript 切成若干块,再并行翻译(见 CLAUDE.md 第 5 节)。
 //
 //  这个文件不属于上游 NetNewsWire,是本 fork 新增的。
 //
 
 import Foundation
 
+// MARK: - 翻译时能参考的上下文
+
+/// 翻一块的时候,能给模型看的额外信息。
+///
+/// 为什么需要它:每一块都是独立的请求,模型看不到文章的其他部分。
+/// 不给上下文的话,同一个人名在第 2 块和第 9 块可能翻成两个样子。
+struct TranslationContext: Sendable {
+
+	/// 文章标题。帮助模型判断领域和语气。
+	let articleTitle: String?
+
+	/// 文章网址。
+	let articleURL: String?
+
+	/// 第一块的原文。
+	let sampleOriginal: String?
+
+	/// 第一块的译文。
+	///
+	/// 这两个字段合起来是"示范":告诉模型"这篇文章开头是这么翻的,你照这个风格和术语来"。
+	/// 这就是 CLAUDE.md 里定的术语一致性方案 C。
+	let sampleTranslation: String?
+
+	static func initial(articleTitle: String?, articleURL: String?) -> TranslationContext {
+		TranslationContext(articleTitle: articleTitle,
+						   articleURL: articleURL,
+						   sampleOriginal: nil,
+						   sampleTranslation: nil)
+	}
+
+	/// 第一块翻完后,带上示范给后续各块用。
+	func withSample(original: String, translation: String) -> TranslationContext {
+		TranslationContext(articleTitle: articleTitle,
+						   articleURL: articleURL,
+						   sampleOriginal: original,
+						   sampleTranslation: translation)
+	}
+}
+
 // MARK: - 翻译服务的接口
 
-/// 一个"能把文章正文翻译成中文"的东西。
+/// 一个"能把 HTML 片段翻译成中文"的东西。
 ///
-/// 为什么要先定义接口、再写实现:
-/// 这样界面代码(按钮)只认识这个接口,不关心背后是假数据还是真后端。
-/// Phase 2 接界面时用假实现,Phase 3 换成真后端,**界面代码一行都不用改**。
+/// 界面代码只认识这个接口,不关心背后是假数据还是真的 LLM。
 protocol TranslationService: Sendable {
 
-	/// 把一段文章正文的 HTML 翻译成中文。
+	/// 翻译一个 HTML 片段。
 	///
 	/// - Parameters:
-	///   - html: 文章正文的 HTML 原文。**原样传递,不解析、不修改结构。**
-	///   - articleURL: 文章的网址。后端可能用它做上下文判断,可以为空。
-	/// - Returns: 翻译后的 HTML。结构应与输入保持一致,只有文字变成中文。
-	/// - Throws: 失败时抛 `TranslationError`。
-	func translate(html: String, articleURL: String?) async throws -> String
+	///   - htmlChunk: 一小段正文 HTML。**原样传递,不解析、不修改结构。**
+	///   - context: 标题、网址、以及第一块的翻译示范。
+	/// - Returns: 翻译后的 HTML 片段,结构应与输入一致。
+	func translate(htmlChunk: String, context: TranslationContext) async throws -> String
 }
 
 // MARK: - 可能出现的错误
 
-/// 翻译失败的原因。Phase 1 用不到,是给 Phase 3 真实网络请求预留的。
 enum TranslationError: Error, LocalizedError {
 
-	/// 传进来的正文是空的,没东西可翻。
+	/// 传进来的正文是空的。
 	case emptyContent
 
-	/// 网络请求失败(连不上、超时等)。
+	/// 配置文件没配好(缺 API key 等)。附带给用户看的说明。
+	case notConfigured(String)
+
+	/// 网络请求失败。
 	case networkFailure(underlying: Error)
 
-	/// 后端返回了,但内容不是预期格式。
+	/// 服务端返回了错误状态码。
+	case serverError(status: Int, message: String)
+
+	/// 返回内容不是预期格式。
 	case invalidResponse
+
+	/// 在页面里找不到正文容器(可能是不受支持的主题)。
+	case bodyNotFound
 
 	// 注意:这里故意**不用** NSLocalizedString。
 	// 用了的话,Xcode 会在编译时自动把这些文字塞进 Shared/Localizable.xcstrings ——
@@ -52,67 +98,43 @@ enum TranslationError: Error, LocalizedError {
 		switch self {
 		case .emptyContent:
 			return "这篇文章没有正文,无法翻译。"
+		case .notConfigured(let detail):
+			return detail
 		case .networkFailure:
 			return "连接翻译服务失败,请检查网络后重试。"
+		case .serverError(let status, let message):
+			return "翻译服务返回错误(\(status)):\(message)"
 		case .invalidResponse:
 			return "翻译服务返回了无法识别的内容。"
+		case .bodyNotFound:
+			return "在页面里找不到文章正文,当前的文章主题可能不受支持。"
 		}
 	}
 }
 
-// MARK: - Phase 1 的假实现(不联网)
+// MARK: - 不联网的假实现(Phase 1 遗留,现在只用于排查问题)
 
-/// 假的翻译服务:不联网,只在正文前后各加一个醒目的标记。
+/// 假的翻译服务:不联网,只在片段前后加标记。
 ///
-/// **它存在的唯一目的,是让人肉眼确认"整条链路通了"。**
-/// 如果点了翻译按钮后,文章顶部和底部都出现了标记,就说明:
-/// 按钮 → 服务 → 拿到结果 → 替换正文显示,这四步全都通了。
-///
-/// ⚠️ 关于与 CLAUDE.md 原 spec 的偏离(重要,请勿当成疏忽):
-///
-/// CLAUDE.md Phase 1 原文写的是「把每个文本节点替换成 `[译文占位]`」。
-/// 但第 5 节同时规定「绝不把整段 HTML 直接当字符串处理,Swift 侧只负责传递,
-/// 不解析、不修改 HTML 结构」。
-///
-/// 这两条无法同时满足 —— "替换每个文本节点"必须先解析 HTML 才能找到文本节点,
-/// 那就等于在 Swift 里写一个 HTML 解析器,正是第 5 节要禁止的事。
-///
-/// 因此这里选择服从第 5 节(更根本的技术约定),改用"前后加标记"的方式:
-///   - 不需要解析 HTML,只做字符串拼接,零结构风险
-///   - 前后**各**加一个标记,如果两个都显示出来,说明正文被完整替换了(没被截断)
-///   - 验证效果完全等价:肉眼一看就知道链路通没通
-///
-/// 若将来确实需要"逐文本节点替换"的效果,正确做法是在 JavaScript 侧做
-/// (浏览器里有现成的 DOM 解析器),而不是在 Swift 里手写解析。
+/// 保留它的意义:如果真实翻译出问题,可以临时换成它,
+/// 用来判断"是网络/API 的问题,还是 app 自身链路的问题"。
 struct MockTranslationService: TranslationService {
 
-	/// 加在正文最前面的标记。
-	static let headerMarker = "<p style=\"padding:8px;background:#ffe9a8;border-radius:6px;font-weight:bold;\">[译文占位 · 开头]</p>"
-
-	/// 加在正文最后面的标记。
-	static let footerMarker = "<p style=\"padding:8px;background:#ffe9a8;border-radius:6px;font-weight:bold;\">[译文占位 · 结尾]</p>"
-
-	/// 假装网络请求要花多久。
-	///
-	/// 故意留一点延迟,是为了让 Phase 2 能顺便验证"加载中"状态 ——
-	/// 如果瞬间就返回,就看不出转圈动画有没有正常工作。
 	let simulatedDelay: Duration
 
 	init(simulatedDelay: Duration = .seconds(1)) {
 		self.simulatedDelay = simulatedDelay
 	}
 
-	func translate(html: String, articleURL: String?) async throws -> String {
+	func translate(htmlChunk: String, context: TranslationContext) async throws -> String {
 
-		guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+		guard !htmlChunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
 			throw TranslationError.emptyContent
 		}
 
-		// 假装在联网。真实现里这里会换成一次 HTTP 请求。
 		try await Task.sleep(for: simulatedDelay)
 
-		// 原文原样夹在中间,前后各加一个标记。
-		// 注意:这里没有对 html 做任何解析或改写,只是拼字符串。
-		return Self.headerMarker + html + Self.footerMarker
+		// 没有对 htmlChunk 做任何解析或改写,只是拼字符串。
+		return "<mark>[译]</mark> " + htmlChunk
 	}
 }
