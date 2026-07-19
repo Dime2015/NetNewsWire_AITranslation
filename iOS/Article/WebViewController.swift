@@ -946,3 +946,86 @@ extension WebViewController {
 	}
 
 }
+
+// MARK: - [翻译] 本 fork 新增,上游没有以下内容
+//
+// 为什么这段代码非得写在这个文件里(而不是放在 Shared/Translation/):
+// 上面第 36 行的 `webView` 属性是 `private` 的 —— Swift 里 private 表示
+// "只有同一个文件里的代码能访问"。翻译功能必须能对这个 webView 执行 JS,
+// 所以只能把这段桥接代码放在本文件内。
+//
+// 为降低将来 `git pull upstream` 的冲突风险,这段全部是**追加在文件末尾的新行**,
+// 上游原有代码一行都没有改动。
+
+extension WebViewController {
+
+	/// 读取当前页面里的文章正文 HTML。找不到正文容器时返回 nil。
+	func nnwTranslationReadBody() async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.readBody()")
+	}
+
+	/// 把页面里的正文替换成译文。返回 true 表示替换成功。
+	func nnwTranslationApply(_ translatedHTML: String) async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		let literal = try nnwTranslationJavaScriptStringLiteral(translatedHTML)
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.apply(\(literal))")
+	}
+
+	/// 把正文换回原文。
+	func nnwTranslationRestore() async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.restore()")
+	}
+
+	/// 当前页面显示的是译文还是原文。
+	func nnwTranslationIsShowingTranslation() async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.state().isShowingTranslation")
+	}
+}
+
+private extension WebViewController {
+
+	/// 确保 translation.js 已经注入到当前页面。
+	/// 脚本自身有幂等保护,重复注入是安全的,所以每次操作前都注入一遍最省事。
+	func nnwTranslationEnsureScriptInjected() async throws {
+		_ = try await nnwTranslationEvaluateReturningBool(TranslationScript.source)
+	}
+
+	/// 把一段 HTML 变成可以安全嵌进 JS 代码里的字符串字面量。
+	/// 用 JSON 编码来做转义 —— 引号、换行、反斜杠都会被正确处理。
+	func nnwTranslationJavaScriptStringLiteral(_ string: String) throws -> String {
+		let data = try JSONSerialization.data(withJSONObject: string, options: [.fragmentsAllowed])
+		guard let literal = String(data: data, encoding: .utf8) else {
+			throw TranslationError.invalidResponse
+		}
+		return literal
+	}
+
+	func nnwTranslationEvaluateReturningString(_ javaScript: String) async throws -> String? {
+		guard let webView else { return nil }
+		return try await withCheckedThrowingContinuation { continuation in
+			webView.evaluateJavaScript(javaScript) { result, error in
+				if let error {
+					continuation.resume(throwing: error)
+				} else {
+					continuation.resume(returning: result as? String)
+				}
+			}
+		}
+	}
+
+	func nnwTranslationEvaluateReturningBool(_ javaScript: String) async throws -> Bool {
+		guard let webView else { return false }
+		return try await withCheckedThrowingContinuation { continuation in
+			webView.evaluateJavaScript(javaScript) { result, error in
+				if let error {
+					continuation.resume(throwing: error)
+				} else {
+					continuation.resume(returning: (result as? Bool) ?? false)
+				}
+			}
+		}
+	}
+}

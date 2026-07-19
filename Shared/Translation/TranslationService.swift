@@ -43,14 +43,19 @@ enum TranslationError: Error, LocalizedError {
 	/// 后端返回了,但内容不是预期格式。
 	case invalidResponse
 
+	// 注意:这里故意**不用** NSLocalizedString。
+	// 用了的话,Xcode 会在编译时自动把这些文字塞进 Shared/Localizable.xcstrings ——
+	// 那是上游共用的大文件,改它会在 git pull upstream 时造成难以判断的冲突,
+	// 违反 CLAUDE.md 第 2 节「保持可 merge」的最高优先级约束。
+	// 本 app 只给一个中文用户自己用,不需要多语言支持。
 	var errorDescription: String? {
 		switch self {
 		case .emptyContent:
-			return NSLocalizedString("这篇文章没有正文,无法翻译。", comment: "翻译失败:正文为空")
+			return "这篇文章没有正文,无法翻译。"
 		case .networkFailure:
-			return NSLocalizedString("连接翻译服务失败,请检查网络后重试。", comment: "翻译失败:网络问题")
+			return "连接翻译服务失败,请检查网络后重试。"
 		case .invalidResponse:
-			return NSLocalizedString("翻译服务返回了无法识别的内容。", comment: "翻译失败:响应格式错误")
+			return "翻译服务返回了无法识别的内容。"
 		}
 	}
 }

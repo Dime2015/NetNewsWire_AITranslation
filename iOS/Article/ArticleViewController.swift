@@ -52,6 +52,11 @@ final class ArticleViewController: UIViewController {
 		return button
 	}()
 
+	// [翻译] 本 fork 新增:翻译功能的状态与按钮都由它管。具体实现在 Shared/Translation/
+	private lazy var translationController = TranslationController { [weak self] in
+		self?.currentWebViewController
+	}
+
 	weak var coordinator: SceneCoordinator!
 
 	private let poppableDelegate = PoppableGestureRecognizerDelegate()
@@ -150,6 +155,8 @@ final class ArticleViewController: UIViewController {
 				actionBarButtonItem
 			]
 		}
+
+		installTranslationButton()	// [翻译] 本 fork 新增
 
 		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
 		pageViewController.delegate = self
@@ -527,6 +534,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 
 		coordinator.selectArticle(article, animations: [.select, .scroll, .navigation])
 		articleExtractorButton.buttonState = currentWebViewController?.articleExtractorButtonState ?? .off
+		translationController.refreshForCurrentArticle()	// [翻译] 本 fork 新增:翻页后按钮状态要重新问网页
 
 		for viewController in previousViewControllers {
 			if let webViewController = viewController as? WebViewController {
@@ -566,4 +574,37 @@ private extension ArticleViewController {
 		return controller
 	}
 
+}
+
+// MARK: - [翻译] 本 fork 新增,上游没有以下内容
+//
+// 为什么这段代码非得写在这个文件里(而不是放在 Shared/Translation/):
+// 1. 底部工具栏(toolbarItems)属于本控制器,没有第二个入口能往里加按钮
+// 2. 第 39 行的 `currentWebViewController` 是 `private`,只有本文件内的代码能访问
+//
+// 为降低将来 `git pull upstream` 的冲突风险,除了三处单行插入(已用 [翻译] 注释标出),
+// 其余全部是追加在文件末尾的新行,上游原有代码没有被改写。
+
+extension ArticleViewController {
+
+	/// 把翻译按钮装到底部工具栏最后面。在 viewDidLoad 里调用。
+	func installTranslationButton() {
+
+		translationController.button.addTarget(self, action: #selector(toggleTranslation(_:)), for: .touchUpInside)
+
+		var items = toolbarItems ?? []
+
+		// iOS 26 的工具栏会自动排布按钮,不需要手动加间隔;
+		// 更早的系统上,上面那段代码是用 flexibleSpace 手工撑开的,所以要跟着补一个。
+		if #unavailable(iOS 26) {
+			items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+		}
+		items.append(translationController.makeBarButtonItem())
+
+		toolbarItems = items
+	}
+
+	@objc func toggleTranslation(_ sender: Any) {
+		translationController.toggle()
+	}
 }
