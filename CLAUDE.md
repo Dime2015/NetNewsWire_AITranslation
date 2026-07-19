@@ -71,12 +71,52 @@
 3. **禁止重构任何已有代码**,包括:重命名、抽取函数、调整格式、修正你认为的 bug、更新依赖
 4. **禁止修改** 与账户和同步相关的任何代码(Account / Feed / Sync 层)
 
-> ⚠️ 具体的禁区目录路径,在完成 Phase 0 考古后由用户填入这里:
-> ```
-> 禁区目录(考古后填写):
-> - (待填)
-> - (待填)
-> ```
+> ✅ 禁区清单(Phase 0 考古后确定,用户已于 2026-07-19 确认)
+> 详细依据见 `NOTES-architecture.md` 问题 7。
+
+**A 级 —— 绝对不碰（账户 / 订阅 / 同步）**
+
+```
+Modules/Account/            账户与订阅源模型 + 5 种同步后端
+Modules/SyncDatabase/       同步状态存储
+Modules/CloudKitSync/       CloudKit 同步
+Modules/Secrets/            钥匙串凭据 + 编译期注入的 API key
+Modules/FeedFinder/         订阅源发现
+Modules/NewsBlur/           NewsBlur API 客户端
+iOS/Account/                iOS 账户设置界面
+iOS/Add/                    添加订阅源界面
+Mac/Preferences/Accounts/   macOS 账户设置界面
+Shared/SmartFeeds/          Today / Unread / Starred 伪订阅源
+Shared/Importers/           OPML 导入
+Shared/Exporters/           OPML 导出
+```
+
+**B 级 —— 本次范围外,不碰（第 1 节:只做 iOS）**
+
+```
+Mac/                        整个 macOS UI
+Widget/                     小组件扩展
+Intents/                    Siri / App Intents
+```
+
+**C 级 —— 数据层,碰之前必须先问用户**
+
+```
+Modules/Articles/           文章数据模型
+Modules/ArticlesDatabase/   文章正文与已读状态的 SQLite 存储
+```
+
+> 说明:按第 5 节「缓存逻辑全部在后端」,Swift 侧不应该需要动这两个包。
+> 若发现必须动,那是设计出了问题,**先报告,不要动手**。
+
+**D 级 —— 允许修改,但每次改前必须说明"为什么无法通过新增文件实现"**
+
+```
+iOS/Article/WebViewController.swift        唯一的 iOS 正文装载点
+iOS/Article/ArticleViewController.swift    工具栏所在
+iOS/Base.lproj/Main.storyboard             按钮实体所在(XML,merge 冲突风险高)
+Shared/Article Rendering/                  共享渲染层(改这里会同时影响 macOS)
+```
 
 每次动手前,先用一句话报告:"本次改动新增 N 个文件,修改 M 个已有文件,分别是……"
 
@@ -162,7 +202,15 @@
 
 - **保结构翻译**:绝不把整段 HTML 直接当字符串处理。Swift 侧只负责传递,不解析、不修改 HTML 结构。
 - **API 密钥不进代码库**。用环境变量或 Keychain,并在 `.gitignore` 里排除任何配置文件。
-- 新增代码写在 `Translation/` 下,不要往已有的目录里塞文件。
+- 新增代码写在 **`Shared/Translation/`** 下,不要往已有的目录里塞文件。
+
+> ⚠️ **修订说明(2026-07-19,用户已确认)**:本条原文是「写在 `Translation/` 下」,
+> 即仓库根目录。经 Phase 0 考古发现该写法与第 8 节「不要修改 .xcodeproj」冲突 ——
+> 本工程用 Xcode 16+ 的文件系统同步文件夹机制,只有 `Mac/ iOS/ Shared/ Modules/
+> Widget/ Tests/ Technotes/ xcconfig/` 这 8 个文件夹里的新文件会被自动编译,
+> **根目录不在其中**。在根目录建 `Translation/` 会导致代码根本不参与编译。
+> 改用 `Shared/Translation/` 后:不需要碰 .xcodeproj,且仍是上游不存在的全新文件夹,
+> merge 冲突风险为零。证据见 `NOTES-architecture.md` 末尾「重要发现」一节。
 - 提交信息用中文,格式:`[翻译] 简短描述`
 
 ---
