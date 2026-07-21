@@ -270,6 +270,49 @@
 			margin-right: auto;
 		}
 
+		/* ---- YouTube 播放器 -------------------------------------------
+		   由 nnw_youtube.js 插在正文容器**前面**。
+
+		   左右顶到屏幕边缘,和横图同一个做法。除了好看,这也是**唯一能诚实
+		   提升画质的杠杆** —— YouTube 按播放器尺寸和带宽自动选画质,
+		   播放器越大默认画质越高。(锁定「最高画质」做不到,画质参数早已废弃。) */
+		   ⚠️ 比例**自己用 aspect-ratio 写全,不借用上游的 .iframeWrap**。
+		   上游那个类是老式的 padding-top: 56.25% 撑高度,要求 iframe 绝对定位
+		   盖在 padding 上;一旦没盖住,那块 padding 就变成标题和播放器之间的
+		   一大片空白(2026-07-21 用户实测遇到)。aspect-ratio 直接把盒子做成
+		   16:9,没有"空 padding"这个东西,也就不会有那种空白。 */
+		#nnwYouTubePlayer {
+			display: block;
+			position: relative;
+			margin: 0 -20px 20px;
+			width: calc(100% + 40px);
+			max-width: none;
+			aspect-ratio: 16 / 9;
+			/* 上游给所有 div 设了 height: auto !important,配合 aspect-ratio
+			   正好 —— 高度由宽度和比例算出来。 */
+			padding: 0;
+			background: #000;
+		}
+
+		#nnwYouTubePlayer iframe {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100% !important;
+			height: 100% !important;
+			max-width: none;
+			margin: 0;
+			border: 0;
+		}
+
+		/* YouTube 视频简介。white-space: pre-wrap 是关键 ——
+		   简介是**纯文本**,靠它把原文的换行和空行还原出来,
+		   不需要把 \\n 转成 <br>(那样就得处理 HTML 转义,反而容易出错)。 */
+		#nnwYouTubeDescription {
+			white-space: pre-wrap;
+			margin-top: 4px;
+		}
+
 		/* ---- 播客语音条 -----------------------------------------------
 		   由 nnw_podcast.js 插在正文容器**前面**(不是里面 —— 插里面会被
 		   翻译功能当成正文的一段)。这里只管长相。 */

@@ -404,7 +404,7 @@ extension WebViewController: WKNavigationDelegate {
 				oldWebView.removeFromSuperview()
 			}
 		}
-		nnwPodcastInstallPlayerIfNeeded() // [播客] 是播客单集就装语音条,实现在本文件末尾
+		nnwMediaEnhanceIfNeeded() // [播客][YouTube] 按内容类型补上语音条 / 视频简介,实现在本文件末尾
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -650,7 +650,7 @@ private extension WebViewController {
 //		print("article.html written to \(fileURL.path)")
 
 		WebViewConfiguration.addContentBlockingRules(to: webView)
-		webView.loadHTMLString(html, baseURL: URL(string: rendering.baseURL))
+		webView.loadHTMLString(html, baseURL: Self.nnwAdjustedBaseURL(rendering.baseURL)) // [YouTube] 见文件末尾
 	}
 
 	func finalScrollPosition(scrollingUp: Bool) -> CGFloat {
@@ -1094,6 +1094,93 @@ private extension WebViewController {
 // 这段全部是**追加在文件末尾的新行**,上游原有代码一行都没有改动。
 
 extension WebViewController {
+
+	/// 渲染文章时交给 `loadHTMLString(_:baseURL:)` 的 baseURL。
+	/// **只对 YouTube 文章做替换,其它文章一律原样返回。**
+	///
+	/// ## 为什么需要这个
+	///
+	/// baseURL 决定了这个网页的"身份"(origin)。上游是拿文章链接当 baseURL 的,
+	/// 而 YouTube 文章的链接正好是 `https://www.youtube.com/watch?v=…` ——
+	/// 于是文章页**自称是 youtube.com**。
+	///
+	/// 嵌进去的 YouTube 播放器一校验"谁在嵌我",看到一个自称 YouTube、
+	/// 却没有 YouTube 会话的页面,就拒绝播放,报「错误代码 152」。
+	///
+	/// ## 这不是猜的
+	///
+	/// 2026-07-21 做过一个对照实验:把**同一个视频**插进一篇非 YouTube 的文章
+	/// (The Conversation,baseURL 是 theconversation.com)。同样的代码、
+	/// 同样的视频,**唯一的变量是文章的身份** —— 结果那边能正常播放。
+	/// 所以「换个身份就能播」是被证明的,不是推断。
+	///
+	/// ## 为什么改 baseURL 是安全的
+	///
+	/// baseURL 的正经用途是解析正文里的相对链接。而 YouTube 文章的
+	/// `contentHTML` 长度是 **0**(官方 RSS 里没有 `<content>`,实测确认),
+	/// **正文里根本没有相对链接可解析**,所以这个替换对 YouTube 文章没有副作用。
+	/// 其它文章走的是原来的分支,一点不受影响。
+	static func nnwAdjustedBaseURL(_ baseURLString: String) -> URL? {
+
+		let original = URL(string: baseURLString)
+		guard let host = original?.host?.lowercased() else {
+			return original
+		}
+
+		let isYouTube = host == "youtube.com"
+			|| host == "www.youtube.com"
+			|| host == "m.youtube.com"
+			|| host == "youtu.be"
+		guard isYouTube else {
+			return original
+		}
+
+		// 换成一个中性的身份。选 netnewswire.com 是为了和 app 自己已经
+		// 对外声明的身份保持一致 —— Info.plist 里的 User-Agent 就是
+		// 「NetNewsWire (RSS Reader; https://netnewswire.com/)」。
+		// 这个地址会作为 Referer 发给 YouTube,所以选一个诚实的、
+		// 确实代表这个 app 的值,而不是随便伪造一个域名。
+		return URL(string: "https://netnewswire.com/") ?? original
+	}
+
+	/// 页面加载完成后的统一入口:按这篇文章的类型,补上上游没提供的东西。
+	///
+	/// 做成一个入口而不是挂两行,是为了让**上游文件的改动永远停在一行** ——
+	/// 以后再加别的内容类型,也只改这个方法,不再动 `didFinish`。
+	///
+	/// 两件事都是「不是这类内容就什么都不做」,不弹任何提示。
+	func nnwMediaEnhanceIfNeeded() {
+		nnwPodcastInstallPlayerIfNeeded()
+		nnwYouTubeLoadDescriptionIfNeeded()
+	}
+
+	/// YouTube 视频的简介。
+	///
+	/// 播放器由 `nnw_youtube.js` 自己从页面链接里认出来装好,不需要 Swift;
+	/// 但**简介不在页面里** —— 上游的 Atom 解析器忽略所有带前缀的元素,
+	/// `<media:description>` 压根没被解析过。所以只能重新拉一次 feed。
+	///
+	/// 非 YouTube 的源**一次请求都不会发**(靠 feed 地址就能认出来)。
+	func nnwYouTubeLoadDescriptionIfNeeded() {
+
+		guard let article else {
+			return
+		}
+
+		Task { [weak self] in
+
+			guard let text = await YouTubeDescriptionLoader.shared.description(for: article) else {
+				return
+			}
+			// 拉取期间用户可能已经翻页了,写回界面前必须确认还是同一篇(L11)
+			guard let self, self.article?.articleID == article.articleID else {
+				return
+			}
+			let literal = Self.nnwPodcastJavaScriptStringLiteral(text)
+			_ = try? await self.webView?.evaluateJavaScript(
+				"window.nnwYouTube && window.nnwYouTube.setDescription(\(literal))")
+		}
+	}
 
 	/// 页面加载完成后调用:如果这篇是播客单集,就在正文上方装一个语音条。
 	///

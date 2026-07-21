@@ -189,13 +189,39 @@ Julia Evans(h4)、Experimental History(正文 h1)均通过。
 
 **Phase C**:用户明确说「A/B 用完再说」,暂不列入计划。
 
-### 🔜 下一步:YouTube 正文里嵌播放器
+### ✅ YouTube 正文播放器 + 视频简介:已完成并经用户验收(2026-07-21 深夜)
 
-用户 2026-07-21 深夜确认要做。YouTube 官方 RSS **没有 `<content>`**(实测),
-所以正文是空的;`media:description` 里有简介(实测 684 字符)但上游解析器不取。
-做法与播客语音条同一套机制:往 `#bodyContainer` **外面**插一个 embed iframe。
-已查:`ContentRules.json`(42 条拦截规则)**不含** youtube/ytimg/googlevideo。
-⚠️ **「强制最高画质」做不到** —— embed 的画质参数早已废弃,播放器按带宽自适应。
+**播放器**(`Shared/YouTube/nnw_youtube.js`,纯 JS,不需要 Swift):
+视频 ID 直接从页面里的文章链接读(模板把 `[[preferred_link]]` 放进了标题和日期的
+href),拼出 embed。比例用 **`aspect-ratio: 16/9` 自己写全**,
+**不要**借用上游的 `.iframeWrap` —— 那是老式的 `padding-top: 56.25%`,
+一旦 iframe 没盖住那块 padding,就会在标题和播放器之间露出一大片空白(实际踩过)。
+
+**视频简介**(`YouTubeDescriptionLoader.swift`):
+YouTube RSS 里有 `<media:group><media:description>`,但上游 `AtomParser` 写着
+`if namespace.prefix != nil { return }` —— **所有带前缀的元素被明确忽略**,
+所以 `FeedParser` 永远拿不到。改为重拉 feed + `XMLParser`(SAX 真解析器,**不用正则**)。
+非 YouTube 的源靠 feed 地址就能认出来,**一次请求都不发**。
+
+⚠️ **两个元素的位置刻意相反,别改反了**:
+- **播放器放 `#bodyContainer` 外面** —— 它不能被翻译
+- **简介放 `#bodyContainer` 里面** —— 它应该跟着正文一起被翻译
+
+**踩的大坑:所有视频报「错误代码 152」** —— 完整排查见 L37。
+根因是上游 `loadHTMLString(html, baseURL:)` 把 YouTube 文章的身份设成了
+`youtube.com`(baseURL 取自文章链接),播放器校验"谁在嵌我"时对不上。
+修法:`WebViewController.nnwAdjustedBaseURL()` 只对 YouTube 文章换成中性身份。
+安全性已量:全库 15 篇 YouTube 文章正文非空的 **0 篇**,2293 篇其它文章不受影响。
+
+### 🔜 下一步:改造「+」按钮与订阅发现页(2026-07-21 深夜用户提出)
+
+用户要求:
+1. **「添加文件夹」从 `+` 里拿掉**,改成放在账户名(「我的 iPhone」)旁边的一个图标
+2. **`+` 直接进订阅发现页**,所有内容源的查找与添加都在这一个页面的不同 tab 下完成
+3. **统一右上角按钮的逻辑** —— 现在不同情况下会出现叉号 / 对勾 / 「添加」,
+   要求简单、一致、不重复、不啰嗦但也不出错
+
+⚠️ 动手前必读 CLAUDE.md「D 级 · 订阅发现专用」里那条工具栏 3 项的陷阱。
 
 ### 📋 四个内容源需求的方案结论(2026-07-21 深夜,①③ 已在 Phase A 落地)
 
