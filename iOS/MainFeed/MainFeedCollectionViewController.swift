@@ -854,6 +854,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			alertController.addAction(addFolderAction)
 		}
 
+		addDiscoveryAction(to: alertController) // [发现] 加一项「搜索订阅源」,实现在 Shared/Discovery/
+
 		alertController.addAction(cancelAction)
 
 		alertController.popoverPresentationController?.barButtonItem = sender

@@ -95,6 +95,33 @@
 > - **必须走第 2 节规定的改动通道**,不允许在上游文件里随手改数字。
 >   这一条是扩大范围的交换条件 —— 范围放宽了,但「保持可 merge」的优先级没变。
 
+> ⚠️ **第二次扩大范围(2026-07-21 深夜,用户已确认):订阅发现功能**
+>
+> 用户要在 app 内做一个**搜索页**:输入关键词或网址,找到可订阅的地址,
+> 选文件夹后订阅。覆盖四类内容:播客、Reddit 子版、YouTube 频道、普通网站 RSS。
+> (X/Twitter 已查证无可靠免费方案,**明确放弃**,改用 Bluesky / Mastodon 官方 feed。)
+>
+> 这是本项目**第一个与"翻译/外观"都无关的新功能**,所以边界写细一点:
+> - ✅ 允许:新增搜索页;调用 `Account.createFeed(...)` 这个**已有的公开接口**订阅
+> - ❌ **不允许**为此修改 Account / ArticlesDatabase 等 A/C 级禁区的任何一行。
+>   订阅、选文件夹全部复用上游现成的东西(见下方通道表)
+> - ❌ 不做订阅管理(改名、删除、移动)—— 上游自己有
+>
+> 分三阶段,**每阶段停下来等用户验收**:
+> - **Phase A**:页面骨架 + 播客(iTunes Search API)+ Reddit(拼 .rss 地址)+ 订阅落库 + 选文件夹
+> - **Phase B**:YouTube 频道链接/@handle 解析 + 普通网站网址(走 createFeed 自带的自动发现)
+> - **Phase C**(用户明确说"A/B 用完再说",**暂不列入计划**):关键词搜网站(Feedly,非官方接口)、
+>   关键词搜 YouTube 频道(需用户自备 Google API key)
+>
+> 已实测的后端可用性(2026-07-21,curl 实测,不是推测):
+>
+> | 后端 | 实测结果 |
+> |---|---|
+> | iTunes Search API(播客) | ✅ 200,直接返回 `feedUrl` + `collectionId`,不需要 key |
+> | `reddit.com/r/<sub>/top/.rss` | ✅ 200,Atom 格式,**帖子正文在 `<content>` 里** |
+> | `reddit.com/subreddits/search.json` | ❌ **403 被封** → 做不了「关键词发现子版」,只能「已知子版名 → 订阅」 |
+> | `old.reddit.com` | ❌ 429 限流,不要用 |
+
 ---
 
 ## 2. 最高优先级约束:保持可 merge
@@ -170,6 +197,44 @@ Shared/Article Rendering/WebViewConfiguration.swift  正文页注入的脚本清
 | `MainTimelineCellLayout.swift` | 把常量的值换成 `TimelineStyle.xxx` 的引用,**一行换一行**。新数字一律写进 `iOS/MainTimeline/TimelineStyle.swift`(本 fork 新增文件),**禁止在这里直接写死新数字** |
 | `MainTimelineCell.swift` | 同上;颜色也走 `TimelineStyle` |
 | `WebViewConfiguration.swift` | **只允许**在 `articleScripts` 的 `filenames` 数组里加我们自己的脚本名,别的一律不碰 |
+
+**D 级 · 订阅发现专用(2026-07-21 深夜新增)**
+
+```
+iOS/MainFeed/MainFeedCollectionViewController.swift   订阅列表页
+```
+
+| 文件 | 唯一允许的改法 |
+|---|---|
+| `MainFeedCollectionViewController.swift` | **只允许**在 `add(_:)` 方法里加**一行**,调用本 fork 自己的扩展方法(给那个操作单加一项「搜索订阅源」)。别的一律不碰 |
+
+> 🔴 **这个文件里有一个必须知道的陷阱,别去碰工具栏。**
+>
+> 底部工具栏在故事板里正好是 3 项:`[设置] ⟷ [+]`。
+> 而 `configureToolbarWithProgressView()` 里写着:
+> ```swift
+> let expectedItemCount = 3
+> guard var items = toolbarItems, items.count == expectedItemCount else { return }
+> ```
+> **往工具栏加第 4 个按钮 → 这个守卫直接返回 → 刷新进度条永远装不上。**
+> 不报错、不崩溃,静默消失,正是 L19 那类"一旦发生就再也不恢复"的坑。
+> (iOS 26 上上游自己插了 Current Activity 按钮,那条分支本来就是 4 项、
+> 进度条本来就不装,是**有意的**;但更早的系统会真被我们弄坏。)
+>
+> 所以入口做成「`+` 操作单里加一项」,不加工具栏按钮。**用户已于 2026-07-21 确认此方案。**
+
+**订阅发现的新代码一律放 `Shared/Discovery/`**(上游不存在此目录)。
+必须复用下面这些上游现成的东西,**它们本身一行都不许改**:
+
+| 要做的事 | 复用什么 | 出处 |
+|---|---|---|
+| 订阅落库 | `Account.createFeed(url:name:container:validateFeed:completion:)` | `Account.swift:675` |
+| 选文件夹界面 | `AddFeedFolderViewController`(故事板 id `AddFeedFolderNavViewController`) | `AddFeedViewController.swift:143` |
+| 记住上次选的文件夹 | `AddFeedDefaultContainer.defaultContainer` / `.saveDefaultContainer(_:)` | `Shared/Extensions/` |
+| 查重 | `account.hasFeed(withURL:)` | `AddFeedViewController.swift:93` |
+| 订阅成功后通知界面刷新 | 发 `.UserDidAddFeed` 通知 | `AddFeedViewController.swift:115` |
+
+每处改动带 `// [发现]` 注释标记(与 `[翻译]`、`[界面]`、`[阅读视图]` 并列)。
 
 为什么这么规定:这三个是上游自己在维护的文件。把所有会变的数值收进我们自己的
 `TimelineStyle.swift`,上游文件的 diff 就永远停在「几行引用」的规模,

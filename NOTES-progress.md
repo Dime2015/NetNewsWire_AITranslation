@@ -120,7 +120,38 @@ Julia Evans(h4)、Experimental History(正文 h1)均通过。
 **iOS 没有正文字号滑块**(那是 macOS 专属),正文字号跟随系统动态字体;
 要固定就在这层 CSS 里覆盖(见 L23 末尾)。
 
-### 🔜 下一步:四个内容源需求,方案已在对话中给出、等用户拍板(2026-07-21 深夜)
+### ✅ 订阅发现 Phase A:已完成并经用户验收(2026-07-21 深夜)
+
+**入口**:订阅列表页右下角 `+` → 操作单第三项「搜索订阅源」。
+**上游改动只有一行**(`MainFeedCollectionViewController.add(_:)` 里调我们的扩展)。
+
+⚠️ **为什么入口不做成工具栏按钮**:底部工具栏在故事板里正好 3 项,而
+`configureToolbarWithProgressView()` 里有 `guard items.count == 3 else { return }` ——
+加第 4 个按钮会让**刷新进度条静默消失**。详见 CLAUDE.md「D 级 · 订阅发现专用」。
+
+**新增文件(全在 `Shared/Discovery/`,上游不存在此目录)**:
+
+| 文件 | 职责 |
+|---|---|
+| `FeedSearchResult.swift` | 统一的搜索结果模型 + 会说人话的错误定义 |
+| `PodcastSearcher.swift` | iTunes Search API(苹果官方,不要 key,直接返回 feedUrl) |
+| `RedditFeedBuilder.swift` | 版块名解析 + 拼 .rss 地址,**全本地零网络请求**(原因见 L33) |
+| `FeedDiscoveryViewController.swift` | 搜索页(iOS only) |
+| `MainFeedCollectionViewController+Discovery.swift` | 往 `+` 操作单挂一项 |
+
+**复用的上游现成件(它们本身零改动)**:`Account.createFeed(...)`、
+`AddFeedFolderViewController`(选文件夹)、`AddFeedDefaultContainer`(记住上次的文件夹)、
+`account.hasFeed(withURL:)`(查重)、`.UserDidAddFeed` 通知。
+
+**本轮踩的两个坑,都已修复并记进教训**:
+- L33 — Reddit 429 被上游报成「feed 不存在」;我多打的那次「验证」请求是帮凶,已删
+- L34 — Reddit 正文是「一行两格表格」,图文并排不是样式问题;已按结构特征堆叠
+
+**Phase B(下一步,尚未开始)**:YouTube 频道链接/@handle 解析 + 普通网站网址
+(走 `createFeed` 自带的自动发现)。
+**Phase C**:用户明确说「A/B 用完再说」,暂不列入计划。
+
+### 📋 四个内容源需求的方案结论(2026-07-21 深夜,①③ 已在 Phase A 落地)
 
 用户提出:①YouTube 频道正文嵌播放器 ②订阅 X/Twitter ③订阅 Reddit 子版热帖
 ④播客(正文内语音条 + 跳 Apple Podcasts)。方案结论概要:
