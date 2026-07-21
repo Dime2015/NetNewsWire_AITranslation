@@ -66,6 +66,28 @@ enum WebsiteFeedResolver {
 		}
 		let host = url.host ?? normalized
 
+		// ⚠️ 第 0 步:先问一句「你给我的这个地址,本身是不是就是 feed?」
+		//
+		// 这一步初版漏了,后果很严重:用户手里已经有一个现成的 RSS 地址
+		// (最基本的用法)时,我们会拿它去当网页抓,然后在它后面接着探
+		// `/feed/feed/`、`/feed/rss` …… 全部 404,最后告诉用户「没找到」。
+		//
+		// 上游 FeedFinder 的第一步就是这个判断(isFeed → 直接采用),
+		// 我把后面几步都抄了,偏偏漏了最前面这步。
+		//
+		// ⚠️ 排查这个 bug 时,日志一片空白让我以为代码没执行 ——
+		//    实际是 `log show` **默认不保留 info 级别**,要加 `--info` 才看得到。
+		if let (data, _) = try? await fetch(url), isFeed(data) {
+			logger.info("[发现] 网站:输入的地址本身就是 feed,直接采用")
+			return [FeedSearchResult(
+				kind: .website,
+				title: feedTitle(in: data) ?? host,
+				subtitle: normalized,
+				feedURL: normalized,
+				homePageURL: nil,
+				iconURL: iconURL(forFeed: data, feedURL: url))]
+		}
+
 		// 第一步:抓一次网页,读它自己声明的 RSS 地址。
 		var faviconURL: String?
 		if let (data, _) = try? await fetch(url) {
@@ -102,15 +124,18 @@ enum WebsiteFeedResolver {
 			guard let candidate = URL(string: normalized.trimmedTrailingSlash + path) else {
 				continue
 			}
-			if let title = await feedTitle(at: candidate) {
+			if let (data, _) = try? await fetch(candidate), isFeed(data) {
 				logger.info("[发现] 网站:探测命中 \(path)")
+				let title = feedTitle(in: data)
 				return [FeedSearchResult(
 					kind: .website,
-					title: title.isEmpty ? host : title,
+					title: (title?.isEmpty == false) ? title! : host,
 					subtitle: candidate.absoluteString,
 					feedURL: candidate.absoluteString,
 					homePageURL: normalized,
-					iconURL: faviconURL)]
+					// 网页里读到的 favicon 优先(那是站点自己声明的,最准);
+					// 网页没声明就退回 feed 自带的图标 / 猜 favicon.ico
+					iconURL: faviconURL ?? iconURL(forFeed: data, feedURL: candidate))]
 			}
 		}
 
@@ -135,25 +160,79 @@ enum WebsiteFeedResolver {
 		return (data, http)
 	}
 
-	/// 拉一个候选地址,确认它真的是 feed,顺带把标题取出来。
-	/// 不是 feed 就返回 nil。
-	private static func feedTitle(at url: URL) async -> String? {
+	/// 直接粘 feed 地址时,结果行左边那个小图标从哪来。
+	///
+	/// **两个来源都不额外发请求**:
+	///   1. **feed 自己带的图标** —— RSS 的 `<image><url>`、
+	///      播客的 `<itunes:image href>`、Atom 的 `<icon>`/`<logo>`。
+	///      数据已经在手里了,白拿。(实测 Stratechery 有,Benedict Evans 和 jvns 没有)
+	///   2. 没有的话,退回猜 `https://<域名>/favicon.ico`。
+	///      **故意不去验证它存不存在** —— 交给 `ImageDownloader` 去取,
+	///      取不到它自己会静默失败,界面就退回类型符号。
+	///      为一个小图标专门发一次验证请求不值得。
+	///
+	/// (为什么不抓网站首页解析 `<link rel="icon">`:那要多一次几百 KB 的请求,
+	///  而用户此时给的是 feed 地址,我们本来根本不需要碰那个网页。)
+	private static func iconURL(forFeed data: Data, feedURL: URL) -> String? {
 
-		guard let (data, _) = try? await fetch(url) else {
-			return nil
-		}
-
-		// 只看开头一小段就够判断是不是 feed —— 有些 feed 有好几百 KB
-		let head = String(decoding: data.prefix(4096), as: UTF8.self).lowercased()
-		guard head.contains("<rss") || head.contains("<feed") || head.contains("rdf:rdf") else {
-			return nil
-		}
-
-		// 取第一个 <title>。取不到不影响订阅,订阅后 app 自己会更新名字。
 		let text = String(decoding: data.prefix(64 * 1024), as: UTF8.self)
+
+		let patterns = [
+			#"<itunes:image[^>]*href\s*=\s*["']([^"']+)["']"#,
+			#"<image>\s*<url>\s*([^<]+?)\s*</url>"#,
+			#"<icon>\s*([^<]+?)\s*</icon>"#,
+			#"<logo>\s*([^<]+?)\s*</logo>"#
+		]
+		for pattern in patterns {
+			guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+				continue
+			}
+			let range = NSRange(text.startIndex..., in: text)
+			if let match = regex.firstMatch(in: text, range: range),
+			   let valueRange = Range(match.range(at: 1), in: text) {
+				let candidate = String(text[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+				if candidate.lowercased().hasPrefix("http") {
+					return candidate
+				}
+			}
+		}
+
+		// feed 里没有图标,退回猜 favicon
+		guard let scheme = feedURL.scheme, let host = feedURL.host else {
+			return nil
+		}
+		return "\(scheme)://\(host)/favicon.ico"
+	}
+
+	/// 这段数据是不是一个 feed。
+	/// 只看开头一小段就够 —— 有些 feed 有好几百 KB,没必要整个转成字符串。
+	/// 认 RSS、Atom、RDF 三种,以及 JSON Feed。
+	private static func isFeed(_ data: Data) -> Bool {
+		let head = String(decoding: data.prefix(4096), as: UTF8.self).lowercased()
+		if head.contains("<rss") || head.contains("<feed") || head.contains("rdf:rdf") {
+			return true
+		}
+		// JSON Feed(Daring Fireball 之类会用),靠它的版本标识认
+		return head.contains("https://jsonfeed.org/version/")
+	}
+
+	/// 从 feed 数据里取标题。取不到返回 nil,不影响订阅 —— 订阅后 app 自己会更新名字。
+	private static func feedTitle(in data: Data) -> String? {
+
+		let text = String(decoding: data.prefix(64 * 1024), as: UTF8.self)
+
+		// JSON Feed 的标题格式不一样
+		if text.lowercased().contains("https://jsonfeed.org/version/"),
+		   let range = text.range(of: #""title"\s*:\s*"([^"]*)""#, options: .regularExpression) {
+			let fragment = String(text[range])
+			if let valueStart = fragment.range(of: "\"", options: .backwards, range: fragment.startIndex..<fragment.index(before: fragment.endIndex)) {
+				return String(fragment[valueStart.upperBound..<fragment.index(before: fragment.endIndex)])
+			}
+		}
+
 		guard let start = text.range(of: "<title>"),
 			  let end = text.range(of: "</title>", range: start.upperBound..<text.endIndex) else {
-			return ""
+			return nil
 		}
 		var title = String(text[start.upperBound..<end.lowerBound])
 			.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -164,7 +243,7 @@ enum WebsiteFeedResolver {
 			title = String(title.dropFirst(9).dropLast(3))
 				.trimmingCharacters(in: .whitespacesAndNewlines)
 		}
-		return title
+		return title.isEmpty ? nil : title
 	}
 
 	/// 补全协议头。`stratechery.com` → `https://stratechery.com`

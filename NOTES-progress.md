@@ -43,7 +43,7 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 | **播客语音条 + 跳 Podcasts** | ✅ | 音频走 feed,跳转走 iTunes |
 | **YouTube 正文播放器 + 简介** | ✅ | 修掉「错误代码 152」,见 L37 |
 | **app 改名 Babel** | ✅ | 只改显示层;改名基础设施 `i18n/rebrand.py` |
-| **装到真机** | 🔜 **下一步** | 签名配置已就绪,等用户在 Xcode 里 ⌘R |
+| **装到真机** | ✅ | 免费 Personal Team 实测可签,**App Groups 未报错**;7 天过期,见 T18 |
 | 装到真机 | ⏳ 排在界面之后 | Apple ID 已登录;剩余前置条件见第四节 |
 
 ## 三、git 状态(2026-07-21 晚)

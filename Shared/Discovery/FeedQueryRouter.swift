@@ -44,6 +44,18 @@ enum FeedQueryRouter {
 			return .podcastKeyword(text)
 		}
 
+		// ⚠️ 已经是 feed 地址的,一律交给 website 那条路(它第 0 步会确认并直接采用)。
+		//
+		// 必须在按域名分派**之前**判断。否则:
+		//   · `youtube.com/feeds/videos.xml?channel_id=UC…` 会被送去「解析频道页」,
+		//     而它根本不是频道页,抠不出 channelId → 报「认不出频道」
+		//   · `reddit.com/r/apple/top/.rss?t=day` 会被拆成版块名再列出四种排序,
+		//     把用户**明确指定的那一种**给弄丢了
+		// 用户手里有现成 feed 地址时,他要的就是这一个,别自作聪明。
+		if looksLikeFeedURL(text) {
+			return .website(text)
+		}
+
 		switch hostKind(of: text) {
 		case .youtube:
 			return .youtube(text)
@@ -95,6 +107,39 @@ enum FeedQueryRouter {
 			return false
 		}
 		return topLevelDomain.allSatisfy { $0.isLetter }
+	}
+
+	/// 这个网址看起来是不是已经指向一个 feed 了。
+	///
+	/// 只是**初筛**,判断松一点没关系 —— 猜错了也只是走到 website 那条路,
+	/// 而那条路第 0 步会真的抓下来确认是不是 feed,不是的话继续按网页处理。
+	/// 所以宁可多认一些,也不要漏掉用户手里现成的 feed 地址。
+	private static func looksLikeFeedURL(_ text: String) -> Bool {
+
+		var normalized = text
+		if !normalized.lowercased().hasPrefix("http") {
+			normalized = "https://" + normalized
+		}
+		guard let url = URL(string: normalized) else {
+			return false
+		}
+
+		let path = url.path.lowercased()
+		let query = (url.query ?? "").lowercased()
+
+		// 结尾就是 feed 文件的
+		for suffix in [".rss", ".xml", ".atom", "/feed", "/feed/", "/rss", "/rss/", "/atom", "/atom/"] where path.hasSuffix(suffix) {
+			return true
+		}
+		// 路径里带 feed / rss 段的(youtube.com/feeds/videos.xml、daringfireball.net/feeds/json)
+		if path.contains("/feed") || path.contains("/rss") {
+			return true
+		}
+		// WordPress 的 ?feed=rss2 这种写法
+		if query.contains("feed=") {
+			return true
+		}
+		return false
 	}
 
 	private static func hostKind(of text: String) -> HostKind {
