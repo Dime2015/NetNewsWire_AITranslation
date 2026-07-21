@@ -4,9 +4,19 @@
 //
 //  [发现] 本 fork 新增,上游没有这个文件。
 //
-//  把「搜索订阅源」这一项挂进订阅列表页右下角「+」按钮的操作单里。
+//  订阅列表页右下角「+」的行为:直接打开订阅发现页。
 //
-//  ⚠️ **为什么入口做在这个操作单里,而不是在工具栏上加一个按钮**
+//  ## 演进过程(2026-07-21 一天之内改了两次,记下来免得有人改回去)
+//
+//  第一版:`+` 弹一个操作单,里面三项 —— 添加订阅 / 添加文件夹 / 搜索订阅源。
+//  用户反馈这套很啰嗦。拆开看确实站不住:
+//    · 「添加文件夹」是**整理**动作,不是**添加内容源**,混在一起本身就不对
+//      → 已移到账户分组头右侧的按钮上(见 iOS/MainFeed/AddFolderHeaderButton.swift)
+//    · 「添加订阅」和「搜索订阅源」**根本是同一件事** ——
+//      粘一个网址本来就是搜索的一种,发现页两种输入都收
+//  于是操作单只剩一项,存在的意义就没有了 → `+` 直接进发现页。
+//
+//  ⚠️ **为什么入口不是在工具栏上加一个按钮**
 //
 //  底部工具栏在故事板里正好是 3 项:[设置] ⟷ [+]。
 //  而上游的 configureToolbarWithProgressView() 里写着:
@@ -27,18 +37,6 @@ import UIKit
 
 extension MainFeedCollectionViewController {
 
-	/// 往「+」的操作单里加一项「搜索订阅源」。
-	///
-	/// 由上游 `add(_:)` 方法里的一行调用。**必须在 cancel 那一项加进去之前调用** ——
-	/// UIAlertController 会按加入顺序排列,取消项要留在最后。
-	@objc func addDiscoveryAction(to alertController: UIAlertController) {
-
-		let action = UIAlertAction(title: "搜索订阅源", style: .default) { [weak self] _ in
-			self?.showFeedDiscovery()
-		}
-		alertController.addAction(action)
-	}
-
 	/// [界面] 账户分组头上那个「新建文件夹」按钮的动作。
 	///
 	/// 直接复用上游现成的流程 —— 和原来 `+` 菜单里那一项走的是同一个入口,
@@ -47,7 +45,8 @@ extension MainFeedCollectionViewController {
 		coordinator.showAddFolder()
 	}
 
-	private func showFeedDiscovery() {
+	/// 打开订阅发现页。由上游 `add(_:)`(右下角的 `+`)直接调用。
+	func showFeedDiscovery() {
 
 		let discoveryViewController = FeedDiscoveryViewController(style: .insetGrouped)
 		let navController = UINavigationController(rootViewController: discoveryViewController)

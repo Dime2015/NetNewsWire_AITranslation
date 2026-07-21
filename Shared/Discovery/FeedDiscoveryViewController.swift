@@ -29,7 +29,13 @@ import os
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FeedDiscovery")
 
 	/// 搜哪一类。
+	///
+	/// **`.all` 是默认项,也是绝大多数情况下唯一需要用到的。**
+	/// 它会自己判断输入是什么(见 `FeedQueryRouter`),所以用户不必先想
+	/// 「我要找的是播客还是网站」再去点 tab。
+	/// 其余几项的作用只是**缩小范围**,不是必须先选的前置步骤。
 	private enum Source: Int, CaseIterable {
+		case all
 		case podcast
 		case reddit
 		case youtube
@@ -37,6 +43,7 @@ import os
 
 		var title: String {
 			switch self {
+			case .all: return "全部"
 			case .podcast: return "播客"
 			case .reddit: return "Reddit"
 			case .youtube: return "YouTube"
@@ -46,6 +53,7 @@ import os
 
 		var placeholder: String {
 			switch self {
+			case .all: return "粘网址,或输入名称搜播客"
 			case .podcast: return "输入播客名称,例如 Stratechery"
 			case .reddit: return "输入版块名,例如 apple 或 r/apple"
 			case .youtube: return "粘频道地址,或输入 @名字"
@@ -71,6 +79,10 @@ import os
 	/// 已经订阅成功的那几条,用来在行上打勾 —— 让用户看得出哪些已经加过了
 	private var subscribedURLs = Set<String>()
 
+	/// 正在订阅中的那几条。订阅要联网(上游会去验证 feed),慢的时候要几秒,
+	/// 期间必须有反馈,否则用户会以为没点上、反复点。
+	private var subscribingURLs = Set<String>()
+
 	private var isSearching = false
 
 	/// 订阅到哪里。沿用上游记住的「上次选的文件夹」,和系统自带的添加订阅页保持一致。
@@ -89,8 +101,19 @@ import os
 
 		title = "搜索订阅源"
 
-		navigationItem.rightBarButtonItem = UIBarButtonItem(
-			barButtonSystemItem: .done, target: self, action: #selector(done))
+		// ⚠️ **这个页面的右上角永远只有「取消」,而且永远是同一个词。**
+		//
+		// 改造前这里是「完成」,和结果行上的「订阅」按钮语义打架 ——
+		// 用户不知道点哪个才算加成功,是不是还得回来按一下「完成」。
+		//
+		// 根本原因是:**这个页面没有「提交」这个动作**。
+		// 点一条结果就订阅一条、当场生效,没有需要确认的表单,
+		// 自然也就不需要「完成」。既然只是「离开这个页面」,那就叫「取消」。
+		//
+		// 订阅与否只由结果行自己表达:[订阅] → 转圈 → ✓ 已订阅。
+		// 一个地方说一件事,不重复。
+		navigationItem.leftBarButtonItem = UIBarButtonItem(
+			barButtonSystemItem: .cancel, target: self, action: #selector(done))
 
 		searchController.searchBar.delegate = self
 		searchController.searchBar.placeholder = source.placeholder
@@ -147,6 +170,24 @@ import os
 			do {
 				let found: [FeedSearchResult]
 				switch source {
+				case .all:
+					// 「全部」不自己干活,只负责判断该交给谁 —— 判断逻辑在
+					// FeedQueryRouter 里,单独拆出来是为了能离线跑测试
+					// (初版就是靠那批测试抓出「不带 https:// 但带路径的网址
+					//  会被误判成关键词」这个 bug)
+					switch FeedQueryRouter.route(for: keyword) {
+					case .podcastKeyword(let term):
+						found = try await PodcastSearcher.search(term)
+					case .reddit(let name):
+						found = RedditFeedBuilder.results(subreddit: name)
+					case .youtube(let text):
+						found = [try await YouTubeFeedResolver.resolve(text)]
+					case .website(let text):
+						found = [WebsiteFeedResolver.candidate(for: text)]
+					case .unsupportedKeyword(let hint):
+						throw FeedSearchError.keywordNotSupported(hint: hint)
+					}
+
 				case .podcast:
 					found = try await PodcastSearcher.search(keyword)
 				case .reddit:
@@ -213,6 +254,10 @@ import os
 
 		BatchUpdate.shared.start()
 
+		// 先把行尾换成转圈,让用户知道点上了
+		subscribingURLs.insert(result.feedURL)
+		tableView.reloadData()
+
 		account.createFeed(url: result.feedURL,
 						   name: result.title,
 						   container: container,
@@ -220,6 +265,8 @@ import os
 
 			BatchUpdate.shared.end()
 			guard let self else { return }
+
+			self.subscribingURLs.remove(result.feedURL)
 
 			switch createResult {
 			case .success(let feed):
@@ -231,6 +278,8 @@ import os
 												userInfo: [UserInfoKey.feed: feed])
 				Self.logger.info("[发现] 订阅成功:\(result.feedURL)")
 			case .failure(let error):
+				// 失败时也必须刷新,把转圈换回加号 —— 否则那一行会永远转下去
+				self.tableView.reloadData()
 				Self.logger.error("[发现] 订阅失败:\(result.feedURL) — \(error.localizedDescription)")
 				// Reddit 的失败要换成说实话的提示:上游把 429(限流)也报成
 				// 「找不到这个 feed」,会让人去反复检查根本没错的版块名。
@@ -279,6 +328,11 @@ import os
 	override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
 		guard section == 1, !isSearching, results.isEmpty else { return nil }
 		switch source {
+		case .all:
+			return "粘一个网址,或者输入名称搜播客 —— 不用先选类型,会自动判断。\n\n"
+				+ "YouTube 频道、Reddit 版块、播客、普通网站都从这里加。\n"
+				+ "上面几个分类只是用来缩小范围的,平时不用管。\n\n"
+				+ "找到后点一下那条结果就订阅,不需要再按别的按钮。"
 		case .podcast:
 			return "输入播客名称搜索。找到后点一下就能订阅。"
 		case .reddit:
@@ -307,8 +361,60 @@ import os
 		cell.detailTextLabel?.text = result.subtitle
 		cell.detailTextLabel?.numberOfLines = 1
 		cell.detailTextLabel?.textColor = .secondaryLabel
-		cell.accessoryType = subscribedURLs.contains(result.feedURL) ? .checkmark : .none
+		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
 		return cell
+	}
+
+	/// 结果行右侧那个东西。三种状态,同一个位置,一眼看得出下一步能干什么:
+	///
+	///   ⊕ 加号   —— 还没订阅,点它(或点整行)就订阅
+	///   转圈     —— 正在订阅
+	///   ✓ 对勾   —— 已经订阅好了,不再是按钮
+	///
+	/// 之所以把状态全部收在这一个地方,是因为改造前「订阅到没到」被
+	/// 导航栏的「完成」和行尾的对勾两处同时表达,用户不知道该信哪个。
+	/// 现在:**一个地方说一件事。**
+	private func accessoryView(for result: FeedSearchResult, row: Int) -> UIView {
+
+		if subscribedURLs.contains(result.feedURL) {
+			let check = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+			check.tintColor = .systemGreen
+			check.sizeToFit()
+			return check
+		}
+
+		if subscribingURLs.contains(result.feedURL) {
+			let spinner = UIActivityIndicatorView(style: .medium)
+			spinner.startAnimating()
+			spinner.sizeToFit()
+			return spinner
+		}
+
+		var configuration = UIButton.Configuration.plain()
+		configuration.image = UIImage(systemName: "plus.circle")
+		configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 6)
+
+		let button = UIButton(configuration: configuration)
+		button.tintColor = .tintColor
+		button.accessibilityLabel = "订阅"
+		// 用行号定位是哪一条。安全的前提是:每次结果变化都会 reloadData,
+		// 所以按钮上的行号和当前列表永远是一致的。
+		button.tag = row
+		button.addTarget(self, action: #selector(subscribeButtonTapped(_:)), for: .touchUpInside)
+		button.sizeToFit()
+		return button
+	}
+
+	@objc private func subscribeButtonTapped(_ sender: UIButton) {
+		guard sender.tag >= 0, sender.tag < results.count else {
+			return
+		}
+		let result = results[sender.tag]
+		guard !subscribedURLs.contains(result.feedURL),
+			  !subscribingURLs.contains(result.feedURL) else {
+			return
+		}
+		subscribe(to: result)
 	}
 
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -319,8 +425,13 @@ import os
 			return
 		}
 
+		// 点整行和点行尾的加号是同一件事 —— 加号是给「看得出能点」用的,
+		// 但整行可点仍然保留,因为那是列表的常规预期。
 		let result = results[indexPath.row]
-		guard !subscribedURLs.contains(result.feedURL) else { return }
+		guard !subscribedURLs.contains(result.feedURL),
+			  !subscribingURLs.contains(result.feedURL) else {
+			return
+		}
 		subscribe(to: result)
 	}
 }

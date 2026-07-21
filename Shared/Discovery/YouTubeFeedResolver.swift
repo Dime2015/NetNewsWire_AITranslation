@@ -116,11 +116,28 @@ enum YouTubeFeedResolver {
 	/// 把用户输入变成一个能打开的频道页地址
 	private static func channelPageURL(from text: String) throws -> URL {
 
-		if text.lowercased().hasPrefix("http"), let url = URL(string: text) {
+		let lower = text.lowercased()
+
+		if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+			guard let url = URL(string: text) else {
+				throw FeedSearchError.youTubeChannelNotFound
+			}
 			return url
 		}
 
-		// 不是网址,就当成 handle。@ 可有可无。
+		// ⚠️ 不带协议头、但明显是网址的写法要先补上 https://。
+		// 初版漏了这一档:`youtube.com/@veritasium` 因为不以 http 开头,
+		// 直接掉进下面「当成 handle」的分支,而 handle 的字符白名单里
+		// 没有 `/` 和 `@` —— 于是一个完全正常的频道地址被判成「认不出」。
+		// 判断依据:含 `/` 或 `.` 的就是网址,纯 handle 两者都不会有。
+		if text.contains("/") || text.contains(".") {
+			guard let url = URL(string: "https://" + text) else {
+				throw FeedSearchError.youTubeChannelNotFound
+			}
+			return url
+		}
+
+		// 到这里才是纯 handle。@ 可有可无。
 		var handle = text
 		if handle.hasPrefix("@") {
 			handle = String(handle.dropFirst())

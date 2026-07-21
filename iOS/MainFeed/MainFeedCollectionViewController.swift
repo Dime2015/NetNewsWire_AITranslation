@@ -832,30 +832,14 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	@IBAction func add(_ sender: UIBarButtonItem) {
-		let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-
-		let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
-		let cancelAction = UIAlertAction(title: cancelTitle, style: .cancel)
-
-		let addFeedActionTitle = NSLocalizedString("Add Feed", comment: "Add Feed")
-		let addFeedAction = UIAlertAction(title: addFeedActionTitle, style: .default) { _ in
-			self.coordinator.showAddFeed()
-		}
-
-		alertController.addAction(addFeedAction)
-
-		// [界面] 原本这里有一项「添加文件夹」,已移到账户分组头右侧的按钮上
-		// (实现见 iOS/MainFeed/AddFolderHeaderButton.swift)。
-		// 移走的理由:新建文件夹是「整理」动作,归属账户;放在账户那一行更好找,
-		// 也让这个操作单只剩「添加订阅源」这一类事。
-
-		addDiscoveryAction(to: alertController) // [发现] 加一项「搜索订阅源」,实现在 Shared/Discovery/
-
-		alertController.addAction(cancelAction)
-
-		alertController.popoverPresentationController?.barButtonItem = sender
-
-		present(alertController, animated: true)
+		// [发现] 原本这里弹一个操作单(添加订阅 / 添加文件夹 / 搜索订阅源)。
+		// 现在直接进订阅发现页,理由:
+		//   · 「添加文件夹」已移到账户分组头右侧的按钮上
+		//   · 「添加订阅」和「搜索订阅源」本来就是同一件事 ——
+		//     粘一个网址本身就是搜索的一种,发现页两种输入都收
+		// 于是操作单只剩一项,存在的意义就没有了:少点一次,也少一次选择。
+		// 实现见 Shared/Discovery/MainFeedCollectionViewController+Discovery.swift
+		showFeedDiscovery()
 	}
 
 	@IBAction func toggleFilter(_ sender: Any) {
