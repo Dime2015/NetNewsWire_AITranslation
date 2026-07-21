@@ -225,6 +225,45 @@ xcrun simctl launch booted com.ranchero.NetNewsWire.iOS-DEBUG --args -AppleLangu
 xcrun simctl spawn booted log show --last 30m --predicate 'process == "NetNewsWire"' --style compact
 ```
 
+### 模拟器实用操作(2026-07-21 实测)
+
+**一键切换浅色 / 深色**:`⇧⌘A`(菜单 Features → Toggle Appearance)。
+验证任何配色改动都该按一下这个键看另一半。
+
+同一个 Features 菜单里还有两个对本项目特别有用的:
+
+| 操作 | 快捷键 | 为什么有用 |
+|---|---|---|
+| Toggle Appearance | `⇧⌘A` | 浅色 / 深色 |
+| Increase / Decrease Preferred Text Size | `⌥⌘+` / `⌥⌘−` | **系统动态字号**。文章列表和正文的字号都跟着它走,调大几档能顺便检查布局会不会崩(拉到最大会切到 T7 说的无障碍布局) |
+
+⚠️ **主屏图标外观(默认/深色/透明/色调)是另一回事**,`⇧⌘A` 和
+`simctl ui appearance` 都管不着它。要测图标必须:
+主屏长按空白处 → 左上角「编辑」→「自定」→ 选那四个之一。
+
+**把文件送进模拟器(例如导入 OPML 订阅源)**:
+
+模拟器没有直接的"添加文件"命令。可用的办法是把文件复制进
+**Files app 的「我的 iPhone」存储**,app 内的文件选择器就能看到:
+
+```bash
+UDID=A7B1AE1F-0391-4C3A-B979-FA35653256FF   # xcrun simctl list devices booted 可查
+
+# 找到 Files app 的本地存储(认 group.com.apple.FileProvider.LocalStorage)
+D=~/Library/Developer/CoreSimulator/Devices/$UDID/data/Containers/Shared/AppGroup
+for g in "$D"/*/; do
+  echo -n "$(basename $g) → "
+  plutil -extract MCMMetadataIdentifier raw "$g/.com.apple.mobile_container_manager.metadata.plist"
+done
+
+# 复制进去(把 <GROUP> 换成上面认出来的那个 UUID)
+cp 你的文件.opml "$D/<GROUP>/File Provider Storage/"
+```
+
+然后在 app 里:设置 → Feed →「导入订阅」→ 文件选择器里直接就能看到它。
+**实测 2026-07-21**:55 个订阅源 + 6 个文件夹(生活/旅行/财经/科技/博客/China from other)
+一次导入成功,中文源抓取正常。
+
 ⚠️ 全新 clone 后第一次 iOS 编译必失败(`SecretKey` 不存在),再编译一次即可。详见 L1。
 
 ## 七、用户如何使用
