@@ -39,6 +39,14 @@ extension MainFeedCollectionViewController {
 		alertController.addAction(action)
 	}
 
+	/// [界面] 账户分组头上那个「新建文件夹」按钮的动作。
+	///
+	/// 直接复用上游现成的流程 —— 和原来 `+` 菜单里那一项走的是同一个入口,
+	/// 只是换了个地方点。所以行为完全一致,不需要另写一套。
+	@objc func nnwAddFolderTapped() {
+		coordinator.showAddFolder()
+	}
+
 	private func showFeedDiscovery() {
 
 		let discoveryViewController = FeedDiscoveryViewController(style: .insetGrouped)

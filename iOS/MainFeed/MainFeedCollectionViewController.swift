@@ -360,6 +360,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 			let sectionID = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
 
+			// [界面] 账户分组头右侧的「新建文件夹」按钮。放在这里(而不是下面的账户分支里)
+			// 是因为分组头会被复用 —— 智能订阅那一档也必须走一次,好把按钮藏起来。
+			headerView.nnwInstallAddFolderButton(accountID: sectionID.isEmpty ? nil : sectionID,
+												 target: self,
+												 action: #selector(self.nnwAddFolderTapped))
+
 			// Smart feeds section
 			if sectionID.isEmpty {
 				headerView.sectionHeaderType = .smartFeeds
@@ -838,21 +844,10 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		alertController.addAction(addFeedAction)
 
-		let anyActiveAccountSupportsFolders: Bool = {
-			for account in AccountManager.shared.activeAccounts {
-				if !account.behaviors.contains(.disallowFolderManagement) {
-					return true
-				}
-			}
-			return false
-		}()
-		if anyActiveAccountSupportsFolders {
-			let addFolderActionTitle = NSLocalizedString("Add Folder", comment: "Add Folder")
-			let addFolderAction = UIAlertAction(title: addFolderActionTitle, style: .default) { _ in
-				self.coordinator.showAddFolder()
-			}
-			alertController.addAction(addFolderAction)
-		}
+		// [界面] 原本这里有一项「添加文件夹」,已移到账户分组头右侧的按钮上
+		// (实现见 iOS/MainFeed/AddFolderHeaderButton.swift)。
+		// 移走的理由:新建文件夹是「整理」动作,归属账户;放在账户那一行更好找,
+		// 也让这个操作单只剩「添加订阅源」这一类事。
 
 		addDiscoveryAction(to: alertController) // [发现] 加一项「搜索订阅源」,实现在 Shared/Discovery/
 
