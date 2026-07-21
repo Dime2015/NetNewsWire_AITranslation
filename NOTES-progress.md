@@ -3,7 +3,7 @@
 > **这是接手本项目的第一份必读文件。**
 > 读完本文件,你应该知道:项目做到哪了、哪些已验证、哪些悬而未决、下一步是什么。
 > 配套文件:`CLAUDE.md`(规则) → `NOTES-architecture.md`(代码考古) →
-> `NOTES-lessons.md`(踩过的坑,36 条) → `NOTES-todo.md`(已知问题) →
+> `NOTES-lessons.md`(踩过的坑,40 条) → `NOTES-todo.md`(已知问题) →
 > `NOTES-i18n.md`(多语言工程手册)。
 >
 > ⚠️ **动手前务必先看 CLAUDE.md 第 0 节第 7 条**:
@@ -39,17 +39,26 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 | 界面:**文章列表**改 Reeder 式 | ✅ | favicon + 三段文字 4 行 + 右侧缩略图 + 整行浓淡,用户已验收 |
 | 界面:**阅读视图**能用了 | ✅ | 换成本机 Readability.js,不再依赖 Feedbin 密钥 |
 | 界面:**正文阅读页** | ✅ 第一轮 | 图片四桶规则+图注+作者名层级+正文元素全套,2026-07-21 用户验收 |
+| **订阅发现页**(搜索并添加内容源) | ✅ | 播客 / Reddit / YouTube / 网站四类,`+` 直接进入 |
+| **播客语音条 + 跳 Podcasts** | ✅ | 音频走 feed,跳转走 iTunes |
+| **YouTube 正文播放器 + 简介** | ✅ | 修掉「错误代码 152」,见 L37 |
+| **app 改名 Babel** | ✅ | 只改显示层;改名基础设施 `i18n/rebrand.py` |
+| **装到真机** | 🔜 **下一步** | 签名配置已就绪,等用户在 Xcode 里 ⌘R |
 | 装到真机 | ⏳ 排在界面之后 | Apple ID 已登录;剩余前置条件见第四节 |
 
 ## 三、git 状态(2026-07-21 晚)
 
-**工作区干净,已与 GitHub 同步**(`Dime2015/NetNewsWire_AITranslation` main)。
+**工作区干净。本地领先 GitHub 5 个提交**,需要时 `git push`。
 
 
 本轮(界面改造)新增的提交,从新到旧:
 
 ```
-(最新)     [发现] Phase B(YouTube/网站)+ 播客语音条与跳转
+02dff2746  [品牌] app 显示名改为 Babel,并建立可复用的改名基础设施
+5eb01e408  [发现] 搜索页收敛:统一右上角、加「全部」自动识别、+ 直接进页面
+c4a093fcf  [界面] 「新建文件夹」从 + 操作单移到账户分组头右侧
+60e19ed13  [YouTube] 正文嵌播放器 + 视频简介,并修掉「错误代码 152」
+65f7cbd8a  [发现] Phase B(YouTube / 网站)+ [播客] 正文语音条与跳转 Podcasts
 c7649020d  [发现] 订阅发现 Phase A:app 内搜索并订阅播客 / Reddit
 95cf73af9  [界面] 正文阅读页第一轮:图片、图注、作者名层级、正文元素样式
 55eae14f1  [文档] 本轮收尾:进度整理 + 新增「不要用操作电脑做验收」规则
@@ -213,15 +222,86 @@ YouTube RSS 里有 `<media:group><media:description>`,但上游 `AtomParser` 写
 修法:`WebViewController.nnwAdjustedBaseURL()` 只对 YouTube 文章换成中性身份。
 安全性已量:全库 15 篇 YouTube 文章正文非空的 **0 篇**,2293 篇其它文章不受影响。
 
-### 🔜 下一步:改造「+」按钮与订阅发现页(2026-07-21 深夜用户提出)
+### ✅ 「+」与订阅发现页改造:已完成并验收(2026-07-21 深夜)
 
-用户要求:
-1. **「添加文件夹」从 `+` 里拿掉**,改成放在账户名(「我的 iPhone」)旁边的一个图标
-2. **`+` 直接进订阅发现页**,所有内容源的查找与添加都在这一个页面的不同 tab 下完成
-3. **统一右上角按钮的逻辑** —— 现在不同情况下会出现叉号 / 对勾 / 「添加」,
-   要求简单、一致、不重复、不啰嗦但也不出错
+1. **「新建文件夹」移到账户分组头右侧**(`iOS/MainFeed/AddFolderHeaderButton.swift`)。
+   **Main.storyboard 零改动** —— 运行时按「约束两端分别是谁」找出
+   `未读数.leading = 标题.trailing` 那一节并停用,再把按钮接进链条;
+   找不到该约束就什么都不做。分组头有折叠手势,加了仲裁者。
+   ⚠️ 标题 label 的水平 hugging 默认只有 251 会自动拉伸,必须调高才能让按钮跟住名字(见 L38)
+2. **`+` 不再弹操作单,直接进发现页**。理由:「添加订阅」和「搜索订阅源」
+   本就是同一件事 —— 粘网址也是搜索的一种
+3. **右上角统一**:去掉「完成」,只留左上角唯一的「取消」。
+   根因是这个页面**没有「提交」动作**,点一条就订阅一条、当场生效
+4. **订阅状态只在行尾表达**,三态齐全:⊕ 加号 / 转圈 / ✓ 对勾,**失败路径也刷新**
+5. **「全部」tab 自动识别输入类型**(`FeedQueryRouter`,拆出来是为了能离线跑测试)
+6. **结果行左侧图标**:播客封面来自 iTunes 返回、YouTube 头像来自已抓的频道页 ——
+   **两者都是白拿的,没多发请求**;Reddit / 网站退回类型符号
 
-⚠️ 动手前必读 CLAUDE.md「D 级 · 订阅发现专用」里那条工具栏 3 项的陷阱。
+⚠️ **网站这一类改过一次实现,别改回去**:初版把网址原样交给
+`createFeed(validateFeed:)`,指望上游 `FeedFinder` 发现 —— **实测一个网站都订不上**。
+现在改为**在搜索阶段就把 feed 找出来**:先用 `RSParser` 的 `HTMLMetadataParser`
+读网页里的 `<link rel="alternate">`,没有再探 `/feed/` `/rss` `/index.xml` 等七个常见地址。
+实测 stratechery.com 的 `<head>` 里**一个 RSS 声明都没有**,只能靠探测;
+daringfireball.net 反过来只能靠读声明 —— **两步缺一不可**。
+(不能直接调上游 `FeedFinder`:该模块**没有链接进 app target**,
+project.pbxproj 里出现 0 次,链进来要改 .xcodeproj,违反第 8 节。)
+
+### ✅ app 改名 Babel + 改名基础设施(2026-07-21 深夜)
+
+**只改用户看得见的地方**:`CFBundleDisplayName`(单一真源是
+`xcconfig/NetNewsWire_iOSapp_target.xcconfig` 里的 `APP_DISPLAY_NAME` 一行)
++ 界面中文文案 13 处。
+
+**刻意不动,每条都有代价**:bundle id(一改数据全清零)、
+target/scheme/.xcodeproj(构建失效 + 143 处冲突)、类名模块名(370 个文件)、
+User-Agent(服务器兼容性标识,L33)、.xcstrings 的英文原文(上游文件)。
+
+```bash
+python3 i18n/rebrand.py 新名字      # 改名
+python3 i18n/rebrand.py --check     # 自查
+python3 i18n/inject.py zh-Hans      # 让译文生效
+```
+
+### 🔜 下一步:装到真机(签名配置已就绪,等用户操作)
+
+**已经做完的部分**:
+
+`/Users/wenbopan/Downloads/SharedXcodeSettings/DeveloperSettings.xcconfig` **已创建**
+(在仓库外,工程用 `#include?` 可选包含,不进 git):
+
+```
+DEVELOPMENT_TEAM = 7RDUVMLBSJ          ← Wenbo Pan (Personal Team)
+ORGANIZATION_IDENTIFIER = com.wenbopan
+CODE_SIGN_STYLE = Automatic
+DEVELOPER_ENTITLEMENTS = -dev
+PROVISIONING_PROFILE_SPECIFIER =
+```
+
+已用 `xcodebuild -showBuildSettings` 核实生效:
+bundle id = `com.wenbopan.NetNewsWire.iOS-DEBUG`,权限文件 = `NetNewsWire-dev.entitlements`。
+
+> 💡 **Team ID 在新版 Xcode 界面里不显示**。不用让用户找,直接读:
+> ```bash
+> defaults read com.apple.dt.Xcode | grep -iE "teamID|teamName"
+> ```
+
+**剩下的只有用户能做**:连线 → 信任电脑 → Xcode 选设备 → ⌘R →
+手机上「设置 → 通用 → VPN与设备管理 → 开发者App → 信任」。
+
+🔴 **最可能卡住的地方(T6 里标了很久的未验证点)**:
+免费 Personal Team **很可能签不了 App Groups**,报错形如
+`Personal development teams do not support the App Groups capability`。
+
+**退路已经查好**:App Group 容器**只被小组件和分享扩展用到**
+(`Shared/Widget/*`、`Shared/ShareExtension/*`),
+主 app 的文章数据库在 `Documents/` 下,**完全不依赖它**。
+真报错就从 `-dev` 权限文件里去掉 App Groups,主 app 照常工作。
+
+⚠️ **不要在 Xcode 的 Signing & Capabilities 面板里点改** —— 那会写进 .xcodeproj。
+
+**装成功后**:①翻译 API Key 要重填(存 Keychain,不跟代码走)
+②订阅源是空的,要重新导入 OPML ③免费账号签的 app **7 天过期**,到期重新 ⌘R
 
 ### 📋 四个内容源需求的方案结论(2026-07-21 深夜,①③ 已在 Phase A 落地)
 
@@ -423,6 +503,26 @@ find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Appli
 | `Shared/Appearance/nnw_appearance.js` | 正文页的覆盖样式层。**调正文外观只改这里的 CSS** |
 | `iOS/Resources/Assets.xcassets/AppIconCustom.appiconset/` | 本 fork 的 app 图标。上游的 `AppIcon.appiconset` 未动,靠 xcconfig 一行指过来(见 L24) |
 
+**订阅发现 / 播客 / YouTube 新增的文件(2026-07-21 深夜,上游都不存在):**
+
+| 文件 | 职责 |
+|---|---|
+| `Shared/Discovery/FeedSearchResult.swift` | 统一的结果模型 + 会说人话的错误定义 |
+| `Shared/Discovery/FeedQueryRouter.swift` | 「全部」tab 的输入类型判断。**拆出来是为了能离线跑测试** |
+| `Shared/Discovery/PodcastSearcher.swift` | iTunes Search API(官方、免 key、直接给 feedUrl 和封面) |
+| `Shared/Discovery/RedditFeedBuilder.swift` | 版块名解析 + 拼 .rss,**全本地零请求**(L33) |
+| `Shared/Discovery/YouTubeFeedResolver.swift` | 频道页抠 channel_id + 头像。抓页面用**桌面浏览器 UA** |
+| `Shared/Discovery/WebsiteFeedResolver.swift` | 读网页 RSS 声明 + 探测常见地址 + favicon |
+| `Shared/Discovery/FeedDiscoveryViewController.swift` | 搜索页(iOS only) |
+| `Shared/Discovery/MainFeedCollectionViewController+Discovery.swift` | `+` 的入口 + 新建文件夹动作 |
+| `Shared/Podcast/PodcastEpisodeLocator.swift` | 重拉 feed 按 guid 找 enclosure,**含负缓存**(L35) |
+| `Shared/Podcast/ApplePodcastsLinkResolver.swift` | iTunes 单集深链(`episodeGuid` 对得上 `Article.uniqueID`) |
+| `Shared/Podcast/nnw_podcast.js` | 语音条,插在 `#bodyContainer` **外面** |
+| `Shared/YouTube/nnw_youtube.js` | 播放器(外面)+ 简介容器(里面) |
+| `Shared/YouTube/YouTubeDescriptionLoader.swift` | `XMLParser` 解 `media:description`(上游明确忽略带前缀元素) |
+| `iOS/MainFeed/AddFolderHeaderButton.swift` | 账户分组头右侧的「新建文件夹」按钮 |
+| `i18n/rebrand.py` | 改 app 显示名 + 自查 |
+
 **本地化产物(见 `NOTES-i18n.md`):**
 `i18n/inject.py`(注入器)、`i18n/zh-Hans.json`(436 条翻译表)、
 各 `<语言>.lproj/*.strings`。
@@ -444,6 +544,11 @@ find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Appli
 | `iOS/Article/ArticleViewController.swift` | 另:去掉阅读视图按钮的 `!isDeveloperBuild` 禁用判断 |
 | `iOS/Article/WebViewController.swift` | 另:提取器换成 `ReaderViewExtractor`,共两行 |
 | `iOS/MainTimeline/MainTimelineModernViewController.swift` | 填缩略图、监听图片就绪、favicon 恒显,共三处 |
+| `iOS/MainFeed/MainFeedCollectionViewController.swift` | `+` 改为直接进发现页;分组头装按钮一行 |
+| `iOS/Article/WebViewController.swift` | `didFinish` 一行钩子 + `loadHTMLString` 的 baseURL 换成我们的函数 + 末尾追加扩展 |
+| `Shared/Article Rendering/WebViewConfiguration.swift` | 脚本清单里再加两个名字(nnw_podcast、nnw_youtube) |
+| `iOS/Resources/Info.plist` | 加 `CFBundleDisplayName = $(APP_DISPLAY_NAME)` 两行 |
+| `xcconfig/NetNewsWire_iOSapp_target.xcconfig` | 末尾追加 `APP_DISPLAY_NAME`(改名单一真源) |
 
 翻译功能的改动带 `[翻译]` 标记,界面改造带 `[界面]` 标记,
 阅读视图带 `[阅读视图]` 标记,⌘F 可分别盘点。

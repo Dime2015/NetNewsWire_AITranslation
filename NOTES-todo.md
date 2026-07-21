@@ -525,3 +525,39 @@ xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire \
 | **首次打开某播客的文章慢 1~2 秒** | 要重拉一次 feed 才知道音频地址(数据库里没有,见 L35)。Exponent 的 feed 有 767 KB | 已按 feed 缓存(含负缓存),同会话内只慢一次。**可接受** |
 
 另:私人/付费 feed 不在苹果目录里,「在播客中打开」会静静地不显示 —— 这是有意的降级,不报错。
+
+---
+
+## T16 · 「全部」以外的四个分类 tab,可能是多余的
+
+**状态**:待观察,**不要现在动**
+**记录时间**:2026-07-21
+
+订阅发现页顶部有五个 tab:全部 / 播客 / Reddit / YouTube / 网站。
+「全部」会自己判断输入类型(`FeedQueryRouter`,18/18 测试通过),
+所以另外四个的作用只是**缩小范围**。
+
+如果日常使用中发现自动识别足够准,那四个 tab 可以撤掉,页面会更干净。
+**但要用几天再说** —— 用户当时的原话是「A/B 用完再说」,
+现在就撤等于用推测代替使用数据。
+
+---
+
+## T17 · 网站类订阅:探测路径清单可能要加
+
+**状态**:够用,遇到失败再加
+**记录时间**:2026-07-21
+
+`WebsiteFeedResolver.commonFeedPaths` 现在有 7 个:
+`/feed/` `/rss` `/feed.xml` `/index.xml` `/rss.xml` `/atom.xml` `/feed/atom/`
+
+实测覆盖情况:
+| 站点 | 命中方式 |
+|---|---|
+| stratechery.com | 探测 `/feed/`(它的 `<head>` 里**一个 RSS 声明都没有**) |
+| jvns.ca | 探测 `/atom.xml` |
+| daringfireball.net | 读网页声明 `/feeds/main`(常见路径全不中) |
+
+**两步缺一不可** —— 上面三个站正好各证明一半。
+用户报某个站订不上时:先 `curl` 那个站的首页看有没有 `<link rel="alternate">`,
+再挨个试常见路径,确认是「真没有 RSS」还是「路径没覆盖到」。
