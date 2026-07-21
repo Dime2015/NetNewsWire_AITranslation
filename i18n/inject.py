@@ -101,9 +101,25 @@ def main():
                 untranslated.append((rel, key))
                 continue
             localizations = entry.setdefault("localizations", {})
-            localizations[language] = {
-                "stringUnit": {"state": "translated", "value": translation}
-            }
+
+            if isinstance(translation, dict):
+                # 设备变体。有些字符串在不同设备上说法不同,
+                # 例如 account.name.on-my-device 在 iPhone 上是 "On My iPhone"、
+                # 在 Mac 上是 "On My Mac"。这类条目英文侧用 variations.device 表达,
+                # 译文也必须用同样的结构 —— 写成普通字符串的话,
+                # 界面上会原样显示 %@ 之类的占位符(踩过,见 L21)。
+                localizations[language] = {
+                    "variations": {
+                        "device": {
+                            device: {"stringUnit": {"state": "translated", "value": text}}
+                            for device, text in translation.items()
+                        }
+                    }
+                }
+            else:
+                localizations[language] = {
+                    "stringUnit": {"state": "translated", "value": translation}
+                }
             injected += 1
 
         injected_total += injected

@@ -100,12 +100,23 @@ error: Localizable.xcstrings cannot co-exist with other .strings
 本项目现状:
 
 ```
-已本地化 ✅   iOS/Base.lproj/Main.storyboard          ← 已翻译
-未本地化 ❌   iOS/Settings/Settings.storyboard        ← 36 条,未翻译
-未本地化 ❌   iOS/Account/Account.storyboard          ← 20 条,未翻译
-未本地化 ❌   iOS/Add/Add.storyboard                  ← 13 条,未翻译
-未本地化 ❌   iOS/Inspector/Inspector.storyboard      ←  9 条,未翻译
+iOS/Base.lproj/Main.storyboard              ← 上游就已本地化,已翻译
+iOS/Settings/Base.lproj/Settings.storyboard ← 本 fork 移入 Base.lproj,已翻译
+iOS/Account/Base.lproj/Account.storyboard   ← 本 fork 移入 Base.lproj,已翻译
+iOS/Add/Base.lproj/Add.storyboard           ← 本 fork 移入 Base.lproj,已翻译
+iOS/Inspector/Base.lproj/Inspector.storyboard ← 本 fork 移入 Base.lproj,已翻译
 ```
+
+**把未本地化的 storyboard 变成可翻译的**(本 fork 已对上面 4 个做过):
+
+```bash
+mkdir -p iOS/Settings/Base.lproj
+git mv iOS/Settings/Settings.storyboard iOS/Settings/Base.lproj/Settings.storyboard
+```
+
+用 `git mv` 而不是普通移动 —— git 会把它记成**重命名**而非删除+新增,
+将来上游改这个文件时 git 能自动跟踪过去,冲突面小得多。
+移完编译一次,确认它出现在 app 包的 `Base.lproj/` 里而不是包根目录。
 
 **验证某个 storyboard 属于哪类**:编译后看它落在 app 包的哪里 ——
 在 `Base.lproj/` 里就是已本地化,在包根目录就是未本地化。
@@ -141,8 +152,8 @@ ls "$APP"/Base.lproj/*.storyboardc  # 已本地化的
 
 | 英文 | 中文 |
 |---|---|
-| Feed | 订阅源 |
-| Smart Feed | 智能订阅源 |
+| Feed | **保持英文不译**(智能 Feed、添加 Feed) |
+| Smart Feed | 智能 Feed |
 | Article | 文章 |
 | Starred | 已加星标 |
 | Read / Unread | 已读 / 未读 |
@@ -166,7 +177,8 @@ ls "$APP"/Base.lproj/*.storyboardc  # 已本地化的
 
 ## 七、还没做的部分
 
-| 内容 | 条数 | 为什么没做 |
-|---|---|---|
-| Settings/Account/Add/Inspector 四个 storyboard | 78 | 需要把上游文件移进 `Base.lproj`,merge 风险高于其他部分,留待用户决定 |
-| macOS 专属界面 | — | macOS 不在项目范围内(CLAUDE.md 第 1 节) |
+| 内容 | 为什么没做 |
+|---|---|
+| macOS 专属界面 | macOS 不在项目范围内(CLAUDE.md 第 1 节) |
+
+iOS 侧的界面文案已全部汉化(436 条字符串 + 5 个 storyboard)。

@@ -1,0 +1,45 @@
+/*
+   Account.storyboard 的简体中文翻译(添加/编辑账户的各个界面)。
+
+   本 fork 新增的文件。Account.storyboard 原本未本地化,
+   本 fork 把它移进了 iOS/Account/Base.lproj/ 才能翻译。
+
+   重新导出可翻条目:
+       xcrun ibtool --export-strings-file /tmp/Account.strings iOS/Account/Base.lproj/Account.storyboard
+*/
+
+/* 导航栏标题 */
+"AOA-LS-PIB.title" = "本机";
+"idp-kp-cGU.title" = "iCloud";
+"jCQ-pH-6AD.title" = "NewsBlur";
+"tYg-9f-kyd.title" = "Feedbin";
+"z3N-XM-EXU.title" = "Reader";
+
+/* 通用按钮 */
+"n8H-ai-4Df.title" = "取消";
+"mQv-3O-Y2d.normalTitle" = "添加账户";
+"GY9-nr-jFb.normalTitle" = "显示";
+"TfW-wf-V06.normalTitle" = "显示";
+"cFF-qt-WLs.normalTitle" = "显示";
+"3Fq-U4-PS5.normalTitle" = "点此注册";
+"Xhf-bK-vzm.normalTitle" = "点此注册";
+"YhB-G0-eeJ.normalTitle" = "点此注册";
+"T1S-zH-rIp.normalTitle" = "使用 iCloud";
+"vXG-7q-4qg.normalTitle" = "如何优化 iCloud 同步";
+
+/* 输入框占位文字 */
+"Yl1-R6-xZi.placeholder" = "名称";
+"CZg-x8-936.placeholder" = "用户名或邮箱";
+"S4v-fs-DIO.placeholder" = "用户名或邮箱";
+"vJa-NN-yjR.placeholder" = "邮箱";
+"KgN-kQ-Cyc.placeholder" = "密码";
+"YC2-RH-QoV.placeholder" = "密码";
+"fct-XR-fEa.placeholder" = "密码";
+"iPv-M2-U8Q.placeholder" = "API 网址";
+
+/* 说明文字 */
+"5ce-ZL-glQ.text" = "本地账户不会在设备间同步你的 Feed。";
+"aFS-Y0-2MH.text" = "你的 iCloud 账户会在 Mac 与 iOS 设备之间同步 Feed";
+"7Jj-p8-lYw.text" = "使用你的 Reader 账户在各设备间同步 Feed。\n\n还没有 Reader 账户?";
+"fal-e8-3BB.text" = "登录你的 NewsBlur 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 NewsBlur 账户?";
+"sgL-0C-JZa.text" = "登录你的 Feedbin 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 Feedbin 账户?";

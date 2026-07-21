@@ -221,7 +221,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "活动日志可能包含订阅源网址等你不希望公开分享的信息。"
+            "value" : "活动日志可能包含 Feed 网址等你不希望公开分享的信息。"
           }
         }
       }
@@ -254,7 +254,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加订阅源"
+            "value" : "添加 Feed"
           }
         }
       }
@@ -353,7 +353,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除这 %d 个订阅源吗?"
+            "value" : "确定要删除这 %d 个 Feed 吗?"
           }
         }
       }
@@ -364,7 +364,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除订阅源“%@”吗?"
+            "value" : "确定要删除 Feed“%@”吗?"
           }
         }
       }
@@ -397,7 +397,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除订阅源“%@”吗?"
+            "value" : "确定要删除 Feed“%@”吗?"
           }
         }
       }
@@ -408,7 +408,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除订阅源“%@”吗?"
+            "value" : "确定要删除 Feed“%@”吗?"
           }
         }
       }
@@ -430,7 +430,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要移除此账户吗?除非重新添加,否则 NetNewsWire 将无法再访问其中的文章和订阅源。"
+            "value" : "确定要移除此账户吗?除非重新添加,否则 NetNewsWire 将无法再访问其中的文章和 Feed。"
           }
         }
       }
@@ -540,7 +540,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法添加订阅源,因为没有找到任何订阅源。"
+            "value" : "无法添加 Feed,因为没有找到任何 Feed。"
           }
         }
       }
@@ -562,7 +562,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法添加此订阅源,下载出错:“%@”"
+            "value" : "无法添加此 Feed,下载出错:“%@”"
           }
         }
       }
@@ -573,7 +573,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法添加此订阅源,你已经订阅过了。"
+            "value" : "无法添加此 Feed,你已经订阅过了。"
           }
         }
       }
@@ -628,7 +628,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择接收导入订阅源和文件夹的账户"
+            "value" : "选择接收导入 Feed 和文件夹的账户"
           }
         }
       }
@@ -835,7 +835,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "拷贝订阅源网址"
+            "value" : "拷贝 Feed 网址"
           }
         }
       }
@@ -977,7 +977,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除订阅源"
+            "value" : "删除 Feed"
           }
         }
       }
@@ -988,7 +988,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除订阅源"
+            "value" : "删除 Feed"
           }
         }
       }
@@ -999,7 +999,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除订阅源和文件夹"
+            "value" : "删除 Feed 和文件夹"
           }
         }
       }
@@ -1285,7 +1285,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "错误日志可能包含订阅源网址等你不希望公开分享的信息。"
+            "value" : "错误日志可能包含 Feed 网址等你不希望公开分享的信息。"
           }
         }
       }
@@ -1439,7 +1439,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "订阅源信息"
+            "value" : "Feed 信息"
           }
         }
       }
@@ -1450,7 +1450,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "订阅源"
+            "value" : "Feed"
           }
         }
       }
@@ -1483,7 +1483,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "过滤已读订阅源"
+            "value" : "过滤已读 Feed"
           }
         }
       }
@@ -1527,7 +1527,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在查找订阅源"
+            "value" : "正在查找 Feed"
           }
         }
       }
@@ -1538,7 +1538,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在查找订阅源…"
+            "value" : "正在查找 Feed…"
           }
         }
       }
@@ -1604,7 +1604,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示订阅源信息"
+            "value" : "显示 Feed 信息"
           }
         }
       }
@@ -1637,7 +1637,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "前往订阅源"
+            "value" : "前往 Feed"
           }
         }
       }
@@ -1725,7 +1725,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "隐藏已读订阅源"
+            "value" : "隐藏已读 Feed"
           }
         }
       }
@@ -1995,7 +1995,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本地账户不会在设备间同步订阅源"
+            "value" : "本地账户不会在设备间同步 Feed"
           }
         }
       }
@@ -2006,7 +2006,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本地账户不会在设备间同步你的订阅源"
+            "value" : "本地账户不会在设备间同步你的 Feed"
           }
         }
       }
@@ -2017,7 +2017,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本地账户不会在设备间同步你的订阅源。"
+            "value" : "本地账户不会在设备间同步你的 Feed。"
           }
         }
       }
@@ -2225,7 +2225,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "菜单:前往订阅源、打开主页、拷贝订阅源网址"
+            "value" : "菜单:前往 Feed、打开主页、拷贝 Feed 网址"
           }
         }
       }
@@ -2335,7 +2335,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新建订阅源"
+            "value" : "新建 Feed"
           }
         }
       }
@@ -2346,7 +2346,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新建订阅源…"
+            "value" : "新建 Feed…"
           }
         }
       }
@@ -3051,7 +3051,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已选中 - 过滤已读订阅源"
+            "value" : "已选中 - 过滤已读 Feed"
           }
         }
       }
@@ -3106,7 +3106,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自建服务账户会在你的所有设备间同步订阅源"
+            "value" : "自建服务账户会在你的所有设备间同步 Feed"
           }
         }
       }
@@ -3161,7 +3161,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示超过以下时间未更新的订阅源…"
+            "value" : "显示超过以下时间未更新的 Feed…"
           }
         }
       }
@@ -3194,7 +3194,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示已读订阅源"
+            "value" : "显示已读 Feed"
           }
         }
       }
@@ -3238,7 +3238,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 BazQux 账户,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 BazQux 账户?"
+            "value" : "登录你的 BazQux 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 BazQux 账户?"
           }
         }
       }
@@ -3260,7 +3260,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 Feedbin 账户,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 Feedbin 账户?"
+            "value" : "登录你的 Feedbin 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 Feedbin 账户?"
           }
         }
       }
@@ -3293,7 +3293,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 FreshRSS 实例,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 FreshRSS 实例?"
+            "value" : "登录你的 FreshRSS 实例,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 FreshRSS 实例?"
           }
         }
       }
@@ -3304,7 +3304,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 Inoreader 账户,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 Inoreader 账户?"
+            "value" : "登录你的 Inoreader 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 Inoreader 账户?"
           }
         }
       }
@@ -3326,7 +3326,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 NewsBlur 账户,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 NewsBlur 账户?"
+            "value" : "登录你的 NewsBlur 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 NewsBlur 账户?"
           }
         }
       }
@@ -3348,7 +3348,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录你的 The Old Reader 账户,在各设备间同步订阅源。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 The Old Reader 账户?"
+            "value" : "登录你的 The Old Reader 账户,在各设备间同步 Feed。你的用户名和密码将被加密并存储在钥匙串中。\n\n还没有 The Old Reader 账户?"
           }
         }
       }
@@ -3392,7 +3392,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "智能订阅源信息"
+            "value" : "智能 Feed 信息"
           }
         }
       }
@@ -3403,7 +3403,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "智能订阅源"
+            "value" : "智能 Feed"
           }
         }
       }
@@ -3469,7 +3469,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在订阅源上滑动以显示操作菜单和删除按钮。"
+            "value" : "在 Feed 上滑动以显示操作菜单和删除按钮。"
           }
         }
       }
@@ -3797,7 +3797,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切换已读订阅源过滤"
+            "value" : "切换已读 Feed 过滤"
           }
         }
       }
@@ -3884,7 +3884,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法添加订阅源"
+            "value" : "无法添加 Feed"
           }
         }
       }
@@ -4192,7 +4192,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在线服务账户会在你的所有设备间同步订阅源"
+            "value" : "在线服务账户会在你的所有设备间同步 Feed"
           }
         }
       }
@@ -4236,7 +4236,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的 iCloud 账户会在 Mac 与 iOS 设备之间同步订阅源"
+            "value" : "你的 iCloud 账户会在 Mac 与 iOS 设备之间同步 Feed"
           }
         }
       }

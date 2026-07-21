@@ -13,7 +13,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在添加订阅源"
+            "value" : "正在添加 Feed"
           }
         }
       }
@@ -159,7 +159,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "订阅源查找"
+            "value" : "Feed 查找"
           }
         }
       }
@@ -176,7 +176,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "订阅源图片"
+            "value" : "Feed 图片"
           }
         }
       }
@@ -187,7 +187,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "订阅源重定向"
+            "value" : "Feed 重定向"
           }
         }
       }
@@ -237,7 +237,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在查找订阅源 %@"
+            "value" : "正在查找 Feed %@"
           }
         }
       }
@@ -288,7 +288,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在移动订阅源"
+            "value" : "正在移动 Feed"
           }
         }
       }
@@ -344,7 +344,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在刷新订阅源列表"
+            "value" : "正在刷新 Feed 列表"
           }
         }
       }
@@ -355,7 +355,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在刷新订阅源:%@"
+            "value" : "正在刷新 Feed:%@"
           }
         }
       }
@@ -406,7 +406,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在移除订阅源"
+            "value" : "正在移除 Feed"
           }
         }
       }
@@ -440,7 +440,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在重命名订阅源"
+            "value" : "正在重命名 Feed"
           }
         }
       }
@@ -468,7 +468,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在恢复订阅源"
+            "value" : "正在恢复 Feed"
           }
         }
       }

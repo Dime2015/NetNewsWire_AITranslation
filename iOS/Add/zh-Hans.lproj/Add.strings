@@ -1,0 +1,26 @@
+/*
+   Add.storyboard 的简体中文翻译(添加 Feed / 添加文件夹)。
+
+   本 fork 新增的文件。Add.storyboard 原本未本地化,
+   本 fork 把它移进了 iOS/Add/Base.lproj/ 才能翻译。
+
+   重新导出可翻条目:
+       xcrun ibtool --export-strings-file /tmp/Add.strings iOS/Add/Base.lproj/Add.storyboard
+*/
+
+/* 导航栏标题 */
+"LuA-AC-n99.title" = "添加文件夹";
+"e4Y-zR-cTn.title" = "选择文件夹";
+"acA-n7-ohN.title" = "Feed 文件夹";
+
+/* 按钮 */
+"F8z-me-Hnx.title" = "添加";
+"gXG-Xt-d9B.title" = "添加";
+"QpU-Ro-nHd.title" = "取消";
+
+/* 表单标签 */
+"eRp-AP-WFq.placeholder" = "网址";
+"YRf-I7-nkL.text" = "账户";
+"ZQp-94-vJz.text" = "账户";
+"3Tp-A7-7rS.text" = "文件夹";
+"RtT-rR-5LA.text" = "文件夹";

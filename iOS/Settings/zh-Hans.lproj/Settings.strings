@@ -1,0 +1,72 @@
+/*
+   Settings.storyboard 的简体中文翻译(设置主界面)。
+
+   本 fork 新增的文件,上游没有 —— 不会与 git pull upstream 冲突。
+   注意:Settings.storyboard 原本不在 Base.lproj 里(未本地化),
+   本 fork 把它移进了 iOS/Settings/Base.lproj/ 才能翻译。
+
+   上游改了 Storyboard 后,重新导出全部可翻条目:
+       xcrun ibtool --export-strings-file /tmp/Settings.strings iOS/Settings/Base.lproj/Settings.storyboard
+*/
+
+/* 导航栏 */
+"uf8-rU-NlH.title" = "设置";
+
+/* 分区标题 */
+"0ac-Ze-Dh4.headerTitle" = "账户";
+"hAC-uA-RbS.headerTitle" = "Feed";
+"9Pk-Y8-JVJ.headerTitle" = "文章列表";
+"TRr-Ew-IvU.headerTitle" = "文章";
+"TkH-4v-yhk.headerTitle" = "外观";
+"Bmb-Oi-RZK.headerTitle" = "通知、角标、数据等";
+"Trb-eL-9xZ.headerTitle" = "疑难解答";
+"CS8-fJ-ghn.headerTitle" = "帮助";
+
+/* 账户分区 */
+"116-rt-msI.text" = "我的 iPhone";
+"6sn-wY-hHH.text" = "添加账户";
+"b00-4A-bV6.title" = "添加账户";
+
+/* Feed 分区 */
+"4Hg-B3-zAE.text" = "导入订阅";
+"25J-iX-3at.text" = "导出订阅";
+"dXN-Mw-yf2.text" = "添加 NetNewsWire 新闻 Feed";
+
+/* 文章列表分区 */
+"c9W-IF-u6i.text" = "按时间从旧到新排序";
+"cit-i1-0Hp.text" = "按 Feed 分组";
+"KtJ-tk-DlD.text" = "刷新时清除已读文章";
+"5tY-5k-v2g.text" = "“全部标为已读”需确认";
+"YHt-eS-KrX.text" = "文章列表布局";
+
+/* 文章分区 */
+"bbw-L9-a3X.text" = "主题";
+"fO4-og-e41.title" = "主题";
+"Wm4-Y1-7nX.text" = "在 NetNewsWire 内打开链接";
+"bO3-aT-4AW.text" = "启用 JavaScript";
+"FkT-O9-gpj.text" = "部分内容(例如视频和内嵌的社交媒体帖子)可能需要 JavaScript 才能正常显示。";
+"79e-5s-vd0.text" = "启用全屏阅读";
+"a30-nc-ZS4.text" = "点按文章顶栏进入全屏。点按顶部或底部退出。";
+
+/* 外观分区 */
+"2Fp-li-dGP.text" = "配色";
+"4je-jl-or5.title" = "配色";
+"16m-Ns-Y8V.text" = "自动";
+"DUf-DZ-3Nm.text" = "默认";
+
+/* 通知等 */
+"F9H-Kr-npj.text" = "打开系统设置";
+
+/* 疑难解答 */
+"eRl-vQ-3kP.text" = "错误日志";
+"aLg-lb-4bR.text" = "活动日志";
+"aSt-vQ-3kP.text" = "账户统计";
+"cKz-sT-4bR.text" = "iCloud 存储统计";
+"QyH-Rs-uKE.text" = "恐龙";
+
+/* 帮助 */
+"uGk-2d-oFc.text" = "NetNewsWire 帮助";
+"MLJ-rt-2zt.text" = "NetNewsWire 论坛";
+"NeD-y8-KrM.text" = "发行说明";
+"DsV-Qv-X4K.text" = "问题追踪";
+"76A-Ng-kfs.text" = "关于 NetNewsWire";

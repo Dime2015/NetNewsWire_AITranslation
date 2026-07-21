@@ -1,0 +1,28 @@
+/*
+   Inspector.storyboard 的简体中文翻译(Feed 信息 / 账户信息)。
+
+   本 fork 新增的文件。Inspector.storyboard 原本未本地化,
+   本 fork 把它移进了 iOS/Inspector/Base.lproj/ 才能翻译。
+
+   重新导出可翻条目:
+       xcrun ibtool --export-strings-file /tmp/Inspector.strings iOS/Inspector/Base.lproj/Inspector.storyboard
+*/
+
+/* 分区标题 */
+"MtQ-oG-lrU.headerTitle" = "Feed 网址";
+"dTd-6q-SZd.headerTitle" = "主页";
+
+/* 表单 */
+"ZdA-rl-9eP.placeholder" = "名称";
+"LUW-uv-piz.placeholder" = "名称(可选)";
+
+/* 开关项 */
+"Bf4-3X-Rfr.text" = "始终使用阅读视图";
+"YV2-gG-lMP.text" = "新文章通知";
+"syncContent-label-id.text" = "同步未读文章的内容";
+"zf0-Gm-p4F.text" = "已启用";
+
+/* 按钮 */
+"TYD-py-8IF.normalTitle" = "凭据";
+"obv-a5-Pl6.normalTitle" = "移除账户";
+"dgD-uX-vcx.normalTitle" = "如何优化 iCloud 同步";

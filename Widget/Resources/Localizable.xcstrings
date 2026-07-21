@@ -30,7 +30,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "锁定屏幕摘要显示各智能订阅源的当前文章数。"
+            "value" : "锁定屏幕摘要显示各智能 Feed 的当前文章数。"
           }
         }
       }
