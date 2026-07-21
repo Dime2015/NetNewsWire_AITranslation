@@ -194,6 +194,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 |---|---|
 | `iOS/MainTimeline/TimelineStyle.swift` | 文章列表的全部可调数值(字号、间距、颜色、行数、缩略图尺寸)。**调列表外观只改这里** |
 | `iOS/MainTimeline/ArticleThumbnail.swift` | 从正文 HTML 抽首图 + 交给 ImageDownloader 下载(见 L28) |
+| `Shared/ReaderView/ReaderViewExtractor.swift` | 「阅读视图」的正文提取:隐藏 WebView + Readability.js,**全本地** |
+| `Shared/ReaderView/Readability.js` | **第三方**(Mozilla,Apache 2.0)。规矩见同目录 README-vendor.md |
 | `Shared/Appearance/nnw_appearance.js` | 正文页的覆盖样式层。**调正文外观只改这里的 CSS** |
 | `iOS/Resources/Assets.xcassets/AppIconCustom.appiconset/` | 本 fork 的 app 图标。上游的 `AppIcon.appiconset` 未动,靠 xcconfig 一行指过来(见 L24) |
 

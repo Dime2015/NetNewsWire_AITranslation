@@ -45,7 +45,11 @@ final class WebViewController: UIViewController {
 	private lazy var transition = ImageTransition(controller: self)
 	private var clickedImageCompletion: (() -> Void)?
 
-	private var articleExtractor: ArticleExtractor?
+	// [阅读视图] 由上游的 ArticleExtractor 换成本 fork 的 ReaderViewExtractor
+	// (上游那个依赖 Feedbin 付费服务 + 我们没有的密钥,从来就跑不起来)。
+	// 新类刻意做成同样的形状(state / articleLink / process() / cancel()),
+	// 所以本文件里其余 18 处引用一行都不用改。
+	private var articleExtractor: ReaderViewExtractor?
 	var extractedArticle: ExtractedArticle? {
 		didSet {
 			windowScrollY = 0
@@ -660,7 +664,8 @@ private extension WebViewController {
 
 	func startArticleExtractor() {
 		guard articleExtractor == nil else { return }
-		if let link = article?.preferredLink, let extractor = ArticleExtractor(link, delegate: self) {
+		// [阅读视图] hostView 传自己的 view:隐藏的提取用 WebView 要挂进视图层级才稳
+		if let link = article?.preferredLink, let extractor = ReaderViewExtractor(link, delegate: self, hostView: view) {
 			extractor.process()
 			articleExtractor = extractor
 			articleExtractorButtonState = .animated

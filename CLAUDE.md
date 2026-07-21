@@ -153,6 +153,17 @@ Shared/Article Rendering/WebViewConfiguration.swift  正文页注入的脚本清
 
 每处改动带 `// [界面]` 注释标记(与翻译功能的 `[翻译]` 标记并列),⌘F 可盘点。
 
+**第三方 vendored 文件的规矩(2026-07-21 新增)**
+
+`Shared/ReaderView/Readability.js` 是本项目**唯一**一个原样搬进来的第三方文件
+(Mozilla,Apache 2.0)。规矩:
+
+- **不许手改**。要调行为就改我们自己的 `ReaderViewExtractor.swift`
+- 升级 = **整个文件替换**,然后更新 `Shared/ReaderView/README-vendor.md` 里的
+  日期 / commit / SHA-256
+- **文件头的许可证声明不许删**(Apache 2.0 要求保留)
+- 以后再引入第三方文件,照这个模式:单独目录 + README-vendor.md 记录来源与校验和
+
 **正文阅读页的改动通道**:优先写进我们自己的覆盖 CSS(由上面那行脚本注入),
 **不要改** `stylesheet.css` / `template.html` —— 它们是上游高频改动的文件。
 另外改 `template.html` 会动 HTML 结构,可能让翻译功能的选择器失灵(见 L12)。

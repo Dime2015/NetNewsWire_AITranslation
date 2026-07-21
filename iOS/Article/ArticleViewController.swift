@@ -278,7 +278,11 @@ final class ArticleViewController: UIViewController {
 		starBarButtonItem.isEnabled = true
 
 		let permalinkPresent = article.preferredLink != nil
-		articleExtractorButton.isEnabled = permalinkPresent && !AppDefaults.shared.isDeveloperBuild
+		// [阅读视图] 原本这里还有 `&& !AppDefaults.shared.isDeveloperBuild`。
+		// 那半句的唯一理由是「开发版没有 Feedbin/Mercury 的密钥,点了也白点」。
+		// 本 fork 已改为在本机跑 Readability.js,不需要任何密钥,前提消失 ——
+		// 不去掉的话,装到真机(我们用 DEVELOPER_ENTITLEMENTS = -dev)按钮会一直是灰的。
+		articleExtractorButton.isEnabled = permalinkPresent
 		actionBarButtonItem.isEnabled = permalinkPresent
 
 		if article.status.read {
