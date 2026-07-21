@@ -14,3 +14,14 @@ SUPPORTED_PLATFORMS = iphoneos iphonesimulator
 SUPPORTS_MACCATALYST = NO
 SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
 SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO
+
+// [界面] 本 fork 换掉了 app 图标。
+// 上游的图标资源 iOS/Resources/Assets.xcassets/AppIcon.appiconset 原封不动,
+// 我们另建了一套 AppIconCustom.appiconset,在这里把主 app 指过去。
+// 这样做的原因:直接覆盖上游那三个 PNG 的话,以后上游一换图标就是二进制冲突,
+// 而二进制冲突 git 没法帮你合,只能手工挑。改成一行文本设置就没这个问题。
+//
+// 注意:这行**只写在主 app 的 target 配置里**,不要写进
+// common/NetNewsWire_ios_target_common.xcconfig ——
+// 那个文件小组件和 Siri 扩展也在用,它们的图标资源里没有 AppIconCustom。
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIconCustom

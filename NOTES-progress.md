@@ -174,6 +174,7 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 |---|---|
 | `iOS/MainTimeline/TimelineStyle.swift` | 文章列表的全部可调数值(字号、间距、颜色)。**调列表外观只改这里** |
 | `Shared/Appearance/nnw_appearance.js` | 正文页的覆盖样式层。**调正文外观只改这里的 CSS** |
+| `iOS/Resources/Assets.xcassets/AppIconCustom.appiconset/` | 本 fork 的 app 图标。上游的 `AppIcon.appiconset` 未动,靠 xcconfig 一行指过来(见 L24) |
 
 **本地化产物(见 `NOTES-i18n.md`):**
 `i18n/inject.py`(注入器)、`i18n/zh-Hans.json`(436 条翻译表)、
@@ -191,6 +192,7 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 | `iOS/MainTimeline/Cell/MainTimelineCellLayout.swift` | 常量值改为引用 `TimelineStyle`,一行换一行 |
 | `iOS/MainTimeline/Cell/MainTimelineCell.swift` | 颜色改为引用 `TimelineStyle`,一行换一行 |
 | `Shared/Article Rendering/WebViewConfiguration.swift` | 脚本清单数组里加一个名字,共一行 |
+| `xcconfig/NetNewsWire_iOSapp_target.xcconfig` | 末尾追加一行,把 app 图标指向本 fork 自己的图标集 |
 
 翻译功能的改动带 `[翻译]` 标记,界面改造的改动带 `[界面]` 标记,⌘F 可分别盘点。
 
