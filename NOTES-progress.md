@@ -3,7 +3,7 @@
 > **这是接手本项目的第一份必读文件。**
 > 读完本文件,你应该知道:项目做到哪了、哪些已验证、哪些悬而未决、下一步是什么。
 > 配套文件:`CLAUDE.md`(规则) → `NOTES-architecture.md`(代码考古) →
-> `NOTES-lessons.md`(踩过的坑,40 条) → `NOTES-todo.md`(已知问题) →
+> `NOTES-lessons.md`(踩过的坑,41 条) → `NOTES-todo.md`(已知问题) →
 > `NOTES-i18n.md`(多语言工程手册)。
 >
 > ⚠️ **动手前务必先看 CLAUDE.md 第 0 节第 7 条**:
@@ -48,7 +48,7 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 
 ## 三、git 状态(2026-07-21 晚)
 
-**工作区干净。本地领先 GitHub 5 个提交**,需要时 `git push`。
+**工作区干净。本地领先 GitHub 8 个提交**,需要时 `git push`。
 
 
 本轮(界面改造)新增的提交,从新到旧:
@@ -263,45 +263,25 @@ python3 i18n/rebrand.py --check     # 自查
 python3 i18n/inject.py zh-Hans      # 让译文生效
 ```
 
-### 🔜 下一步:装到真机(签名配置已就绪,等用户操作)
+### ✅ 装到真机:已成功(2026-07-21)
 
-**已经做完的部分**:
+免费 Personal Team **可以签**,预想的 App Groups 报错**没有出现**,退路没用上。
+配置见 `NOTES-todo.md` 的 **T6**(含 Team ID 的读法 —— 新版 Xcode 界面不显示)。
 
-`/Users/wenbopan/Downloads/SharedXcodeSettings/DeveloperSettings.xcconfig` **已创建**
-(在仓库外,工程用 `#include?` 可选包含,不进 git):
+**以后更新真机版本**:连线 → Xcode 选设备 → ⌘R。bundle id 没变 → **原地覆盖**,
+订阅源、已读状态、Keychain 里的 API Key 全部保留。7 天倒计时也随之重置。
 
-```
-DEVELOPMENT_TEAM = 7RDUVMLBSJ          ← Wenbo Pan (Personal Team)
-ORGANIZATION_IDENTIFIER = com.wenbopan
-CODE_SIGN_STYLE = Automatic
-DEVELOPER_ENTITLEMENTS = -dev
-PROVISIONING_PROFILE_SPECIFIER =
-```
+⚠️ **模拟器那个「假安装」的坑,真机没有**(见 L41)。真机走 Xcode 直推,所见即所得。
 
-已用 `xcodebuild -showBuildSettings` 核实生效:
-bundle id = `com.wenbopan.NetNewsWire.iOS-DEBUG`,权限文件 = `NetNewsWire-dev.entitlements`。
+### 🔜 下一步:由用户决定
 
-> 💡 **Team ID 在新版 Xcode 界面里不显示**。不用让用户找,直接读:
-> ```bash
-> defaults read com.apple.dt.Xcode | grep -iE "teamID|teamName"
-> ```
+本轮结束时没有指定的下一件事。手上还悬着的:
 
-**剩下的只有用户能做**:连线 → 信任电脑 → Xcode 选设备 → ⌘R →
-手机上「设置 → 通用 → VPN与设备管理 → 开发者App → 信任」。
-
-🔴 **最可能卡住的地方(T6 里标了很久的未验证点)**:
-免费 Personal Team **很可能签不了 App Groups**,报错形如
-`Personal development teams do not support the App Groups capability`。
-
-**退路已经查好**:App Group 容器**只被小组件和分享扩展用到**
-(`Shared/Widget/*`、`Shared/ShareExtension/*`),
-主 app 的文章数据库在 `Documents/` 下,**完全不依赖它**。
-真报错就从 `-dev` 权限文件里去掉 App Groups,主 app 照常工作。
-
-⚠️ **不要在 Xcode 的 Signing & Capabilities 面板里点改** —— 那会写进 .xcodeproj。
-
-**装成功后**:①翻译 API Key 要重填(存 Keychain,不跟代码走)
-②订阅源是空的,要重新导入 OPML ③免费账号签的 app **7 天过期**,到期重新 ⌘R
+- **T16** 订阅发现页那四个分类 tab 可能多余 —— 用几天再决定,别用推测代替使用数据
+- **T17** 网站类订阅的探测路径清单,遇到订不上的站再补
+- **T13** ACX 连续多图间距偏大,未诊断
+- **T5** 翻译尾延迟,需要日常使用攒日志
+- **T18** 长期安装 / 分享给朋友的选项(已讨论,用户暂不处理)
 
 ### 📋 四个内容源需求的方案结论(2026-07-21 深夜,①③ 已在 Phase A 落地)
 
@@ -634,3 +614,28 @@ cp 你的文件.opml "$D/<GROUP>/File Provider Storage/"
    - 空心 + 空心角标点 = 有未完成缓存,点击接着上次继续翻
    - 实心 = 正在显示译文,点击回原文
    - 转圈中再点 = 取消
+
+---
+
+## 八、每次改完代码,装模拟器请用这个脚本
+
+```bash
+./tools/install-to-simulator.sh
+```
+
+**不要**直接 `xcrun simctl install`。原因(L41,2026-07-21 真实踩过):
+`simctl install` 会把新版装进一个**新容器**,而系统注册的仍是旧容器 ——
+命令返回成功、app 能启动,**但跑的是旧代码**。
+本轮因此让用户测了 40 分钟前的二进制,还据此排查了一整轮无效功。
+
+脚本装完必 `cmp` 比对,不一致就 rsync 覆盖到系统正在用的那个容器
+(非破坏性,不动数据容器,订阅源和 Keychain 都不会丢)。
+**实测这个卡死是持续存在的**,脚本每次都会报警并自动兜住。
+
+排查「改了没生效」的第一步永远是:**先证明跑的确实是新代码**,再去查逻辑。
+```bash
+A=$(xcrun simctl get_app_container booted com.ranchero.NetNewsWire.iOS-DEBUG app)
+cmp "$A/NetNewsWire" <构建产物>/NetNewsWire
+```
+
+另:`log show` **默认不保留 info 级别**,看到日志空白先加 `--info` 再下结论。

@@ -183,7 +183,11 @@ xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS \
 
 ### 遗留:7 天过期
 
-免费账号签出的 app **7 天后过期**,到期要重新用 Xcode ⌘R 装一次。
+免费账号签出的 app **7 天后过期**,到期重新用 Xcode ⌘R 装一次即可
+(bundle id 没变 → **原地覆盖**,订阅源/已读状态/Keychain 里的 API Key 全部保留)。
+
+⚠️ **不要把「7 天过期」和「App ID 额度」搞混** —— 我犯过这个错(见下方 T18)。
+
 长期方案的讨论见 **T18**。
 
 ---
@@ -605,3 +609,55 @@ xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire \
 **两步缺一不可** —— 上面三个站正好各证明一半。
 用户报某个站订不上时:先 `curl` 那个站的首页看有没有 `<link rel="alternate">`,
 再挨个试常见路径,确认是「真没有 RSS」还是「路径没覆盖到」。
+
+---
+
+## T18 · 长期安装与分享给朋友:选项与一处我说错的地方
+
+**状态**:已讨论,用户决定暂不处理
+**记录时间**:2026-07-21
+
+### ⚠️ 先纠正我说错的一条(重要,别再重复)
+
+我曾告诉用户「这个 app 一次占 4 个 App ID,免费账号 7 天限 10 个,
+所以**一周最多重装两次**」,并据此建议删掉三个扩展。
+
+**这是错的。** 查实际描述文件后确认,那 4 个 App ID **早已注册好**:
+
+```bash
+for f in ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/*.mobileprovision; do
+  security cms -D -i "$f" | plutil -extract Entitlements.application-identifier raw -
+done
+# → 7RDUVMLBSJ.com.wenbopan.NetNewsWire.iOS-DEBUG(以及 .Share-Extension / .SpringboardWidgets / .IntentsExtension)
+```
+
+那个「7 天 10 个」的额度管的是**新建** App ID。重装的是同样这 4 个,**不消耗额度**。
+→ **重装次数不受限制**,删扩展解决的是一个不存在的问题。
+
+### 因此:删三个扩展 = 不划算,已决定不做
+
+三个扩展是通过 app target 的「嵌入扩展」构建阶段挂进去的,
+**scheme 里根本没列它们**(只有 `NetNewsWire-iOS` 和其测试),
+所以要删必须改 `project.pbxproj` —— 第 8 节禁区,且该文件里
+`NetNewsWire` 出现 143 处,扩展条目是结构性的,删了严重影响 merge。
+收益只剩「编译快一点、包小一点」,不值得。
+
+### 长期安装(自己用)
+
+| 办法 | 说明 |
+|---|---|
+| 手动重装 | 每周连线 ⌘R,一分钟 |
+| AltStore / SideStore 类工具 | 用**用户自己的 Apple ID** 后台自动重签,免费 |
+| 开发者账号 $99/年 | 描述文件 1 年有效 |
+
+### 分享给朋友:没有免费的成品分发
+
+签名与设备绑定,**给不了朋友一个装上就能用的包**。只有两条路:
+- **朋友自己签**(免费):他用自己的 Apple ID,Xcode 编或侧载工具签,同样 7 天一续
+- **$99/年 + TestFlight**:唯一「点链接就能装、90 天不用管」的方式
+
+不要碰的:企业账号($299/年)只允许给本公司员工装,拿来分发违规会被吊销证书;
+Ad Hoc(100 台设备)**仍然需要 $99 账号**,不是免费方案。
+
+⚠️ 这部分知识截止到 2026 年 1 月。原理(签名、7 天、额度)不会变,
+但侧载工具能否使用、欧盟替代分发规则会变,**以工具官网当前说明为准**。
