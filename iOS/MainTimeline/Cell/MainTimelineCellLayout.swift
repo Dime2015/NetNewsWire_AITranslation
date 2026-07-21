@@ -28,7 +28,7 @@ extension MainTimelineCellLayout {
 		var r = CGRect.zero
 		r.size = CGSize(width: MainTimelineDefaultCellLayout.unreadCircleDimension, height: MainTimelineDefaultCellLayout.unreadCircleDimension)
 		r.origin.x = point.x
-		r.origin.y = point.y + 5
+		r.origin.y = point.y + TimelineStyle.unreadCircleTopOffset // [界面]
 		return r
 	}
 
@@ -37,7 +37,7 @@ extension MainTimelineCellLayout {
 		r.size.width = MainTimelineDefaultCellLayout.starDimension
 		r.size.height = MainTimelineDefaultCellLayout.starDimension
 		r.origin.x = floor(point.x - ((MainTimelineDefaultCellLayout.starDimension - MainTimelineDefaultCellLayout.unreadCircleDimension) / 2.0))
-		r.origin.y = point.y + 3
+		r.origin.y = point.y + TimelineStyle.starTopOffset // [界面]
 		return r
 	}
 
@@ -45,7 +45,7 @@ extension MainTimelineCellLayout {
 		var r = CGRect.zero
 		r.size = iconSize.size
 		r.origin.x = point.x
-		r.origin.y = point.y + 4
+		r.origin.y = point.y + TimelineStyle.iconTopOffset // [界面]
 		return r
 	}
 
@@ -97,27 +97,28 @@ extension MainTimelineCellLayout {
 
 struct MainTimelineDefaultCellLayout: MainTimelineCellLayout {
 
-	static let cellPadding = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 20)
+	// [界面] 以下常量的值全部改为引用 TimelineStyle,要调外观请改那个文件,不要改这里。
+	static let cellPadding = TimelineStyle.cellPadding
 
-	static let unreadCircleMarginLeft = CGFloat(0)
-	static let unreadCircleDimension = CGFloat(12)
-	static let unreadCircleMarginRight = CGFloat(8)
+	static let unreadCircleMarginLeft = TimelineStyle.unreadCircleMarginLeft
+	static let unreadCircleDimension = TimelineStyle.unreadCircleDimension
+	static let unreadCircleMarginRight = TimelineStyle.unreadCircleMarginRight
 
-	static let starDimension = CGFloat(16)
+	static let starDimension = TimelineStyle.starDimension
 
-	static let iconMarginRight = CGFloat(8)
+	static let iconMarginRight = TimelineStyle.iconMarginRight
 	static let iconCornerRadius = CGFloat(4)
 
-	static var titleFont: UIFont { UIFont.preferredFont(forTextStyle: .headline) }
-	static let titleBottomMargin = CGFloat(1)
+	static var titleFont: UIFont { TimelineStyle.titleFont }
+	static let titleBottomMargin = TimelineStyle.titleBottomMargin
 
-	static var feedNameFont: UIFont { UIFont.preferredFont(forTextStyle: .footnote) }
-	static let feedRightMargin = CGFloat(8)
+	static var feedNameFont: UIFont { TimelineStyle.feedNameFont }
+	static let feedRightMargin = TimelineStyle.feedRightMargin
 
-	static var dateFont: UIFont { UIFont.preferredFont(forTextStyle: .footnote) }
+	static var dateFont: UIFont { TimelineStyle.dateFont }
 	static let dateMarginBottom = CGFloat(1)
 
-	static var summaryFont: UIFont { UIFont.preferredFont(forTextStyle: .body) }
+	static var summaryFont: UIFont { TimelineStyle.summaryFont }
 
 	let height: CGFloat
 	let unreadIndicatorRect: CGRect

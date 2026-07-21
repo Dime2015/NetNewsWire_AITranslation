@@ -143,7 +143,7 @@ private extension MainTimelineCell {
 
 	func commonInit() {
 		isAccessibilityElement = true
-		topSeparator.backgroundColor = .separator.withAlphaComponent(0.1)
+		topSeparator.backgroundColor = TimelineStyle.separatorColor // [界面]
 		for view in [titleView, summaryView, dateView, feedNameView, iconView, indicatorView, topSeparator] {
 			contentView.addSubview(view)
 			view.isAccessibilityElement = false
@@ -208,10 +208,11 @@ private extension MainTimelineCell {
 	}
 
 	func updateColors() {
-		titleView.textColor = .label
-		summaryView.textColor = cellData.title.isEmpty ? .label : .secondaryLabel
-		dateView.textColor = .secondaryLabel
-		feedNameView.textColor = .secondaryLabel
+		// [界面] 颜色改为引用 TimelineStyle,要调请改那个文件。
+		titleView.textColor = TimelineStyle.titleColor
+		summaryView.textColor = cellData.title.isEmpty ? TimelineStyle.summaryColorWhenNoTitle : TimelineStyle.summaryColor
+		dateView.textColor = TimelineStyle.dateColor
+		feedNameView.textColor = TimelineStyle.feedNameColor
 	}
 
 	func updateIndicatorView() {

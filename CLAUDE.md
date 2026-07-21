@@ -52,11 +52,23 @@
 **唯一目标:给文章阅读界面加一个"翻译成中文"的按钮。** 点击后调用用户自建的后端翻译服务,把当前文章正文替换为中文译文。
 
 **明确不在范围内的事:**
-- 不改界面样式、配色、排版、动效
-- 不加除翻译以外的任何功能
+- ~~不改界面样式、配色、排版、动效~~ → **2026-07-21 已扩大范围,见下方修订说明**
+- 不加除翻译与界面调整以外的任何功能
 - 不做性能优化、代码清理、重构
 
 如果用户提出范围外的需求,先提醒他这条规则,再问是否确认扩大范围。
+
+> ⚠️ **修订说明(2026-07-21,用户已确认扩大范围)**
+>
+> 原文禁止「改界面样式、配色、排版、动效」。用户明确要求把 **iOS 的文章列表页
+> 与正文阅读页样式**纳入范围,具体改动由用户看截图后逐条提出。
+>
+> 扩大后的边界:
+> - ✅ 允许:iOS 文章列表(时间线)的字号、间距、颜色、显示哪些元素;
+>   iOS 正文阅读页的排版与配色
+> - ❌ 仍然不做:macOS 端界面(B 级禁区)、动效、与阅读无关的新功能
+> - **必须走第 2 节规定的改动通道**,不允许在上游文件里随手改数字。
+>   这一条是扩大范围的交换条件 —— 范围放宽了,但「保持可 merge」的优先级没变。
 
 ---
 
@@ -117,6 +129,33 @@ iOS/Article/ArticleViewController.swift    工具栏所在
 iOS/Base.lproj/Main.storyboard             按钮实体所在(XML,merge 冲突风险高)
 Shared/Article Rendering/                  共享渲染层(改这里会同时影响 macOS)
 ```
+
+**D 级 · 界面改造专用(2026-07-21 新增,每个文件都规定了唯一的改动通道)**
+
+```
+iOS/MainTimeline/Cell/MainTimelineCellLayout.swift   列表的全部尺寸常量与矩形计算
+iOS/MainTimeline/Cell/MainTimelineCell.swift         列表的控件创建、颜色、选中态、分隔线
+Shared/Article Rendering/WebViewConfiguration.swift  正文页注入的脚本清单
+```
+
+这三个文件**只允许按下面的通道改,不允许别的改法**:
+
+| 文件 | 唯一允许的改法 |
+|---|---|
+| `MainTimelineCellLayout.swift` | 把常量的值换成 `TimelineStyle.xxx` 的引用,**一行换一行**。新数字一律写进 `iOS/MainTimeline/TimelineStyle.swift`(本 fork 新增文件),**禁止在这里直接写死新数字** |
+| `MainTimelineCell.swift` | 同上;颜色也走 `TimelineStyle` |
+| `WebViewConfiguration.swift` | **只允许**在 `articleScripts` 的 `filenames` 数组里加我们自己的脚本名,别的一律不碰 |
+
+为什么这么规定:这三个是上游自己在维护的文件。把所有会变的数值收进我们自己的
+`TimelineStyle.swift`,上游文件的 diff 就永远停在「几行引用」的规模,
+`git pull upstream` 时冲突好读、好解。若图省事直接在上游文件里改数字,
+每调一次字号就多一处冲突点,长期必然失控。
+
+每处改动带 `// [界面]` 注释标记(与翻译功能的 `[翻译]` 标记并列),⌘F 可盘点。
+
+**正文阅读页的改动通道**:优先写进我们自己的覆盖 CSS(由上面那行脚本注入),
+**不要改** `stylesheet.css` / `template.html` —— 它们是上游高频改动的文件。
+另外改 `template.html` 会动 HTML 结构,可能让翻译功能的选择器失灵(见 L12)。
 
 每次动手前,先用一句话报告:"本次改动新增 N 个文件,修改 M 个已有文件,分别是……"
 

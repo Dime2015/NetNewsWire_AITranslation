@@ -31,7 +31,8 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 | Phase 3 直连 OpenRouter | ✅ | 分组并行 + 缓存 + 设置界面,经用户多轮实测 |
 | 界面汉化 | ✅ | 436 条字符串 + 5 个 storyboard,iOS 侧全覆盖 |
 | Phase 4 macOS 移植 | ❌ | 默认不做,仅当用户明确要求 |
-| **装到真机** | ⏳ **下一步,有前置条件** | 见第四节 |
+| **界面改造** | 🔧 **进行中(2026-07-21 起)** | 通道已铺好并验证;等用户给标注截图。见第四节第 0 条 |
+| 装到真机 | ⏳ 排在界面改造之后 | 有前置条件,见第四节第 1 条 |
 
 ## 三、git 状态(2026-07-21)
 
@@ -53,6 +54,32 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 ```
 
 ## 四、当前悬而未决(接手者先看这里)
+
+### 0. 🔧 界面改造 —— 通道已铺好,等用户的标注截图
+
+**2026-07-21 用户要求扩大范围**:改 iOS 的文章列表页与正文阅读页样式。
+这本来被 CLAUDE.md 第 1 节明令禁止,**已按规则先提醒、再由用户确认,规则文件已更新**
+(第 1 节加了修订说明,第 2 节加了「D 级 · 界面改造专用」)。
+
+用户会**用截图逐条标注**告诉我改哪里。在截图到达之前,已经把两条改动通道铺好并验证:
+
+| 通道 | 做法 | 上游改动量 |
+|---|---|---|
+| 文章列表 | 新增 `iOS/MainTimeline/TimelineStyle.swift`,所有可调数值集中在此 | 两个上游文件,**一行换一行**的引用替换 |
+| 正文阅读页 | 新增 `Shared/Appearance/nnw_appearance.js`,页面加载后往 `<head>` 追加一层 CSS | `WebViewConfiguration.swift` **一行里加一个单词** |
+
+**这一步刻意不产生任何视觉变化**,验收标准就是「界面零变化」,并且是量过的:
+
+- 列表:用「设置 → 文章列表布局」那两条**内容固定**的预览做对照,
+  改动前后各截图,去掉状态栏后逐像素比 → **280 万像素 0 处不同**
+- 正文页:同一篇文章改动前后逐像素比 → **280 万像素 0 处不同**
+- iOS 与 macOS 双平台编译均通过
+
+正文页那条通道用探针验证过是真的通的(先刷成琥珀色底,确认变了,再清空),
+不是"写了空 CSS 看起来没坏"。踩到的坑记在 L23。
+
+**下一步**:等用户截图 → 只改 `TimelineStyle.swift` 和 `nnw_appearance.js` 里的值。
+**不要再去动上游文件。**
 
 ### 1. ⏳ 用户想装到真机 —— 有硬前置条件,别直接跑就以为能行
 
@@ -141,6 +168,13 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 | `AppLanguagePickerViewController.swift` | 设置→外观→界面语言 |
 | `translation.js` | 网页内:切组、替换、自检、还原(**所有 HTML 解析都在这层**) |
 
+**界面改造新增的文件(2026-07-21,上游都不存在):**
+
+| 文件 | 职责 |
+|---|---|
+| `iOS/MainTimeline/TimelineStyle.swift` | 文章列表的全部可调数值(字号、间距、颜色)。**调列表外观只改这里** |
+| `Shared/Appearance/nnw_appearance.js` | 正文页的覆盖样式层。**调正文外观只改这里的 CSS** |
+
 **本地化产物(见 `NOTES-i18n.md`):**
 `i18n/inject.py`(注入器)、`i18n/zh-Hans.json`(436 条翻译表)、
 各 `<语言>.lproj/*.strings`。
@@ -154,8 +188,11 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 | `iOS/Settings/SettingsViewController.swift` | 中间插入(设置里三行入口) |
 | 4 个 storyboard | 仅用 `git mv` 移入各自 `Base.lproj/`,**内容零改动** |
 | 4 个 `.xcstrings` | 注入 zh-Hans 段,**原有内容逐 key 校验零改动** |
+| `iOS/MainTimeline/Cell/MainTimelineCellLayout.swift` | 常量值改为引用 `TimelineStyle`,一行换一行 |
+| `iOS/MainTimeline/Cell/MainTimelineCell.swift` | 颜色改为引用 `TimelineStyle`,一行换一行 |
+| `Shared/Article Rendering/WebViewConfiguration.swift` | 脚本清单数组里加一个名字,共一行 |
 
-所有 Swift 改动都带 `[翻译]` 注释标记,⌘F 可盘点。
+翻译功能的改动带 `[翻译]` 标记,界面改造的改动带 `[界面]` 标记,⌘F 可分别盘点。
 
 ## 六、构建与验证命令(实测可用)
 
