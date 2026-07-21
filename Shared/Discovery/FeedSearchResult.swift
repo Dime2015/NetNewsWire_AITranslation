@@ -49,6 +49,25 @@ struct FeedSearchResult: Identifiable, Hashable {
 	/// 现在先带着,免得以后还要重新搜一遍。
 	let appleCollectionID: String?
 
+	/// 结果行左边那个小图标的地址。没有就为 nil,界面会退回按类型显示的符号。
+	///
+	/// **这两处都是白拿的,没有为它多发任何请求**:
+	///   · 播客 —— iTunes 搜索返回里本来就带 `artworkUrl100`
+	///   · YouTube —— 频道头像就在我们为了取 channelId 而抓的那张页面里
+	/// Reddit 拿不到(它的接口 403),普通网站也没有可靠的免费来源,
+	/// 这两类退回类型符号即可。
+	let iconURL: String?
+
+	/// 没有图标时,按类型显示的 SF Symbol 名。
+	var fallbackSymbolName: String {
+		switch kind {
+		case .podcast: return "mic.fill"
+		case .reddit: return "bubble.left.and.bubble.right.fill"
+		case .youtube: return "play.rectangle.fill"
+		case .website: return "globe"
+		}
+	}
+
 	/// 用地址做唯一标识 —— 同一个 feed 不管从哪条路搜出来都算同一条
 	var id: String { feedURL }
 
@@ -57,13 +76,15 @@ struct FeedSearchResult: Identifiable, Hashable {
 		 subtitle: String? = nil,
 		 feedURL: String,
 		 homePageURL: String? = nil,
-		 appleCollectionID: String? = nil) {
+		 appleCollectionID: String? = nil,
+		 iconURL: String? = nil) {
 		self.kind = kind
 		self.title = title
 		self.subtitle = subtitle
 		self.feedURL = feedURL
 		self.homePageURL = homePageURL
 		self.appleCollectionID = appleCollectionID
+		self.iconURL = iconURL
 	}
 }
 
@@ -79,6 +100,7 @@ enum FeedSearchError: LocalizedError {
 	case badSubredditName
 	case youTubeChannelNotFound
 	case keywordNotSupported(hint: String)
+	case websiteFeedNotFound
 	/// Reddit 单独一条:它对不同的失败给的状态码含义很明确,
 	/// 而「限流」和「版块不存在」对用户来说是完全不同的两件事 ——
 	/// 一个该等一下重试,一个该改名字重输。混成一句话会让人白折腾。
@@ -98,6 +120,10 @@ enum FeedSearchError: LocalizedError {
 			return "认不出版块名。可以直接输入版块名(例如 apple)、r/apple,或者粘一个 Reddit 链接。"
 		case .keywordNotSupported(let hint):
 			return hint
+		case .websiteFeedNotFound:
+			return "这个网站上没找到 RSS 地址。\n\n"
+				+ "已经试过:读网页里的 RSS 声明,以及 /feed/、/rss、/index.xml 等常见地址。\n\n"
+				+ "有些网站确实不提供 RSS。如果你知道它的 RSS 地址,可以直接把那个地址粘进来订阅。"
 		case .youTubeChannelNotFound:
 			return "没能从这个地址找出 YouTube 频道。可以粘频道主页地址(youtube.com/@名字),或者直接输入 @名字。注意:视频播放页的地址不行,要频道的地址。"
 		case .reddit(let code):

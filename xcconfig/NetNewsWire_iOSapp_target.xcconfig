@@ -25,3 +25,15 @@ SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO
 // common/NetNewsWire_ios_target_common.xcconfig ——
 // 那个文件小组件和 Siri 扩展也在用,它们的图标资源里没有 AppIconCustom。
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIconCustom
+
+// [品牌] 本 fork 的 app 显示名 —— **改名只改这一行**。
+//
+// 为什么不改 PRODUCT_NAME / bundle id / target 名:
+//   · bundle id 一改,iOS 会当成另一个 app,订阅源、API Key、已读状态全部清零
+//   · target / .xcodeproj 名一改,所有构建脚本失效,且与上游产生 143 处冲突
+// CFBundleDisplayName 是苹果专门为「显示名与内部名不同」准备的字段,
+// 只影响主屏和界面上看到的名字,内部标识一概不动。
+//
+// 改完名字后记得跑一次:python3 i18n/rebrand.py <新名字>
+// 它会把界面上那些写死了旧名字的中文文案一并改掉。
+APP_DISPLAY_NAME = Babel

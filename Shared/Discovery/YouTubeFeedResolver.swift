@@ -76,18 +76,34 @@ enum YouTubeFeedResolver {
 		}
 
 		logger.info("[发现] YouTube:从频道页解析出 channelId")
-		return result(channelID: channelID, title: pageTitle(in: html))
+		// 头像就在这张已经抓下来的页面里,顺手取走,不多发请求
+		return result(channelID: channelID, title: pageTitle(in: html), iconURL: avatarURL(in: html))
 	}
 
 	// MARK: - 内部
 
-	private static func result(channelID: String, title: String?) -> FeedSearchResult {
+	private static func result(channelID: String, title: String?, iconURL: String? = nil) -> FeedSearchResult {
 		FeedSearchResult(
 			kind: .youtube,
 			title: title ?? "YouTube 频道 \(channelID)",
 			subtitle: "youtube.com · \(channelID)",
 			feedURL: "https://www.youtube.com/feeds/videos.xml?channel_id=\(channelID)",
-			homePageURL: "https://www.youtube.com/channel/\(channelID)")
+			homePageURL: "https://www.youtube.com/channel/\(channelID)",
+			iconURL: iconURL)
+	}
+
+	/// 从频道页里抠出频道头像。取不到就算了,界面会退回显示一个 YouTube 类型符号。
+	private static func avatarURL(in html: String) -> String? {
+		let pattern = #""avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)""#
+		guard let regex = try? NSRegularExpression(pattern: pattern) else {
+			return nil
+		}
+		let range = NSRange(html.startIndex..., in: html)
+		guard let match = regex.firstMatch(in: html, range: range),
+			  let urlRange = Range(match.range(at: 1), in: html) else {
+			return nil
+		}
+		return String(html[urlRange])
 	}
 
 	/// 从任意文本里找 UC 开头的频道 id。

@@ -10,6 +10,7 @@
 import UIKit
 import Account
 import RSCore
+import Images
 import os
 
 /// 「搜索订阅源」页面。
@@ -134,6 +135,11 @@ import os
 			sourceControl.centerYAnchor.constraint(equalTo: header.centerYAnchor)
 		])
 		tableView.tableHeaderView = header
+
+		NotificationCenter.default.addObserver(self,
+											   selector: #selector(imageDidBecomeAvailable(_:)),
+											   name: .imageDidBecomeAvailable,
+											   object: nil)
 	}
 
 	@objc private func done() {
@@ -183,7 +189,7 @@ import os
 					case .youtube(let text):
 						found = [try await YouTubeFeedResolver.resolve(text)]
 					case .website(let text):
-						found = [WebsiteFeedResolver.candidate(for: text)]
+						found = try await WebsiteFeedResolver.search(text)
 					case .unsupportedKeyword(let hint):
 						throw FeedSearchError.keywordNotSupported(hint: hint)
 					}
@@ -202,12 +208,10 @@ import os
 					found = [try await YouTubeFeedResolver.resolve(keyword)]
 
 				case .website:
-					// 网站这一栏**刻意不自己去找 feed**:上游 createFeed 传
-					// validateFeed: true 时,内部的 FeedFinder 本来就会做整套发现
-					// (先看这个地址本身是不是 feed,不是的话再去 HTML 的 <head>
-					// 里找 <link rel="alternate">,还有一批候选路径)。
-					// 我们再写一遍只会是个更差的复制品,而且多打一次请求。
-					found = [WebsiteFeedResolver.candidate(for: keyword)]
+					// 在**搜索阶段**就把 feed 找出来,而不是等订阅时再发现。
+					// 初版是后者(把网址原样交给 createFeed,指望上游发现),
+					// 实测好几个网站都订不上 —— 详见 WebsiteFeedResolver 的注释。
+					found = try await WebsiteFeedResolver.search(keyword)
 				}
 
 				// 任务被取消(用户改了关键词)就什么都别做,别把旧结果写回界面
@@ -362,7 +366,48 @@ import os
 		cell.detailTextLabel?.numberOfLines = 1
 		cell.detailTextLabel?.textColor = .secondaryLabel
 		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
+		configureIcon(on: cell, for: result)
 		return cell
+	}
+
+	/// 结果行左边的小图标。
+	///
+	/// 有真实图标就用真实的(播客封面 / YouTube 频道头像),没有就退回一个
+	/// **按类型区分的符号**。不留空白 —— 一整列都对齐才好扫,
+	/// 而且"这条是播客还是网站"本身就是有用的信息。
+	private func configureIcon(on cell: UITableViewCell, for result: FeedSearchResult) {
+
+		cell.imageView?.layer.cornerRadius = 6
+		cell.imageView?.clipsToBounds = true
+		cell.imageView?.contentMode = .scaleAspectFill
+
+		if let iconURL = result.iconURL,
+		   let data = ImageDownloader.shared.image(for: iconURL),
+		   let image = UIImage(data: data) {
+			cell.imageView?.image = image.nnwDiscoveryThumbnail()
+			cell.imageView?.tintColor = nil
+			return
+		}
+
+		// 还没下完(或压根没有):先放类型符号。
+		// 图下完了 ImageDownloader 会发通知,我们收到后整表刷新一次。
+		let symbol = UIImage(systemName: result.fallbackSymbolName)?
+			.withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+		cell.imageView?.image = symbol?.nnwDiscoveryPadded()
+		cell.imageView?.tintColor = .tertiaryLabel
+	}
+
+	/// 图标下载完成时刷新列表。
+	///
+	/// `ImageDownloader.image(for:)` 是「有就给、没有就去下」的接口,
+	/// 下完之后发 `.imageDidBecomeAvailable`。不听这个通知的话,
+	/// 图标要等到用户滚动列表才会冒出来。(做法抄的是本 fork 的 ArticleThumbnail。)
+	@objc private func imageDidBecomeAvailable(_ note: Notification) {
+		guard let url = note.userInfo?["url"] as? String,
+			  results.contains(where: { $0.iconURL == url }) else {
+			return
+		}
+		tableView.reloadData()
 	}
 
 	/// 结果行右侧那个东西。三种状态,同一个位置,一眼看得出下一步能干什么:
@@ -433,6 +478,45 @@ import os
 			return
 		}
 		subscribe(to: result)
+	}
+}
+
+// MARK: - 图标尺寸归一
+
+private extension UIImage {
+
+	/// 结果行图标的统一边长。
+	///
+	/// **必须统一**:UITableViewCell 自带的 imageView 会按图片原始尺寸撑开,
+	/// 各家封面尺寸不一,会导致每行文字的起点参差不齐,列表看着很脏。
+	/// (和列表页 favicon 永远占位是同一个道理,见 NOTES-progress 里列表那一节。)
+	static let nnwDiscoveryIconSide: CGFloat = 40
+
+	/// 把图片缩放并裁剪成正方形缩略图
+	func nnwDiscoveryThumbnail() -> UIImage {
+		let side = Self.nnwDiscoveryIconSide
+		let target = CGSize(width: side, height: side)
+		return UIGraphicsImageRenderer(size: target).image { _ in
+			// scaleAspectFill 的等效算法:按较长边铺满,多出来的部分裁掉
+			let scale = max(side / size.width, side / size.height)
+			let scaled = CGSize(width: size.width * scale, height: size.height * scale)
+			draw(in: CGRect(x: (side - scaled.width) / 2,
+							y: (side - scaled.height) / 2,
+							width: scaled.width,
+							height: scaled.height))
+		}
+	}
+
+	/// 把符号放进同样大小的透明方框里居中,这样它和真实图标占位一致
+	func nnwDiscoveryPadded() -> UIImage {
+		let side = Self.nnwDiscoveryIconSide
+		let target = CGSize(width: side, height: side)
+		return UIGraphicsImageRenderer(size: target).image { _ in
+			draw(in: CGRect(x: (side - size.width) / 2,
+							y: (side - size.height) / 2,
+							width: size.width,
+							height: size.height))
+		}.withRenderingMode(.alwaysTemplate)
 	}
 }
 

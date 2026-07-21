@@ -30,7 +30,7 @@
 /* Feed 分区 */
 "4Hg-B3-zAE.text" = "导入订阅";
 "25J-iX-3at.text" = "导出订阅";
-"dXN-Mw-yf2.text" = "添加 NetNewsWire 新闻 Feed";
+"dXN-Mw-yf2.text" = "添加 Babel 新闻 Feed";
 
 /* 文章列表分区 */
 "c9W-IF-u6i.text" = "按时间从旧到新排序";
@@ -42,7 +42,7 @@
 /* 文章分区 */
 "bbw-L9-a3X.text" = "主题";
 "fO4-og-e41.title" = "主题";
-"Wm4-Y1-7nX.text" = "在 NetNewsWire 内打开链接";
+"Wm4-Y1-7nX.text" = "在 Babel 内打开链接";
 "bO3-aT-4AW.text" = "启用 JavaScript";
 "FkT-O9-gpj.text" = "部分内容(例如视频和内嵌的社交媒体帖子)可能需要 JavaScript 才能正常显示。";
 "79e-5s-vd0.text" = "启用全屏阅读";
@@ -65,8 +65,8 @@
 "QyH-Rs-uKE.text" = "活化石";
 
 /* 帮助 */
-"uGk-2d-oFc.text" = "NetNewsWire 帮助";
-"MLJ-rt-2zt.text" = "NetNewsWire 论坛";
+"uGk-2d-oFc.text" = "Babel 帮助";
+"MLJ-rt-2zt.text" = "Babel 论坛";
 "NeD-y8-KrM.text" = "发行说明";
 "DsV-Qv-X4K.text" = "问题追踪";
-"76A-Ng-kfs.text" = "关于 NetNewsWire";
+"76A-Ng-kfs.text" = "关于 Babel";

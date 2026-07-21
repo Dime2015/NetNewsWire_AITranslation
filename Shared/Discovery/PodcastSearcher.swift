@@ -100,13 +100,21 @@ enum PodcastSearcher {
 				collectionID = id
 			}
 
+			// 封面图。搜索返回里本来就带,**不需要为它多发一次请求**。
+			// 优先 100 尺寸:列表里显示成 40pt 见方,在 3x 屏上正好够清晰,
+			// 用 600 那档只是白白多下载。
+			let artwork = (item["artworkUrl100"] as? String)
+				?? (item["artworkUrl60"] as? String)
+				?? (item["artworkUrl30"] as? String)
+
 			found.append(FeedSearchResult(
 				kind: .podcast,
 				title: title,
 				subtitle: subtitleParts.isEmpty ? nil : subtitleParts.joined(separator: " · "),
 				feedURL: feedURL,
 				homePageURL: item["collectionViewUrl"] as? String,
-				appleCollectionID: collectionID))
+				appleCollectionID: collectionID,
+				iconURL: artwork))
 		}
 
 		logger.info("[发现] 播客搜索:返回 \(results.count) 条,可订阅 \(found.count) 条")

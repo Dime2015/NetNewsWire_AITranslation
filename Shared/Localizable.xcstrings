@@ -430,7 +430,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要移除此账户吗?除非重新添加,否则 NetNewsWire 将无法再访问其中的文章和 Feed。"
+            "value" : "确定要移除此账户吗?除非重新添加,否则 Babel 将无法再访问其中的文章和 Feed。"
           }
         }
       }
@@ -2280,7 +2280,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "NetNewsWire 7 谨献给所有为守护美国乃至世界民主而努力的人。"
+            "value" : "Babel 7 谨献给所有为守护美国乃至世界民主而努力的人。"
           }
         }
       }
@@ -2291,7 +2291,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "NetNewsWire 新闻"
+            "value" : "Babel 新闻"
           }
         }
       }
@@ -2302,7 +2302,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "NetNewsWire 将使用你的 iCloud 账户,在 Mac 与 iOS 设备之间同步订阅内容。"
+            "value" : "Babel 将使用你的 iCloud 账户,在 Mac 与 iOS 设备之间同步订阅内容。"
           }
         }
       }
@@ -3512,7 +3512,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "感谢 Sheila 和我的家人;感谢我在西雅图和世界各地的朋友;感谢始终耐心、始终出色的 NetNewsWire 测试者们。\n\n感谢 [Gus Mueller](https://shapeof.com/) 带来 [Flying Meat Software](http://flyingmeat.com/) 的 [FMDB](https://github.com/ccgus/fmdb)。感谢 [GitHub](https://github.com) 和 [Discourse](https://discourse.com) 让开源协作变得轻松而有趣。感谢 [Feedbin](https://feedbin.com) 的 [Ben Ubois](https://benubois.com/) 在同步和文章渲染上给予的额外帮助 —— 以及[为阅读视图提供服务器托管](https://feedbin.com/blog/2019/03/11/the-future-of-full-content/)。"
+            "value" : "感谢 Sheila 和我的家人;感谢我在西雅图和世界各地的朋友;感谢始终耐心、始终出色的 Babel 测试者们。\n\n感谢 [Gus Mueller](https://shapeof.com/) 带来 [Flying Meat Software](http://flyingmeat.com/) 的 [FMDB](https://github.com/ccgus/fmdb)。感谢 [GitHub](https://github.com) 和 [Discourse](https://discourse.com) 让开源协作变得轻松而有趣。感谢 [Feedbin](https://feedbin.com) 的 [Ben Ubois](https://benubois.com/) 在同步和文章渲染上给予的额外帮助 —— 以及[为阅读视图提供服务器托管](https://feedbin.com/blog/2019/03/11/the-future-of-full-content/)。"
           }
         }
       }
@@ -3753,7 +3753,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要向 NetNewsWire 添加账户,\n请点击上方的图标。\n\n或点击左下角的 + 按钮。"
+            "value" : "要向 Babel 添加账户,\n请点击上方的图标。\n\n或点击左下角的 + 按钮。"
           }
         }
       }
@@ -3764,7 +3764,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要启用通知,请在“系统偏好设置”中打开“通知”,然后在列表中找到 NetNewsWire。"
+            "value" : "要启用通知,请在“系统偏好设置”中打开“通知”,然后在列表中找到 Babel。"
           }
         }
       }
@@ -4203,7 +4203,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你可以在“系统偏好设置”中启用 NetNewsWire 的通知。"
+            "value" : "你可以在“系统偏好设置”中启用 Babel 的通知。"
           }
         }
       }
