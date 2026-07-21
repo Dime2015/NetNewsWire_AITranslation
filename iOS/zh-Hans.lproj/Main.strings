@@ -1,0 +1,26 @@
+/*
+   Main.storyboard 的简体中文翻译。
+
+   这个文件是本 fork 新增的,上游没有 —— 所以它不会和 git pull upstream 冲突。
+
+   只翻真正会被用户看到的条目。像 "8888"、"Blog Name"、"Feed Title" 这类
+   是 Storyboard 里的占位文本,运行时会被代码覆盖,翻了也看不到,故略过。
+
+   重新导出全部可翻条目(上游改了 Storyboard 之后需要):
+       xcrun ibtool --export-strings-file /tmp/Main.strings iOS/Base.lproj/Main.storyboard
+*/
+
+/* 主界面标题 —— 订阅源列表 */
+"6Bn-mF-MPS.title" = "订阅源";
+"zgM-dx-bIO.title" = "订阅源";
+
+/* 底部工具栏按钮 */
+"N0L-yy-Bfq.title" = "设置";
+"iTI-PO-3e6.title" = "添加";
+
+/* 文章页工具栏 / 无障碍标签 */
+"2qz-M5-Yhk.title" = "下一篇文章";
+"v4j-fq-23N.title" = "上一篇文章";
+"2w5-e9-C2V.title" = "下一篇未读";
+"hy0-LS-MzE.title" = "切换已读状态";
+"wU4-eH-wC9.title" = "切换星标状态";

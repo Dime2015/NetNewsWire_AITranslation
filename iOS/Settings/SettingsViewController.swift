@@ -76,6 +76,12 @@ final class SettingsViewController: UITableViewController {
 		translationModelRowIndex + 1
 	}
 
+	/// [翻译] 本 fork 新增:「界面语言」这一行排在 Appearance 分区最后。
+	/// 索引取自 Storyboard 里该分区的静态行数,所以上游增删行也不会错位。
+	private var interfaceLanguageRowIndex: Int {
+		super.tableView(tableView, numberOfRowsInSection: Section.appearance.rawValue)
+	}
+
 	private weak var opmlAccount: Account?
 
 	@IBOutlet var timelineSortOrderSwitch: UISwitch!
@@ -194,6 +200,9 @@ final class SettingsViewController: UITableViewController {
 			// The Full Screen Articles row is iPhone-only.
 			// [翻译] 本 fork 新增:末尾多两行(翻译模型、翻译 API Key),所以 + 2
 			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 2
+		case .appearance:
+			// [翻译] 本 fork 新增:末尾多一行「界面语言」
+			return super.tableView(tableView, numberOfRowsInSection: section) + 1
 		case .troubleshooting:
 			let defaultNumberOfRows = super.tableView(tableView, numberOfRowsInSection: section)
 			if !AccountManager.shared.hasiCloudAccount {
@@ -234,6 +243,11 @@ final class SettingsViewController: UITableViewController {
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
 			cell.textLabel?.text = "翻译 API Key"
 			cell.detailTextLabel?.text = TranslationConfigStore.hasAPIKey ? "已设置" : "未设置"
+			cell.accessoryType = .disclosureIndicator
+		case .appearance where indexPath.row == interfaceLanguageRowIndex:
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "界面语言"
+			cell.detailTextLabel?.text = AppLanguageController.currentDisplayName
 			cell.accessoryType = .disclosureIndicator
 		default:
 			cell = super.tableView(tableView, cellForRowAt: indexPath)
@@ -294,6 +308,9 @@ final class SettingsViewController: UITableViewController {
 		case .articles where indexPath.row == translationAPIKeyRowIndex:
 			let keyEditor = TranslationAPIKeyViewController(style: .insetGrouped)
 			self.navigationController?.pushViewController(keyEditor, animated: true)
+		case .appearance where indexPath.row == interfaceLanguageRowIndex:
+			let picker = AppLanguagePickerViewController(style: .insetGrouped)
+			self.navigationController?.pushViewController(picker, animated: true)
 		case .articles:
 			switch ArticlesRow(rawValue: indexPath.row) {
 			case .theme:

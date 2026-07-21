@@ -9,6 +9,12 @@
             "state" : "translated",
             "value" : "Summary"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要"
+          }
         }
       }
     },
@@ -19,6 +25,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The Lock Screen Summary displays current article counts across the Smart Feeds. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "锁定屏幕摘要显示各智能订阅源的当前文章数。"
           }
         }
       }
@@ -31,6 +43,12 @@
             "state" : "translated",
             "value" : "Starred"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已加星标"
+          }
         }
       }
     },
@@ -41,6 +59,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "There are no starred articles."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有已加星标的文章。"
           }
         }
       }
@@ -53,6 +77,12 @@
             "state" : "translated",
             "value" : "This widget displays your starred articles."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此小组件显示你加了星标的文章。"
+          }
         }
       }
     },
@@ -63,6 +93,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天"
           }
         }
       }
@@ -75,6 +111,12 @@
             "state" : "translated",
             "value" : "There are no recent articles."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有最近的文章。"
+          }
         }
       }
     },
@@ -85,6 +127,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This widget displays articles posted within the last 24 hours."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此小组件显示最近 24 小时内发布的文章。"
           }
         }
       }
@@ -97,6 +145,12 @@
             "state" : "translated",
             "value" : "Unread"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读"
+          }
         }
       }
     },
@@ -108,6 +162,12 @@
             "state" : "translated",
             "value" : "There are no unread articles."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有未读文章。"
+          }
         }
       }
     },
@@ -118,6 +178,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This widget display unread articles."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此小组件显示未读文章。"
           }
         }
       }
