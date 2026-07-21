@@ -93,6 +93,12 @@ fastlane/test_output
 .claude/
 
 
+# [界面] 用户给 AI 递文件的收件箱(图片、参考资料等)。
+# 里面放的是**原料**不是产物 —— 真正会被 app 用到的东西会被复制到
+# Assets.xcassets 等正规位置并正常提交。收件箱本身不进 git,
+# 免得几 MB 的临时图片永久留在历史里。
+/external resources/
+
 # [翻译] 本 fork 新增:防误提交的保险。
 # API key 现在存在 Keychain 里(设置 → Articles → 翻译 API Key),
 # 项目里本来就不该出现这个文件;留着这条是防止将来有人手工造一个出来。
