@@ -3,7 +3,7 @@
 > **这是接手本项目的第一份必读文件。**
 > 读完本文件,你应该知道:项目做到哪了、哪些已验证、哪些悬而未决、下一步是什么。
 > 配套文件:`CLAUDE.md`(规则) → `NOTES-architecture.md`(代码考古) →
-> `NOTES-lessons.md`(踩过的坑,30 条) → `NOTES-todo.md`(已知问题) →
+> `NOTES-lessons.md`(踩过的坑,36 条) → `NOTES-todo.md`(已知问题) →
 > `NOTES-i18n.md`(多语言工程手册)。
 >
 > ⚠️ **动手前务必先看 CLAUDE.md 第 0 节第 7 条**:
@@ -43,14 +43,16 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 
 ## 三、git 状态(2026-07-21 晚)
 
-**工作区干净。本地领先 GitHub 13 个提交(`Dime2015/NetNewsWire_AITranslation` main),
-需要时 `git push`。**
+**工作区干净,已与 GitHub 同步**(`Dime2015/NetNewsWire_AITranslation` main)。
+
 
 本轮(界面改造)新增的提交,从新到旧:
 
 ```
-(最新)     [界面] 正文阅读页第一轮:图片、图注、作者名层级、正文元素样式
-           (hash 提交时未知,下轮更新本文件时补)
+(最新)     [发现] Phase B(YouTube/网站)+ 播客语音条与跳转
+c7649020d  [发现] 订阅发现 Phase A:app 内搜索并订阅播客 / Reddit
+95cf73af9  [界面] 正文阅读页第一轮:图片、图注、作者名层级、正文元素样式
+55eae14f1  [文档] 本轮收尾:进度整理 + 新增「不要用操作电脑做验收」规则
 5e66bf541  [界面] 藏掉 Substack 的图片按钮,并把「点图片」还给全屏查看器
 e3069a2a6  [阅读视图] 改为本地 Readability.js,不再依赖 Feedbin
 0f5d5f124  [界面] 列表两处修正:单个源里显示 favicon、时间靠右且缩略图垂直居中
@@ -147,9 +149,53 @@ Julia Evans(h4)、Experimental History(正文 h1)均通过。
 - L33 — Reddit 429 被上游报成「feed 不存在」;我多打的那次「验证」请求是帮凶,已删
 - L34 — Reddit 正文是「一行两格表格」,图文并排不是样式问题;已按结构特征堆叠
 
-**Phase B(下一步,尚未开始)**:YouTube 频道链接/@handle 解析 + 普通网站网址
-(走 `createFeed` 自带的自动发现)。
+### ✅ 订阅发现 Phase B + 播客语音条:已完成并经用户验收(2026-07-21 深夜)
+
+**Phase B —— 搜索页补齐到四栏**
+
+| 栏 | 做法 | 新增文件 |
+|---|---|---|
+| YouTube | 拉一次频道页抠 `channel_id`,拼官方 RSS。网址里已带 id 就不联网 | `YouTubeFeedResolver.swift` |
+| 网站 | **刻意只补全 `https://`,不自己找 feed** —— 上游 FeedFinder 本来就做全套发现 | `WebsiteFeedResolver.swift` |
+
+抓 YouTube 频道页用**桌面浏览器 UA**(和抓 feed 相反,见 L33 末尾):
+那是普通网页不是 feed,非浏览器 UA 会拿到精简页面,里面没有那个 id。
+
+**播客语音条 + 跳转 Apple Podcasts**(新增 `Shared/Podcast/`)
+
+| 文件 | 职责 |
+|---|---|
+| `PodcastEpisodeLocator.swift` | 按需重拉 feed → `FeedParser` 解析 → 按 guid 找这一集的 enclosure。按 feed 缓存,**含负缓存** |
+| `ApplePodcastsLinkResolver.swift` | iTunes 搜节目(**用 feed 地址比对确认**)→ 列单集 → `episodeGuid` 匹配 → 深链 |
+| `nnw_podcast.js` | 往页面插语音条 |
+
+关键设计,改动前务必先读:
+
+- **音频走 feed,跳转走 iTunes**。iTunes 的 `episodeUrl` 是**试听片段**(见 L36)
+- **音频地址数据库里没有** —— 上游解析了 enclosure 但 Article 模型没这字段、
+  建库脚本还 DROP 了 attachments 表。绕路重取,C 级禁区零改动(见 L35)
+- **播放器插在 `#bodyContainer` 外面**(是它的兄弟节点)。插里面会被
+  `translation.js` 当成正文的一段拿去翻译
+
+**上游改动**:`WebViewConfiguration.swift` 脚本清单加一个词;
+`WebViewController.swift` 的 `didFinish` 里加一行 + 末尾追加一个扩展
+(扩展必须写在该文件内,因为 `webView` 属性是 private)。
+
+**已知限制(不是 bug)**:
+1. **时长不显示** —— 上游解析 enclosure 时把 `durationInSeconds` 写死为 `nil`
+2. **切后台音频会停**,无锁屏控件(WKWebView 的限制)。语音条定位是"试听"
+3. 某播客第一篇文章会慢 1~2 秒(拉 feed,Exponent 的 767 KB),同会话内之后免费
+4. 私人/付费 feed 不在苹果目录里 → 跳转链接静静地不显示
+
 **Phase C**:用户明确说「A/B 用完再说」,暂不列入计划。
+
+### 🔜 下一步:YouTube 正文里嵌播放器
+
+用户 2026-07-21 深夜确认要做。YouTube 官方 RSS **没有 `<content>`**(实测),
+所以正文是空的;`media:description` 里有简介(实测 684 字符)但上游解析器不取。
+做法与播客语音条同一套机制:往 `#bodyContainer` **外面**插一个 embed iframe。
+已查:`ContentRules.json`(42 条拦截规则)**不含** youtube/ytimg/googlevideo。
+⚠️ **「强制最高画质」做不到** —— embed 的画质参数早已废弃,播放器按带宽自适应。
 
 ### 📋 四个内容源需求的方案结论(2026-07-21 深夜,①③ 已在 Phase A 落地)
 

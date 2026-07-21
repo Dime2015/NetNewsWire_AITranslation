@@ -510,3 +510,18 @@ xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire \
 
 **每次改动 `Shared/` 下的文件后,都应该用这条命令验证一次**,
 因为 `Shared/` 会被 macOS 版一起编译,写错了 iOS 这边发现不了。
+
+---
+
+## T15 · 播客语音条的三个固有限制
+
+**状态**:已知限制,**不是 bug**。除非用户明确要求,否则不做
+**记录时间**:2026-07-21
+
+| 限制 | 原因 | 要修的话得做什么 |
+|---|---|---|
+| **时长不显示** | 上游 `RSSParser` 构造 `ParsedAttachment` 时 `durationInSeconds: nil` 写死,`<itunes:duration>` 根本没被解析 | 自己解析 XML 取 itunes:duration。**不值得** —— 为一行显示文字去碰 XML 解析 |
+| **切后台/锁屏音频停,无锁屏控件** | WKWebView 里的 `<audio>` 不是原生播放器,拿不到后台音频权限 | 改用 `AVAudioSession` + 原生播放器 + Now Playing 信息。**工作量大**,而且语音条的定位本来就是"试听几分钟决定要不要认真听",认真听跳 Podcasts 更好 |
+| **首次打开某播客的文章慢 1~2 秒** | 要重拉一次 feed 才知道音频地址(数据库里没有,见 L35)。Exponent 的 feed 有 767 KB | 已按 feed 缓存(含负缓存),同会话内只慢一次。**可接受** |
+
+另:私人/付费 feed 不在苹果目录里,「在播客中打开」会静静地不显示 —— 这是有意的降级,不报错。

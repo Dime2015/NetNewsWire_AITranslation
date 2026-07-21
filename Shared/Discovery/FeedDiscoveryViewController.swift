@@ -28,15 +28,19 @@ import os
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FeedDiscovery")
 
-	/// 搜哪一类。Phase A 只有播客和 Reddit,Phase B 会加 YouTube 和网站。
+	/// 搜哪一类。
 	private enum Source: Int, CaseIterable {
 		case podcast
 		case reddit
+		case youtube
+		case website
 
 		var title: String {
 			switch self {
 			case .podcast: return "播客"
 			case .reddit: return "Reddit"
+			case .youtube: return "YouTube"
+			case .website: return "网站"
 			}
 		}
 
@@ -44,6 +48,8 @@ import os
 			switch self {
 			case .podcast: return "输入播客名称,例如 Stratechery"
 			case .reddit: return "输入版块名,例如 apple 或 r/apple"
+			case .youtube: return "粘频道地址,或输入 @名字"
+			case .website: return "粘网站地址,例如 stratechery.com"
 			}
 		}
 	}
@@ -150,6 +156,17 @@ import os
 					// 本地拼地址,不发网络请求 —— 把 Reddit 的请求配额留给真正要紧的订阅那一步。
 					// 原因详见 RedditFeedBuilder.results 的注释。
 					found = RedditFeedBuilder.results(subreddit: name)
+
+				case .youtube:
+					found = [try await YouTubeFeedResolver.resolve(keyword)]
+
+				case .website:
+					// 网站这一栏**刻意不自己去找 feed**:上游 createFeed 传
+					// validateFeed: true 时,内部的 FeedFinder 本来就会做整套发现
+					// (先看这个地址本身是不是 feed,不是的话再去 HTML 的 <head>
+					// 里找 <link rel="alternate">,还有一批候选路径)。
+					// 我们再写一遍只会是个更差的复制品,而且多打一次请求。
+					found = [WebsiteFeedResolver.candidate(for: keyword)]
 				}
 
 				// 任务被取消(用户改了关键词)就什么都别做,别把旧结果写回界面
@@ -266,6 +283,10 @@ import os
 			return "输入播客名称搜索。找到后点一下就能订阅。"
 		case .reddit:
 			return "Reddit 没有公开的版块搜索接口,所以需要你直接输入版块名(例如 apple、r/apple,或粘一个 Reddit 链接)。会列出「每日 / 每周 / 每月 / 实时热门」四种,挑一个订阅。\n\n版块名对不对要到订阅时才知道 —— 这是有意的,Reddit 限流很严,把请求留给订阅那一步更划算。如果订阅失败,先等一两分钟再试,多半是限流而不是名字错了。"
+		case .youtube:
+			return "粘频道主页地址(youtube.com/@名字),或者直接输入 @名字。\n\n注意要频道的地址,不是某个视频播放页的地址。订阅的是 YouTube 官方 RSS,每次频道更新都会收到。"
+		case .website:
+			return "粘网站地址就行,不用自己去找 RSS 地址 —— 订阅时会自动从网页里找出来。\n\n少写 https:// 也没关系,会自动补。"
 		}
 	}
 

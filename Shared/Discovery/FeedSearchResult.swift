@@ -77,6 +77,7 @@ enum FeedSearchError: LocalizedError {
 	case notAFeed
 	case emptyInput
 	case badSubredditName
+	case youTubeChannelNotFound
 	/// Reddit 单独一条:它对不同的失败给的状态码含义很明确,
 	/// 而「限流」和「版块不存在」对用户来说是完全不同的两件事 ——
 	/// 一个该等一下重试,一个该改名字重输。混成一句话会让人白折腾。
@@ -94,6 +95,8 @@ enum FeedSearchError: LocalizedError {
 			return "请先输入要搜索的内容。"
 		case .badSubredditName:
 			return "认不出版块名。可以直接输入版块名(例如 apple)、r/apple,或者粘一个 Reddit 链接。"
+		case .youTubeChannelNotFound:
+			return "没能从这个地址找出 YouTube 频道。可以粘频道主页地址(youtube.com/@名字),或者直接输入 @名字。注意:视频播放页的地址不行,要频道的地址。"
 		case .reddit(let code):
 			switch code {
 			case 429:

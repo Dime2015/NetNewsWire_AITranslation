@@ -270,6 +270,33 @@
 			margin-right: auto;
 		}
 
+		/* ---- 播客语音条 -----------------------------------------------
+		   由 nnw_podcast.js 插在正文容器**前面**(不是里面 —— 插里面会被
+		   翻译功能当成正文的一段)。这里只管长相。 */
+		#nnwPodcastPlayer {
+			margin: 18px 0 24px;
+			padding: 14px;
+			border-radius: 12px;
+			background: var(--code-background-color, rgba(127, 127, 127, 0.12));
+		}
+
+		#nnwPodcastPlayer audio {
+			width: 100%;
+			display: block;
+		}
+
+		#nnwPodcastPlayer .nnwPodcastMeta {
+			margin-top: 8px;
+			font-size: 0.82em;
+			color: var(--nnw-secondary-text);
+		}
+
+		#nnwPodcastPlayer .nnwPodcastAppleLink {
+			display: inline-block;
+			margin-top: 10px;
+			font-size: 0.9em;
+		}
+
 		/* ---- 顶部:拉开「订阅源名」和「作者名」的层级 -------------------
 		   模板里作者名是裸文本,跟在 <br> 后面,**没有自己的容器**,没法单独选中。
 		   所以做法是:把顶部整块调小调淡,再把订阅源名单独放大回原来的大小。

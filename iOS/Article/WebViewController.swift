@@ -404,6 +404,7 @@ extension WebViewController: WKNavigationDelegate {
 				oldWebView.removeFromSuperview()
 			}
 		}
+		nnwPodcastInstallPlayerIfNeeded() // [播客] 是播客单集就装语音条,实现在本文件末尾
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -1080,5 +1081,76 @@ private extension WebViewController {
 				}
 			}
 		}
+	}
+}
+
+// MARK: - [播客] 本 fork 新增,上游没有以下内容
+//
+// 为什么这段代码非得写在这个文件里(而不是放在 Shared/Podcast/):
+// 和上面 [翻译] 那段同一个原因 —— `webView` 属性是 `private` 的,
+// Swift 里 private 表示「只有同一个文件里的代码能访问」。
+// 要对这个 webView 执行 JS,只能把桥接代码放在本文件内。
+//
+// 这段全部是**追加在文件末尾的新行**,上游原有代码一行都没有改动。
+
+extension WebViewController {
+
+	/// 页面加载完成后调用:如果这篇是播客单集,就在正文上方装一个语音条。
+	///
+	/// 整个过程是「悄悄进行」的 —— 不是播客就什么都不做,不弹任何提示。
+	/// 判断依据是这篇文章所在的 feed 里到底有没有音频附件,
+	/// 而这个判断结果会按 feed 缓存(**包括「不是播客」这个结论**),
+	/// 所以普通文章最多只会让它的 feed 被拉取一次。
+	func nnwPodcastInstallPlayerIfNeeded() {
+
+		guard let article else {
+			return
+		}
+
+		Task { [weak self] in
+
+			// 先清掉上一篇留下的播放器。WebViewController 是复用的,
+			// 不清的话上一篇的音频会挂在这一篇上(L14 同类问题)。
+			_ = try? await self?.webView?.evaluateJavaScript("window.nnwPodcast && window.nnwPodcast.removePlayer()")
+
+			guard let episode = await PodcastEpisodeLocator.shared.episode(for: article) else {
+				return
+			}
+			// 拉取期间用户可能已经翻页了,写回界面前必须确认还是同一篇(L11)
+			guard let self, self.article?.articleID == article.articleID else {
+				return
+			}
+
+			let audioLiteral = Self.nnwPodcastJavaScriptStringLiteral(episode.audioURL)
+			let duration = episode.durationInSeconds ?? 0
+			_ = try? await self.webView?.evaluateJavaScript(
+				"window.nnwPodcast.installPlayer(\(audioLiteral), \(duration))")
+
+			// 语音条已经能听了,再去查「在播客中打开」的链接。
+			// 这一步要访问苹果目录,比音频慢,所以放在后面单独做 ——
+			// 查不到也不影响听。
+			let feedTitle = article.feed?.nameForDisplay
+			guard let link = await ApplePodcastsLinkResolver.shared.link(for: article, feedTitle: feedTitle) else {
+				return
+			}
+			guard self.article?.articleID == article.articleID else {
+				return
+			}
+			let isExactEpisode = link.absoluteString.contains("?i=")
+			let linkLiteral = Self.nnwPodcastJavaScriptStringLiteral(link.absoluteString)
+			_ = try? await self.webView?.evaluateJavaScript(
+				"window.nnwPodcast.addAppleLink(\(linkLiteral), \(isExactEpisode))")
+		}
+	}
+
+	/// 把字符串安全地拼进 JavaScript 里。
+	/// 音频地址里常带 token 和各种查询参数,直接拼会出事。
+	private static func nnwPodcastJavaScriptStringLiteral(_ value: String) -> String {
+		guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+			  let json = String(data: data, encoding: .utf8) else {
+			return "\"\""
+		}
+		// JSONSerialization 只能序列化数组/字典,所以包一层再把方括号去掉
+		return String(json.dropFirst().dropLast())
 	}
 }

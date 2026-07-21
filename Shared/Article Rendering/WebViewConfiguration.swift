@@ -115,7 +115,7 @@ private extension WebViewConfiguration {
 
 	static let articleScripts: [WKUserScript] = {
 #if os(iOS)
-		let filenames = ["main", "main_ios", "newsfoot", "nnw_appearance"] // [界面] 末尾追加本 fork 的样式覆盖脚本
+		let filenames = ["main", "main_ios", "newsfoot", "nnw_appearance", "nnw_podcast"] // [界面] 样式覆盖脚本 [播客] 语音条脚本
 #else
 		let filenames = ["main", "main_mac", "newsfoot"]
 #endif
