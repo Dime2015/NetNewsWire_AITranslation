@@ -112,7 +112,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "🦖 恐龙"
+            "value" : "🦖 活化石"
           }
         }
       }
@@ -1076,7 +1076,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恐龙帮助"
+            "value" : "活化石帮助"
           }
         }
       }
@@ -2434,7 +2434,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有恐龙"
+            "value" : "没有活化石"
           }
         }
       }

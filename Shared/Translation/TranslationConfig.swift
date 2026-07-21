@@ -37,11 +37,11 @@ enum TranslationConfigStore {
 
 	static let defaultBaseURL = "https://openrouter.ai/api/v1"
 
-	/// 可选的翻译模型。
+	/// 出厂自带的模型列表(用户没刷新过时用这份)。
 	///
 	/// 挑选依据:OpenRouter 排行榜 → Top models by task → Translation(2026-07 实测),
 	/// 在前 10 名里选了跨价位、能拉开差距的 5 个。价格为每百万 token 输入/输出。
-	static let availableModels = [
+	static let builtInModels = [
 		"deepseek/deepseek-v4-flash",		// $0.10 / $0.20   最便宜,日常主力
 		"deepseek/deepseek-v4-pro",			// $0.43 / $0.87   同门升级版
 		"google/gemini-3-flash-preview",	// $0.50 / $3.00   换个风格对比
@@ -55,6 +55,8 @@ enum TranslationConfigStore {
 
 	private static let selectedModelKey = "nnwTranslationSelectedModel"
 	private static let baseURLKey = "nnwTranslationBaseURL"
+	private static let fetchedModelsKey = "nnwTranslationFetchedModels"
+	private static let fetchedModelsDateKey = "nnwTranslationFetchedModelsDate"
 
 	// MARK: - API Key(存在 Keychain 里)
 
@@ -81,6 +83,36 @@ enum TranslationConfigStore {
 		}
 	}
 
+	// MARK: - 可选模型列表(出厂自带 / 从 OpenRouter 刷新而来)
+
+	/// 当前可选的模型。刷新成功过就用刷来的,否则用出厂自带的。
+	static var availableModels: [String] {
+		let fetched = UserDefaults.standard.stringArray(forKey: fetchedModelsKey) ?? []
+		return fetched.isEmpty ? builtInModels : fetched
+	}
+
+	/// 上次成功刷新的时间。从没刷新过就是 nil。
+	static var modelsLastRefreshed: Date? {
+		UserDefaults.standard.object(forKey: fetchedModelsDateKey) as? Date
+	}
+
+	/// 写入刷新结果。
+	///
+	/// ⚠️ **空列表一律拒绝写入** —— 这是"拉取失败不能覆盖上一次结果"的最后一道防线。
+	/// 调用方本来就应该在失败时不调用本方法,这里再兜一层,防止将来有人改坏。
+	static func updateFetchedModels(_ models: [String]) {
+		let cleaned = models.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+		guard !cleaned.isEmpty else { return }
+		UserDefaults.standard.set(cleaned, forKey: fetchedModelsKey)
+		UserDefaults.standard.set(Date(), forKey: fetchedModelsDateKey)
+	}
+
+	/// 丢弃刷新结果,回到出厂自带的列表。
+	static func resetFetchedModels() {
+		UserDefaults.standard.removeObject(forKey: fetchedModelsKey)
+		UserDefaults.standard.removeObject(forKey: fetchedModelsDateKey)
+	}
+
 	// MARK: - 当前选中的模型
 
 	static var selectedModel: String {
@@ -89,7 +121,8 @@ enum TranslationConfigStore {
 			   availableModels.contains(saved) {
 				return saved
 			}
-			return defaultModel
+			// 选中的模型可能在刷新后从列表里消失了,这时退回列表第一个
+			return availableModels.first ?? defaultModel
 		}
 		set { UserDefaults.standard.set(newValue, forKey: selectedModelKey) }
 	}

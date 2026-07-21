@@ -140,6 +140,55 @@ struct OpenAICompatibleTranslator: TranslationService {
 		return Self.cleanUp(content, original: htmlChunk)
 	}
 
+	// MARK: - 连通性自检
+
+	/// 用一次极小的真实请求验证配置是否可用。
+	///
+	/// 为什么不只是 ping 一下地址:能连上不等于能用 ——
+	/// key 过期、余额不足、模型名写错,都要真的发一次请求才会暴露。
+	/// 这里让模型只回一个字,成本可以忽略不计。
+	///
+	/// - Returns: 成功时返回模型实际回复的内容(用于展示"确实通了")。
+	static func testConnection(config: TranslationConfig, model: String) async throws -> String {
+
+		guard let url = config.chatCompletionsURL else {
+			throw TranslationError.notConfigured("服务地址不是合法网址:\(config.baseURL)")
+		}
+
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.timeoutInterval = 30
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+
+		let body = ChatRequest(
+			model: model,
+			messages: [ChatRequest.Message(role: "user", content: "只回复两个字:你好")],
+			temperature: 0,
+			provider: nil
+		)
+		request.httpBody = try JSONEncoder().encode(body)
+
+		let data: Data
+		let response: URLResponse
+		do {
+			(data, response) = try await URLSession.shared.data(for: request)
+		} catch {
+			throw TranslationError.networkFailure(underlying: error)
+		}
+
+		if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+			throw TranslationError.serverError(status: http.statusCode, message: errorMessage(from: data))
+		}
+
+		guard let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data),
+			  let content = decoded.choices.first?.message.content else {
+			throw TranslationError.invalidResponse
+		}
+
+		return content.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
 	// MARK: - 收拾模型的输出
 
 	/// 模型经常不听话:把译文包在 ``` 里、加一句"以下是译文:"、
@@ -200,7 +249,7 @@ struct OpenAICompatibleTranslator: TranslationService {
 	}
 
 	/// 从错误响应里挖出可读的说明。挖不到就把原始内容截一段返回。
-	private static func errorMessage(from data: Data) -> String {
+	static func errorMessage(from data: Data) -> String {
 		if let decoded = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
 			return decoded.error.message
 		}
