@@ -101,13 +101,20 @@ struct OpenAICompatibleTranslator: TranslationService {
 		request.setValue("https://github.com/Dime2015/NetNewsWire_AITranslation", forHTTPHeaderField: "HTTP-Referer")
 		request.setValue("NetNewsWire AI Translation", forHTTPHeaderField: "X-Title")
 
+		// T5 对策 1:让 OpenRouter 优先路由到吞吐量高的服务商。
+		// 用户实测数据:同尺寸两组耗时 22s vs 81.6s —— 慢的是被路由到了慢机器。
+		// 只对 OpenRouter 发这个字段;其他 OpenAI 兼容服务商可能不认识它。
+		let providerPreference: ChatRequest.Provider? =
+			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Provider(sort: "throughput") : nil
+
 		let body = ChatRequest(
 			model: model,
 			messages: [
 				ChatRequest.Message(role: "system", content: Self.systemPrompt),
 				ChatRequest.Message(role: "user", content: userPrompt(htmlChunk: htmlChunk, context: context))
 			],
-			temperature: 0.3
+			temperature: 0.3,
+			provider: providerPreference
 		)
 		request.httpBody = try JSONEncoder().encode(body)
 
@@ -211,9 +218,16 @@ private struct ChatRequest: Encodable {
 		let content: String
 	}
 
+	/// OpenRouter 特有的路由偏好。nil 时整个字段不会出现在请求里
+	/// (Swift 自动合成的编码对可选值用 encodeIfPresent)。
+	struct Provider: Encodable {
+		let sort: String
+	}
+
 	let model: String
 	let messages: [Message]
 	let temperature: Double
+	let provider: Provider?
 }
 
 private struct ChatResponse: Decodable {

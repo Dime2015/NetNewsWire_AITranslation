@@ -22,8 +22,11 @@ import os
 enum TranslationButtonState {
 	/// 正在显示原文,点一下会翻译(联网请求)。
 	case original
-	/// 正在显示原文,但本地已有这篇的译文缓存 —— 点一下瞬间显示,零请求。灰底提示。
+	/// 正在显示原文,本地已有**完整**译文缓存 —— 点一下瞬间显示,零请求。实心角标点。
 	case cachedAvailable
+	/// 正在显示原文,本地有**未完成**的译文缓存(上次翻到一半被打断) ——
+	/// 点一下接着上次继续翻,已翻过的组不再花钱。空心角标点。
+	case partialCacheAvailable
 	/// 正在翻译中,转圈,不可点(再点一下 = 取消)。
 	case working
 	/// 正在显示译文,点一下切回原文。
@@ -52,34 +55,56 @@ final class TranslationButton: UIButton {
 		}
 	}
 
+	/// 图标右上角的小圆点:实心 = 有完整缓存;空心 = 有未完成的缓存。
+	private let badgeView: UIView = {
+		let view = UIView()
+		view.translatesAutoresizingMaskIntoConstraints = false
+		view.layer.cornerRadius = 4.5
+		view.isHidden = true
+		view.isUserInteractionEnabled = false
+		return view
+	}()
+
 	override init(frame: CGRect) {
 		super.init(frame: frame)
-		// 44×44 的按钮,圆角一半 = 圆形灰底(仅"有缓存"状态时可见)
-		layer.cornerRadius = 22
-		clipsToBounds = true
-		setUpActivityIndicator()
+		setUpSubviews()
 		applyDisplayState()
 	}
 
 	required init?(coder: NSCoder) {
 		super.init(coder: coder)
-		layer.cornerRadius = 22
-		clipsToBounds = true
-		setUpActivityIndicator()
+		setUpSubviews()
 		applyDisplayState()
 	}
 
-	private func setUpActivityIndicator() {
+	private func setUpSubviews() {
 		addSubview(activityIndicator)
+		addSubview(badgeView)
+
+		// ⚠️ 这两条尺寸约束是必须的,不是装饰(见 NOTES-lessons L19)。
+		// 作为 UIBarButtonItem 的 customView 时,按钮宽度靠"图标撑出的固有尺寸"决定。
+		// 而转圈状态会 setImage(nil) —— 图标一没,固有尺寸变 0,
+		// iOS 26 的工具栏会把它算成 0 宽并永久塌掉,按钮就此消失。
+		translatesAutoresizingMaskIntoConstraints = false
+		NSLayoutConstraint.activate([
+			widthAnchor.constraint(equalToConstant: 44),
+			heightAnchor.constraint(equalToConstant: 44)
+		])
+
 		NSLayoutConstraint.activate([
 			activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
-			activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
+			activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor),
+			// 角标点悬在气泡图标的右上方
+			badgeView.widthAnchor.constraint(equalToConstant: 9),
+			badgeView.heightAnchor.constraint(equalToConstant: 9),
+			badgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: 11),
+			badgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -11)
 		])
 	}
 
 	private func applyDisplayState() {
-		// 灰底只属于"有缓存"状态,进入任何其他状态都要先清掉
-		backgroundColor = .clear
+		// 角标点只属于两种"有缓存"状态,进入其他任何状态都先藏起来
+		badgeView.isHidden = true
 		switch displayState {
 		case .original:
 			activityIndicator.stopAnimating()
@@ -89,7 +114,19 @@ final class TranslationButton: UIButton {
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
 			setImage(UIImage(systemName: "character.bubble"), for: .normal)
-			backgroundColor = .systemGray5
+			// 实心点:有完整缓存,点击秒开
+			badgeView.backgroundColor = tintColor
+			badgeView.layer.borderWidth = 0
+			badgeView.isHidden = false
+		case .partialCacheAvailable:
+			activityIndicator.stopAnimating()
+			isUserInteractionEnabled = true
+			setImage(UIImage(systemName: "character.bubble"), for: .normal)
+			// 空心点:有未完成的缓存,点击接着上次继续翻
+			badgeView.backgroundColor = .clear
+			badgeView.layer.borderWidth = 1.5
+			badgeView.layer.borderColor = tintColor.cgColor
+			badgeView.isHidden = false
 		case .working:
 			setImage(nil, for: .normal)
 			activityIndicator.startAnimating()
@@ -114,6 +151,8 @@ final class TranslationButton: UIButton {
 				return "翻译成中文"
 			case .cachedAvailable:
 				return "已有译文缓存,点击立即显示"
+			case .partialCacheAvailable:
+				return "有未完成的译文,点击接着翻译"
 			case .working:
 				return "正在翻译"
 			case .translated:
@@ -183,6 +222,16 @@ enum TranslationScript {
 	/// 正在进行的翻译任务。换文章时要取消它,
 	/// 否则还在飞的译文会替换到**下一篇文章**的页面上。
 	private var runningTask: Task<Void, Never>?
+
+	/// 本次翻译运行中已完成的组(组号→译文)与标题。
+	/// 中途被打断时,靠它们把进度存成"未完成缓存",下次接着翻。
+	private var runGroupTranslations: [Int: String] = [:]
+	private var runTitleTranslation: String?
+
+	/// 运行序号。防一个竞态:快速切文章时,上一次运行的"保存进度"
+	/// 可能在新一次运行开始后才执行 —— 那时累积器里已经是新文章的内容了,
+	/// 存下去会把 B 文章的译文安到 A 文章的缓存里。序号对不上就放弃保存。
+	private var runID = 0
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Translation")
 
@@ -267,14 +316,15 @@ enum TranslationScript {
 											  model: TranslationConfigStore.selectedModel)
 		Task { [weak self] in
 			guard let self else { return }
-			guard await TranslationCache.hasEntry(key: key) else { return }
+			guard let entry = await TranslationCache.lookup(key: key) else { return }
 			// 异步回来后要复核:用户可能已经切走文章、或已经点了翻译
 			guard self.state == .original,
 				  let current = self.currentWebViewController()?.article,
 				  current.accountID + "|" + current.articleID == articleID else {
 				return
 			}
-			self.state = .cachedAvailable
+			// 实心点=完整缓存,空心点=未完成缓存(可断点续翻)
+			self.state = entry.bodyHTML != nil ? .cachedAvailable : .partialCacheAvailable
 		}
 	}
 
@@ -303,6 +353,14 @@ enum TranslationScript {
 
 		state = .working
 
+		// 重置本次运行的进度累积器,并领一个运行序号(防串号,见 runID 注释)
+		runGroupTranslations = [:]
+		runTitleTranslation = nil
+		runID += 1
+		let thisRun = runID
+		var cacheKey: String?
+		var currentBodyHash: String?
+
 		do {
 			let service = try makeService()
 			let model = TranslationConfigStore.selectedModel
@@ -312,11 +370,10 @@ enum TranslationScript {
 			var titleTask: Task<String?, Never>? = nil
 			defer { titleTask?.cancel() }
 
-			// 0. 先查本地缓存:同一篇文章 + 同一个模型 + 原文没变 → 秒开,零请求零花费。
-			//    键只含 文章+模型(不用读正文就能做按钮的灰底提示);
-			//    原文是否变过由条目里存的 bodyHash 校验 —— 文章更新过就当没缓存。
-			var cacheKey: String?
-			var currentBodyHash: String?
+			// 0. 先查本地缓存。两种命中:
+			//    完整缓存 → 整篇秒开,零请求;
+			//    未完成缓存(上次翻到一半被打断) → 记下来,已翻过的组直接复用,只翻剩下的。
+			var partialEntry: CachedTranslation?
 			if let article = webViewController.article {
 				let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
 													  model: model)
@@ -327,17 +384,22 @@ enum TranslationScript {
 					let bodyHash = TranslationCache.contentHash(fingerprint)
 					currentBodyHash = bodyHash
 					if let cached = await TranslationCache.lookup(key: key) {
-						if cached.bodyHash == bodyHash {
+						if cached.bodyHash != bodyHash {
+							Self.logger.debug("[翻译] 有缓存条目但内容指纹不匹配,按未缓存处理并重新翻译")
+						} else if let fullBody = cached.bodyHTML {
+							// 完整缓存:整篇秒开
 							if let cachedTitle = cached.titleHTML {
 								_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 							}
-							_ = try await webViewController.nnwTranslationApply(cached.bodyHTML)
+							_ = try await webViewController.nnwTranslationApply(fullBody)
 							state = .translated
 							lastErrorMessage = nil
-							Self.logger.debug("[翻译] 命中本地缓存,零请求")
+							Self.logger.debug("[翻译] 命中完整缓存,零请求")
 							return
+						} else {
+							partialEntry = cached
+							Self.logger.debug("[翻译] 命中未完成缓存(已有 \(cached.groups?.count ?? 0) 组),接着上次继续")
 						}
-						Self.logger.debug("[翻译] 有缓存条目但内容指纹不匹配,按未缓存处理并重新翻译")
 					}
 				}
 			}
@@ -368,7 +430,11 @@ enum TranslationScript {
 			//    标题最短、回得最快,最先变成中文 —— 让人立刻感觉到"开始了"。
 			//    (之前标题排在所有正文组后面,并发槽一旦占满就轮不到它,
 			//     表现为"标题很靠后才被翻译"。)
-			if let titleHTML = try await webViewController.nnwTranslationReadTitle(),
+			if let cachedTitle = partialEntry?.titleHTML {
+				// 标题上次已经翻过了,直接用,零请求
+				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
+				runTitleTranslation = cachedTitle
+			} else if let titleHTML = try await webViewController.nnwTranslationReadTitle(),
 			   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 				let titleContext = context
 				titleTask = Task { [weak webViewController] in
@@ -386,24 +452,44 @@ enum TranslationScript {
 				}
 			}
 
-			// 3. 先导块单独先翻。它最先出现在屏幕上,你可以马上开始读;
+			// 3. 先导块。上次翻过就直接复用缓存;否则单独先翻。
+			//    它最先出现在屏幕上,你可以马上开始读;
 			//    同时它的译文会作为"示范"传给后面所有组,压住术语漂移(方案 C)。
 			let first = chunks[0]
-			let leadStartedAt = Date()
-			let firstTranslation = try await service.translate(htmlChunk: first.html, context: context)
-			Self.logger.debug("[翻译] 先导块完成,耗时 \(String(format: "%.1f", Date().timeIntervalSince(leadStartedAt)), privacy: .public)s")
-			try Task.checkCancellation()
-			_ = try await webViewController.nnwTranslationApplyGroup(group: first.group,
-																	 translatedHTML: firstTranslation)
+			let firstTranslation: String
+			if let cachedLead = partialEntry?.groups?[String(first.group)],
+			   (try? await webViewController.nnwTranslationApplyGroup(group: first.group,
+																	  translatedHTML: cachedLead)) == true {
+				firstTranslation = cachedLead
+				Self.logger.debug("[翻译] 先导块复用缓存,零请求")
+			} else {
+				let leadStartedAt = Date()
+				firstTranslation = try await service.translate(htmlChunk: first.html, context: context)
+				Self.logger.debug("[翻译] 先导块完成,耗时 \(String(format: "%.1f", Date().timeIntervalSince(leadStartedAt)), privacy: .public)s")
+				try Task.checkCancellation()
+				_ = try await webViewController.nnwTranslationApplyGroup(group: first.group,
+																		 translatedHTML: firstTranslation)
+			}
+			runGroupTranslations[first.group] = firstTranslation
 
 			// 注意:这里**不**把按钮切成"已完成"。
 			// 全文没翻完就显示完成,会让人以为翻译停了 —— 转圈要一直转到真的全部结束。
 			context = context.withSample(original: first.html, translation: firstTranslation)
 
-			// 4. 其余组并行翻,同时最多 4 个,谁先回来谁先替换。
-			//    组是按"由小到大"切的,所以天然是靠前的组先回来 —— 正合顺序阅读的节奏。
-			let work = chunks.dropFirst().map {
-				TranslationWorkItem(target: .chunk($0.group), html: $0.html)
+			// 4. 其余组:上次翻过的直接复用缓存(零请求),剩下的并行翻。
+			//    组是按"由小到大"切的,天然靠前的先回来 —— 正合顺序阅读的节奏。
+			var work: [TranslationWorkItem] = []
+			for chunk in chunks.dropFirst() {
+				if let cachedGroup = partialEntry?.groups?[String(chunk.group)],
+				   (try? await webViewController.nnwTranslationApplyGroup(group: chunk.group,
+																		  translatedHTML: cachedGroup)) == true {
+					runGroupTranslations[chunk.group] = cachedGroup
+				} else {
+					work.append(TranslationWorkItem(target: .chunk(chunk.group), html: chunk.html))
+				}
+			}
+			if partialEntry != nil {
+				Self.logger.debug("[翻译] 复用缓存 \(self.runGroupTranslations.count) 组,还需翻 \(work.count) 组")
 			}
 
 			var failureCount = 0
@@ -424,9 +510,10 @@ enum TranslationScript {
 															 webViewController: webViewController)
 
 			// 6. 等标题翻完(它是最早发出的,通常此刻早已完成)
-			var translatedTitle: String?
+			var translatedTitle: String? = runTitleTranslation
 			if let titleTask {
 				translatedTitle = await titleTask.value
+				runTitleTranslation = translatedTitle
 			}
 
 			try Task.checkCancellation()
@@ -436,31 +523,55 @@ enum TranslationScript {
 
 			if totalFailures > 0 {
 				state = .failed
-				lastErrorMessage = "有 \(totalFailures) 组内容没能翻译成功,保持了原文。点一下回到原文,再点一次可以重新翻译整篇。"
+				lastErrorMessage = "有 \(totalFailures) 组内容没能翻译成功,保持了原文。点一下回到原文,再点一次可以接着翻(已翻好的组会复用,不重复花钱)。"
 				Self.logger.error("[翻译] 完成,但有 \(totalFailures) 组失败")
+				// 翻好的部分存成"未完成缓存",下次接着翻
+				savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
 			} else {
 				state = .translated
 				lastErrorMessage = nil
 
-				// 8. 全部成功才写缓存 —— 下次再看这篇文章就是秒开、零花费。
-				//    部分失败的结果不缓存,免得把"带着英文残段"的版本固化下来。
+				// 8. 全部成功 → 存完整缓存,下次这篇秒开、零花费
 				if let cacheKey, let currentBodyHash,
 				   let translatedBody = try? await webViewController.nnwTranslationReadBody() {
 					TranslationCache.store(key: cacheKey,
 										   CachedTranslation(bodyHash: currentBodyHash,
 															 titleHTML: translatedTitle,
-															 bodyHTML: translatedBody))
+															 bodyHTML: translatedBody,
+															 groups: nil))
 				}
 			}
 
 		} catch is CancellationError {
-			// 用户翻页了,正常情况,不算失败
-			Self.logger.debug("[翻译] 已取消")
+			// 用户翻页/中途取消。已翻好的组存成"未完成缓存",
+			// 下次打开这篇文章可以接着翻,已花的钱不浪费。
+			Self.logger.debug("[翻译] 已取消,保存未完成进度")
+			savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
 		} catch {
 			Self.logger.error("[翻译] 失败:\(error.localizedDescription, privacy: .public)")
 			lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
 			state = .failed
 		}
+	}
+
+	/// 把已完成的组存成"未完成缓存"。下次打开这篇文章接着翻,不重复花钱。
+	private func savePartialProgress(cacheKey: String?, bodyHash: String?, run: Int) {
+		// 序号对不上 = 已经有新的翻译运行开始了,累积器里是别的文章的内容,
+		// 存下去会张冠李戴 —— 放弃保存(只损失一点省钱机会,不会出错)。
+		guard run == runID else {
+			Self.logger.debug("[翻译] 进度已被新运行取代,放弃保存")
+			return
+		}
+		guard let cacheKey, let bodyHash, !runGroupTranslations.isEmpty else {
+			return
+		}
+		let groups = Dictionary(uniqueKeysWithValues: runGroupTranslations.map { (String($0.key), $0.value) })
+		TranslationCache.store(key: cacheKey,
+							   CachedTranslation(bodyHash: bodyHash,
+												 titleHTML: runTitleTranslation,
+												 bodyHTML: nil,
+												 groups: groups))
+		Self.logger.debug("[翻译] 已保存未完成进度:\(self.runGroupTranslations.count) 组")
 	}
 
 	/// 全部翻完后再检查一遍,把没翻好的组重翻。返回重翻后仍然失败的组数。
@@ -544,8 +655,14 @@ enum TranslationScript {
 					case .chunk(let group):
 						applied = (try? await webViewController.nnwTranslationApplyGroup(group: group,
 																						 translatedHTML: translated)) ?? false
+						if applied {
+							runGroupTranslations[group] = translated	// 进度累积,供断点续翻
+						}
 					case .title:
 						applied = (try? await webViewController.nnwTranslationApplyTitle(translated)) ?? false
+						if applied {
+							runTitleTranslation = translated
+						}
 					}
 				}
 

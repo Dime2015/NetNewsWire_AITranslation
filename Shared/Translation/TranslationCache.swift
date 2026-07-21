@@ -27,14 +27,24 @@
 import Foundation
 import CryptoKit
 
-/// 一篇翻好的文章。
+/// 一篇文章的译文缓存。有两种形态:
+/// - **完整缓存**:`bodyHTML` 非空 —— 整篇翻译成功,下次直接秒开
+/// - **未完成缓存**:`bodyHTML` 为 nil,内容在 `groups` 里 —— 上次翻到一半被打断,
+///   下次点翻译时已翻过的组直接复用,只翻剩下的,不重复花钱
 struct CachedTranslation: Codable, Sendable {
 
-	/// 存入时原文正文的哈希。取用前校验:文章内容更新过 → 视为没缓存。
+	/// 存入时原文正文(纯文字)的指纹。取用前校验:文章内容更新过 → 视为没缓存。
 	let bodyHash: String
 
 	let titleHTML: String?
-	let bodyHTML: String
+
+	/// 整篇成功的完整译文。nil 表示这是"未完成缓存",看 groups。
+	let bodyHTML: String?
+
+	/// 未完成缓存:组号(字符串形式)→ 该组译文。完整缓存时为 nil。
+	/// 组号能对上的前提是两次切分一致 —— 由 bodyHash 指纹把关;
+	/// 万一某组安不回页面,那一组自动降级为重新翻译,不会出错。
+	let groups: [String: String]?
 }
 
 @MainActor
@@ -60,16 +70,6 @@ enum TranslationCache {
 	/// 算一段内容的哈希(用于 bodyHash 校验)。
 	nonisolated static func contentHash(_ content: String) -> String {
 		hash(content)
-	}
-
-	/// 这篇文章有没有缓存?(不校验内容是否过期 —— 给按钮显示灰底提示用,快而粗。
-	/// 真正取用时 lookup + bodyHash 校验才是准的。)
-	static func hasEntry(key: String) async -> Bool {
-		if memory[key] != nil {
-			return true
-		}
-		let url = fileURL(for: key)
-		return await Task.detached { FileManager.default.fileExists(atPath: url.path) }.value
 	}
 
 	/// 查缓存:先看内存,再看磁盘。都没有返回 nil。

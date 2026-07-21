@@ -599,6 +599,20 @@ extension ArticleViewController {
 
 		translationController.button.addTarget(self, action: #selector(toggleTranslation(_:)), for: .touchUpInside)
 
+		// [翻译] 顺手修掉上游"阅读视图"按钮的同一个隐患(详见 NOTES-lessons L19)。
+		//
+		// articleExtractorButton 也是 UIBarButtonItem 的 customView,同样只设了 frame、
+		// 没有尺寸约束;它在转圈状态会 setImage(nil),固有尺寸随之变成 0,
+		// iOS 26 工具栏会把它算成 0 宽并永久塌掉 —— 表现为"阅读视图和翻译两个按钮一起消失,
+		// 之后所有文章都没有"。加死约束后宽度不再依赖图标是否存在。
+		//
+		// 写在这里而不是改上游那段属性定义,是为了把改动集中在本 fork 自己的扩展里。
+		articleExtractorButton.translatesAutoresizingMaskIntoConstraints = false
+		NSLayoutConstraint.activate([
+			articleExtractorButton.widthAnchor.constraint(equalToConstant: 44),
+			articleExtractorButton.heightAnchor.constraint(equalToConstant: 44)
+		])
+
 		var items = toolbarItems ?? []
 
 		// iOS 26 的工具栏会自动排布按钮,不需要手动加间隔;
