@@ -613,16 +613,38 @@ extension ArticleViewController {
 			articleExtractorButton.heightAnchor.constraint(equalToConstant: 44)
 		])
 
-		var items = toolbarItems ?? []
+		let translationItem = translationController.makeBarButtonItem()
 
-		// iOS 26 的工具栏会自动排布按钮,不需要手动加间隔;
-		// 更早的系统上,上面那段代码是用 flexibleSpace 手工撑开的,所以要跟着补一个。
-		if #unavailable(iOS 26) {
+		if #available(iOS 26, *) {
+			// iOS 26 的 Liquid Glass 工具栏按 flexibleSpace 把按钮切成若干"玻璃胶囊",
+			// 剩余宽度由这些弹性间隔平分。
+			//
+			// 上游原本是三组:[已读 星标] | [下一篇未读] | [阅读视图 分享]。
+			// 我们加了第 6 个按钮之后,两个间隔各自只剩 40pt 出头,
+			// 相邻胶囊的边缘几乎贴上 —— Liquid Glass 会把靠近的玻璃"融"在一起,
+			// 看起来就是两坨粘成水滴(用户反馈的粘连问题)。
+			//
+			// 改成两组,剩余宽度全部给中间那一个间隔,分隔就清楚了:
+			//   [已读 星标 下一篇未读] ⟷ [阅读视图 分享 翻译]
+			// 左边是"这篇文章的状态和去向",右边是"拿这篇文章做点什么",语义上也说得通。
+			let extractorItem = toolbarItems?.first { $0.customView === articleExtractorButton }
+
+			var newItems: [UIBarButtonItem] = [readBarButtonItem, starBarButtonItem, nextUnreadBarButtonItem]
+			newItems.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+			if let extractorItem {
+				newItems.append(extractorItem)
+			}
+			newItems.append(actionBarButtonItem)
+			newItems.append(translationItem)
+
+			toolbarItems = newItems
+		} else {
+			// 更早的系统上,上游那段代码是用 flexibleSpace 手工均匀撑开的,跟着补一个即可。
+			var items = toolbarItems ?? []
 			items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+			items.append(translationItem)
+			toolbarItems = items
 		}
-		items.append(translationController.makeBarButtonItem())
-
-		toolbarItems = items
 	}
 
 	@objc func toggleTranslation(_ sender: Any) {
