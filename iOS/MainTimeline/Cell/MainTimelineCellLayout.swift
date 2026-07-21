@@ -243,29 +243,23 @@ struct MainTimelineDefaultCellLayout: MainTimelineCellLayout {
 									height: TimelineStyle.faviconDimension)
 		currentPoint.x = self.iconImageRect.maxX + TimelineStyle.faviconMarginRight
 
-		// ③ 最右边:缩略图。**没有图时宽度按 0 算,文字自然铺满到最右边。**
 		let rightEdge = width - (Self.cellPadding.right + insets.right)
-		let thumbnailBlockWidth: CGFloat
-		if cellData.thumbnail != nil {
-			thumbnailBlockWidth = TimelineStyle.thumbnailDimension + TimelineStyle.thumbnailMarginLeft
-			self.thumbnailRect = CGRect(x: rightEdge - TimelineStyle.thumbnailDimension,
-										y: currentPoint.y,
-										width: TimelineStyle.thumbnailDimension,
-										height: TimelineStyle.thumbnailDimension)
-		} else {
-			thumbnailBlockWidth = 0
-			self.thumbnailRect = CGRect.zero
-		}
+		let fullWidth = max(0, rightEdge - currentPoint.x)
+		self.separatorRect = CGRect(x: currentPoint.x, y: 0, width: fullWidth, height: 0)
 
-		let textAreaWidth = max(0, rightEdge - currentPoint.x - thumbnailBlockWidth)
-		self.separatorRect = CGRect(x: currentPoint.x, y: 0, width: rightEdge - currentPoint.x, height: 0)
-
-		// ② 顶行:源名 + 时间 + 星标
-		let feedLine = Self.nnwRectsForFeedLine(cellData, currentPoint, textAreaWidth)
+		// ② 顶行:源名 + 时间 + 星标。
+		// **顶行占满整宽**(一直到最右边),时间因此贴齐右边缘、在缩略图正上方 ——
+		// 而不是被缩略图挤到左边去。这是用户 2026-07-21 提的第 2 点。
+		let feedLine = Self.nnwRectsForFeedLine(cellData, currentPoint, fullWidth)
 		self.feedNameRect = feedLine.feedName
 		self.dateRect = feedLine.date
 		self.starRect = feedLine.star
 		currentPoint.y += feedLine.height + TimelineStyle.feedLineBottomMargin
+		let textTop = currentPoint.y
+
+		// ③ 缩略图只和「标题+正文」这一块并排,不占顶行。没有图时宽度按 0 算,文字铺满。
+		let hasThumbnail = cellData.thumbnail != nil
+		let textAreaWidth = max(0, fullWidth - (hasThumbnail ? TimelineStyle.thumbnailDimension + TimelineStyle.thumbnailMarginLeft : 0))
 
 		// 标题(最多 3 行)
 		let (headlineRect, headlineLinesUsed) = Self.nnwRectForHeadline(cellData, currentPoint, textAreaWidth)
@@ -276,6 +270,17 @@ struct MainTimelineDefaultCellLayout: MainTimelineCellLayout {
 
 		// 正文(补足到总共 4 行,至少 1 行)
 		self.summaryRect = Self.nnwRectForBody(cellData, currentPoint, textAreaWidth, headlineLinesUsed: headlineLinesUsed)
+
+		// 缩略图在「标题+正文」这块高度上**垂直居中**。
+		// 文字比图矮时图会往下探出去,下面算总高度时会兜住。
+		if hasThumbnail {
+			let textBlockHeight = max(0, [self.titleRect, self.summaryRect].maxY() - textTop)
+			let side = TimelineStyle.thumbnailDimension
+			let y = textTop + max(0, (textBlockHeight - side) / 2.0)
+			self.thumbnailRect = CGRect(x: rightEdge - side, y: y, width: side, height: side)
+		} else {
+			self.thumbnailRect = CGRect.zero
+		}
 
 		// 整行高度取「文字块」「favicon」「缩略图」里最靠下的那个
 		let contentBottom = [self.titleRect, self.summaryRect, self.dateRect, self.feedNameRect,

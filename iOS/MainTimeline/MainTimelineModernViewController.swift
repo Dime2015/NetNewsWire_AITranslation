@@ -866,9 +866,10 @@ private extension MainTimelineModernViewController {
 	}
 
 	private func iconImageFor(_ article: Article) -> IconImage? {
-		if !showIcons {
-			return nil
-		}
+		// [界面] 原本这里会在 showIcons 为 false 时返回 nil。
+		// 而 showIcons 是跟着「要不要显示源名」走的 —— 打开单个订阅源时上游默认隐藏源名,
+		// 图标就被一起关掉了,于是单个源的列表里没有 favicon。
+		// 本 fork 的新布局要求**所有列表都显示 favicon**,所以这里不再看 showIcons。
 		return article.iconImage()
 	}
 
