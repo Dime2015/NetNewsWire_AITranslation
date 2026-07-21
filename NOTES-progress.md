@@ -78,8 +78,23 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 正文页那条通道用探针验证过是真的通的(先刷成琥珀色底,确认变了,再清空),
 不是"写了空 CSS 看起来没坏"。踩到的坑记在 L23。
 
-**下一步**:等用户截图 → 只改 `TimelineStyle.swift` 和 `nnw_appearance.js` 里的值。
-**不要再去动上游文件。**
+**已完成的第一项改动(2026-07-21):文章列表改成 Reeder 式布局。**
+
+```
+[favicon] [ 源名 ……………………… 时间 ★ ]  [缩略图]
+          [ 标题(粗,最多 3 行)      ]
+          [ 正文(补足到共 4 行)      ]
+```
+
+规则:
+- favicon 那一列**永远占位**(没有图标也留着),否则混合列表里各行文字起点会参差不齐
+- 源名**所有列表都显示**(单个源里也显示,用户要求格式统一)
+- 标题最多 3 行,正文 = 4 − 标题实际行数,至少 1 行
+- 右侧缩略图取自正文首图;**没有图时文字铺满到最右边**
+- 已读/未读**不再用小圆点**,改为**整行浓淡**(`TimelineStyle.readAlpha`)
+- 设置里的「文章列表布局」(图标大小/行数两个滑块)已藏起来 —— 新布局写死了
+
+**下一步**:继续等用户截图 → 优先只改 `TimelineStyle.swift` 和 `nnw_appearance.js` 里的值。
 
 ### 1. ⏳ 用户想装到真机 —— 有硬前置条件,别直接跑就以为能行
 
@@ -172,7 +187,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 | 文件 | 职责 |
 |---|---|
-| `iOS/MainTimeline/TimelineStyle.swift` | 文章列表的全部可调数值(字号、间距、颜色)。**调列表外观只改这里** |
+| `iOS/MainTimeline/TimelineStyle.swift` | 文章列表的全部可调数值(字号、间距、颜色、行数、缩略图尺寸)。**调列表外观只改这里** |
+| `iOS/MainTimeline/ArticleThumbnail.swift` | 从正文 HTML 抽首图 + 交给 ImageDownloader 下载(见 L28) |
 | `Shared/Appearance/nnw_appearance.js` | 正文页的覆盖样式层。**调正文外观只改这里的 CSS** |
 | `iOS/Resources/Assets.xcassets/AppIconCustom.appiconset/` | 本 fork 的 app 图标。上游的 `AppIcon.appiconset` 未动,靠 xcconfig 一行指过来(见 L24) |
 

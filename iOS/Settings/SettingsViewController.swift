@@ -200,6 +200,12 @@ final class SettingsViewController: UITableViewController {
 			// The Full Screen Articles row is iPhone-only.
 			// [翻译] 本 fork 新增:末尾多两行(翻译模型、翻译 API Key),所以 + 2
 			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 2
+		case .timeline:
+			// [界面] 藏掉最后一行「文章列表布局」(图标大小 / 行数两个滑块)。
+			// 本 fork 的列表改成了固定布局:favicon 固定小尺寸、标题+正文固定共 4 行,
+			// 那两个滑块已经不起作用,留着会让人以为是 bug。
+			// 它正好是 TimelineRow 的最后一行(rawValue = 4),所以减 1 即可,不需要重排索引。
+			return super.tableView(tableView, numberOfRowsInSection: section) - 1
 		case .appearance:
 			// [翻译] 本 fork 新增:末尾多一行「界面语言」
 			return super.tableView(tableView, numberOfRowsInSection: section) + 1

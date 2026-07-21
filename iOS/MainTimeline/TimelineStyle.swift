@@ -87,4 +87,94 @@ enum TimelineStyle {
 	static var feedNameColor: UIColor { .secondaryLabel }
 	/// 条与条之间那条细分隔线的颜色。
 	static var separatorColor: UIColor { .separator.withAlphaComponent(0.1) }
+
+	// MARK: - ↓↓↓ 以下是 2026-07-21 改成 Reeder 式布局后新增的 ↓↓↓
+	//
+	// 新的一行长这样:
+	//
+	//   [favicon] [ 源名 ……………………… 时间 ★ ]  [缩略图]
+	//             [ 标题(粗,最多 3 行)      ]
+	//             [ 正文(补足到共 4 行)      ]
+	//
+	// 上面那批老常量里,有几个新布局已经不用了(unreadCircle*、star* 那几个),
+	// 但**没有删** —— 上游文件里还引用着它们,删了要动上游更多地方。
+
+	// MARK: 行数规则
+
+	/// 标题 + 正文加起来最多显示几行。
+	static let totalTextLines = 4
+	/// 标题最多占几行(剩下的给正文,正文至少 1 行)。
+	static let maxTitleLines = 3
+	/// 正文最少显示几行。
+	static let minSummaryLines = 1
+
+	// MARK: favicon(每行最左边那个小图标)
+
+	/// favicon 边长。上游默认是 36(medium),新布局要"缩小"。
+	static let faviconDimension = CGFloat(24)
+	/// favicon 圆角。
+	static let faviconCornerRadius = CGFloat(5)
+	/// favicon 右边到文字区的距离。
+	static let faviconMarginRight = CGFloat(10)
+	/// favicon 相对整行顶部的垂直微调(与顶行文字对齐)。
+	static let faviconTopOffset = CGFloat(0)
+
+	// MARK: 缩略图(每行最右边)
+
+	/// 缩略图边长(正方形)。**没有图时这块宽度按 0 算,文字自动铺满。**
+	static let thumbnailDimension = CGFloat(72)
+	/// 缩略图圆角。
+	static let thumbnailCornerRadius = CGFloat(8)
+	/// 缩略图左边到文字区的距离。
+	static let thumbnailMarginLeft = CGFloat(10)
+
+	// MARK: 三段文字
+
+	/// 顶行:订阅源名。
+	static var feedLineFont: UIFont { UIFont.preferredFont(forTextStyle: .caption1) }
+	/// 顶行:时间。
+	static var timeFont: UIFont { UIFont.preferredFont(forTextStyle: .caption1) }
+	/// 标题(加粗)。
+	static var headlineFont: UIFont {
+		let base = UIFont.preferredFont(forTextStyle: .subheadline)
+		let descriptor = base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor
+		return UIFont(descriptor: descriptor, size: 0)
+	}
+	/// 正文摘要。
+	static var bodyFont: UIFont { UIFont.preferredFont(forTextStyle: .subheadline) }
+
+	/// 顶行底部到标题的距离。
+	static let feedLineBottomMargin = CGFloat(3)
+	/// 标题底部到正文的距离。
+	static let headlineBottomMargin = CGFloat(2)
+	/// 时间左边至少留这么多空,免得和很长的源名贴在一起。
+	static let timeMarginLeft = CGFloat(8)
+
+	// MARK: 颜色(新布局)
+
+	/// 顶行源名的颜色。
+	static var feedLineColor: UIColor { .secondaryLabel }
+	/// 时间的颜色。
+	static var timeColor: UIColor { .secondaryLabel }
+	/// 标题颜色。
+	static var headlineColor: UIColor { .label }
+	/// 正文摘要颜色。
+	static var bodyColor: UIColor { .secondaryLabel }
+
+	// MARK: 已读 / 未读
+
+	// 用户 2026-07-21 确认:**去掉未读小圆点**,改用整行浓淡区分。
+	// 浓 = 未读,淡 = 已读。
+
+	/// 未读文章整行的不透明度。
+	static let unreadAlpha = CGFloat(1.0)
+	/// 已读文章整行的不透明度。调这个值就能改"已读有多淡"。
+	static let readAlpha = CGFloat(0.45)
+
+	// MARK: 星标
+
+	/// 星标图形边长(显示在顶行时间的右边)。
+	static let starDimensionInFeedLine = CGFloat(13)
+	/// 星标与时间之间的距离。
+	static let starMarginLeft = CGFloat(4)
 }

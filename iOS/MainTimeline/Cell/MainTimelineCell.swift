@@ -24,6 +24,8 @@ final class MainTimelineCell: UICollectionViewCell {
 	private lazy var iconView = IconView()
 	private lazy var indicatorView = IconView()
 	private let topSeparator = UIView()
+	/// [界面] 右侧的正文首图缩略图。没有图时隐藏,文字会铺满整宽。
+	private let thumbnailView = MainTimelineCell.thumbnailImageView()
 
 	var cellData: MainTimelineCellData! {
 		didSet {
@@ -44,6 +46,10 @@ final class MainTimelineCell: UICollectionViewCell {
 	override func prepareForReuse() {
 		super.prepareForReuse()
 		indicatorView.isHidden = true
+		// [界面] 复用前复位,否则上一篇文章的缩略图/浓淡会串到下一篇上
+		thumbnailView.image = nil
+		thumbnailView.isHidden = true
+		contentView.alpha = TimelineStyle.unreadAlpha
 	}
 
 	override func preferredLayoutAttributesFitting(_ layoutAttributes: UICollectionViewLayoutAttributes) -> UICollectionViewLayoutAttributes {
@@ -62,7 +68,9 @@ final class MainTimelineCell: UICollectionViewCell {
 		feedNameView.setFrameIfNotEqual(layout.feedNameRect)
 		dateView.setFrameIfNotEqual(layout.dateRect)
 		iconView.setFrameIfNotEqual(layout.iconImageRect)
-		indicatorView.setFrameIfNotEqual(cellData.starred ? layout.starRect : layout.unreadIndicatorRect)
+		// [界面] 星标现在在顶行时间旁边;未读圆点已弃用(改为整行浓淡)
+		indicatorView.setFrameIfNotEqual(layout.starRect)
+		thumbnailView.setFrameIfNotEqual(layout.thumbnailRect) // [界面]
 		topSeparator.frame = CGRect(x: layout.separatorRect.minX, y: 0, width: layout.separatorRect.width, height: 1.0 / traitCollection.displayScale)
 	}
 
@@ -141,10 +149,27 @@ private extension MainTimelineCell {
 		return label
 	}
 
+	/// [界面] 缩略图控件。
+	/// ⚠️ 尺寸完全由 layoutSubviews 里的 frame 决定,**绝不依赖图片撑出来的固有尺寸** ——
+	/// 图还没下载好时它是空的,靠固有尺寸会被算成 0 宽而永久塌陷(见 NOTES-lessons L19)。
+	static func thumbnailImageView() -> UIImageView {
+		let imageView = UIImageView()
+		imageView.contentMode = .scaleAspectFill
+		imageView.clipsToBounds = true
+		imageView.layer.cornerRadius = TimelineStyle.thumbnailCornerRadius
+		imageView.layer.cornerCurve = .continuous
+		imageView.backgroundColor = .clear
+		return imageView
+	}
+
 	func commonInit() {
 		isAccessibilityElement = true
 		topSeparator.backgroundColor = TimelineStyle.separatorColor // [界面]
-		for view in [titleView, summaryView, dateView, feedNameView, iconView, indicatorView, topSeparator] {
+		// [界面] favicon 加圆角
+		iconView.layer.cornerRadius = TimelineStyle.faviconCornerRadius
+		iconView.layer.cornerCurve = .continuous
+		iconView.clipsToBounds = true
+		for view in [titleView, summaryView, dateView, feedNameView, iconView, indicatorView, topSeparator, thumbnailView] {
 			contentView.addSubview(view)
 			view.isAccessibilityElement = false
 		}
@@ -170,35 +195,39 @@ private extension MainTimelineCell {
 		}
 	}
 
+	// [界面] 2026-07-21 改为 Reeder 式布局:
+	// 顶行源名(所有列表都显示)、中间加粗标题、下面正文摘要、右侧缩略图。
 	func updateSubviews() {
-		titleView.font = MainTimelineDefaultCellLayout.titleFont
-		titleView.attributedText = cellData.attributedTitle.applyingBaseFont(MainTimelineDefaultCellLayout.titleFont)
+		titleView.font = TimelineStyle.headlineFont
+		titleView.attributedText = cellData.attributedTitle.applyingBaseFont(TimelineStyle.headlineFont)
 
-		summaryView.font = MainTimelineDefaultCellLayout.summaryFont
+		summaryView.font = TimelineStyle.bodyFont
 		summaryView.text = cellData.summary
 
-		dateView.font = MainTimelineDefaultCellLayout.dateFont
+		dateView.font = TimelineStyle.timeFont
 		dateView.text = cellData.dateString
 
-		switch cellData.showFeedName {
-		case .feed:
-			feedNameView.font = MainTimelineDefaultCellLayout.feedNameFont
-			feedNameView.text = cellData.feedName
-			feedNameView.isHidden = false
-		case .byline:
-			feedNameView.font = MainTimelineDefaultCellLayout.feedNameFont
-			feedNameView.text = cellData.byline
-			feedNameView.isHidden = false
-		case .none:
-			feedNameView.isHidden = true
-		}
+		// [界面] 源名恒显 —— 用户要求"所有地方格式统一",不再看 showFeedName。
+		feedNameView.font = TimelineStyle.feedLineFont
+		feedNameView.text = cellData.feedName
+		feedNameView.isHidden = cellData.feedName.isEmpty
 
-		if cellData.showIcon, let iconImage = cellData.iconImage {
+		// [界面] 位置永远留着(布局里已占位),只是没图时不画。
+		if let iconImage = cellData.iconImage {
 			iconView.iconImage = iconImage
 			iconView.isHidden = false
 		} else {
 			iconView.iconImage = nil
 			iconView.isHidden = true
+		}
+
+		// [界面] 缩略图:没有就藏起来,布局那边宽度会按 0 算,文字自动铺满。
+		if let thumbnail = cellData.thumbnail {
+			thumbnailView.image = thumbnail
+			thumbnailView.isHidden = false
+		} else {
+			thumbnailView.image = nil
+			thumbnailView.isHidden = true
 		}
 
 		updateColors()
@@ -209,28 +238,33 @@ private extension MainTimelineCell {
 
 	func updateColors() {
 		// [界面] 颜色改为引用 TimelineStyle,要调请改那个文件。
-		titleView.textColor = TimelineStyle.titleColor
-		summaryView.textColor = cellData.title.isEmpty ? TimelineStyle.summaryColorWhenNoTitle : TimelineStyle.summaryColor
-		dateView.textColor = TimelineStyle.dateColor
-		feedNameView.textColor = TimelineStyle.feedNameColor
+		titleView.textColor = TimelineStyle.headlineColor
+		summaryView.textColor = TimelineStyle.bodyColor
+		dateView.textColor = TimelineStyle.timeColor
+		feedNameView.textColor = TimelineStyle.feedLineColor
+		updateReadAppearance()
+	}
+
+	/// [界面] 已读 / 未读的区分方式:**整行浓淡**(用户 2026-07-21 确认)。
+	/// 浓 = 未读,淡 = 已读。原来的未读小蓝点已不再使用。
+	func updateReadAppearance() {
+		guard cellData != nil else {
+			contentView.alpha = TimelineStyle.unreadAlpha
+			return
+		}
+		contentView.alpha = cellData.read ? TimelineStyle.readAlpha : TimelineStyle.unreadAlpha
 	}
 
 	func updateIndicatorView() {
-		guard cellData != nil else {
+		// [界面] 这个控件现在只用来显示星标(在顶行时间旁边)。
+		// 未读状态改由整行浓淡表示,不再画小圆点。
+		guard cellData != nil, cellData.starred else {
 			indicatorView.isHidden = true
 			return
 		}
-		if cellData.starred {
-			indicatorView.iconImage = Assets.Images.starredFeed
-			indicatorView.tintColor = Assets.Colors.star
-			indicatorView.isHidden = false
-		} else if !cellData.read {
-			indicatorView.iconImage = Assets.Images.unreadCellIndicator
-			indicatorView.tintColor = Assets.Colors.secondaryAccent
-			indicatorView.isHidden = false
-		} else {
-			indicatorView.isHidden = true
-		}
+		indicatorView.iconImage = Assets.Images.starredFeed
+		indicatorView.tintColor = Assets.Colors.star
+		indicatorView.isHidden = false
 	}
 
 	func updateAccessibilityLabel() {

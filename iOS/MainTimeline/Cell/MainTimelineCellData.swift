@@ -29,8 +29,13 @@ import Images
 	let starred: Bool
 	let numberOfLines: Int
 	let iconSize: IconSize
+	/// [界面] 正文首图的缩略图。没有图、或图还没下载好时为 nil,
+	/// 此时列表把文字铺满整宽(见 ArticleThumbnail.swift)。
+	let thumbnail: UIImage?
 
-	init(article: Article, showFeedName: ShowFeedName, feedName: String?, byline: String?, iconImage: IconImage?, showIcon: Bool, numberOfLines: Int, iconSize: IconSize) {
+	init(article: Article, showFeedName: ShowFeedName, feedName: String?, byline: String?, iconImage: IconImage?, showIcon: Bool, numberOfLines: Int, iconSize: IconSize, thumbnail: UIImage? = nil) {
+
+		self.thumbnail = thumbnail // [界面]
 
 		self.accountID = article.accountID
 		self.articleID = article.articleID
@@ -86,6 +91,7 @@ import Images
 		self.starred = false
 		self.numberOfLines = 0
 		self.iconSize = .medium
+		self.thumbnail = nil // [界面]
 	}
 
 }

@@ -640,6 +640,9 @@ private extension MainTimelineModernViewController {
 		// lets us know that it’s time to request an image.
 		NotificationCenter.default.addObserver(self, selector: #selector(faviconDidBecomeAvailable(_:)), name: .htmlMetadataAvailable, object: nil)
 
+		// [界面] 正文首图下载完成后重刷可见行,让缩略图显示出来。与上面 favicon 同一套机制。
+		NotificationCenter.default.addObserver(self, selector: #selector(faviconDidBecomeAvailable(_:)), name: .imageDidBecomeAvailable, object: nil)
+
 		NotificationCenter.default.addObserver(self, selector: #selector(timelineIconSizeDidChange(_:)), name: .timelineIconSizeDidChange, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(timelineNumberOfLinesDidChange(_:)), name: .timelineNumberOfLinesDidChange, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(contentSizeCategoryDidChange), name: UIContentSizeCategory.didChangeNotification, object: nil)
@@ -856,7 +859,9 @@ private extension MainTimelineModernViewController {
 		let iconImage = iconImageFor(article)
 		let showFeedNames = coordinator?.showFeedNames ?? ShowFeedName.none
 		let showIcon = showIcons && iconImage != nil
-		let cellData = MainTimelineCellData(article: article, showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize)
+		// [界面] 多传一个正文首图的缩略图;取不到就是 nil,列表会把文字铺满。
+		let thumbnail = ArticleThumbnail.shared.thumbnail(for: article)
+		let cellData = MainTimelineCellData(article: article, showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, thumbnail: thumbnail)
 		return cellData
 	}
 
