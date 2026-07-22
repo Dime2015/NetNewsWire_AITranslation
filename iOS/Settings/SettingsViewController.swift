@@ -178,6 +178,15 @@ final class SettingsViewController: UITableViewController {
 		wrapperView.addSubview(buildLabel)
 		tableView.tableFooterView = wrapperView
 
+		// [翻译] 从子页返回时,重新算一遍每行右侧的说明文字。
+		//
+		// 为什么需要这一行:「翻译模型」「翻译 API Key」「界面语言」这几行右侧的文字
+		// 是在 cellForRowAt 里算出来的。从子页 pop 回来时,那些 cell 还在屏幕上、
+		// 没被回收,UIKit 不会重新问一遍,于是显示的还是进子页之前的旧文字 ——
+		// 表现就是「明明把 API Key 删了,这里还写着已设置」。
+		// 放在方法最末尾,不影响上面那些开关的赋值。
+		tableView.reloadData()
+
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -256,7 +265,9 @@ final class SettingsViewController: UITableViewController {
 		case .articles where indexPath.row == translationAPIKeyRowIndex:
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
 			cell.textLabel?.text = "翻译 API Key"
-			cell.detailTextLabel?.text = TranslationConfigStore.hasAPIKey ? "已设置" : "未设置"
+			// [翻译] 判断口径:key 有值 **且** 服务地址合法(留空=用默认,算合法)才叫「已设置」。
+			// 原来只看 key 有没有值,服务地址被写成乱码时也报「已设置」,是在骗人。
+			cell.detailTextLabel?.text = TranslationConfigStore.isFullyConfigured ? "已设置" : "未设置"
 			cell.accessoryType = .disclosureIndicator
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)

@@ -20,13 +20,26 @@ struct TranslationConfig: Sendable {
 	let baseURL: String
 	let apiKey: String
 
-	/// 拼出真正要请求的地址。
+	/// 拼出真正要请求的地址。地址不合法时返回 nil。
+	///
+	/// ⚠️ **必须自己检查 scheme,不能只看 `URL(string:)` 返不返回 nil**(2026-07-22 实测):
+	/// `URL(string:)` 对 "abc"、"abc def"、"openrouter.ai/api/v1"(少了 https://)
+	/// **统统返回非 nil** —— 它们被当成合法的「相对地址」了。
+	/// 光判断 `!= nil` 等于没判断:用户把服务地址写错时不会被拦下来,
+	/// 而是拿一个相对地址去发请求,最后报一个看不懂的网络错误。
+	/// 所以这里额外要求它是 http / https 的绝对地址。
 	var chatCompletionsURL: URL? {
 		var base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
 		while base.hasSuffix("/") {
 			base.removeLast()
 		}
-		return URL(string: base + "/chat/completions")
+		guard let url = URL(string: base + "/chat/completions"),
+			  let scheme = url.scheme?.lowercased(),
+			  scheme == "http" || scheme == "https",
+			  url.host?.isEmpty == false else {
+			return nil
+		}
+		return url
 	}
 }
 
@@ -67,6 +80,18 @@ enum TranslationConfigStore {
 
 	static var hasAPIKey: Bool {
 		!(apiKey ?? "").isEmpty
+	}
+
+	/// 配置是不是**真的能拿去用**:API Key 有值,且服务地址能拼出一个合法的请求地址。
+	///
+	/// 为什么不直接用 `hasAPIKey`:设置页那行「已设置 / 未设置」是给用户看
+	/// 「翻译到底能不能用」的,只看 key 有值不够 —— 服务地址被改成乱码时,
+	/// key 填得再对也发不出请求,那时候还显示「已设置」是在骗人。
+	///
+	/// ⚠️ 服务地址**留空是合法的**(留空 = 用默认的 OpenRouter,页面底部说明里写着),
+	/// 所以「只填了 key、地址留空」这个最常见的正确配置,这里照样返回 true。
+	static var isFullyConfigured: Bool {
+		configurationProblem == nil
 	}
 
 	// MARK: - 服务地址

@@ -263,8 +263,13 @@ import UIKit
 extension TranslationAPIKeyViewController: UITextFieldDelegate {
 
 	func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+		// [交互] 这里**只收起键盘,不保存**。
+		//
+		// 原来这一行还调了 save() —— 那是「右上勾保存 / 左上取消」改造之前
+		// 「离开就自动保存」时代的残留。留着它的后果:用户按一下键盘的「完成」键
+		// 就已经写进钥匙串了,之后再点左上角「取消」根本取消不掉,
+		// 等于「点叉不保存」这个承诺是假的。落库只由 saveTapped(右上角的勾)负责。
 		textField.resignFirstResponder()
-		save()
 		return true
 	}
 }

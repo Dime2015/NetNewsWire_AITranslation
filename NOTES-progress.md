@@ -160,6 +160,40 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 **改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
 `SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。
 
+### ✅ 修「翻译 API Key 一直显示已设置」+ 两个连带问题(2026-07-22)
+
+用户报告:把已填的 API Key 删掉后,设置页那行**不管点勾还是点叉都还写着「已设置」**。
+用户猜是「key 和服务地址填了一个就算已设置」——**不是**,判断只看 key。真原因是三条:
+
+1. **主因:那行没被重算**(教训 L47)。「已设置 / 未设置」只在 `cellForRowAt` 里算,
+   从子页 pop 回来时 cell 还在屏幕上、UIKit 不会重新问一遍,显示的是进去之前的旧文字。
+   `SettingsViewController.viewWillAppear` 里更新了主题 / 配色等一堆 label,**唯独没有 `reloadData()`**。
+   「翻译模型」「界面语言」两行有同样的毛病(值总是非空,所以不容易察觉)。
+   → **修法:`viewWillAppear` 末尾加一行 `tableView.reloadData()`**(上游文件,方法末尾追加,带 `[翻译]` 标记)。
+2. **「勾保存」改造的漏网之鱼**(同 L47)。`TranslationAPIKeyViewController.textFieldShouldReturn`
+   里还留着 `save()` —— 按键盘的「完成」键就落库了,之后点「取消」根本取消不掉,
+   **「点叉不保存」这个承诺一直是假的**。→ 删掉那句,落库只由右上角的勾负责。
+   已 grep 确认其余设置子页没有同类残留(命中的 4 个都是上游账户页,A 级禁区,不碰)。
+3. **顺带查出:服务地址的合法性判断形同虚设**(教训 L48)。原来用
+   `chatCompletionsURL != nil`,而实测 `URL(string:)` 对 `abc`、`abc def`、
+   `openrouter.ai/api/v1`(少了 https://)、空串**统统返回非 nil**(当成相对地址)。
+   影响不只是显示 —— 服务地址写错时不报「地址不合法」,而是拿相对地址去发请求、
+   报一个看不懂的网络错误。→ `chatCompletionsURL` 加上「scheme 必须是 http/https 且 host 非空」。
+   **9 个用例回归**:默认 OpenRouter / 带尾斜杠 / `http://localhost:1234/v1` 自建 /
+   别家兼容服务全部通过,5 种写错的全部拒绝(不误杀和拦得住一起量)。
+
+**关于用户提的「必须全部填写完成才算已设置」**:没有原样照做,**照做会改出新 bug** ——
+服务地址**留空是合法且推荐的**(留空 = 用默认 OpenRouter,页面底部说明里就写着),
+要求两个框都非空会把「只填 key」这个最常见的正确配置误报成「未设置」。
+改为接住用户的意图:新增 `TranslationConfigStore.isFullyConfigured`
+(= `configurationProblem == nil`,即 **key 非空 且 服务地址能拼出合法请求地址**),
+设置页那行改用它。
+
+**改动文件**:`TranslationConfig.swift`(+`isFullyConfigured`、`chatCompletionsURL` 加校验)、
+`TranslationAPIKeyViewController.swift`(去掉 return 键的 save)、
+`SettingsViewController.swift`(上游,两处:`viewWillAppear` 末尾一行 + 判断换成 `isFullyConfigured`,净 +12/-1)。
+双平台编译通过,已装模拟器。
+
 ### ✅ 设置类子页交互统一为「右上勾保存 / 左上取消」(2026-07-22,已验收)
 
 用户要求:所有「填 / 选东西」的设置子页,统一成 **左上角「取消」= 不保存退回;右上角「勾」= 保存并返回**
@@ -516,12 +550,13 @@ python3 i18n/inject.py zh-Hans      # 让译文生效
 
 按 L3 的纪律:**先真机跑一次,让 Xcode 报错说话,不要凭推测下结论。**
 
-### 2. 上一轮三个新功能只做了编译验证,用户尚未在界面上实测
+### 2. ✅ 上一轮三个新功能已由用户实测通过(2026-07-22 销账)
 
 `078023a99` 引入的:活化石改名、API Key 连通性测试、模型榜单刷新。
-已验证:双平台编译通过;榜单解析链路用等价脚本实测 10/10 映射成功。
-**未验证:界面上点下去的实际表现,尤其失败路径**
-(故意填错 key 应报 401;断网刷新应保留原列表)。
+**用户 2026-07-22 明确反馈:三项都测过了,没问题。** 这条从 7-19 挂到此日,现已关闭。
+
+(唯一在这轮暴露的相关问题是设置页那行「已设置」不刷新,与这三项功能无关,
+ 见上方「修『翻译 API Key 一直显示已设置』」一节。)
 
 ### 3. 其余待办
 
