@@ -125,22 +125,29 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 3. **全局强调色 蓝 → 陶土红**(浅 `#C0603A` / 深 `#D47B54`):改两个 accent colorset,一次全 app
    (开关/链接/未读圈/图标/箭头/对勾 + storyboard 全变)。
 4. **选中高亮 蓝 → 淡暖"药丸"**:`VibrantTableViewCell` 用 `PillSelectionBackgroundView` + 不再翻白字。
-5. **设置页 + 各表格子页**:主设置页、配色、界面语言、翻译模型、翻译 API Key、主题、账户详情、添加账户 ——
+5. **设置区(表格子页)**:主设置页、配色、界面语言、翻译模型、翻译 API Key、主题、账户详情、添加账户 ——
    每页固定两行(`applyPaperStyle(to: tableView)` + `willDisplay` 里 `applyPaperStyle(to: cell)`)。
+6. **设置区(SwiftUI 信息页)**:错误日志、活动日志、About(VStack/ScrollView 类,`.nnwPaperBackground()`);
+   活化石、iCloud 统计、**账户统计**(List 类,`.nnwPaperList()` + 逐行 `.nnwPaperRow()`)。
+   ⚠️ 枚举设置子页要**grep `SettingsViewController` 里所有 push/present 的目标**,别只按目录扫 ——
+   账户统计 `AccountStatsView` 就在 `iOS/AccountStats/` 目录(不在 Settings/),按目录扫会漏。
+
+**设置区到此基本收尾**(所有从设置能点到的子页都暖化了)。SwiftUI 侧的复用件也进了 `AppAppearance`:
+`nnwPaperBackground()`(非 List 页整屏暖底)、`nnwPaperList()`(List 隐藏系统底+暖底)、`nnwPaperRow()`(行暖底+去分隔线)。
 
 关键手法(见教训 L44/L45/L46):
-- 系统列表底色设 **`config.backgroundColor`** / UITableView 设 `tableView.backgroundColor`;
+- 系统列表底色设 **`config.backgroundColor`** / UITableView 设 `tableView.backgroundColor` / SwiftUI List 用 `.nnwPaperList()`;
+- SwiftUI List 的行不会自动跟着变暖,要逐行/逐 Section 加 `.nnwPaperRow()`(否则白卡片浮在暖底上);
 - insetGrouped 行分隔线在 `itemSeparatorHandler` 里关;时间线 cell 自绘线改 `TimelineStyle.separatorColor`;
 - **不要**用全局 `UINavigationBarAppearance` 铺色(冲掉大标题+副标题,L45);
 - 强调色真源在 colorset(storyboard 按名引,L46)。
 
-**🔜 待做的页**:SwiftUI 信息页(错误日志/活动日志/账户统计/活化石/About —— 需 SwiftUI 背景处理,另一套);
-其它账户类型的添加表单(Feedbin/NewsBlur/CloudKit/ReaderAPI)、feed 详情页(同两行表格,随时补);
-正文阅读页(WebView,走 `nnw_appearance.js` 单独对齐)。
+**🔜 待做的页**:其它账户类型的添加表单(Feedbin/NewsBlur/CloudKit/ReaderAPI)、feed 详情页
+(同两行表格,随时补)、"文章列表布局"customizer(已被藏起,collection view);
+**正文阅读页**(WebView,走 `nnw_appearance.js` 单独对齐 —— 用户天天看,优先级高)。
 
-**本轮新增/改动文件**:`AppAppearance.swift`(调色板+药丸+复用件)、两个 accent colorset、
-`VibrantTableViewCell.swift`(药丸选中+不翻白)、`SettingsViewController.swift` 及 7 个表格子页
-(ColorPalette/ArticleThemes/AccountInspector/AddAccount + 3 个翻译/语言 picker),均带 `[外观]` 标记。
+**改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
+`SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。
 
 ### ✅ 翻译体验五项优化:已完成并经用户验收(2026-07-22)
 

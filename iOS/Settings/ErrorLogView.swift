@@ -38,6 +38,8 @@ struct ErrorLogView: View {
 			Divider()
 			helpLinkFooter
 		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.nnwPaperBackground()	// [外观] 暖纸底
 		.navigationTitle("Error Log")
 		.toolbar {
 			ToolbarItem(placement: .topBarTrailing) {

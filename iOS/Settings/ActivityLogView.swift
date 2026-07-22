@@ -38,6 +38,8 @@ struct ActivityLogView: View {
 			Divider()
 			helpLinkFooter
 		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.nnwPaperBackground()	// [外观] 暖纸底
 		.navigationTitle(NSLocalizedString("Activity Log", comment: "Activity Log screen title"))
 		.toolbar {
 			ToolbarItem(placement: .topBarTrailing) {

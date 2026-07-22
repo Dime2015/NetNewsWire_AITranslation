@@ -28,6 +28,7 @@ struct DinosaursView: View {
 			Section {
 				ForEach(model.rows) { dinosaur in
 					DinosaurRowView(dinosaur: dinosaur)
+						.nnwPaperRow()			// [外观] 行暖底 + 去分隔线
 						.swipeActions(edge: .trailing, allowsFullSwipe: false) {
 							Button {
 								dinosaurPendingDeletion = dinosaur
@@ -101,6 +102,7 @@ struct DinosaursView: View {
 				helpLinkFooter
 			}
 		}
+		.nnwPaperList()			// [外观] 暖纸底 + 隐藏系统灰底
 		.navigationTitle("🦖 Dinosaurs")
 		.navigationBarTitleDisplayMode(.inline)
 		.task {

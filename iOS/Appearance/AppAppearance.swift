@@ -32,6 +32,7 @@
 #if os(iOS)
 
 import UIKit
+import SwiftUI
 
 enum AppAppearance {
 
@@ -103,6 +104,34 @@ enum AppAppearance {
 	@MainActor
 	static func makePillSelectionBackgroundView() -> UIView {
 		PillSelectionBackgroundView()
+	}
+}
+
+// MARK: - SwiftUI 侧(信息页那批是 SwiftUI,不是 UIKit 表格)
+
+extension AppAppearance {
+	/// 暖纸背景的 SwiftUI 版。
+	static var paperBackgroundColor: Color { Color(uiColor: paperBackground) }
+}
+
+extension View {
+
+	/// [外观] 给 SwiftUI 页(VStack / ScrollView 这类)铺暖纸底(铺满整屏,含安全区外)。
+	func nnwPaperBackground() -> some View {
+		background(AppAppearance.paperBackgroundColor.ignoresSafeArea())
+	}
+
+	/// [外观] 给 SwiftUI List 铺暖纸底 + 隐藏系统灰底。
+	/// ⚠️ 行/Section 还要各自加 `.nnwPaperRow()`,否则行仍是白卡片浮在暖底上。
+	func nnwPaperList() -> some View {
+		scrollContentBackground(.hidden)
+			.background(AppAppearance.paperBackgroundColor.ignoresSafeArea())
+	}
+
+	/// [外观] 把 List 里的行 / Section 刷成暖纸底 + 去掉分隔线(配合 nnwPaperList 用)。
+	func nnwPaperRow() -> some View {
+		listRowBackground(AppAppearance.paperBackgroundColor)
+			.listRowSeparator(.hidden)
 	}
 }
 

@@ -21,19 +21,20 @@ struct CloudKitStatsView: View {
 	var body: some View {
 		List {
 			if model.cleanUpStatus.isActive {
-				cleanUpStatusSection
-				cleanUpResultsSection
-				cleanUpNavigationSection
+				cleanUpStatusSection.nnwPaperRow()			// [外观]
+				cleanUpResultsSection.nnwPaperRow()
+				cleanUpNavigationSection.nnwPaperRow()
 			} else {
-				statusSection
+				statusSection.nnwPaperRow()
 				if let fetchError = model.fetchStatus.fetchError {
 					Section {
 						Text(fetchError.localizedDescription)
 							.foregroundStyle(.red)
 					}
+					.nnwPaperRow()
 				} else {
-					statusRecordsSection
-					contentRecordsSection
+					statusRecordsSection.nnwPaperRow()
+					contentRecordsSection.nnwPaperRow()
 				}
 				if model.canCleanUp {
 					Section {
@@ -43,14 +44,17 @@ struct CloudKitStatsView: View {
 					} footer: {
 						helpLinkFooter
 					}
+					.nnwPaperRow()
 				} else {
 					Section {
 					} footer: {
 						helpLinkFooter
 					}
+					.nnwPaperRow()
 				}
 			}
 		}
+		.nnwPaperList()			// [外观] 暖纸底 + 隐藏系统灰底
 		.navigationTitle(NSLocalizedString("iCloud Storage Stats", comment: "iCloud Storage Stats window title"))
 		.toolbar {
 			ToolbarItem(placement: .topBarTrailing) {

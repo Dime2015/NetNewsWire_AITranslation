@@ -27,6 +27,7 @@ struct AccountStatsView: View {
 				Section {
 					ForEach(statItems(databaseSizeBytes: row.databaseSizeBytes, feedCount: row.feedCount, folderCount: row.folderCount, articleCount: row.articleCount, statusesCount: row.statusesCount, unreadCount: row.unreadCount, starredCount: row.starredCount)) { item in
 						statsRow(item, isBold: false)
+							.nnwPaperRow()			// [外观] 行暖底 + 去分隔线
 					}
 					.foregroundStyle(row.isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
 				} header: {
@@ -38,6 +39,7 @@ struct AccountStatsView: View {
 				Section {
 					ForEach(statItems(databaseSizeBytes: totals.databaseSizeBytes, feedCount: totals.feedCount, folderCount: totals.folderCount, articleCount: totals.articleCount, statusesCount: totals.statusesCount, unreadCount: totals.unreadCount, starredCount: totals.starredCount)) { item in
 						statsRow(item, isBold: true)
+							.nnwPaperRow()			// [外观]
 					}
 				} header: {
 					Text(NSLocalizedString("Totals", comment: "Totals section"))
@@ -50,6 +52,7 @@ struct AccountStatsView: View {
 				}
 				.frame(maxWidth: .infinity)
 				.disabled(isVacuuming)
+				.nnwPaperRow()			// [外观]
 			} footer: {
 				VStack(spacing: 8) {
 					Text(NSLocalizedString("Vacuuming may make databases faster.", comment: "Vacuum explanation"))
@@ -66,6 +69,7 @@ struct AccountStatsView: View {
 				helpLinkFooter
 			}
 		}
+		.nnwPaperList()			// [外观] 暖纸底 + 隐藏系统灰底
 		.navigationTitle(NSLocalizedString("Account Stats", comment: "Account Stats screen title"))
 		.toolbar {
 			ToolbarItem(placement: .topBarTrailing) {

@@ -63,7 +63,7 @@ struct AboutView: View {
 			.scenePadding(.horizontal)
 		}
 		.multilineTextAlignment(.center)
-		.background(Color(uiColor: .systemBackground))
+		.nnwPaperBackground()	// [外观] 暖纸底(原为 .systemBackground 白)
 		.navigationTitle(Text(verbatim: "About NetNewsWire"))
     }
 }
