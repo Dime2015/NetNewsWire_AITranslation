@@ -180,24 +180,32 @@ enum TimelineStyle {
 	/// 星标与时间之间的距离。
 	static let starMarginLeft = CGFloat(4)
 
-	// MARK: 顶部水印(单一订阅源页的图标钢印,见 TimelineFeedWatermark.swift)
+	// MARK: 单源页顶部头部区(logo + 源名 + 氛围背景,见 TimelineFeedHeader.swift)
 
-	// 2026-07-22 用户确认的设计:源图标放大、灰度、极淡地"印"在顶部大标题区,
-	// 右侧一部分出血到屏幕外;只做单一源页、只做浅色模式。
-	// **调水印样式只改这一段的数字**,不用碰实现文件。
+	// 2026-07-22 第二版(第一版"水印"被用户否掉:太浅太糊):
+	// 顶部约 1/4 屏让出来,清晰 logo 偏上、源名偏下,背景是 logo 放大重模糊的氛围层。
+	// 高清图标由 FeedHeroIconLoader 抓取。**调头部样式只改这一段的数字**。
 
 	/// 总开关。回退时改成 false 即可,一行都不用删。
-	static let watermarkEnabled = true
-	/// 印痕浓度(0=看不见,1=原图灰度)。水印的本分是低调,建议 0.06~0.14 之间试。
-	static let watermarkAlpha = CGFloat(0.10)
-	/// 图宽 = 屏宽 × 此值。
-	static let watermarkWidthRatio = CGFloat(0.85)
-	/// 水平方向留在屏内的比例(其余出血到右侧屏幕外)。0.80 = 露 80%、裁 20%。
-	static let watermarkVisibleFraction = CGFloat(0.80)
-	/// 图案顶边相对屏幕顶的偏移(负值 = 往上出血一点)。
-	static let watermarkTopOffset = CGFloat(-12)
-	/// 纵向渐隐从图高的这个比例处开始(到图底完全消失)。
-	static let watermarkFadeStart = CGFloat(0.45)
-	/// 往下滚多少点,水印完全淡出(文章行会从印上滑过,所以必须快速让位)。
-	static let watermarkScrollFadeDistance = CGFloat(110)
+	static let headerEnabled = true
+	/// 头部区高度 = 屏高 × 此值(用户点名"约四分之一")。
+	static let headerHeightFraction = CGFloat(0.25)
+	/// 清晰 logo 的边长(pt)。
+	static let headerLogoSize = CGFloat(96)
+	/// logo 圆角 = 边长 × 此值(0.24 ≈ app 图标的圆角味道;0.5 = 圆形)。
+	static let headerLogoCornerRadiusRatio = CGFloat(0.24)
+	/// logo 顶边在「安全区以下的可用高度」里的位置比例(越小越靠上)。
+	static let headerLogoTopRatio = CGFloat(0.06)
+	/// logo 和源名之间的间距(pt)。
+	static let headerTitleSpacing = CGFloat(14)
+	/// 氛围背景的模糊程度:先把图缩到这么多像素宽再放大(越小越糊)。这层就该糊,别心疼。
+	static let headerAmbientDownsampleWidth = CGFloat(12)
+	/// 氛围背景上纸色蒙层的不透明度(越大越素净,越小背景颜色越透出来)。
+	static let headerAmbientVeilAlpha = CGFloat(0.72)
+	/// 氛围背景从这个高度比例开始渐变融入列表底色(到底边完全融入)。
+	static let headerAmbientFadeStart = CGFloat(0.55)
+	/// 往下滚多少点,头部完全淡出、导航栏小标题接棒。
+	static let headerScrollFadeDistance = CGFloat(140)
+	/// 高清图标的最低像素(最长边):达标才收,不达标退回上游 144px 小图。
+	static let headerMinHeroPixels = CGFloat(180)
 }

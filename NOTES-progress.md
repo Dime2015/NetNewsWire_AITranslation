@@ -109,85 +109,37 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ## 四、当前悬而未决(接手者先看这里)
 
-### 🚧 单源文章列表页的「图标水印」(2026-07-22 实现完毕,待用户美学验收)
+### 🚧 单源文章列表页的「源头部区」v2(2026-07-22,待用户美学验收)
 
-**需求**(用户提出,参考 `external resources/screenshots/订阅页参考.PNG` 的 Apple Music 艺人页,
-但按本 app 的纸张审美转译):进入**单一订阅源**的文章列表时,顶部大标题区显示该源图标的
-放大、灰度、极淡的「钢印水印」,右侧约 20% 出血到屏幕外。
+**演进过程**:v1 是"钢印水印"(灰度极淡+右侧出血),用户实测否掉:「太浅、太糊,效果很差」。
+v2 按用户新指示重做:**顶部约 1/4 屏让出来 —— 清晰 logo 偏上、源名偏下**,
+背景是 logo 放大重模糊的氛围层(参照 Apple Music,模糊是手法,低分辨率在这层无所谓)。
 
-**用户确认过的边界**:只做单一源页(文件夹/今天/未读/星标不显示);先只做浅色模式
-(深色下整个隐藏,效果不好就回退);出血比例可调。
+**清晰度的解法是「抓真高清图」,不是 AI 超分**(新增 `FeedHeroIconLoader.swift`):
+候选顺序 feed.iconURL → HTMLMetadata 里最大的 apple-touch-icon → 根目录约定路径
+`/apple-touch-icon.png` → 非 .ico 的原始 favicon;最长边 ≥180px 才收;
+下载走上游 `Downloader`(统一通道,L33);磁盘缓存 `Caches/FeedHeroIcons/` + 会话内负缓存。
+**实测**:Daring Fireball 秒内抓到 314px(根目录约定路径命中),144 兜底 → 高清自动热替换,
+日志 `[头图]` 全程可查。
 
-**实现**(方案 A,已装模拟器,算法逐像素验证通过):
-- 新文件 `iOS/MainTimeline/TimelineFeedWatermark.swift`(全部逻辑);
-  可调数值在 `TimelineStyle.swift` 末尾「顶部水印」段(浓度 0.10、宽 0.85 屏宽、
-  屏内露 0.80、渐隐起点 0.45、滚动 110pt 淡出;**回退 = watermarkEnabled 改 false**)
-- 上游改动**仅 1 行**:`MainTimelineModernViewController.updateNavigationBarTitle` 里调
-  `nnwUpdateFeedWatermark()`(viewWillAppear 和 SceneCoordinator 切源都汇到该方法,必经之地)
-- 关键工程事实:①图标素材上限 **144px**(下载器落盘前就缩了,`IconImage.maxIconPixelSize`),
-  所以走"软水印"路线,糊感转为晕染;②白底 favicon 靠 **multiply 预烘焙**消掉白底
-  (背景是已知纯色,数学等价、可逐像素验证);③时间线 cell 正常态背景是 `.clear`,
-  文章行会**穿过**水印而不是盖住它,所以滚动渐隐是必须项(KVO contentOffset,零上游改动);
-  ④图标晚到靠监听 4 个「图标就绪」通知补装
-- **已知风险(等截图定夺)**:深底色图标(如 Daring Fireball)灰度后是一整块深色方块,
-  multiply 只能消白底消不了深底,可能像一张"灰贴纸" —— 若难看,候选对策:
-  检测深底反相 / 对深底降浓度 / 接受现状
+**交互**:单源页隐藏系统大标题(头部区自己画标题);滚动 140pt 内头部渐隐、
+导航栏小标题接棒(Apple Music 行为);换源滚回顶部、同源返回保持位置;
+文件夹/智能源页零变化(恢复系统大标题)。深浅色都支持(明暗切换重烘焙)。
 
-**验收方式**:用户开三类源各截图 —— 白底字形类(Benedict Evans)、深底色块类(Daring
-Fireball)、照片封面类(硅谷101/Acquired);另验证滚动淡出、文件夹页无水印。
+**文件**:新增 `TimelineFeedHeader.swift`(头部区全部逻辑)、`FeedHeroIconLoader.swift`(高清抓取);
+参数在 `TimelineStyle.swift`「单源页顶部头部区」段(**回退 = headerEnabled 改 false**)。
+上游钩子仍是 updateNavigationBarTitle 里那 1 行(改叫 nnwUpdateFeedHeader)。
+⚠️ 另一处上游改动:`configureCollectionView` 里我们自己那行 [外观] 背景色改为
+`config.backgroundColor = .clear` + `collectionView.backgroundColor = 纸色`
+(原 config 层盖住 backgroundView,层次改为「纸色→头部→行」,L44 的续篇)。
 
-### 🚧 界面重做成 Reeder 式暖色风格(2026-07-22 开始,分页推进中)
+**本轮顺带修掉的大坑(L49)**:模拟器出现两个 Babel —— 真机配置把构建产物 bundle id
+改成了 com.wenbopan,装机脚本还写死 com.ranchero,每次 install 都装出分身。
+已删空分身(用户数据在 com.ranchero,87 源/2499 篇,无损),脚本改为「存在即覆盖」。
 
-**目标**:参照 Reeder(用户在 `external resources/screenshots/` 放了参考图,含
-`设置界面.PNG` 明确写着 "About Reeder"),把 app 做成**暖色纸张背景、无边界、无色块**的风格。
-**分步做,每页验收后再下一页**;圆形图标等元素用户还在考虑,先只做配色。
-
-**取色(命令行从截图取样,不是肉眼)**:浅色纸张 `#F3F0EB`、深色 `#1E1E1E`。
-用户明确要求:**整片无边界、无颜色分野**(不要卡片色块、不要行分隔线)。
-
-**✅ 基础设施已建成(用户要求:以后换色只改一个地方)**:`iOS/Appearance/AppAppearance.swift`,两层:
-- **调色板层 `Palette`(色号唯一真源)**:`paperLight/paperDark`(暖纸)、`selectionLight/selectionDark`(淡暖选中)
-  + `rgb(0xRRGGBB)` 工具。**换色只改这层数字**。
-- **语义层 + 复用件**:`paperBackground`、`selectionHighlight`;
-  `applyPaperStyle(to: tableView)`(暖底+关分隔线)、`applyPaperStyle(to: cell)`(cell 暖底 + 药丸选中)、
-  `PillSelectionBackgroundView`(统一四角圆角的"药丸"选中高亮,可调圆角/内缩)。
-- ⚠️ **强调色(陶土红)不在这里** —— 真源是 `primaryAccentColor` / `secondaryAccentColor` 两个 colorset
-  (5 个 storyboard 按名直接引它,代码走不通,见 L46)。想调强调色改那两个 colorset 的 RGB。
-
-**✅ 已完成并验收的页**:
-1. **订阅列表页(MainFeed)** —— 暖底 + 无卡片色块 + 无分隔线 + 大标题/副标题保留。
-2. **文章列表 / 时间线(MainTimeline)** —— `config.backgroundColor` 暖底;分隔线是 cell 自绘的 `topSeparator`,
-   改 `TimelineStyle.separatorColor = .clear`(零上游改动,一值可恢复)。
-3. **全局强调色 蓝 → 陶土红**(浅 `#C0603A` / 深 `#D47B54`):改两个 accent colorset,一次全 app
-   (开关/链接/未读圈/图标/箭头/对勾 + storyboard 全变)。
-4. **选中高亮 蓝 → 淡暖"药丸"**:`VibrantTableViewCell` 用 `PillSelectionBackgroundView` + 不再翻白字。
-5. **设置区(表格子页)**:主设置页、配色、界面语言、翻译模型、翻译 API Key、主题、账户详情、添加账户 ——
-   每页固定两行(`applyPaperStyle(to: tableView)` + `willDisplay` 里 `applyPaperStyle(to: cell)`)。
-6. **设置区(SwiftUI 信息页)**:错误日志、活动日志、About(VStack/ScrollView 类,`.nnwPaperBackground()`);
-   活化石、iCloud 统计、**账户统计**(List 类,`.nnwPaperList()` + 逐行 `.nnwPaperRow()`)。
-   ⚠️ 枚举设置子页要**grep `SettingsViewController` 里所有 push/present 的目标**,别只按目录扫 ——
-   账户统计 `AccountStatsView` 就在 `iOS/AccountStats/` 目录(不在 Settings/),按目录扫会漏。
-
-**设置区到此基本收尾**(所有从设置能点到的子页都暖化了)。SwiftUI 侧的复用件也进了 `AppAppearance`:
-`nnwPaperBackground()`(非 List 页整屏暖底)、`nnwPaperList()`(List 隐藏系统底+暖底)、`nnwPaperRow()`(行暖底+去分隔线)。
-
-关键手法(见教训 L44/L45/L46):
-- 系统列表底色设 **`config.backgroundColor`** / UITableView 设 `tableView.backgroundColor` / SwiftUI List 用 `.nnwPaperList()`;
-- SwiftUI List 的行不会自动跟着变暖,要逐行/逐 Section 加 `.nnwPaperRow()`(否则白卡片浮在暖底上);
-- insetGrouped 行分隔线在 `itemSeparatorHandler` 里关;时间线 cell 自绘线改 `TimelineStyle.separatorColor`;
-- **不要**用全局 `UINavigationBarAppearance` 铺色(冲掉大标题+副标题,L45);
-- 强调色真源在 colorset(storyboard 按名引,L46)。
-
-7. **正文阅读页(WebView)**:在 `nnw_appearance.js` 的注入样式里加 `html, body { background }`
-   (浅 `#F3F0EB` / 深 `#1E1E1E`,`@media prefers-color-scheme` 跟随);WebViewController 设
-   `underPageBackgroundColor`(过度滚动/加载不露白)。⚠️ **暖纸色第二处**:CSS 读不了 Swift 调色板,
-   改暖纸色要连 `nnw_appearance.js` 一起改(同强调色在 colorset)。
-
-**🔜 待做的页**:其它账户类型的添加表单(Feedbin/NewsBlur/CloudKit/ReaderAPI)、feed 详情页
-(同两行表格,随时补)、"文章列表布局"customizer(已被藏起,collection view)。
-
-**改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
-`SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。
+**已知未定案**:①头部区 logo 位置修正(从 window 取安全区)编译装机后**未能自截时间线页
+验证**(app 恢复到了订阅列表),等用户截图;②氛围背景在浅色下很含蓄,浓淡由
+`headerAmbientVeilAlpha` 调;③CoreImage 在本工程编译必超时(L50),模糊用的缩放法。
 
 ### ✅ 修「翻译 API Key 一直显示已设置」+ 两个连带问题(2026-07-22,已验收)
 

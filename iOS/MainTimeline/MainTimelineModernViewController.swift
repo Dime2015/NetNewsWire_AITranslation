@@ -290,7 +290,7 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			label.isUserInteractionEnabled = ((coordinator?.timelineFeed as? PseudoFeed) == nil)
 			label.sizeToFit()
 		}
-		nnwUpdateFeedWatermark()	// [外观] 单源页顶部水印(实现在 TimelineFeedWatermark.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
+		nnwUpdateFeedHeader()	// [外观] 单源页顶部头部区(实现在 TimelineFeedHeader.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
 	}
 
 	func updateNavigationBarSubtitle(_ text: String) {
@@ -680,7 +680,15 @@ private extension MainTimelineModernViewController {
 	private func configureCollectionView(_ dataSource: UICollectionViewDiffableDataSource<Int, Article>) {
 		var config = UICollectionLayoutListConfiguration(appearance: .plain)
 		config.showsSeparators = false
-		config.backgroundColor = AppAppearance.paperBackground	// [外观] 暖色纸张背景(时间线原本走系统白;同 L44,要设 config 的底色而非 collectionView 的)
+		// [外观] 暖色纸张背景。
+		// ⚠️ 2026-07-22 改动:原来这里设的是 `config.backgroundColor = 暖纸色`(按 L44 的结论)。
+		// 但那一层**盖在 `collectionView.backgroundView` 之上**,把装在 backgroundView 里的
+		// 顶部水印整个压住了(见 TimelineFeedWatermark.swift)。
+		// 现在改成:列表配置层透明,纸色由 collectionView 自己的 backgroundColor 提供 ——
+		// 于是层次变成「纸色 → 水印 → 文章行」,三者都在。
+		// 纸色仍然由 collectionView.backgroundColor 兜底,所以即使没有水印也不会露出系统灰。
+		config.backgroundColor = .clear
+		collectionView?.backgroundColor = AppAppearance.paperBackground
 		config.headerMode = .none
 		config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
 			guard let self else {

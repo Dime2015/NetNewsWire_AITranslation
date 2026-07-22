@@ -17,14 +17,36 @@
 # 任一不一致就整目录覆盖。
 
 set -e
+# 模拟器上长期使用的那个 app 的身份。**所有数据(87 个订阅源、已读状态、Keychain 里的
+# API Key)都在它名下**,所以不能换成别的,换了等于从空 app 重来。
 BUNDLE_ID="com.ranchero.NetNewsWire.iOS-DEBUG"
 
 BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator \
   -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
 [ -z "$BUILT" ] && { echo "❌ 找不到构建产物,先编译"; exit 1; }
 
+# ⚠️ 2026-07-22 修正(见 NOTES-lessons L49):构建产物的 bundle id 未必等于上面那个。
+# 为了装真机,仓库外的 DeveloperSettings.xcconfig 把 ORGANIZATION_IDENTIFIER 改成了
+# com.wenbopan(见 T6),于是编译出来的 app 身份变成 com.wenbopan.NetNewsWire.iOS-DEBUG。
+# 原来这里无条件跑 `simctl install`,后果是**每次装机都在模拟器上多装出一个同名分身**
+# (主屏出现两个 Babel),而真正被覆盖、被启动的仍是 com.ranchero 那个 ——
+# 这也是原来「每次都报『系统注册的仍是旧容器』」的真正原因:
+# **装的和比的根本是两个不同的 app**,不是 simctl 的毛病(原 L41 的判断需要更正)。
+BUILT_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$BUILT/Info.plist" 2>/dev/null || echo "")
+
 xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null || true
-xcrun simctl install booted "$BUILT"
+
+if xcrun simctl get_app_container booted "$BUNDLE_ID" app >/dev/null 2>&1; then
+  # 目标 app 已经在模拟器上了 —— **不要再 install**,否则会按构建产物的 id 装出一个分身。
+  # 直接把新代码覆盖进它的容器(下面的 rsync 干这件事)。
+  [ "$BUILT_ID" != "$BUNDLE_ID" ] && \
+    echo "ℹ️  构建产物的 id 是 $BUILT_ID,与模拟器上使用的 $BUNDLE_ID 不同 —— 跳过 install,改为直接覆盖(避免装出分身)"
+else
+  # 全新模拟器,目标 app 还不存在 → 正常装一次,并以构建产物的 id 为准
+  echo "ℹ️  模拟器上还没有这个 app,首次安装"
+  xcrun simctl install booted "$BUILT"
+  BUNDLE_ID="$BUILT_ID"
+fi
 
 ACTIVE=$(xcrun simctl get_app_container booted "$BUNDLE_ID" app)
 
