@@ -413,12 +413,24 @@ extension MainTimelineModernViewController {
 	// MARK: 图标迟到的补装
 
 	@objc private func iconMightBeAvailable(_ note: Notification) {
-		// 只在「还没画出过东西」时补装。
-		// 这个判断之所以够用,是因为拿不到真图标时我们**故意不设 renderedKey**;
-		// 而高清素材到货有 fetchHeroIfNeeded 的回调专门负责刷新,不归这里管。
-		// (别改成"每次通知都刷新":图标通知在启动时会密集地来几十条,那样会把
-		//  同一个源反复重渲染 —— 实测一次进页面渲染了 4 遍。)
-		guard renderedKey == nil, currentFeed != nil else { return }
+		guard let feed = currentFeed else { return }
+
+		// ① 新信息(尤其是**网页元数据**)到货,可能让之前失败的高清抓取变得可行。
+		//    apple-touch-icon 和 og:image 两类候选都来自元数据,而元数据是内存缓存、
+		//    启动时为空 —— 第一次抓图时它们根本不存在。所以这里要再捅一次。
+		//    抓取器自己有「已有高清 / 正在抓 / 失败次数超限」三道闸门,不会重复干活。
+		if FeedHeroIconLoader.shared.cachedHero(for: feed) == nil {
+			FeedHeroIconLoader.shared.fetchHeroIfNeeded(for: feed) { [weak self] _ in
+				guard let self, self.currentFeed?.feedID == feed.feedID else { return }
+				self.renderedKey = nil
+				self.refresh()
+			}
+		}
+
+		// ② 还没画出过东西时才补画。
+		//    (别改成"每次通知都刷新":图标通知在启动时会密集地来几十条,那样会把
+		//     同一个源反复重渲染 —— 实测一次进页面渲染了 4 遍。)
+		guard renderedKey == nil else { return }
 		refresh()
 	}
 }

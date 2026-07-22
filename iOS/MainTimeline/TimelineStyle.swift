@@ -220,6 +220,9 @@ enum TimelineStyle {
 	/// 低于它会把所有候选试一遍,挑最大的一张(实测很多站的 iconURL 是 32px 缩略图,
 	/// 而去掉尺寸后缀的同一张图有 512px)。
 	static let headerPreferredHeroPixels = CGFloat(512)
+	/// 候选图的最大宽高比:超过就判定"不是身份图"(多半是文章横幅),打三折参与比较。
+	/// 封面 / 头像 / logo 几乎都是正方形,所以 1.35 已经很宽松。
+	static let headerMaxHeroAspect = CGFloat(1.35)
 	/// 非白像素还要占到这个比例才够格当大图 —— 挡掉白底 logo
 	/// (白底图拉满全宽 = 顶部一片白,比没有图还难看;它们走主色渐变反而好看)。
 	static let headerMinCoverage = CGFloat(0.35)

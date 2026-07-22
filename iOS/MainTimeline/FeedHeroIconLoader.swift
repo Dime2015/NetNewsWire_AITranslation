@@ -41,10 +41,24 @@ import RSWeb
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FeedHeroIconLoader")
 
 	private var memoryCache = [String: UIImage]()
-	/// 「这个源确实拿不到高清图」的负缓存。只在内存里 —— 下次启动会重试,
-	/// 因为站点随时可能补上图标,而重试的成本被 Downloader 的短期缓存压得很低。
-	private var negativeCache = Set<String>()
+	/// 每个源已经尝试过几次(**成功失败都计数**,保证一定会终止)。
+	///
+	/// ⚠️ 这里**不能用「失败一次就永久放弃」的负缓存**(2026-07-22 踩过):
+	/// 候选地址有一部分来自 `HTMLMetadataDownloader.cachedMetadata`,而那是个
+	/// **内存缓存,app 启动时是空的** —— 第一次问必然返回 nil 并异步去取。
+	/// 也就是说**第一次抓图时,apple-touch-icon 和 og:image 这两类候选根本还不存在**。
+	/// 一次就放弃的话,元数据到货后永远轮不到重试,YouTube / 播客这类
+	/// (iconURL、faviconURL 全空,只能靠 og:image)就永远退回纯色渐变。
+	/// 所以改成计数,允许在新信息到货时再试几次;上限防止无限重试。
+	private var attemptCounts = [String: Int]()
+	private static let maxAttempts = 3
 	private var inFlight = Set<String>()
+	/// 「这一轮抓取还没结束,但期间又有新信息到货」——本轮结束后要再抓一次的源。
+	/// ⚠️ 没有它会有一个很隐蔽的竞态(2026-07-22 实测踩到):
+	/// 网页元数据是异步取的,它到货的通知**正好落在第一轮抓取进行中**,
+	/// 被 inFlight 闸门挡掉;而这轮结束后不会再有通知,于是 og:image 那条路
+	/// 永远轮不到 —— YouTube / 播客类源就一直停在纯色渐变。
+	private var retryRequested = Set<String>()
 
 	/// 磁盘缓存目录:Caches/FeedHeroIcons/。系统清 Caches 时一并回收,丢了就重抓。
 	private let diskDirectory: URL
@@ -69,26 +83,37 @@ import RSWeb
 		return nil
 	}
 
-	/// 需要时发起抓取;抓到(且够大)时回调一次。已有缓存 / 负缓存 / 正在抓,都不重复干活。
+	/// 需要时发起抓取;抓到**更大的一张**时回调。
+	///
+	/// ⚠️ 注意这里是「不够好就继续升级」,不是「拿到一张就收工」(2026-07-22 踩过):
+	/// 硅谷101 第一轮只能拿到 192px 的 apple-touch-icon(白底,拉满全宽很难看),
+	/// 如果把它当最终答案缓存下来,那张 1400×1400 的播客封面就永远轮不到 ——
+	/// 因为封面地址来自网页元数据,而元数据是异步到货的,第一轮压根还不存在。
+	/// 所以:只要当前手里的图还没到 headerPreferredHeroPixels,就允许再抓(有次数上限)。
 	func fetchHeroIfNeeded(for feed: Feed, onSuccess: @escaping @MainActor (UIImage) -> Void) {
 		let key = feed.feedID
-		guard cachedHero(for: feed) == nil,
-			  !negativeCache.contains(key),
-			  !inFlight.contains(key) else {
+
+		// 手里已有的图有多大?已经够好就彻底收工。
+		let currentPixels: CGFloat = cachedHero(for: feed).map { max($0.size.width, $0.size.height) * $0.scale } ?? 0
+		guard currentPixels < TimelineStyle.headerPreferredHeroPixels else { return }
+		guard (attemptCounts[key] ?? 0) < Self.maxAttempts else { return }
+
+		if inFlight.contains(key) {
+			retryRequested.insert(key)	// 等这轮结束再抓一次(见字段说明里的竞态)
 			return
 		}
-		inFlight.insert(key)
 
 		let candidates = candidateURLs(for: feed)
 		guard !candidates.isEmpty else {
-			negativeCache.insert(key)
-			inFlight.remove(key)
+			attemptCounts[key, default: 0] += 1
 			return
 		}
 
+		inFlight.insert(key)
+		attemptCounts[key, default: 0] += 1	// 成功失败都计数,保证一定会终止
+
 		Task { [weak self] in
 			guard let self else { return }
-			defer { self.inFlight.remove(key) }
 
 			// ⚠️ 不是「第一个达标的就用」,而是**挑最大的那张**(2026-07-22 用户反馈"太糊"后改)。
 			// 原因:候选里常常前面的小、后面的大 —— 比如 WordPress 的 iconURL 给的是
@@ -97,6 +122,7 @@ import RSWeb
 			var bestImage: UIImage?
 			var bestData: Data?
 			var bestPixels: CGFloat = 0
+			var bestScore: CGFloat = 0
 			var bestURL: String = ""
 
 			for url in candidates {
@@ -107,31 +133,53 @@ import RSWeb
 						continue
 					}
 					// UIImage(data:) 的 scale 是 1,size 就是像素数
-					let px = max(image.size.width, image.size.height)
-					if px > bestPixels {
-						bestPixels = px
+					let longSide: CGFloat = max(image.size.width, image.size.height)
+					let shortSide: CGFloat = max(min(image.size.width, image.size.height), 1)
+					let aspect: CGFloat = longSide / shortSide
+
+					// ⚠️ 打分要**对非方图打折**,不能只比大小:
+					// og:image 有时是一张 1200×630 的文章横幅(而且会随最新文章变),
+					// 那不是这个源的"身份图"。封面 / 头像 / logo 几乎都是方的,
+					// 所以宽高比离 1 太远的即使像素多,也不该赢过一张正经的方形图标。
+					let isSquarish: Bool = aspect <= TimelineStyle.headerMaxHeroAspect
+					let score: CGFloat = isSquarish ? longSide : longSide * 0.3
+
+					if score > bestScore {
+						bestScore = score
+						bestPixels = longSide
 						bestImage = image
 						bestData = data
 						bestURL = url.absoluteString
 					}
-					if px >= TimelineStyle.headerPreferredHeroPixels {
-						break	// 已经够好,不用再试剩下的候选
+					if isSquarish, longSide >= TimelineStyle.headerPreferredHeroPixels {
+						break	// 又大又方,不用再试剩下的候选
 					}
 				} catch {
 					continue	// 单个候选失败很正常(404 等),静静试下一个
 				}
 			}
 
-			if let image = bestImage, let data = bestData, bestPixels >= TimelineStyle.headerMinHeroPixels {
+			self.inFlight.remove(key)
+
+			// 只有「够大」且「比手里那张更大」才替换
+			if let image = bestImage, let data = bestData,
+			   bestPixels >= TimelineStyle.headerMinHeroPixels, bestPixels > currentPixels {
 				try? data.write(to: self.diskURL(for: key))
 				self.memoryCache[key] = image
-				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」选中 \(Int(bestPixels))px(\(candidates.count) 个候选里最大):\(bestURL, privacy: .public)")
+				let better: String = currentPixels > 0 ? "(替换掉原来的 \(Int(currentPixels))px)" : ""
+				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」选中 \(Int(bestPixels))px\(better, privacy: .public),\(candidates.count) 个候选里最大:\(bestURL, privacy: .public)")
 				onSuccess(image)
-				return
+			} else {
+				let attempts = self.attemptCounts[key] ?? 0
+				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」\(candidates.count) 个候选最大才 \(Int(bestPixels))px,没有更好的(第 \(attempts)/\(Self.maxAttempts) 次)")
 			}
 
-			Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」\(candidates.count) 个候选最大才 \(Int(bestPixels))px,不够用,退回小图")
-			self.negativeCache.insert(key)
+			// 这轮进行期间有新信息到货(多半是网页元数据)→ 立刻用新的候选再抓一次。
+			// 上面的两道 guard(够好了 / 次数用尽)会让它自然停下。
+			if self.retryRequested.remove(key) != nil {
+				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」抓取期间有新信息到货,再抓一次")
+				self.fetchHeroIfNeeded(for: feed, onSuccess: onSuccess)
+			}
 		}
 	}
 
@@ -197,6 +245,21 @@ import RSWeb
 				append(upgraded)
 			}
 			append(favicon)
+		}
+
+		// 5. **主页的 og:image**,放在最后 —— 它常常是这里面最大的一张。
+		//    2026-07-22 实测:播客(fireside)的 og:image 就是 1400×1400 的封面本身,
+		//    YouTube 频道页的 og:image 就是 900×900 的频道头像。
+		//    而这三类源(硅谷101 / Marques Brownlee / Links TV)的 iconURL、faviconURL
+		//    **全是空的**,不走这条路就只能退回纯色渐变。
+		//    元数据是上游已经缓存在本地的,**不产生任何额外网络请求**。
+		//    ⚠️ 放最后 + 上面「≥headerPreferredHeroPixels 就早停」的规则合起来 =
+		//    图标够大时根本轮不到 og:image,不会打扰本来就正常的源。
+		if let homePage = feed.homePageURL,
+		   let metadata = HTMLMetadataDownloader.shared.cachedMetadata(for: homePage) {
+			for image in metadata.openGraphImages {
+				append(image.secureURL ?? image.url)
+			}
 		}
 
 		return result
