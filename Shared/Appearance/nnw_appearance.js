@@ -67,6 +67,21 @@
 			}
 		}
 
+		/* [外观] 正文页背景对齐 app 的暖纸色。
+		   本 <style> 插在 <head>、在主题 stylesheet.css 之后,所以盖过主题的 body 背景;
+		   只改背景、不动主题的文字色 —— 默认主题下深色文字在暖纸上依然清晰。
+		   ⚠️ 这两个色值是暖纸色的**第二处**(正文是 WebView,CSS 读不了 Swift 的
+		   AppAppearance 调色板)。改暖纸色时,这里要和 AppAppearance.Palette 一起改:
+		   浅 #F3F0EB / 深 #1E1E1E。 */
+		html, body {
+			background-color: #F3F0EB;
+		}
+		@media (prefers-color-scheme: dark) {
+			html, body {
+				background-color: #1E1E1E;
+			}
+		}
+
 		/* 藏掉 Substack 塞在每张图下面的两个按钮。
 		   它们是 Substack 自己的「Restack(转发)」和「放大看图」,
 		   随 RSS 内容一起发过来,但 Substack 的 JS 不在我们这儿,所以**点了没有任何反应**。

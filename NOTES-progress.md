@@ -142,9 +142,13 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 - **不要**用全局 `UINavigationBarAppearance` 铺色(冲掉大标题+副标题,L45);
 - 强调色真源在 colorset(storyboard 按名引,L46)。
 
+7. **正文阅读页(WebView)**:在 `nnw_appearance.js` 的注入样式里加 `html, body { background }`
+   (浅 `#F3F0EB` / 深 `#1E1E1E`,`@media prefers-color-scheme` 跟随);WebViewController 设
+   `underPageBackgroundColor`(过度滚动/加载不露白)。⚠️ **暖纸色第二处**:CSS 读不了 Swift 调色板,
+   改暖纸色要连 `nnw_appearance.js` 一起改(同强调色在 colorset)。
+
 **🔜 待做的页**:其它账户类型的添加表单(Feedbin/NewsBlur/CloudKit/ReaderAPI)、feed 详情页
-(同两行表格,随时补)、"文章列表布局"customizer(已被藏起,collection view);
-**正文阅读页**(WebView,走 `nnw_appearance.js` 单独对齐 —— 用户天天看,优先级高)。
+(同两行表格,随时补)、"文章列表布局"customizer(已被藏起,collection view)。
 
 **改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
 `SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。

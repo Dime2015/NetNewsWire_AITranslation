@@ -586,6 +586,8 @@ private extension WebViewController {
 				// us from easily swiping between WKWebViews.  This hack fixes that.
 				webView.scrollView.contentInset = UIEdgeInsets(top: 0, left: -1, bottom: 0, right: 0)
 
+				webView.underPageBackgroundColor = AppAppearance.paperBackground	// [外观] 过度滚动/加载时露出的底色 = 暖纸(正文内容背景由 nnw_appearance.js 的 CSS 管)
+
 				webView.scrollView.setZoomScale(1.0, animated: false)
 
 				self.view.setNeedsLayout()
