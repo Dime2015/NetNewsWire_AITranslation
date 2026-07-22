@@ -136,3 +136,89 @@ enum FeedIconColorAnalyzer {
 		return succeeded ? buffer : nil
 	}
 }
+
+// MARK: - 由主题色推导「读得清的标题颜色」
+
+extension FeedIconColorAnalyzer {
+
+	/// 把订阅源的主题色变成一个**能安全用在纸色背景上**的标题颜色。
+	///
+	/// ⚠️ 2026-07-22 用户最初的设想是「浅色模式下比主题色**亮**一号、深色模式下**深**一号」,
+	/// **这个方向是反的**,实测数字可证(对比度,越大越清楚):
+	///
+	/// | 源 | 浅色模式 原色 → 亮一号 | 浅色模式 原色 → 暗一号 |
+	/// |---|---|---|
+	/// | Lawfare 墨绿 | 5.6:1 → **2.7:1** ❌ | 5.6:1 → 12.4:1 ✅ |
+	/// | 硅谷101 橙 | 2.8:1 → **2.2:1** ❌ | 2.8:1 → 4.5:1 ✅ |
+	///
+	/// 原因很直白:标题落在头图**最下方最淡的位置**,那里几乎就是纸色本身。
+	/// 浅色模式背景接近白,字必须更**深**;深色模式背景接近黑,字必须更**亮**。
+	///
+	/// 而且**固定加减一个色号也不够**:Links TV 的主题色是近黑的 #141518,
+	/// 深色模式下对比度只有 1.1:1,亮一号也才 1.3:1 —— 等于隐形。
+	/// 所以这里的规则是「**保持色相,朝墨色方向压,直到对比度达标为止**」。
+	///
+	/// - Parameters:
+	///   - brand: 源的主题色(由 analyze 得出)
+	///   - paper: 标题实际压在上面的背景色(已按明暗解析过的纸色)
+	///   - tint: 着色强度,0 = 纯墨色(黑/白),1 = 完全主题色
+	///   - minContrast: 最低对比度,达不到就继续往墨色压
+	static func readableTitleColor(brand: UIColor, paper: UIColor, tint: CGFloat, minContrast: CGFloat) -> UIColor {
+
+		// 纸是亮的就用黑墨,纸是暗的就用白墨
+		let paperIsLight: Bool = relativeLuminance(paper) > 0.5
+		let ink: UIColor = paperIsLight ? .black : .white
+
+		// 先按着色强度在「墨色」和「主题色」之间取一个基准色
+		let base: UIColor = mix(ink, brand, weightOfSecond: tint)
+		if contrastRatio(base, paper) >= minContrast {
+			return base
+		}
+
+		// 不够清楚:把基准色一点点往墨色压,压到达标为止。
+		// ink 和 paper 的对比度天然最大,所以这个循环一定会结束。
+		var step: CGFloat = 0.05
+		while step < 1 {
+			let candidate: UIColor = mix(base, ink, weightOfSecond: step)
+			if contrastRatio(candidate, paper) >= minContrast {
+				return candidate
+			}
+			step += 0.05
+		}
+		return ink
+	}
+
+	/// 两色线性混合。weightOfSecond = 0 全取 first,= 1 全取 second。
+	private static func mix(_ first: UIColor, _ second: UIColor, weightOfSecond t: CGFloat) -> UIColor {
+		var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+		var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+		guard first.getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
+			  second.getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else {
+			return first
+		}
+		let k: CGFloat = min(max(t, 0), 1)
+		return UIColor(red: r1 + (r2 - r1) * k,
+					   green: g1 + (g2 - g1) * k,
+					   blue: b1 + (b2 - b1) * k,
+					   alpha: 1)
+	}
+
+	/// WCAG 相对亮度。
+	private static func relativeLuminance(_ color: UIColor) -> CGFloat {
+		var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+		guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return 0 }
+		func channel(_ c: CGFloat) -> CGFloat {
+			c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+		}
+		return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+	}
+
+	/// WCAG 对比度比值(1:1 ~ 21:1)。
+	private static func contrastRatio(_ first: UIColor, _ second: UIColor) -> CGFloat {
+		let l1: CGFloat = relativeLuminance(first)
+		let l2: CGFloat = relativeLuminance(second)
+		let brighter: CGFloat = max(l1, l2)
+		let darker: CGFloat = min(l1, l2)
+		return (brighter + 0.05) / (darker + 0.05)
+	}
+}

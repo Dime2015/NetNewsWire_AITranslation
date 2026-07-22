@@ -247,6 +247,21 @@ extension MainTimelineModernViewController {
 		}
 
 		let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: headerView.traitCollection)
+
+		// 标题染成「这个源的主题色,但保证读得清」。
+		// 规则和方向说明见 FeedIconColorAnalyzer.readableTitleColor ——
+		// 简单说:浅色模式往深里压、深色模式往亮里提,压到对比度达标为止。
+		if let brand = analysis?.dominantColor {
+			headerView.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
+				brand: brand,
+				paper: paper,
+				tint: TimelineStyle.headerTitleTintStrength,
+				minContrast: TimelineStyle.headerTitleMinContrast
+			)
+		} else {
+			headerView.titleLabel.textColor = .label
+		}
+
 		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper)
 		headerView.setNeedsLayout()
 		renderedKey = key
@@ -470,7 +485,7 @@ extension MainTimelineModernViewController {
 		titleLabel.font = .preferredFont(forTextStyle: .largeTitle).bold()
 		titleLabel.adjustsFontSizeToFitWidth = true
 		titleLabel.minimumScaleFactor = 0.6
-		titleLabel.textAlignment = .center
+		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment	// 左 / 居中 / 右,见 TimelineStyle
 		titleLabel.numberOfLines = 2
 		titleLabel.textColor = .label
 		addSubview(titleLabel)
@@ -489,8 +504,9 @@ extension MainTimelineModernViewController {
 
 		backgroundImageView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
 
-		// 标题贴在头图区底部(最淡的位置),两侧留白给长源名折行
-		let sideMargin: CGFloat = 24
+		// 标题贴在头图区底部(最淡的位置),两侧留白给长源名折行。
+		// 对齐方式由 TimelineStyle.headerTitleAlignment 决定(左 / 居中 / 右)。
+		let sideMargin: CGFloat = TimelineStyle.headerTitleSideMargin
 		let maxWidth: CGFloat = max(bounds.width - sideMargin * 2, 1)
 		let fitted: CGSize = titleLabel.sizeThatFits(CGSize(width: maxWidth, height: CGFloat(10000)))
 		let titleHeight: CGFloat = min(fitted.height, headerHeight)

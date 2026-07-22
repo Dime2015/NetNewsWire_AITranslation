@@ -211,6 +211,25 @@ enum TimelineStyle {
 	/// 标题底边距离头图区底边的距离(pt)。
 	static let headerTitleBottomInset = CGFloat(14)
 
+	/// 标题的水平对齐。**改这一个值就能切换左 / 居中 / 右**,方便对比着挑。
+	/// 用户 2026-07-22 选了靠右(觉得更高级)。
+	static let headerTitleAlignment: NSTextAlignment = .right
+	/// 标题左右两侧的留白(pt)。
+	/// 取 20 是**有意和文章行的右边距(cellPadding.right)一致** ——
+	/// 这样右对齐时标题的右缘和每行的日期、缩略图排在同一条线上,
+	/// 读起来像"有意对齐",而不是"飘到右边去了"。
+	static let headerTitleSideMargin = CGFloat(20)
+
+	/// 标题的着色强度:**0 = 纯黑/纯白(完全不着色),1 = 完全用主题色**。
+	///
+	/// 为什么默认压到 0.35:大号粗体 + 高饱和色(比如那个橙)很容易显得廉价,
+	/// 像促销标签。压低之后是"带色调的墨" —— 远看是黑字,凑近才发现它偏墨绿或偏赭,
+	/// 这才是想要的那种含蓄。想要更浓的品牌色就往 1 调。
+	static let headerTitleTintStrength = CGFloat(0.35)
+	/// 标题与背景的最低对比度(WCAG 比值)。大号粗体 3:1 是底线,4.5:1 更舒服。
+	/// 达不到时会自动把颜色往黑(浅色模式)或往白(深色模式)压,直到达标。
+	static let headerTitleMinContrast = CGFloat(4.5)
+
 	/// 往下滚多少点,头图完全淡出、导航栏小标题接棒。
 	static let headerScrollFadeDistance = CGFloat(140)
 
