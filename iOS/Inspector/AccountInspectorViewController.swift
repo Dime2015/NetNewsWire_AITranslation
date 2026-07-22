@@ -26,6 +26,8 @@ final class AccountInspectorViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风(放在 guard 前,始终生效)
+
 		guard let account = account else { return }
 
 		nameTextField.placeholder = account.defaultName
@@ -51,6 +53,11 @@ final class AccountInspectorViewController: UITableViewController {
 
 		tableView.register(ImageHeaderView.self, forHeaderFooterViewReuseIdentifier: "SectionHeader")
 
+	}
+
+	// [外观] cell 暖底 + 药丸选中
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
 	}
 
 	override func viewWillDisappear(_ animated: Bool) {

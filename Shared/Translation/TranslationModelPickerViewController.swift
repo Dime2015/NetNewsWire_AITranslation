@@ -27,6 +27,12 @@ import UIKit
 		models = TranslationConfigStore.availableModels
 		tableView.register(UITableViewCell.self, forCellReuseIdentifier: "TranslationModelCell")
 		updateRefreshButton()
+		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风
+	}
+
+	// [外观] cell 暖底 + 药丸选中
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
 	}
 
 	// MARK: - 刷新按钮

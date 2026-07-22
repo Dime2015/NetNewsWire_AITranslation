@@ -109,34 +109,38 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 **取色(命令行从截图取样,不是肉眼)**:浅色纸张 `#F3F0EB`、深色 `#1E1E1E`。
 用户明确要求:**整片无边界、无颜色分野**(不要卡片色块、不要行分隔线)。
 
-**✅ 基础设施已建成(用户要求:以后换色只改一个地方)**:`iOS/Appearance/AppAppearance.swift`
-现在是**两层**:
-- **调色板层 `Palette`(色号唯一真源)**:`paperLight = 0xF3F0EB`、`paperDark = 0x1E1E1E`
-  + 一个 `rgb(0xRRGGBB)` 工具。**换色只改这层的数字**;以后加正文字色/强调色等就往这加一行浅+深。
-- **语义层**:`paperBackground` 指向调色板。界面代码只认 `AppAppearance.paperBackground`,不碰色号。
+**✅ 基础设施已建成(用户要求:以后换色只改一个地方)**:`iOS/Appearance/AppAppearance.swift`,两层:
+- **调色板层 `Palette`(色号唯一真源)**:`paperLight/paperDark`(暖纸)、`selectionLight/selectionDark`(淡暖选中)
+  + `rgb(0xRRGGBB)` 工具。**换色只改这层数字**。
+- **语义层 + 复用件**:`paperBackground`、`selectionHighlight`;
+  `applyPaperStyle(to: tableView)`(暖底+关分隔线)、`applyPaperStyle(to: cell)`(cell 暖底 + 药丸选中)、
+  `PillSelectionBackgroundView`(统一四角圆角的"药丸"选中高亮,可调圆角/内缩)。
+- ⚠️ **强调色(陶土红)不在这里** —— 真源是 `primaryAccentColor` / `secondaryAccentColor` 两个 colorset
+  (5 个 storyboard 按名直接引它,代码走不通,见 L46)。想调强调色改那两个 colorset 的 RGB。
 
 **✅ 已完成并验收的页**:
 1. **订阅列表页(MainFeed)** —— 暖底 + 无卡片色块 + 无分隔线 + 大标题/副标题保留。
-2. **文章列表 / 时间线(MainTimeline)** —— 同一手法:`config.backgroundColor` 上暖底;
-   分隔线是 cell 自绘的 `topSeparator`,颜色走 fork 的 `TimelineStyle.separatorColor`,
-   把它改成 `.clear` 即整片无分隔(**零上游改动,一个值可恢复**)。
+2. **文章列表 / 时间线(MainTimeline)** —— `config.backgroundColor` 暖底;分隔线是 cell 自绘的 `topSeparator`,
+   改 `TimelineStyle.separatorColor = .clear`(零上游改动,一值可恢复)。
+3. **全局强调色 蓝 → 陶土红**(浅 `#C0603A` / 深 `#D47B54`):改两个 accent colorset,一次全 app
+   (开关/链接/未读圈/图标/箭头/对勾 + storyboard 全变)。
+4. **选中高亮 蓝 → 淡暖"药丸"**:`VibrantTableViewCell` 用 `PillSelectionBackgroundView` + 不再翻白字。
+5. **设置页 + 各表格子页**:主设置页、配色、界面语言、翻译模型、翻译 API Key、主题、账户详情、添加账户 ——
+   每页固定两行(`applyPaperStyle(to: tableView)` + `willDisplay` 里 `applyPaperStyle(to: cell)`)。
 
-关键手法(见教训 L44/L45):
-- 列表底色必须设 **`config.backgroundColor`**(不是 `collectionView.backgroundColor`——
-  系统列表有自己一层底色会盖过它),这才消除"卡片 vs 边距"的色差;
-- insetGrouped 的行分隔线在 `itemSeparatorHandler` 里关(它覆盖 `showsSeparators`);
-  时间线的分隔线是 cell 自绘的,改 `TimelineStyle.separatorColor = .clear`;
-- cell / folder cell / 分组头非选中态背景抹成暖纸色;
-- **不要**用全局 `UINavigationBarAppearance` 铺色——会把大标题+iOS 26 副标题冲掉;
-  导航栏保持系统默认透明,透出下面已变暖的列表即可。
+关键手法(见教训 L44/L45/L46):
+- 系统列表底色设 **`config.backgroundColor`** / UITableView 设 `tableView.backgroundColor`;
+- insetGrouped 行分隔线在 `itemSeparatorHandler` 里关;时间线 cell 自绘线改 `TimelineStyle.separatorColor`;
+- **不要**用全局 `UINavigationBarAppearance` 铺色(冲掉大标题+副标题,L45);
+- 强调色真源在 colorset(storyboard 按名引,L46)。
 
-**🔜 待做的页(照搬同一套手法)**:设置页、添加订阅页、账户页;
-正文阅读页是 WebView,走它自己的样式层(`nnw_appearance.js`)单独对齐。
+**🔜 待做的页**:SwiftUI 信息页(错误日志/活动日志/账户统计/活化石/About —— 需 SwiftUI 背景处理,另一套);
+其它账户类型的添加表单(Feedbin/NewsBlur/CloudKit/ReaderAPI)、feed 详情页(同两行表格,随时补);
+正文阅读页(WebView,走 `nnw_appearance.js` 单独对齐)。
 
-**改动文件**:新增 `iOS/Appearance/AppAppearance.swift`(两层调色板);改
-`iOS/MainFeed/MainFeedCollectionViewController.swift`、`MainFeedCollectionViewCell/FolderCell/HeaderReusableView.swift`(订阅列表)、
-`iOS/MainTimeline/MainTimelineModernViewController.swift`(时间线暖底)、
-`iOS/MainTimeline/TimelineStyle.swift`(分隔线转透明),均带 `[外观]` 标记。
+**本轮新增/改动文件**:`AppAppearance.swift`(调色板+药丸+复用件)、两个 accent colorset、
+`VibrantTableViewCell.swift`(药丸选中+不翻白)、`SettingsViewController.swift` 及 7 个表格子页
+(ColorPalette/ArticleThemes/AccountInspector/AddAccount + 3 个翻译/语言 picker),均带 `[外观]` 标记。
 
 ### ✅ 翻译体验五项优化:已完成并经用户验收(2026-07-22)
 

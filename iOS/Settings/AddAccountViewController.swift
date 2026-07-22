@@ -16,6 +16,16 @@ protocol AddAccountDismissDelegate: UIViewController {
 
 final class AddAccountViewController: UITableViewController, AddAccountDismissDelegate {
 
+	// [外观] 暖纸风:表格底色 + 关分隔线;cell 暖底 + 药丸选中
+	override func viewDidLoad() {
+		super.viewDidLoad()
+		AppAppearance.applyPaperStyle(to: tableView)
+	}
+
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
+	}
+
 	private enum AddAccountSections: Int, CaseIterable {
 		case local = 0
 		case icloud

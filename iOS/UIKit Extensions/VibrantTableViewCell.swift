@@ -12,18 +12,14 @@ class VibrantTableViewCell: UITableViewCell {
 
 	static let duration: TimeInterval = 0.6
 
+	// [外观] 选中态不再把文字翻白 —— 新设计的选中高亮是淡暖色(见 applyThemeProperties),
+	// 淡底上必须保持深色文字才看得清。原来翻白是为了配蓝色实心高亮。
 	var labelColor: UIColor {
-		if selectionStyle == .none {
-			return UIColor.label
-		}
-		return isHighlighted || isSelected ? Assets.Colors.vibrantText : UIColor.label
+		return UIColor.label
 	}
 
 	var secondaryLabelColor: UIColor {
-		if selectionStyle == .none {
-			return UIColor.secondaryLabel
-		}
-		return isHighlighted || isSelected ? Assets.Colors.vibrantText : UIColor.secondaryLabel
+		return UIColor.secondaryLabel
 	}
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -52,9 +48,9 @@ class VibrantTableViewCell: UITableViewCell {
 
 	/// Subclass overrides should call super
 	func applyThemeProperties() {
-		let selectedBackgroundView = UIView(frame: .zero)
-		selectedBackgroundView.backgroundColor = Assets.Colors.secondaryAccent
-		self.selectedBackgroundView = selectedBackgroundView
+		// [外观] 淡暖色"药丸"选中高亮:统一四角圆角、略内缩,取代 insetGrouped 那种
+		// 随行位置变的卡片形状(原来是一整块 secondaryAccent 蓝)。
+		self.selectedBackgroundView = AppAppearance.makePillSelectionBackgroundView()
 	}
 
 	/// Subclass overrides should call super

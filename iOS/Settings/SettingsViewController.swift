@@ -111,6 +111,14 @@ final class SettingsViewController: UITableViewController {
 
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 44
+
+		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸底 + 无分隔线(cell 底色见下方 willDisplay)
+	}
+
+	// [外观] 把每个 cell 的卡片底色也刷成暖纸色,消除「白卡片 vs 暖背景」的色差。
+	// 选中态由 VibrantTableViewCell 的 selectedBackgroundView 处理,不受影响。
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
 	}
 
 	override func viewWillAppear(_ animated: Bool) {

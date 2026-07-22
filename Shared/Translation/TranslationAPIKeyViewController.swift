@@ -36,6 +36,12 @@ import UIKit
 
 		configureAPIKeyField()
 		configureBaseURLField()
+		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风
+	}
+
+	// [外观] cell 暖底 + 药丸选中
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
 	}
 
 	/// 离开页面时自动保存,省得用户还要找"完成"按钮。

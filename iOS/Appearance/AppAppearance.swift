@@ -42,8 +42,17 @@ enum AppAppearance {
 		static let paperLight = rgb(0xF3F0EB)
 		static let paperDark  = rgb(0x1E1E1E)
 
-		// 之后随各页需要往这里加:inkPrimary(正文字色)、inkSecondary(次要文字)、
-		// accent(强调色)…… 每条都写浅色/深色两个值。
+		/// 选中高亮(淡暖色):比纸略深/浅一档,给点按反馈又不抢眼。
+		static let selectionLight = rgb(0xE8E3DB)
+		static let selectionDark  = rgb(0x2E2C28)
+
+		// ⚠️ 强调色(陶土红)**不在这里** —— 它的真源是
+		// `iOS/Resources/Assets.xcassets/primaryAccentColor.colorset`(+ secondaryAccentColor)。
+		// 原因:5 个 storyboard 按名字直接引这个 colorset,storyboard 读不了代码里的颜色,
+		// 所以强调色只能放 colorset 里才能"一处改、全 app(含 storyboard)一起变"。
+		// 想调强调色的深浅,改那个 colorset 的 RGB。
+		//
+		// 之后随各页需要往这里加:inkPrimary(正文字色)、inkSecondary(次要文字)…… 每条写浅+深。
 
 		/// 0xRRGGBB → 不透明 UIColor。
 		static func rgb(_ value: UInt32) -> UIColor {
@@ -59,11 +68,82 @@ enum AppAppearance {
 	/// 暖色纸张背景,自动跟随系统浅色 / 深色。
 	static let paperBackground = dynamic(light: Palette.paperLight, dark: Palette.paperDark)
 
+	/// 表格 cell 选中时的淡暖色高亮(取代系统蓝)。
+	static let selectionHighlight = dynamic(light: Palette.selectionLight, dark: Palette.selectionDark)
+
+	// MARK: - 复用:把「分组表格」类页面(设置等)刷成暖纸风
+
+	/// 把一个 UITableView(设置这类 insetGrouped 分组表格)刷成暖纸底、无分隔线。
+	/// ⚠️ cell 的卡片底色要在各 VC 的 `willDisplay` 里配合调 `applyPaperStyle(to: cell)` ——
+	/// 表格没有"统一设每个 cell 背景"的入口,只能逐 cell 来。
+	@MainActor
+	static func applyPaperStyle(to tableView: UITableView) {
+		tableView.backgroundColor = paperBackground
+		tableView.separatorStyle = .none
+	}
+
+	/// 把一个 cell 刷成暖纸风:卡片底色 = 暖纸色 + 统一的"药丸"选中高亮(在 `willDisplay` 里调)。
+	/// 普通 UITableViewCell 默认没有药丸高亮,这里一并补上;VibrantTableViewCell 已自带同样的,
+	/// 被这里覆盖成一模一样的,无害。
+	@MainActor
+	static func applyPaperStyle(to cell: UITableViewCell) {
+		cell.backgroundColor = paperBackground
+		cell.selectedBackgroundView = makePillSelectionBackgroundView()
+	}
+
 	// MARK: - 工具
 
 	/// 按当前浅 / 深色返回对应的颜色。系统切换深浅色时 UIKit 会自动重解析。
 	private static func dynamic(light: UIColor, dark: UIColor) -> UIColor {
 		UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light }
+	}
+
+	/// 造一个"药丸高亮"选中视图(见 PillSelectionBackgroundView)。
+	/// 给 UITableViewCell 当 selectedBackgroundView 用。
+	@MainActor
+	static func makePillSelectionBackgroundView() -> UIView {
+		PillSelectionBackgroundView()
+	}
+}
+
+/// [外观] "药丸"选中高亮:统一四角圆角 + 略微内缩的暖色块。
+///
+/// 用来取代 iOS `insetGrouped` 那种"首行顶部圆角、末行底部圆角、中间不圆、还随位置变"
+/// 的选中形状 —— 那个形状在颜色统一后一点按就冒出来,显得割裂、突兀。
+/// 这里改成:**不管第几行,都高亮成同一个四角一致的小圆角块**,像现代菜单项。
+///
+/// 做法:自己背景透明,里面放一个内缩的圆角块。因为圆角块严格缩在 cell 卡片内部、
+/// 碰不到卡片边缘,所以不受 insetGrouped 卡片圆角遮罩的影响,四角圆角总是完整、一致。
+final class PillSelectionBackgroundView: UIView {
+
+	// 可调项(想调高亮的圆角 / 内缩,改这三个值即可,一处改全 app 一致)。
+	private static let horizontalInset: CGFloat = 6
+	private static let verticalInset: CGFloat = 4
+	private static let cornerRadius: CGFloat = 10
+
+	private let pill = UIView()
+
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+		setUp()
+	}
+
+	required init?(coder: NSCoder) {
+		super.init(coder: coder)
+		setUp()
+	}
+
+	private func setUp() {
+		backgroundColor = .clear
+		pill.backgroundColor = AppAppearance.selectionHighlight
+		pill.layer.cornerRadius = Self.cornerRadius
+		pill.layer.cornerCurve = .continuous
+		addSubview(pill)
+	}
+
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		pill.frame = bounds.insetBy(dx: Self.horizontalInset, dy: Self.verticalInset)
 	}
 }
 
