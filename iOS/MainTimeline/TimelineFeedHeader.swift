@@ -482,7 +482,7 @@ extension MainTimelineModernViewController {
 		backgroundImageView.contentMode = .scaleToFill
 		addSubview(backgroundImageView)
 
-		titleLabel.font = .preferredFont(forTextStyle: .largeTitle).bold()
+		titleLabel.font = TimelineStyle.headerTitleFont	// 字号 / 衬线与否都在 TimelineStyle
 		titleLabel.adjustsFontSizeToFitWidth = true
 		titleLabel.minimumScaleFactor = 0.6
 		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment	// 左 / 居中 / 右,见 TimelineStyle

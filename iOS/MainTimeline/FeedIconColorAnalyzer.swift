@@ -156,51 +156,50 @@ extension FeedIconColorAnalyzer {
 	///
 	/// 而且**固定加减一个色号也不够**:Links TV 的主题色是近黑的 #141518,
 	/// 深色模式下对比度只有 1.1:1,亮一号也才 1.3:1 —— 等于隐形。
-	/// 所以这里的规则是「**保持色相,朝墨色方向压,直到对比度达标为止**」。
+	///
+	/// ⚠️ **必须在 HSB 里只调明度,不能在 RGB 里朝黑白混合**(2026-07-22 第二次踩,见 L54)。
+	/// 第一版就是 RGB 混合,结果**把饱和度一起冲掉了**:Acquired 的墨绿
+	/// (色相 175°、饱和度 0.89)被洗成 `#B6C2C1`(饱和度 **0.06**)—— 一块中性灰。
+	/// 用户的原话是「看着不太协调」,说得很准:头图是浓墨绿,标题却是灰的,两者没有关系。
+	/// 现在的做法是**保住色相与饱和度,只沿明度轴走**,直到对比度达标。
 	///
 	/// - Parameters:
 	///   - brand: 源的主题色(由 analyze 得出)
 	///   - paper: 标题实际压在上面的背景色(已按明暗解析过的纸色)
-	///   - tint: 着色强度,0 = 纯墨色(黑/白),1 = 完全主题色
-	///   - minContrast: 最低对比度,达不到就继续往墨色压
+	///   - tint: 着色强度,0 = 灰(完全不着色),1 = 品牌原饱和度
+	///   - minContrast: 最低对比度,达不到就继续沿明度轴走
 	static func readableTitleColor(brand: UIColor, paper: UIColor, tint: CGFloat, minContrast: CGFloat) -> UIColor {
 
-		// 纸是亮的就用黑墨,纸是暗的就用白墨
 		let paperIsLight: Bool = relativeLuminance(paper) > 0.5
-		let ink: UIColor = paperIsLight ? .black : .white
 
-		// 先按着色强度在「墨色」和「主题色」之间取一个基准色
-		let base: UIColor = mix(ink, brand, weightOfSecond: tint)
-		if contrastRatio(base, paper) >= minContrast {
-			return base
+		var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+		guard brand.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+			return paperIsLight ? .black : .white
 		}
 
-		// 不够清楚:把基准色一点点往墨色压,压到达标为止。
-		// ink 和 paper 的对比度天然最大,所以这个循环一定会结束。
-		var step: CGFloat = 0.05
-		while step < 1 {
-			let candidate: UIColor = mix(base, ink, weightOfSecond: step)
+		// 饱和度:由着色强度决定"有多少颜色"。深色模式略收一点,免得亮色在暗底上发飘。
+		let saturationScale: CGFloat = paperIsLight ? 1.0 : 0.85
+		let finalSaturation: CGFloat = min(1, saturation * tint * saturationScale)
+
+		// 明度:从品牌自身出发,朝"更好读"的方向走 —— 浅色纸上往暗走,深色纸上往亮走。
+		// 深色模式下如果品牌本身很暗(如 Acquired 的 0.17),先抬到 0.35 起步,少走几十步。
+		var currentBrightness: CGFloat = paperIsLight ? brightness : max(brightness, 0.35)
+		let step: CGFloat = paperIsLight ? -0.02 : 0.02
+
+		for _ in 0...60 {
+			let clamped: CGFloat = min(max(currentBrightness, 0), 1)
+			let candidate = UIColor(hue: hue, saturation: finalSaturation, brightness: clamped, alpha: 1)
 			if contrastRatio(candidate, paper) >= minContrast {
 				return candidate
 			}
-			step += 0.05
+			currentBrightness += step
+			if currentBrightness <= 0 || currentBrightness >= 1 {
+				break
+			}
 		}
-		return ink
-	}
 
-	/// 两色线性混合。weightOfSecond = 0 全取 first,= 1 全取 second。
-	private static func mix(_ first: UIColor, _ second: UIColor, weightOfSecond t: CGFloat) -> UIColor {
-		var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
-		var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
-		guard first.getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
-			  second.getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else {
-			return first
-		}
-		let k: CGFloat = min(max(t, 0), 1)
-		return UIColor(red: r1 + (r2 - r1) * k,
-					   green: g1 + (g2 - g1) * k,
-					   blue: b1 + (b2 - b1) * k,
-					   alpha: 1)
+		// 走到头还不达标(理论上只有极端情况)—— 用该色相下最深/最浅的一档兜底
+		return UIColor(hue: hue, saturation: finalSaturation, brightness: paperIsLight ? 0.08 : 0.95, alpha: 1)
 	}
 
 	/// WCAG 相对亮度。

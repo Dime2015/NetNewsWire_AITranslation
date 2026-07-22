@@ -211,6 +211,27 @@ enum TimelineStyle {
 	/// 标题底边距离头图区底边的距离(pt)。
 	static let headerTitleBottomInset = CGFloat(14)
 
+	/// 标题字号(pt)。
+	/// 2026-07-22 用户反馈「字号大了,缩小一些会更高级」——
+	/// 从系统 largeTitle(34pt)降到 27pt。头图区是"身份带"不是页面大标题,
+	/// 小一点反而更笃定。
+	static let headerTitleFontSize = CGFloat(27)
+	/// 标题是否用衬线体(苹果自带的 New York)。
+	/// 用衬线的理由:本 app 是暖纸阅读风,衬线更像报头/杂志刊名,
+	/// 而且和下面文章标题的无衬线体拉开层次,辨识度更高。
+	/// ⚠️ New York **没有中文字形**,中文源名(如「硅谷101」)会自动回退到苹方,
+	/// 中英混排的源名会出现两种字体 —— 若觉得别扭,把这里改成 false。
+	static let headerTitleUsesSerif = true
+	/// 标题字体(由上面两个值拼出来,不用直接改这里)。
+	static var headerTitleFont: UIFont {
+		let base = UIFont.systemFont(ofSize: headerTitleFontSize, weight: .bold)
+		guard headerTitleUsesSerif,
+			  let descriptor = base.fontDescriptor.withDesign(.serif) else {
+			return base
+		}
+		return UIFont(descriptor: descriptor, size: headerTitleFontSize)
+	}
+
 	/// 标题的水平对齐。**改这一个值就能切换左 / 居中 / 右**,方便对比着挑。
 	/// 用户 2026-07-22 选了靠右(觉得更高级)。
 	static let headerTitleAlignment: NSTextAlignment = .right
@@ -222,10 +243,11 @@ enum TimelineStyle {
 
 	/// 标题的着色强度:**0 = 纯黑/纯白(完全不着色),1 = 完全用主题色**。
 	///
-	/// 为什么默认压到 0.35:大号粗体 + 高饱和色(比如那个橙)很容易显得廉价,
-	/// 像促销标签。压低之后是"带色调的墨" —— 远看是黑字,凑近才发现它偏墨绿或偏赭,
-	/// 这才是想要的那种含蓄。想要更浓的品牌色就往 1 调。
-	static let headerTitleTintStrength = CGFloat(0.35)
+	/// 2026-07-22 调整:初版给了 0.35,用户看完的反馈是「还是黑色的,亮色下的还没做是吗」——
+	/// 说明太含蓄了,等于没做。现在给 0.7:颜色明显看得出来,又不到刺眼的地步。
+	/// (同轮还修了更根本的问题:原来在 RGB 里混黑白会把饱和度冲掉,
+	///  墨绿被洗成灰 —— 现已改为在 HSB 里只调明度,见 readableTitleColor。)
+	static let headerTitleTintStrength = CGFloat(0.7)
 	/// 标题与背景的最低对比度(WCAG 比值)。大号粗体 3:1 是底线,4.5:1 更舒服。
 	/// 达不到时会自动把颜色往黑(浅色模式)或往白(深色模式)压,直到达标。
 	static let headerTitleMinContrast = CGFloat(4.5)
