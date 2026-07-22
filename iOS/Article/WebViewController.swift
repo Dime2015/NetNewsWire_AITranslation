@@ -156,7 +156,9 @@ final class WebViewController: UIViewController {
 		if article != self.article {
 			self.article = article
 			if updateView {
-				if article?.feed?.readerViewAlwaysEnabled == true {
+				// [状态记忆] item③:除了上游「按订阅源总是用阅读视图」,
+				// 再加一条「这篇上次开着阅读模式」也自动进阅读视图。
+				if article?.feed?.readerViewAlwaysEnabled == true || nnwShouldRestoreReaderMode(article) {
 					startArticleExtractor()
 				}
 				windowScrollY = 0
@@ -405,6 +407,7 @@ extension WebViewController: WKNavigationDelegate {
 			}
 		}
 		nnwMediaEnhanceIfNeeded() // [播客][YouTube] 按内容类型补上语音条 / 视频简介,实现在本文件末尾
+		nnwRecordAndAutoRestoreOnDidFinish() // [状态记忆] item③ 记住阅读模式 + 按需自动恢复译文,实现在本文件末尾
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -1037,6 +1040,12 @@ extension WebViewController {
 		try await nnwTranslationEnsureScriptInjected()
 		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.state().isShowingTranslation")
 	}
+
+	/// 把页面滚到顶部。点翻译后调用,方便从头读译文(item④)。
+	func nnwTranslationScrollToTop() async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.scrollToTop()")
+	}
 }
 
 private extension WebViewController {
@@ -1239,5 +1248,38 @@ extension WebViewController {
 		}
 		// JSONSerialization 只能序列化数组/字典,所以包一层再把方括号去掉
 		return String(json.dropFirst().dropLast())
+	}
+}
+
+// MARK: - [状态记忆] 本 fork 新增,上游没有以下内容
+//
+// item③:按单篇文章记住「阅读模式 / 已翻译」,打开时自动恢复。
+// 为什么非得写在这个文件里:要读私有的 articleExtractor 状态和私有的 isShowingExtractedArticle,
+// 只有同一文件内的代码够得着。这段全是追加在文件末尾的新行,上游原有代码一行没动。
+
+extension WebViewController {
+
+	/// 打开这篇文章时,要不要自动进阅读模式?(供上面 setArticle 判断)
+	func nnwShouldRestoreReaderMode(_ article: Article?) -> Bool {
+		guard let article else { return false }
+		return ArticleReadingStateStore.state(for: article.accountID + "|" + article.articleID).readerMode
+	}
+
+	/// 页面渲染完成时:记住这篇当前真实的阅读模式状态,并按需自动恢复译文。
+	func nnwRecordAndAutoRestoreOnDidFinish() {
+
+		// 阅读模式还在提取(此刻渲染的是 loading 占位页)时,什么都别做 ——
+		// 等提取完成、渲染出最终内容那一次 didFinish 再处理。
+		guard articleExtractor?.state != .processing else { return }
+		guard let article else { return }
+		let articleID = article.accountID + "|" + article.articleID
+
+		// 记住当前真实显示的是不是阅读视图。
+		// 提取失败时 isShowingExtractedArticle=false,会记成"不开阅读模式" ——
+		// 这能避免下次对一个"抽不出正文"的源(如 YouTube,见 T11)反复做无用尝试。
+		ArticleReadingStateStore.setReaderMode(isShowingExtractedArticle, for: articleID)
+
+		// 若这篇被记为"上次翻过"且本地有匹配的完整缓存 → 自动秒显译文(交给翻译层判断)。
+		(delegate as? ArticleViewController)?.nnwAutoApplyTranslationFromCacheIfNeeded()
 	}
 }

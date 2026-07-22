@@ -199,6 +199,36 @@ enum TranslationScript {
 	/// 单组最多重试几次。偶发的限流/超时靠它兜住。
 	private static let maxRetries = 1
 
+	// MARK: - 对冲参数(治尾延迟,item①)
+	//
+	// 同一个请求偶尔会慢好几倍(见 NOTES-todo.md T5:同尺寸两组 22s vs 81.6s ——
+	// 因为 OpenRouter 把它路由到了慢服务商)。对冲的办法:先发一份,
+	// 若在阈值时间内没成功,就并发再发一份,谁先成功用谁、另一份取消。
+	// translate() 用的是支持取消的 URLSession.shared.data(for:),
+	// 所以输的那份能真被掐掉,不会白烧 token。
+
+	// 这几个常量要在 nonisolated 的对冲函数里读,所以标成 nonisolated
+	// (本类是 @MainActor,静态属性默认带 actor 隔离,不标就够不着)。
+
+	/// 估算「健康耗时」用的保守速率(字符/秒)。实测健康的组约 200 字符/秒。
+	private nonisolated static let hedgeCharsPerSecond = 200.0
+
+	/// 超过「健康耗时」这么多倍才对冲 —— 只有真正偏慢的请求会被对冲,
+	/// 健康的请求不会平白多花一份钱。
+	private nonisolated static let hedgeSlowFactor = 2.0
+
+	/// 正文组对冲阈值的下限(秒)。小组也别太早对冲。
+	private nonisolated static let minBodyHedgeDelay: TimeInterval = 6
+
+	/// 先导块在关键路径上(它不回来,后面所有组都不开始),
+	/// 给它一个更短的固定阈值,让「开头出现中文」尽快发生。
+	private nonisolated static let leadHedgeDelay: TimeInterval = 4
+
+	/// 按一组的大小估它的对冲阈值。
+	private nonisolated static func bodyHedgeDelay(forChars count: Int) -> TimeInterval {
+		max(minBodyHedgeDelay, Double(count) / hedgeCharsPerSecond * hedgeSlowFactor)
+	}
+
 	// MARK: - 分组参数
 	//
 	// 为什么按组翻而不是一段一次:一段一次的话,系统提示词和上下文示范
@@ -233,7 +263,8 @@ enum TranslationScript {
 	/// 存下去会把 B 文章的译文安到 A 文章的缓存里。序号对不上就放弃保存。
 	private var runID = 0
 
-	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Translation")
+	// nonisolated:对冲函数(nonisolated)里也要写日志。
+	private nonisolated static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Translation")
 
 	/// 每次翻译时现取,这样在设置里换了模型能立刻生效。
 	private func makeService() throws -> TranslationService {
@@ -259,6 +290,10 @@ enum TranslationScript {
 	/// 最近一次失败的原因,用人话写的。翻译失败时弹给用户看。
 	private(set) var lastErrorMessage: String?
 
+	/// 用户发起的翻译**失败或未配置**时,把人话说明弹给用户看。由界面层设置。
+	/// (自动恢复等后台流程不会用它 —— 那些是静默的。)
+	var presentError: (@MainActor (String) -> Void)?
+
 	/// - Parameter currentWebViewController: 怎么拿到"当前正在看的那篇文章的网页"。
 	init(currentWebViewController: @escaping @MainActor () -> WebViewController?) {
 		self.currentWebViewController = currentWebViewController
@@ -282,13 +317,115 @@ enum TranslationScript {
 					_ = try? await webViewController.nnwTranslationRestore()
 				}
 				state = .original
+				recordTranslatedState(false)	// [状态记忆] item③:取消=回到原文
 				refreshCacheHint()
 			}
 			return
 		}
 
+		// [翻译] 还没配好翻译服务:直接给一句能照做的提示,不走 spinner→感叹号那一下。
+		// (以前这里会静默变成感叹号,用户不知道为什么。)
+		if let problem = configurationPromptIfNeeded() {
+			presentError?(problem)
+			return
+		}
+
 		runningTask?.cancel()
 		runningTask = Task { await performToggle() }
+	}
+
+	/// 翻译服务没配好时,返回一句给用户看的提示;配好了返回 nil。
+	/// 没填 API Key 时用固定的引导语(要同时提到填 Key 和选模型);
+	/// 其它配置问题(如服务地址非法)沿用 TranslationConfigStore 给的说明。
+	private func configurationPromptIfNeeded() -> String? {
+		if !TranslationConfigStore.hasAPIKey {
+			return "请前往设置中填写 API 并选择翻译模型。\n(设置 → 文章 → 翻译 API Key、翻译模型)"
+		}
+		return TranslationConfigStore.configurationProblem
+	}
+
+	/// [翻译] item②:强制重新翻译整篇(长按翻译键 → 确认后调用)。
+	/// 跳过缓存、从原文重新分组翻译,成功后覆盖旧缓存。
+	func forceRetranslate() {
+		runningTask?.cancel()
+		runningTask = Task { await performToggle(force: true) }
+	}
+
+	/// [翻译] item②:当前文章本地有没有**完整**译文缓存。
+	/// 长按翻译键前用它判断要不要弹「重新翻译全文」。纯本地检查,不发请求。
+	/// 语义与按钮上的实心角标一致(只看有没有完整缓存条目,不校验指纹)。
+	func hasFullCache() async -> Bool {
+		guard let article = currentWebViewController()?.article else {
+			return false
+		}
+		let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
+											  model: TranslationConfigStore.selectedModel)
+		guard let entry = await TranslationCache.lookup(key: key) else {
+			return false
+		}
+		return entry.bodyHTML != nil
+	}
+
+	/// [状态记忆] item③:记住这篇「是否显示译文」。换文章时不要调这个。
+	private func recordTranslatedState(_ translated: Bool) {
+		guard let article = currentWebViewController()?.article else { return }
+		ArticleReadingStateStore.setTranslated(translated, for: article.accountID + "|" + article.articleID)
+	}
+
+	/// [状态记忆] item③:页面渲染完成后调用(由 WebViewController.didFinish
+	/// → ArticleViewController 转来)。若这篇被记为「上次翻译过」且本地有匹配的
+	/// **完整**缓存,就自动秒显译文(零请求、免费)。
+	///
+	/// 用户的选择:没有可用缓存时**不**自动联网重翻,保持原文、等用户点 ——
+	/// 免得打开较老文章时悄悄花钱。
+	func autoApplyTranslationFromCacheIfNeeded() {
+
+		// 正在翻译时别插手
+		guard state != .working else { return }
+		guard let webViewController = currentWebViewController(),
+			  let article = webViewController.article else { return }
+
+		let articleID = article.accountID + "|" + article.articleID
+		guard ArticleReadingStateStore.state(for: articleID).translated else { return }
+
+		let model = TranslationConfigStore.selectedModel
+		let key = TranslationCache.articleKey(articleID: articleID, model: model)
+
+		runningTask?.cancel()
+		runningTask = Task { [weak self] in
+			guard let self else { return }
+
+			// 复核内容指纹:只有缓存里的原文和现在页面的原文对得上才拿来用
+			//(页面此刻显示的是原文,fingerprint 取的正是原文的纯文字)。
+			guard let fingerprint = try? await webViewController.nnwTranslationBodyFingerprint() else { return }
+			let bodyHash = TranslationCache.contentHash(fingerprint)
+
+			guard let cached = await TranslationCache.lookup(key: key),
+				  cached.bodyHash == bodyHash,
+				  let fullBody = cached.bodyHTML else {
+				// 没有可用的完整缓存 → 按用户选择不自动联网重翻;
+				// 顺手把按钮刷成「有缓存可点」的提示(若有未完成缓存)。
+				self.refreshCacheHint()
+				return
+			}
+
+			// 异步回来后复核:用户可能已经切走文章、或自己点了翻译
+			guard self.state != .working,
+				  let current = self.currentWebViewController(),
+				  current === webViewController,
+				  current.article?.articleID == article.articleID else {
+				return
+			}
+
+			if let cachedTitle = cached.titleHTML {
+				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
+			}
+			if (try? await webViewController.nnwTranslationApply(fullBody)) == true {
+				self.state = .translated
+				self.lastErrorMessage = nil
+				Self.logger.debug("[翻译] 自动恢复:命中完整缓存,零请求")
+			}
+		}
 	}
 
 	/// 换到另一篇文章时调用,把按钮图标重置成"未翻译"。
@@ -328,7 +465,7 @@ enum TranslationScript {
 		}
 	}
 
-	private func performToggle() async {
+	private func performToggle(force: Bool = false) async {
 
 		guard let webViewController = currentWebViewController() else {
 			return
@@ -341,15 +478,28 @@ enum TranslationScript {
 		// 图标可以短暂不准,但"点下去的行为"必须永远正确。
 		let isShowingTranslation = (try? await webViewController.nnwTranslationIsShowingTranslation()) ?? false
 
-		// 已经在看译文 → 切回原文。原文存在网页里,所以是瞬间的。
+		// 已经在看译文时:
+		//   - 正常点击 → 切回原文(瞬间,原文存在网页里);
+		//   - 强制重翻(item②)→ 先还原到原文,好让下面的 splitBody 读到原文,
+		//     然后**不 return**,继续往下走一遍全新翻译。
 		if isShowingTranslation {
-			let didRestore = (try? await webViewController.nnwTranslationRestore()) ?? false
-			state = didRestore ? .original : .failed
-			if didRestore {
-				refreshCacheHint()	// 刚翻完的文章大概率有缓存了,按钮转为灰底提示
+			if force {
+				_ = try? await webViewController.nnwTranslationRestore()
+			} else {
+				let didRestore = (try? await webViewController.nnwTranslationRestore()) ?? false
+				state = didRestore ? .original : .failed
+				if didRestore {
+					recordTranslatedState(false)	// [状态记忆] item③:用户切回原文
+					refreshCacheHint()	// 刚翻完的文章大概率有缓存了,按钮转为灰底提示
+				}
+				return
 			}
-			return
 		}
+
+		// [翻译] item④:点翻译即滚到文章顶部,方便从头读译文。
+		// 上面「切回原文」的分支已经 return,所以这里只在「要显示译文」时执行;
+		// 之后无论是走缓存秒开、断点续翻,还是全新翻译,都从顶部开始。
+		_ = try? await webViewController.nnwTranslationScrollToTop()
 
 		state = .working
 
@@ -383,7 +533,8 @@ enum TranslationScript {
 				if let fingerprint = try await webViewController.nnwTranslationBodyFingerprint() {
 					let bodyHash = TranslationCache.contentHash(fingerprint)
 					currentBodyHash = bodyHash
-					if let cached = await TranslationCache.lookup(key: key) {
+					// [翻译] item②:强制重翻时跳过缓存(照样保留 cacheKey/bodyHash 供翻完后覆盖写)。
+					if !force, let cached = await TranslationCache.lookup(key: key) {
 						if cached.bodyHash != bodyHash {
 							Self.logger.debug("[翻译] 有缓存条目但内容指纹不匹配,按未缓存处理并重新翻译")
 						} else if let fullBody = cached.bodyHTML {
@@ -394,6 +545,7 @@ enum TranslationScript {
 							_ = try await webViewController.nnwTranslationApply(fullBody)
 							state = .translated
 							lastErrorMessage = nil
+							recordTranslatedState(true)	// [状态记忆] item③
 							Self.logger.debug("[翻译] 命中完整缓存,零请求")
 							return
 						} else {
@@ -464,7 +616,17 @@ enum TranslationScript {
 				Self.logger.debug("[翻译] 先导块复用缓存,零请求")
 			} else {
 				let leadStartedAt = Date()
-				firstTranslation = try await service.translate(htmlChunk: first.html, context: context)
+				// [翻译] item①:先导块在关键路径上,用对冲把「开头等 30 秒」压下去。
+				if let hedged = await hedgedTranslate(htmlChunk: first.html,
+													  context: context,
+													  service: service,
+													  delay: Self.leadHedgeDelay) {
+					firstTranslation = hedged
+				} else {
+					// 两份对冲都失败:再直接发一次,好拿到能说人话的错误抛给用户。
+					try Task.checkCancellation()
+					firstTranslation = try await service.translate(htmlChunk: first.html, context: context)
+				}
 				Self.logger.debug("[翻译] 先导块完成,耗时 \(String(format: "%.1f", Date().timeIntervalSince(leadStartedAt)), privacy: .public)s")
 				try Task.checkCancellation()
 				_ = try await webViewController.nnwTranslationApplyGroup(group: first.group,
@@ -525,11 +687,13 @@ enum TranslationScript {
 				state = .failed
 				lastErrorMessage = "有 \(totalFailures) 组内容没能翻译成功,保持了原文。点一下回到原文,再点一次可以接着翻(已翻好的组会复用,不重复花钱)。"
 				Self.logger.error("[翻译] 完成,但有 \(totalFailures) 组失败")
+				recordTranslatedState(false)	// [状态记忆] item③:没整篇成功就不记成"已翻译",避免自动恢复到残缺态
 				// 翻好的部分存成"未完成缓存",下次接着翻
 				savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
 			} else {
 				state = .translated
 				lastErrorMessage = nil
+				recordTranslatedState(true)	// [状态记忆] item③:整篇成功,记住"已翻译"
 
 				// 8. 全部成功 → 存完整缓存,下次这篇秒开、零花费
 				if let cacheKey, let currentBodyHash,
@@ -551,6 +715,10 @@ enum TranslationScript {
 			Self.logger.error("[翻译] 失败:\(error.localizedDescription, privacy: .public)")
 			lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
 			state = .failed
+			// [翻译] 把失败原因弹给用户,别只留一个静默的感叹号。
+			// 未配置(如强制重翻时 key 被清了)用引导语,其它用错误说明。
+			// performToggle 只由用户点击/长按触发,所以这里弹窗一定是用户发起的。
+			presentError?(configurationPromptIfNeeded() ?? lastErrorMessage ?? "翻译失败,请稍后重试。")
 		}
 	}
 
@@ -601,6 +769,66 @@ enum TranslationScript {
 										 webViewController: webViewController)
 	}
 
+	/// 对冲翻译(治尾延迟,item①):先发一份;`delay` 秒内没成功,就并发再发一份,
+	/// 取第一个成功的,另一份取消。两份都失败返回 nil(交给上层的重试逻辑处理)。
+	///
+	/// 注意「先失败」和「先慢」是两回事:
+	///   - 第一份很快就**失败**(网络错/限流)→ 立刻返回 nil,不等对冲,
+	///     让外层该重试重试、该报错报错(拿到能说人话的原因)。
+	///   - 第一份迟迟**不回**(尾延迟)→ 到点补发一份,谁先成功用谁。
+	///
+	/// nonisolated:只用到入参、不碰实例状态,这样它能在并发任务里直接跑,不必回主线程。
+	nonisolated private func hedgedTranslate(htmlChunk: String,
+											 context: TranslationContext,
+											 service: TranslationService,
+											 delay: TimeInterval) async -> String? {
+
+		await withTaskGroup(of: TranslationHedgeSignal.self) { group in
+
+			// 第一份:立刻发。
+			group.addTask {
+				if let text = try? await service.translate(htmlChunk: htmlChunk, context: context) {
+					return .translated(text)
+				}
+				return .failed
+			}
+			// 计时哨兵:到 delay 就发一个信号,说明第一份「慢了」。
+			group.addTask {
+				try? await Task.sleep(for: .seconds(delay))
+				return .timerFired
+			}
+
+			// 当前在飞的「翻译」份数(哨兵不算)。降到 0 = 所有翻译都失败了。
+			var inFlightTranslations = 1
+
+			while let signal = await group.next() {
+				switch signal {
+				case .translated(let text):
+					group.cancelAll()	// 有一份成功,掐掉另一份(和还在睡的哨兵)
+					return text
+				case .timerFired:
+					// 第一份还没成功,补发一份对冲。
+					Self.logger.debug("[翻译] 对冲触发:一份请求超过 \(String(format: "%.0f", delay), privacy: .public)s 未成功,补发一份")
+					group.addTask {
+						if let text = try? await service.translate(htmlChunk: htmlChunk, context: context) {
+							return .translated(text)
+						}
+						return .failed
+					}
+					inFlightTranslations += 1
+				case .failed:
+					inFlightTranslations -= 1
+					if inFlightTranslations == 0 {
+						group.cancelAll()	// 翻译都失败了,别让哨兵吊着
+						return nil
+					}
+					// 还有另一份在飞,继续等
+				}
+			}
+			return nil
+		}
+	}
+
 	/// 并行翻译,返回最终仍然失败的段数。
 	///
 	/// 用滑动窗口控制并发:同时最多 `maxConcurrentRequests` 个请求在飞,
@@ -623,13 +851,19 @@ enum TranslationScript {
 				guard nextIndex < pending.count else { return }
 				let item = pending[nextIndex]
 				nextIndex += 1
+				// [翻译] item①:按这一组的大小估对冲阈值(主线程算好再带进任务)。
+				let hedgeDelay = Self.bodyHedgeDelay(forChars: item.html.count)
 				group.addTask {
 					// 重试前先等一下。被限流时立刻重试多半还是被拒。
 					if item.attempt > 0 {
 						try? await Task.sleep(for: .milliseconds(600))
 					}
 					let startedAt = Date()
-					let translated = try? await service.translate(htmlChunk: item.html, context: context)
+					// 用对冲翻译:偏慢的组会并发补发一份,压住尾延迟(见 hedgedTranslate)。
+					let translated = await self.hedgedTranslate(htmlChunk: item.html,
+																context: context,
+																service: service,
+																delay: hedgeDelay)
 					return (item, translated, Date().timeIntervalSince(startedAt))
 				}
 			}
@@ -691,6 +925,17 @@ enum TranslationScript {
 private struct TranslationChunk: Decodable, Sendable {
 	let group: Int
 	let html: String
+}
+
+/// 对冲翻译内部的信号(item①)。故意不携带 Error —— 只带 Sendable 的值,
+/// 好让它能安全地在并发任务组之间传递。
+private enum TranslationHedgeSignal: Sendable {
+	/// 某一份成功了,带回译文。
+	case translated(String)
+	/// 某一份失败了(网络错/限流/超时)。
+	case failed
+	/// 计时哨兵到点:说明第一份「慢了」,该补发对冲了。
+	case timerFired
 }
 
 /// 一件待翻译的活:正文的某一块,或者标题。

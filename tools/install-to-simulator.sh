@@ -9,6 +9,12 @@
 #
 # 所以装完必须 cmp 一次;不一致就 rsync 覆盖到系统正在用的那个容器
 # (非破坏性,不动数据容器,订阅源和 Keychain 都不会丢)。
+#
+# ⚠️ 2026-07-22 加固(见 NOTES-lessons L42):Debug 版真正的代码在
+# `NetNewsWire.debug.dylib` 里,主可执行文件 `NetNewsWire` 只是个 ~57KB 的 stub。
+# 原来只 cmp 主 stub —— 若哪次只有 dylib 变、stub 没变,cmp 会误判「已是新版」
+# 而跳过覆盖,又回到那个「测旧代码」的坑。现在把 stub 和 .debug.dylib 都比一遍,
+# 任一不一致就整目录覆盖。
 
 set -e
 BUNDLE_ID="com.ranchero.NetNewsWire.iOS-DEBUG"
@@ -21,13 +27,26 @@ xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl install booted "$BUILT"
 
 ACTIVE=$(xcrun simctl get_app_container booted "$BUNDLE_ID" app)
-if ! cmp -s "$ACTIVE/NetNewsWire" "$BUILT/NetNewsWire"; then
-  echo "⚠️  系统注册的仍是旧容器,改用覆盖方式"
+
+# 要比对的「带代码的文件」:主可执行文件 + Debug 版的 .debug.dylib(存在才比)。
+# Release 版没有 .debug.dylib,代码就在主可执行文件里 —— 那时只比主文件即可。
+CODE_FILES=("NetNewsWire")
+[ -f "$BUILT/NetNewsWire.debug.dylib" ] && CODE_FILES+=("NetNewsWire.debug.dylib")
+
+matches_all() {
+  for f in "${CODE_FILES[@]}"; do
+    cmp -s "$ACTIVE/$f" "$BUILT/$f" || return 1
+  done
+  return 0
+}
+
+if ! matches_all; then
+  echo "⚠️  系统注册的仍是旧容器(stub 或 dylib 不一致),改用覆盖方式"
   rsync -a --delete "$BUILT/" "$ACTIVE/"
 fi
 
-if cmp -s "$ACTIVE/NetNewsWire" "$BUILT/NetNewsWire"; then
-  echo "✅ 已确认系统正在用刚编译的这一份"
+if matches_all; then
+  echo "✅ 已确认系统正在用刚编译的这一份(stub + dylib 均一致)"
 else
   echo "❌ 仍然不一致,别相信接下来的测试结果"; exit 1
 fi

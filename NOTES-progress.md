@@ -13,7 +13,7 @@
 > **维护纪律(对任何接手的 AI):每完成一个可验证的步骤、每做一个重要决定、
 > 每发现一个坑,立刻更新对应文件。不要攒到最后。** 详见 CLAUDE.md 第 9 节。
 
-最后更新:2026-07-21
+最后更新:2026-07-22
 
 ---
 
@@ -44,14 +44,18 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 | **YouTube 正文播放器 + 简介** | ✅ | 修掉「错误代码 152」,见 L37 |
 | **app 改名 Babel** | ✅ | 只改显示层;改名基础设施 `i18n/rebrand.py` |
 | **装到真机** | ✅ | 免费 Personal Team 实测可签,**App Groups 未报错**;7 天过期,见 T18 |
-| 装到真机 | ⏳ 排在界面之后 | Apple ID 已登录;剩余前置条件见第四节 |
+| **翻译体验优化(本轮 2026-07-22)** | ✅ 用户验收 | ①长文对冲压尾延迟 ②长按重翻整篇 ③记住并自动恢复 阅读/翻译 状态 ④点翻译滚到开头 ⑤失败/未配置弹提示 |
 
-## 三、git 状态(2026-07-21 晚)
+## 三、git 状态(2026-07-22)
 
-**工作区干净。本地领先 GitHub 8 个提交**,需要时 `git push`。
+**工作区干净。本地领先 GitHub(origin/main)1 个提交**,需要时 `git push`。
+(此前那批提交已在 GitHub 上;这次翻译体验优化是新增的这 1 个。)
 
+```
+5fb5fba33  [翻译][状态记忆] 翻译体验五项优化 + 失败提示 + 装机脚本加固  ← 本轮 2026-07-22
+```
 
-本轮(界面改造)新增的提交,从新到旧:
+在此之前(界面改造那一轮)的提交,从新到旧:
 
 ```
 02dff2746  [品牌] app 显示名改为 Babel,并建立可复用的改名基础设施
@@ -95,6 +99,47 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 ```
 
 ## 四、当前悬而未决(接手者先看这里)
+
+### ✅ 翻译体验五项优化:已完成并经用户验收(2026-07-22)
+
+用户真机用下来提的四点 + 一个追加,都已实现、双平台编译过、装模拟器验收。
+**改动只在:`translation.js`、`TranslationController.swift`、`ArticleViewController.swift`、
+`WebViewController.swift`,加新文件 `ArticleReadingStateStore.swift`。上游两文件几乎全是追加
+(ArticleViewController +40/-0,WebViewController +43/-1,那 -1 是给 setArticle 判断加了个「或」)。**
+
+1. **① 长文开头不再干等 —— 对冲请求压尾延迟**(`TranslationController.hedgedTranslate`)。
+   现有设计本来就先翻「先导块(标题+前一两段)」,慢是因为它是**单个阻塞请求卡在关键路径**,
+   撞上慢服务商就 30s+(T5 尾延迟)。对冲:某请求超过阈值没成功就并发补发一份,谁先回用谁。
+   先导块固定 4s 阈值;正文各组按大小估(200 字符/秒 ×2,下限 6s)。用户选了「开头+全文各组都对冲」。
+   分组/术语一致性策略**一点没动**。日志 `对冲触发` 可看成本。详见 T5。
+2. **② 长按翻译键 → 确认后重翻整篇**(`forceRetranslate` + `performToggle(force:)`)。
+   **只对已有完整缓存的文章**长按才弹确认框;确认后跳过缓存、从原文重翻并覆盖。
+   没缓存长按不反应。长按手势与单击共存(`ArticleViewController.handleTranslationLongPress`)。
+3. **③ 记住并自动恢复 阅读模式 / 翻译 / 两者叠加**(新增 `ArticleReadingStateStore.swift`)。
+   按单篇文章存 `{阅读模式, 已翻译}` 两个 bit(UserDefaults,LRU 上限 500)。
+   - **翻译只在本地有匹配缓存时才自动秒显**(用户明确选择:**没缓存不自动联网重翻**,
+     停在原文等点,免得打开老文章悄悄花钱)。
+   - 阅读模式:在上游 `setArticle` 的 `readerViewAlwaysEnabled` 判断上加「或本篇记得开阅读模式」。
+   - 记录时机:翻译状态在 `TranslationController` 的几个结算点写;阅读模式在
+     `WebViewController.didFinish`(渲染出**最终内容**那次,gate 掉 loading 页)按
+     `isShowingExtractedArticle` 真实值写 —— **不用** `articleExtractorButtonState` 的 `.off`,
+     因为切文章时 `stopArticleExtractor()` 会对**旧文章**误发 `.off`(会污染旧文章记忆)。
+   - 自动恢复触发:`didFinish` → `nnwRecordAndAutoRestoreOnDidFinish()` →
+     `(delegate as? ArticleViewController)?.nnwAutoApplyTranslationFromCacheIfNeeded()`
+     (故意用 cast,不动上游 `WebViewControllerDelegate` 协议)。
+   - 已知小限制见 **T19**(feed 版/reader 版译文共用一个缓存键会互相顶)、**T20**(阅读模式每次重抓网页)。
+4. **④ 点翻译自动滚到开头**(`translation.js` 的 `scrollToTop` + 桥接)。
+   凡「要显示译文」(含缓存秒显、强制重翻)都先滚到顶;**切回原文不滚**(可能在读)。
+5. **⑤ 失败/未配置弹提示,不再静默感叹号**(`presentError` 回调 + `presentTranslationError`)。
+   根因是 `lastErrorMessage` 一直只写不读(教训 L43)。**未配置**在点击入口就直接弹
+   "请前往设置中填写 API 并选择翻译模型",且**不再变感叹号**;网络/服务器等硬错误在 catch 里弹;
+   **自动恢复等后台流程静默**,不弹。
+
+**同轮加固**:`tools/install-to-simulator.sh` 原来的「防假安装」`cmp` 只比 57KB 主 stub,
+漏了真正装代码的 `NetNewsWire.debug.dylib`(教训 L42)。已改为两者都比,任一不一致就整目录覆盖。
+
+⚠️ **两条硬约束仍然有效**:自动恢复只在有缓存时应用译文;`performToggle` 只由用户点击/长按触发,
+所以它里面弹窗一定是用户发起的(自动恢复走的是另一个方法 `autoApplyTranslationFromCacheIfNeeded`,不弹)。
 
 ### ✅ 正文阅读页第一轮:已完成并经用户验收(2026-07-21 晚)
 
@@ -465,6 +510,7 @@ find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Appli
 | `TranslationConfig.swift` | 模型列表(内置/刷新而来)、baseURL、选中模型 |
 | `TranslationKeychain.swift` | API key 存取(系统 Security 框架,**没用上游 Secrets 模块**) |
 | `TranslationCache.swift` | 译文缓存(内存+磁盘 Caches,上限50篇,支持未完成缓存) |
+| `ArticleReadingStateStore.swift` | **(2026-07-22 新增)** 按单篇文章记住 `{阅读模式, 已翻译}`,供 item③ 自动恢复。UserDefaults,LRU 上限500 |
 | `OpenRouterModelCatalog.swift` | 从 OpenRouter 翻译榜拉模型(防御式解析,失败不覆盖) |
 | `TranslationModelPickerViewController.swift` | 设置→翻译模型(含刷新按钮) |
 | `TranslationAPIKeyViewController.swift` | 设置→翻译 API Key(含连通性测试) |
@@ -529,9 +575,11 @@ find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Appli
 | `Shared/Article Rendering/WebViewConfiguration.swift` | 脚本清单里再加两个名字(nnw_podcast、nnw_youtube) |
 | `iOS/Resources/Info.plist` | 加 `CFBundleDisplayName = $(APP_DISPLAY_NAME)` 两行 |
 | `xcconfig/NetNewsWire_iOSapp_target.xcconfig` | 末尾追加 `APP_DISPLAY_NAME`(改名单一真源) |
+| `iOS/Article/WebViewController.swift` | **(2026-07-22 item③)** `didFinish` 再加一行钩子 + `setArticle` 判断加「或」+ 末尾追加 `[状态记忆]` 扩展 |
+| `iOS/Article/ArticleViewController.swift` | **(2026-07-22 item②③⑤)** 全在已有 `[翻译]` 扩展里追加:长按手势/确认框、`presentError` 弹窗、自动恢复转接方法 |
 
 翻译功能的改动带 `[翻译]` 标记,界面改造带 `[界面]` 标记,
-阅读视图带 `[阅读视图]` 标记,⌘F 可分别盘点。
+阅读视图带 `[阅读视图]` 标记,状态记忆带 `[状态记忆]` 标记,⌘F 可分别盘点。
 
 ## 六、构建与验证命令(实测可用)
 

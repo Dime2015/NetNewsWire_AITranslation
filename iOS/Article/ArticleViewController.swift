@@ -603,6 +603,16 @@ extension ArticleViewController {
 
 		translationController.button.addTarget(self, action: #selector(toggleTranslation(_:)), for: .touchUpInside)
 
+		// [翻译] item②:长按翻译键 —— 若这篇已有完整译文缓存,弹确认框问是否重翻全文。
+		// 长按手势和单击(touchUpInside)可以并存:短按走翻译,长按走这里。
+		let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleTranslationLongPress(_:)))
+		translationController.button.addGestureRecognizer(longPress)
+
+		// [翻译] 翻译失败/未配置时,把人话说明弹给用户看(以前只静默变感叹号)。
+		translationController.presentError = { [weak self] message in
+			self?.presentTranslationError(message)
+		}
+
 		// [翻译] 顺手修掉上游"阅读视图"按钮的同一个隐患(详见 NOTES-lessons L19)。
 		//
 		// articleExtractorButton 也是 UIBarButtonItem 的 customView,同样只设了 frame、
@@ -653,5 +663,49 @@ extension ArticleViewController {
 
 	@objc func toggleTranslation(_ sender: Any) {
 		translationController.toggle()
+	}
+
+	/// [翻译] item②:长按翻译键的处理。
+	/// 只在这篇**有完整译文缓存**时弹确认框;没有缓存则静默不作任何事
+	/// (与需求一致 —— 重翻只对「已经翻过整篇」的文章才有意义)。
+	@objc func handleTranslationLongPress(_ recognizer: UILongPressGestureRecognizer) {
+		guard recognizer.state == .began else { return }
+		Task { [weak self] in
+			guard let self else { return }
+			guard await self.translationController.hasFullCache() else { return }
+
+			// 长按确实触发了,给一下轻微触感反馈(没缓存的情况上面已提前返回,不会震)。
+			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+			let alert = UIAlertController(title: "重新翻译整篇",
+										  message: "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。",
+										  preferredStyle: .actionSheet)
+			alert.addAction(UIAlertAction(title: "重新翻译全文", style: .destructive) { [weak self] _ in
+				self?.translationController.forceRetranslate()
+			})
+			alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+			// iPad 上 actionSheet 需要一个来源锚点,否则会崩。
+			if let popover = alert.popoverPresentationController {
+				popover.sourceView = self.translationController.button
+				popover.sourceRect = self.translationController.button.bounds
+			}
+			self.present(alert, animated: true)
+		}
+	}
+
+	/// [状态记忆] item③:由 WebViewController.didFinish 转来 —— 页面渲染完成后,
+	/// 若这篇被记为"上次翻过"且本地有完整缓存,自动秒显译文。具体判断在翻译层。
+	func nnwAutoApplyTranslationFromCacheIfNeeded() {
+		translationController.autoApplyTranslationFromCacheIfNeeded()
+	}
+
+	/// [翻译] 翻译失败/未配置时的提示弹窗。
+	func presentTranslationError(_ message: String) {
+		// 已经有别的弹窗(如长按的重翻确认)时不叠。
+		guard presentedViewController == nil else { return }
+		let alert = UIAlertController(title: "翻译", message: message, preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: "好", style: .default))
+		present(alert, animated: true)
 	}
 }

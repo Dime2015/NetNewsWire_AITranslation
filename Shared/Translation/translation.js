@@ -410,6 +410,13 @@
 			return JSON.stringify(result);
 		},
 
+		/// 滚到文章顶部。点翻译后调用,方便从头开始读译文。
+		/// 只移动滚动位置,不碰任何内容。
+		scrollToTop: function () {
+			window.scrollTo(0, 0);
+			return true;
+		},
+
 		/// 换回原文。因为原文一直存在内存里,所以是瞬间完成的。
 		restore: function () {
 
