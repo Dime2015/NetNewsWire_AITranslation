@@ -134,6 +134,7 @@ final class ArticleViewController: UIViewController {
 		navigationItem.standardAppearance = appearance
 		navigationItem.scrollEdgeAppearance = appearance
 		navigationItem.compactAppearance = appearance
+		nnwInstallNavigationBarAppearanceUpdater()	// [外观] 让上面这套颜色跟随深浅色更新(实现在本文件末尾扩展)
 
 		let fullScreenTapZone = UIView()
 		NSLayoutConstraint.activate([
@@ -707,5 +708,40 @@ extension ArticleViewController {
 		let alert = UIAlertController(title: "翻译", message: message, preferredStyle: .alert)
 		alert.addAction(UIAlertAction(title: "好", style: .default))
 		present(alert, animated: true)
+	}
+}
+
+// MARK: - [外观] 文章页导航栏跟随深浅色
+
+extension ArticleViewController {
+
+	/// 让文章页顶栏的背景色**跟着系统深浅色变**。
+	///
+	/// ⚠️ 为什么需要这一段(2026-07-22 用户报告:深色模式下文章页顶端仍是浅色):
+	/// 上游在 `viewDidLoad` 里设了一次
+	/// `appearance.configureWithDefaultBackground()` + 三个 appearance。
+	/// 而 `UINavigationBarAppearance` 会把**当时解析出来的颜色固化**成静态值 ——
+	/// viewDidLoad 只跑一次,之后切换深浅色它不会自己更新,于是顶栏一直停在
+	/// 首次创建时的那套颜色。
+	/// (以前不明显:文章页顶栏是全屏最上面一条,没有对照物;
+	///  时间线做了暖纸头图之后,一深一浅并排出现就很扎眼了。)
+	///
+	/// 做法:注册明暗变化,变了就照上游原样重建一次 appearance。
+	/// **上游代码一行不动**,这里只是"再设一遍",行为与上游完全一致。
+	func nnwInstallNavigationBarAppearanceUpdater() {
+		nnwRefreshNavigationBarAppearance()	// 立刻覆盖掉上游刚在 viewDidLoad 里设的那套默认色
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (controller: ArticleViewController, _) in
+			controller.nnwRefreshNavigationBarAppearance()
+		}
+	}
+
+	/// 按当前深浅色重建导航栏外观(内容与上游 viewDidLoad 里那几行一致)。
+	func nnwRefreshNavigationBarAppearance() {
+		let appearance = UINavigationBarAppearance()
+		appearance.configureWithDefaultBackground()
+		navigationItem.standardAppearance = appearance
+		navigationItem.scrollEdgeAppearance = appearance
+		navigationItem.compactAppearance = appearance
+		nnwInstallNavigationBarAppearanceUpdater()	// [外观] 让上面这套颜色跟随深浅色更新(实现在本文件末尾扩展)
 	}
 }

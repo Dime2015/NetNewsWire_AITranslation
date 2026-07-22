@@ -782,6 +782,25 @@ find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Appli
 
 ---
 
+### ✅ 修「深色模式下文章页顶栏仍是浅色」(2026-07-22)
+
+用户报告:深色模式下,文章详情页**顶端一条仍显示浅色**,和深色正文割裂。
+
+**根因**:上游 `ArticleViewController.viewDidLoad` 里设了一次
+`UINavigationBarAppearance.configureWithDefaultBackground()`。
+`UINavigationBarAppearance` 会把**当时解析出的颜色固化成静态值**,
+viewDidLoad 只跑一次 → 之后切深浅色它不会自己更新,顶栏就停在首次创建的浅色。
+(以前不明显:文章页顶栏是全屏最上一条,没有对照物;时间线做了暖纸头图后,
+一深一浅并排就扎眼了 —— 是新外观**把老问题衬出来了**,不是新引入的。)
+
+**修法**(上游文件,只在 viewDidLoad 加一行 + 末尾追加 `[外观]` 扩展):
+`nnwInstallNavigationBarAppearanceUpdater()` 注册明暗变化,变了就重建 appearance。
+顺带把顶栏色从系统默认(深色下近黑 `#060606`,和正文 `#282828` 有色差 —— 取样实测)
+改成调色板的暖纸色 `#1E1E1E`,和 app 其它页面统一。换纸色只改 `AppAppearance.Palette`。
+
+**已验证**:切深色后顶栏由浅变深,与正文连成一片(截图确认第一层已修);
+第二层色差改用暖纸色(待用户在真实文章页复核)。
+
 ## 五、翻译功能架构速览(细节看代码注释,都是中文)
 
 ```
