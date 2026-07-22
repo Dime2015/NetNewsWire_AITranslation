@@ -451,19 +451,29 @@ extension MainTimelineModernViewController {
 		overlay.apply(
 			progress: progress,
 			headerHeight: headerView.headerHeight,
-			navigationBarFrame: navigationBarFrame(in: host),
+			dockBand: dockedTitleBand(in: host),
 			safeAreaTop: host.view.safeAreaInsets.top
 		)
 	}
 
-	/// 导航栏在宿主 view 坐标系里的位置(标题要停在它正中间)。
-	private func navigationBarFrame(in host: UIViewController) -> CGRect {
-		guard let bar = host.navigationController?.navigationBar else {
-			// 拿不到导航栏就退回"安全区顶部那一条"
-			let top: CGFloat = host.view.safeAreaInsets.top
-			return CGRect(x: 0, y: max(top - 44, 0), width: host.view.bounds.width, height: 44)
-		}
-		return host.view.convert(bar.bounds, from: bar)
+	/// 标题停靠区:**状态栏下沿 到 安全区顶部** 之间那一条(也就是两个圆钮所在的那条)。
+	///
+	/// ⚠️ **不要用 `navigationBar.bounds` 去算中点**(2026-07-22 实测踩过,见 L57):
+	/// iOS 26 的导航栏 bounds 是**从屏幕最顶端算起、把状态栏一起包进去的**(约 114pt 高),
+	/// 它的"正中"在 57pt —— 而两个圆钮实际在 85pt。照它对齐,标题会比按钮高出 28pt,
+	/// 再滑一点就飞出画面。用户的原话:「标题跟着线性动画要飞到画面外了」。
+	///
+	/// 状态栏高度 + 安全区顶 这两个值都是可靠的:安全区顶 = 状态栏 + 导航栏,
+	/// 两者的中点正好落在导航栏那一条的正中。
+	private func dockedTitleBand(in host: UIViewController) -> CGRect {
+		let width: CGFloat = host.view.bounds.width
+		let safeTop: CGFloat = host.view.safeAreaInsets.top
+		let statusBarHeight: CGFloat = host.view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? 0
+
+		// 兜底:拿不到状态栏高度(极少见)就按"安全区顶往上 44pt"当作导航栏那一条
+		let bandTop: CGFloat = statusBarHeight > 0 ? statusBarHeight : max(safeTop - 44, 0)
+		let bandHeight: CGFloat = max(safeTop - bandTop, 20)
+		return CGRect(x: 0, y: bandTop, width: width, height: bandHeight)
 	}
 
 	/// 把浮层装到宿主控制器的 view 上(盖在列表之上、导航栏之下)。
@@ -622,14 +632,14 @@ extension MainTimelineModernViewController {
 	/// 缩放用 `transform` 而不是换字号:换字号是跳变的,做不出连续动画。
 	/// 方向上**刻意是"大字缩小"而不是"小字放大"** —— 缩小的插值损失小得多,
 	/// 停靠时看起来仍然干净。
-	func apply(progress: CGFloat, headerHeight: CGFloat, navigationBarFrame: CGRect, safeAreaTop: CGFloat) {
+	func apply(progress: CGFloat, headerHeight: CGFloat, dockBand: CGRect, safeAreaTop: CGFloat) {
 		let width: CGFloat = bounds.width
 		guard width > 0, headerHeight > 0 else { return }
 
 		// 纸色底:后半段才淡入,免得刚一动就压上一片色块
 		let scrimStart: CGFloat = TimelineStyle.headerDockedScrimFadeStart
 		let scrimProgress: CGFloat = progress <= scrimStart ? 0 : (progress - scrimStart) / max(1 - scrimStart, 0.01)
-		scrimView.frame = CGRect(x: 0, y: 0, width: width, height: max(safeAreaTop, navigationBarFrame.maxY))
+		scrimView.frame = CGRect(x: 0, y: 0, width: width, height: max(safeAreaTop, dockBand.maxY))
 		scrimView.alpha = min(max(scrimProgress, 0), 1) * TimelineStyle.headerDockedScrimAlpha
 
 		// —— 两个端点 ——
@@ -648,13 +658,16 @@ extension MainTimelineModernViewController {
 		let restCenter = CGPoint(x: width - sideMargin - fitted.width / 2,
 								 y: restBottom - fitted.height / 2)
 
-		// 终点:导航栏正中
-		let dockedCenter = CGPoint(x: width / 2, y: navigationBarFrame.midY)
+		// 终点:停靠区正中(两个圆钮所在的那一条)
+		let dockedCenter = CGPoint(x: width / 2, y: dockBand.midY)
 
 		// 线性插值(位置 + 缩放同步进行)
 		let scale: CGFloat = 1 + (TimelineStyle.headerDockedTitleFontSize / TimelineStyle.headerTitleFontSize - 1) * progress
+		let interpolatedY: CGFloat = restCenter.y + (dockedCenter.y - restCenter.y) * progress
+		// 保险:无论几何怎么算,都不许飞到停靠区上沿以上(否则会滑出画面)
+		let minCenterY: CGFloat = dockBand.minY + fitted.height * scale / 2
 		titleLabel.center = CGPoint(x: restCenter.x + (dockedCenter.x - restCenter.x) * progress,
-									y: restCenter.y + (dockedCenter.y - restCenter.y) * progress)
+									y: max(interpolatedY, minCenterY))
 		titleLabel.transform = CGAffineTransform(scaleX: scale, y: scale)
 	}
 }
