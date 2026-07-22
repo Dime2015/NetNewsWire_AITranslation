@@ -86,7 +86,9 @@ enum TimelineStyle {
 	/// 订阅源名 / 作者名颜色。
 	static var feedNameColor: UIColor { .secondaryLabel }
 	/// 条与条之间那条细分隔线的颜色。
-	static var separatorColor: UIColor { .separator.withAlphaComponent(0.1) }
+	/// [外观] 做成无边界暖纸风格:分隔线设为透明(整片无分隔)。
+	/// 想恢复分隔线,把这里改回 `.separator.withAlphaComponent(0.1)` 即可(只改这一个值)。
+	static var separatorColor: UIColor { .clear }
 
 	// MARK: - ↓↓↓ 以下是 2026-07-21 改成 Reeder 式布局后新增的 ↓↓↓
 	//

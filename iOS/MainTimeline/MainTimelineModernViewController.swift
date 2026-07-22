@@ -679,6 +679,7 @@ private extension MainTimelineModernViewController {
 	private func configureCollectionView(_ dataSource: UICollectionViewDiffableDataSource<Int, Article>) {
 		var config = UICollectionLayoutListConfiguration(appearance: .plain)
 		config.showsSeparators = false
+		config.backgroundColor = AppAppearance.paperBackground	// [外观] 暖色纸张背景(时间线原本走系统白;同 L44,要设 config 的底色而非 collectionView 的)
 		config.headerMode = .none
 		config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
 			guard let self else {
