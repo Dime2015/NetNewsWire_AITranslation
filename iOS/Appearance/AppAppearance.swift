@@ -107,6 +107,25 @@ enum AppAppearance {
 	}
 }
 
+// MARK: - [交互] 统一的"取消 / 勾保存"导航按钮
+
+extension UIViewController {
+
+	/// 给一个"填 / 选东西"的设置子页装上统一的两个导航按钮:
+	/// **左上角「取消」= 不保存退回;右上角「勾」= 保存并返回**(iOS 惯例)。
+	///
+	/// 各页自己实现 saveAction(保存并 pop)和 cancelAction(直接 pop),
+	/// 并把"改动"做成"待定"—— 只有 saveAction 里才真正落库。
+	func nnwInstallCancelSaveItems(saveAction: Selector, cancelAction: Selector) {
+		navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel,
+														   target: self, action: cancelAction)
+		let save = UIBarButtonItem(image: UIImage(systemName: "checkmark"),
+								   style: .done, target: self, action: saveAction)
+		save.accessibilityLabel = "保存"
+		navigationItem.rightBarButtonItem = save
+	}
+}
+
 // MARK: - SwiftUI 侧(信息页那批是 SwiftUI,不是 UIKit 表格)
 
 extension AppAppearance {

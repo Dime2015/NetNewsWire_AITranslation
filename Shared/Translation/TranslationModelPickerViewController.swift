@@ -19,15 +19,29 @@ import UIKit
 
 	private var models: [String] = []
 	private var isRefreshing = false
+	private var pendingModel: String = ""		// [交互] 待应用的选择;点右上角勾才真正生效
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
 
 		title = "翻译模型"
 		models = TranslationConfigStore.availableModels
+		pendingModel = TranslationConfigStore.selectedModel
 		tableView.register(UITableViewCell.self, forCellReuseIdentifier: "TranslationModelCell")
-		updateRefreshButton()
 		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风
+
+		// [交互] 左上取消(不改)、右上勾(应用选择并返回),与 API Key 页一致。
+		// 刷新键从右上角移到列表下方单独一行(见最后一个 section)。
+		nnwInstallCancelSaveItems(saveAction: #selector(saveTapped), cancelAction: #selector(cancelTapped))
+	}
+
+	@objc private func cancelTapped() {
+		navigationController?.popViewController(animated: true)		// 不应用,直接退回
+	}
+
+	@objc private func saveTapped() {
+		TranslationConfigStore.selectedModel = pendingModel			// 应用选择
+		navigationController?.popViewController(animated: true)
 	}
 
 	// [外观] cell 暖底 + 药丸选中
@@ -35,28 +49,13 @@ import UIKit
 		AppAppearance.applyPaperStyle(to: cell)
 	}
 
-	// MARK: - 刷新按钮
-
-	private func updateRefreshButton() {
-		if isRefreshing {
-			let spinner = UIActivityIndicatorView(style: .medium)
-			spinner.startAnimating()
-			navigationItem.rightBarButtonItem = UIBarButtonItem(customView: spinner)
-		} else {
-			navigationItem.rightBarButtonItem = UIBarButtonItem(
-				image: UIImage(systemName: "arrow.clockwise"),
-				style: .plain,
-				target: self,
-				action: #selector(refreshTapped))
-			navigationItem.rightBarButtonItem?.accessibilityLabel = "从 OpenRouter 刷新模型列表"
-		}
-	}
+	// MARK: - 刷新(列表下方那一行)
 
 	@objc private func refreshTapped() {
 
 		guard !isRefreshing else { return }
 		isRefreshing = true
-		updateRefreshButton()
+		tableView.reloadData()		// 刷新行改成"正在刷新…"
 
 		Task { [weak self] in
 			guard let self else { return }
@@ -70,7 +69,6 @@ import UIKit
 				TranslationConfigStore.updateFetchedModels(ranked.map(\.id))
 				self.models = TranslationConfigStore.availableModels
 				self.isRefreshing = false
-				self.updateRefreshButton()
 				self.tableView.reloadData()
 				self.showAlert(title: "已更新",
 							   message: "从 OpenRouter 翻译榜拉到 \(ranked.count) 个模型,按热度排序。")
@@ -78,7 +76,7 @@ import UIKit
 			} catch {
 				// 失败:一个字节都不动,只告诉用户为什么
 				self.isRefreshing = false
-				self.updateRefreshButton()
+				self.tableView.reloadData()
 				self.showAlert(title: "刷新失败",
 							   message: (error as? LocalizedError)?.errorDescription
 								   ?? error.localizedDescription,
@@ -97,15 +95,17 @@ import UIKit
 	// MARK: - 表格
 
 	override func numberOfSections(in tableView: UITableView) -> Int {
-		1
+		2	// 0 = 模型列表;1 = 刷新按钮
 	}
 
 	override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-		models.count
+		section == 0 ? models.count : 1
 	}
 
 	/// 配置没配好时,把原因显示在列表下方 —— 而不是给用户一个空白页面让他猜。
 	override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+
+		guard section == 0 else { return nil }		// 刷新那个 section 不要脚注
 
 		if let problem = TranslationConfigStore.configurationProblem {
 			return problem
@@ -119,7 +119,7 @@ import UIKit
 			formatter.timeStyle = .short
 			lines.append("列表更新于 \(formatter.string(from: date)),来自 OpenRouter 翻译榜。")
 		} else {
-			lines.append("当前是内置列表。点右上角可从 OpenRouter 拉取翻译任务下最热门的模型。")
+			lines.append("当前是内置列表。点下方的「刷新模型列表」可从 OpenRouter 拉取翻译任务下最热门的模型。")
 		}
 
 		lines.append("说明:OpenRouter 的翻译榜按「花费占比」排序,贵的模型天然靠前 —— 排名高不等于性价比高。")
@@ -130,23 +130,48 @@ import UIKit
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 
 		let cell = tableView.dequeueReusableCell(withIdentifier: "TranslationModelCell", for: indexPath)
-		let model = models[indexPath.row]
 
+		// section 1:列表下方的「刷新模型列表」按钮行(原来在右上角,现移到这里)
+		if indexPath.section == 1 {
+			var content = cell.defaultContentConfiguration()
+			content.text = isRefreshing ? "正在刷新…" : "刷新模型列表"
+			content.textProperties.color = Assets.Colors.primaryAccent	// 陶土红,像个按钮
+			content.textProperties.alignment = .center
+			cell.contentConfiguration = content
+			cell.accessoryType = .none
+			if isRefreshing {
+				let spinner = UIActivityIndicatorView(style: .medium)
+				spinner.startAnimating()
+				cell.accessoryView = spinner
+			} else {
+				cell.accessoryView = nil
+			}
+			return cell
+		}
+
+		let model = models[indexPath.row]
 		var content = cell.defaultContentConfiguration()
 		content.text = TranslationConfigStore.displayName(for: model)
 		content.secondaryText = model
 		cell.contentConfiguration = content
+		cell.accessoryView = nil
 
-		// 当前选中的那个打勾
-		cell.accessoryType = (model == TranslationConfigStore.selectedModel) ? .checkmark : .none
+		// 待选中的那个打勾(点右上角勾才真正生效)
+		cell.accessoryType = (model == pendingModel) ? .checkmark : .none
 
 		return cell
 	}
 
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-		TranslationConfigStore.selectedModel = models[indexPath.row]
-		tableView.reloadData()
 		tableView.deselectRow(at: indexPath, animated: true)
+
+		if indexPath.section == 1 {
+			refreshTapped()					// 刷新模型列表
+			return
+		}
+
+		pendingModel = models[indexPath.row]	// 只标记待选,不落库
+		tableView.reloadData()
 	}
 }
 

@@ -49,6 +49,9 @@ final class AccountInspectorViewController: UITableViewController {
 		if isModal {
 			let doneBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(done))
 			navigationItem.leftBarButtonItem = doneBarButtonItem
+		} else {
+			// [交互] 从设置推入时:左上取消(丢弃改动)/ 右上勾(保存并返回)
+			nnwInstallCancelSaveItems(saveAction: #selector(saveTapped), cancelAction: #selector(cancelTapped))
 		}
 
 		tableView.register(ImageHeaderView.self, forHeaderFooterViewReuseIdentifier: "SectionHeader")
@@ -60,16 +63,29 @@ final class AccountInspectorViewController: UITableViewController {
 		AppAppearance.applyPaperStyle(to: cell)
 	}
 
-	override func viewWillDisappear(_ animated: Bool) {
+	// [交互] 改动不再"离开就自动保存",改为点右上角勾(或模态的"完成")才统一保存。
+
+	private func saveChanges() {
 		account?.name = nameTextField.text
 		account?.isActive = activeSwitch.isOn
+		AccountManager.shared.syncArticleContentForUnreadArticles = syncContentSwitch.isOn
+	}
+
+	@objc private func saveTapped() {
+		saveChanges()
+		navigationController?.popViewController(animated: true)
+	}
+
+	@objc private func cancelTapped() {
+		navigationController?.popViewController(animated: true)		// 不保存,丢弃改动
 	}
 
 	@IBAction func syncContentSwitchDidChange(_ sender: UISwitch) {
-		AccountManager.shared.syncArticleContentForUnreadArticles = sender.isOn
+		// [交互] 不再即时生效;值在保存(勾 / 完成)时统一读取。
 	}
 
 	@objc func done() {
+		saveChanges()		// 模态的"完成"也保存
 		dismiss(animated: true)
 	}
 

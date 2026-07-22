@@ -153,6 +153,27 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 **改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
 `SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。
 
+### ✅ 设置类子页交互统一为「右上勾保存 / 左上取消」(2026-07-22,已验收)
+
+用户要求:所有「填 / 选东西」的设置子页,统一成 **左上角「取消」= 不保存退回;右上角「勾」= 保存并返回**
+(iOS 惯例)。取代原来的「离开自动保存 / 点一下即生效」。改动都带 `[交互]` 标记。
+
+- **复用件**:`UIViewController.nnwInstallCancelSaveItems(saveAction:cancelAction:)`(在 `AppAppearance.swift`)——
+  装上取消(system `.cancel`)+ 勾(`checkmark` 图标)两个导航按钮。各页自己实现 `saveTapped`(落库+pop)/
+  `cancelTapped`(直接 pop),并把改动做成「**待定**」——只有 `saveTapped` 里才真正写入。
+- **已改的页**:翻译 API Key、翻译模型、界面语言、配色、主题、账户详情。
+- **选择类页的做法**:selectedXXX 变成 `pendingXXX`(初始=当前值),点行只改 pending + 打勾,
+  点勾才 `落库`。cellForRow 的对勾也认 pending。
+- **几个特殊处理**:
+  - 翻译模型 / 主题:原来右上角的「刷新 / 导入」按钮**移到列表最下面一行**(第二个 section,陶土红居中),
+    腾出右上角给勾;
+  - 配色:变成点勾才切换(不再即时预览)——用户确认接受;
+  - 界面语言:值可空(`String?`,nil=跟随系统);勾之后若变了弹重启提示;
+  - 账户详情:有「推入 / 模态」两种呈现——推入用取消/勾,模态保留「完成」(完成也保存);
+    sync 开关不再即时生效(勾时统一读);移除账户仍即时(带确认);
+  - API Key:测试连通性改为**用当前输入框构造配置来测**(不落库);清除只清空输入框(勾才落库)。
+- ⚠️ 有了明确按钮后,这些页的**左划返回手势被系统自动禁用**(避免「划回算保存还是丢弃」的歧义),这是预期的。
+
 ### ✅ 翻译体验五项优化:已完成并经用户验收(2026-07-22)
 
 用户真机用下来提的四点 + 一个追加,都已实现、双平台编译过、装模拟器验收。

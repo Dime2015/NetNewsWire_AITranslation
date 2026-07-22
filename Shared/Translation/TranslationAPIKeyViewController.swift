@@ -37,17 +37,24 @@ import UIKit
 		configureAPIKeyField()
 		configureBaseURLField()
 		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风
+
+		// [交互] 明确的保存 / 取消,取代原来的"离开自动保存"(左上取消 / 右上勾)。
+		nnwInstallCancelSaveItems(saveAction: #selector(saveTapped), cancelAction: #selector(cancelTapped))
+	}
+
+	@objc private func cancelTapped() {
+		// 不保存,直接退回上一页。
+		navigationController?.popViewController(animated: true)
+	}
+
+	@objc private func saveTapped() {
+		save()
+		navigationController?.popViewController(animated: true)
 	}
 
 	// [外观] cell 暖底 + 药丸选中
 	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
 		AppAppearance.applyPaperStyle(to: cell)
-	}
-
-	/// 离开页面时自动保存,省得用户还要找"完成"按钮。
-	override func viewWillDisappear(_ animated: Bool) {
-		super.viewWillDisappear(animated)
-		save()
 	}
 
 	private func configureAPIKeyField() {
@@ -153,9 +160,9 @@ import UIKit
 			runConnectionTest()
 
 		case .clear:
+			// 只清空输入框;真正从钥匙串删除由右上角的勾(保存空 key)完成 ——
+			// 保持"改动只在点保存时才生效"。
 			apiKeyField.text = ""
-			TranslationConfigStore.apiKey = nil
-			showAlert(title: "已清除", message: "API Key 已从钥匙串中删除。")
 
 		default:
 			break
@@ -173,12 +180,17 @@ import UIKit
 
 		guard !isTesting else { return }
 
-		// 先把输入框里的内容存下来,否则测的是上一次保存的旧值
-		save()
-
-		guard let config = TranslationConfigStore.config else {
-			showAlert(title: "还不能测试",
-					  message: TranslationConfigStore.configurationProblem ?? "配置不完整。")
+		// 用当前输入框的内容测(不保存 —— 保存只由右上角的勾负责)。
+		let key = (apiKeyField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !key.isEmpty else {
+			showAlert(title: "还不能测试", message: "请先填入 API Key。")
+			return
+		}
+		let baseURLText = (baseURLField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		let config = TranslationConfig(baseURL: baseURLText.isEmpty ? TranslationConfigStore.defaultBaseURL : baseURLText,
+									   apiKey: key)
+		guard config.chatCompletionsURL != nil else {
+			showAlert(title: "还不能测试", message: "服务地址不是合法网址:\(baseURLText)")
 			return
 		}
 

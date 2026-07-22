@@ -16,14 +16,25 @@ extension UTType {
 
 final class ArticleThemesTableViewController: UITableViewController {
 
+	private var pendingThemeName: String = ""		// [交互] 待应用的主题;点右上角勾才生效
+
 	override func viewDidLoad() {
-		let importBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(importTheme(_:)))
-		importBarButtonItem.title = NSLocalizedString("Import Theme", comment: "Import Theme")
-		navigationItem.rightBarButtonItem = importBarButtonItem
+		pendingThemeName = ArticleThemesManager.shared.currentTheme.name
 
 		NotificationCenter.default.addObserver(self, selector: #selector(articleThemeNamesDidChangeNotification(_:)), name: .ArticleThemeNamesDidChangeNotification, object: nil)
 
 		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸风
+		// [交互] 左上取消 / 右上勾;原来右上角的「导入主题」移到列表下方一行(见 section 1)。
+		nnwInstallCancelSaveItems(saveAction: #selector(saveTapped), cancelAction: #selector(cancelTapped))
+	}
+
+	@objc private func cancelTapped() {
+		navigationController?.popViewController(animated: true)		// 不改主题,直接退回
+	}
+
+	@objc private func saveTapped() {
+		ArticleThemesManager.shared.currentThemeName = pendingThemeName	// 应用主题
+		navigationController?.popViewController(animated: true)
 	}
 
 	// [外观] cell 暖底 + 药丸选中
@@ -47,40 +58,55 @@ final class ArticleThemesTableViewController: UITableViewController {
 	// MARK: - Table view data source
 
 	override func numberOfSections(in tableView: UITableView) -> Int {
-		return 1
+		return 2	// 0 = 主题列表;1 = 导入按钮
 	}
 
 	override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-		return ArticleThemesManager.shared.themeNames.count + 1
+		section == 0 ? ArticleThemesManager.shared.themeNames.count + 1 : 1
+	}
+
+	/// 第 0 行是内置默认主题,其余是已安装的主题。
+	private func themeName(at indexPath: IndexPath) -> String {
+		if indexPath.row == 0 {
+			return ArticleTheme.defaultTheme.name
+		}
+		return ArticleThemesManager.shared.themeNames[indexPath.row - 1]
 	}
 
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
 
-		let themeName: String
-		if indexPath.row == 0 {
-			themeName = ArticleTheme.defaultTheme.name
-		} else {
-			themeName = ArticleThemesManager.shared.themeNames[indexPath.row - 1]
-		}
-
-		cell.textLabel?.text = themeName
-		if themeName == ArticleThemesManager.shared.currentTheme.name {
-			cell.accessoryType = .checkmark
-		} else {
+		// section 1:列表下方的「导入主题」按钮行(原来在右上角)
+		if indexPath.section == 1 {
+			cell.textLabel?.text = NSLocalizedString("Import Theme", comment: "Import Theme")
+			cell.textLabel?.textColor = Assets.Colors.primaryAccent	// 陶土红,像个按钮
+			cell.textLabel?.textAlignment = .center
 			cell.accessoryType = .none
+			return cell
 		}
 
+		let name = themeName(at: indexPath)
+		cell.textLabel?.text = name
+		cell.textLabel?.textColor = .label			// 复用的 cell 可能来自导入行,复位
+		cell.textLabel?.textAlignment = .natural
+		cell.accessoryType = (name == pendingThemeName) ? .checkmark : .none	// 待选打勾
 		return cell
 	}
 
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-		guard let cell = tableView.cellForRow(at: indexPath), let themeName = cell.textLabel?.text else { return }
-		ArticleThemesManager.shared.currentThemeName = themeName
-		navigationController?.popViewController(animated: true)
+		tableView.deselectRow(at: indexPath, animated: true)
+
+		if indexPath.section == 1 {
+			importTheme(nil)						// 导入主题
+			return
+		}
+
+		pendingThemeName = themeName(at: indexPath)	// 只标记待选,点勾才生效
+		tableView.reloadData()
 	}
 
 	override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+		guard indexPath.section == 0 else { return nil }		// [交互] 导入行不可滑删
 		guard let cell = tableView.cellForRow(at: indexPath),
 			  let themeName = cell.textLabel?.text,
 			  let theme = ArticleThemesManager.shared.articleThemeWithThemeName(themeName),
