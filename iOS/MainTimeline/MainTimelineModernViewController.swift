@@ -290,6 +290,7 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			label.isUserInteractionEnabled = ((coordinator?.timelineFeed as? PseudoFeed) == nil)
 			label.sizeToFit()
 		}
+		nnwUpdateFeedWatermark()	// [外观] 单源页顶部水印(实现在 TimelineFeedWatermark.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
 	}
 
 	func updateNavigationBarSubtitle(_ text: String) {

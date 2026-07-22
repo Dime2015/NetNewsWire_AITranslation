@@ -109,6 +109,33 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ## 四、当前悬而未决(接手者先看这里)
 
+### 🚧 单源文章列表页的「图标水印」(2026-07-22 实现完毕,待用户美学验收)
+
+**需求**(用户提出,参考 `external resources/screenshots/订阅页参考.PNG` 的 Apple Music 艺人页,
+但按本 app 的纸张审美转译):进入**单一订阅源**的文章列表时,顶部大标题区显示该源图标的
+放大、灰度、极淡的「钢印水印」,右侧约 20% 出血到屏幕外。
+
+**用户确认过的边界**:只做单一源页(文件夹/今天/未读/星标不显示);先只做浅色模式
+(深色下整个隐藏,效果不好就回退);出血比例可调。
+
+**实现**(方案 A,已装模拟器,算法逐像素验证通过):
+- 新文件 `iOS/MainTimeline/TimelineFeedWatermark.swift`(全部逻辑);
+  可调数值在 `TimelineStyle.swift` 末尾「顶部水印」段(浓度 0.10、宽 0.85 屏宽、
+  屏内露 0.80、渐隐起点 0.45、滚动 110pt 淡出;**回退 = watermarkEnabled 改 false**)
+- 上游改动**仅 1 行**:`MainTimelineModernViewController.updateNavigationBarTitle` 里调
+  `nnwUpdateFeedWatermark()`(viewWillAppear 和 SceneCoordinator 切源都汇到该方法,必经之地)
+- 关键工程事实:①图标素材上限 **144px**(下载器落盘前就缩了,`IconImage.maxIconPixelSize`),
+  所以走"软水印"路线,糊感转为晕染;②白底 favicon 靠 **multiply 预烘焙**消掉白底
+  (背景是已知纯色,数学等价、可逐像素验证);③时间线 cell 正常态背景是 `.clear`,
+  文章行会**穿过**水印而不是盖住它,所以滚动渐隐是必须项(KVO contentOffset,零上游改动);
+  ④图标晚到靠监听 4 个「图标就绪」通知补装
+- **已知风险(等截图定夺)**:深底色图标(如 Daring Fireball)灰度后是一整块深色方块,
+  multiply 只能消白底消不了深底,可能像一张"灰贴纸" —— 若难看,候选对策:
+  检测深底反相 / 对深底降浓度 / 接受现状
+
+**验收方式**:用户开三类源各截图 —— 白底字形类(Benedict Evans)、深底色块类(Daring
+Fireball)、照片封面类(硅谷101/Acquired);另验证滚动淡出、文件夹页无水印。
+
 ### 🚧 界面重做成 Reeder 式暖色风格(2026-07-22 开始,分页推进中)
 
 **目标**:参照 Reeder(用户在 `external resources/screenshots/` 放了参考图,含

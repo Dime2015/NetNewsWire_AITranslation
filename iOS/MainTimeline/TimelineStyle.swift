@@ -179,4 +179,25 @@ enum TimelineStyle {
 	static let starDimensionInFeedLine = CGFloat(13)
 	/// 星标与时间之间的距离。
 	static let starMarginLeft = CGFloat(4)
+
+	// MARK: 顶部水印(单一订阅源页的图标钢印,见 TimelineFeedWatermark.swift)
+
+	// 2026-07-22 用户确认的设计:源图标放大、灰度、极淡地"印"在顶部大标题区,
+	// 右侧一部分出血到屏幕外;只做单一源页、只做浅色模式。
+	// **调水印样式只改这一段的数字**,不用碰实现文件。
+
+	/// 总开关。回退时改成 false 即可,一行都不用删。
+	static let watermarkEnabled = true
+	/// 印痕浓度(0=看不见,1=原图灰度)。水印的本分是低调,建议 0.06~0.14 之间试。
+	static let watermarkAlpha = CGFloat(0.10)
+	/// 图宽 = 屏宽 × 此值。
+	static let watermarkWidthRatio = CGFloat(0.85)
+	/// 水平方向留在屏内的比例(其余出血到右侧屏幕外)。0.80 = 露 80%、裁 20%。
+	static let watermarkVisibleFraction = CGFloat(0.80)
+	/// 图案顶边相对屏幕顶的偏移(负值 = 往上出血一点)。
+	static let watermarkTopOffset = CGFloat(-12)
+	/// 纵向渐隐从图高的这个比例处开始(到图底完全消失)。
+	static let watermarkFadeStart = CGFloat(0.45)
+	/// 往下滚多少点,水印完全淡出(文章行会从印上滑过,所以必须快速让位)。
+	static let watermarkScrollFadeDistance = CGFloat(110)
 }
