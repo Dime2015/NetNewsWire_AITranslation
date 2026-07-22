@@ -475,28 +475,29 @@ extension MainTimelineModernViewController {
 		overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 	}
 
-	/// 给导航栏一层纸色底(**只作用于本页面**,不是全局 appearance 代理)。
+	/// 让导航栏**始终透明**(只作用于本页面,不是全局 appearance 代理)。
 	///
-	/// - scrollEdge(停在顶部时):**透明** —— 头图要能透上来。
-	/// - standard(滚动之后):纸色不透明 —— 停靠的标题得有干净的底,
-	///   否则文章正文直接从它背后穿过去(用户 2026-07-22 的截图就是这个样子)。
-	/// 两者之间由系统自己做交叉淡入,不用我们管。
+	/// ⚠️ **第一版在这里犯了错,别再犯**(2026-07-22 用户截图指出):
+	/// 当时给滚动后的 standardAppearance 铺了一层不透明纸色,想给停靠的标题当底。
+	/// 但**导航栏画在我们那层浮层的上面** —— 结果标题飞上去就钻到它背后不见了,
+	/// 而那条不透明的带子还把头图和正文一起挡住。用户的原话:
+	/// 「顶栏没有变透明,把后面遮挡起来了,标题在往顶栏的遮挡后面跑」。
+	///
+	/// 正确的分工:**导航栏自始至终透明,底由浮层自己那条 scrim 提供**。
+	/// 这样层级是「正文 → scrim → 标题 → 导航栏按钮」,标题稳稳停在自己的底上面,
+	/// 而两个圆钮仍然压在最上面。
+	///
+	/// 仍然要显式设成透明(而不是不管)的原因:iOS 默认的 standardAppearance
+	/// 在内容滚上去之后会自己画一层毛玻璃 —— 那正是要避免的那层遮挡。
 	private func applyNavigationBarAppearance(to navigationItem: UINavigationItem, host: UIViewController) {
-		let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: host.traitCollection)
-
 		let transparent = UINavigationBarAppearance()
 		transparent.configureWithTransparentBackground()
+		transparent.shadowColor = .clear	// 不要那条分隔线,和无边界风格一致
 		transparent.titleTextAttributes = [.foregroundColor: UIColor.clear]	// 标题由我们自己画
 
-		let solid = UINavigationBarAppearance()
-		solid.configureWithTransparentBackground()
-		solid.backgroundColor = paper
-		solid.shadowColor = .clear	// 不要那条分隔线,和无边界风格一致
-		solid.titleTextAttributes = [.foregroundColor: UIColor.clear]
-
 		navigationItem.scrollEdgeAppearance = transparent
-		navigationItem.standardAppearance = solid
-		navigationItem.compactAppearance = solid
+		navigationItem.standardAppearance = transparent
+		navigationItem.compactAppearance = transparent
 	}
 
 	// MARK: 图标迟到的补装
