@@ -192,8 +192,9 @@ enum TimelineStyle {
 	/// 头图区高度 = 屏高 × 此值(用户点名"约四分之一")。
 	static let headerHeightFraction = CGFloat(0.25)
 
-	/// 图/主色的整体强度 = 「蒙版」。1 = 原色直上,越小越被纸色拉回来、越不容易撞色。
-	/// 这是**最值得先调的一个值**:嫌太抢眼调小,嫌太寡淡调大。
+	/// **背景层**(模糊填边 / 纯主色渐变)的强度 = 「蒙版」。
+	/// 1 = 原色直上,越小越被纸色拉回来、越不容易撞色。
+	/// 嫌背景太抢眼调小、太寡淡调大;主体的浓淡另见 headerSubjectStrength。
 	static let headerImageStrength = CGFloat(0.55)
 	/// 从这个高度比例开始往下淡出(到底边完全消失)。越小 = 淡出得越早、渐变越长。
 	static let headerImageFadeStart = CGFloat(0.18)
@@ -201,6 +202,18 @@ enum TimelineStyle {
 	/// ⚠️ 只在「素材不够大、被拉伸过头」时才用(见下一条),够大的图**一点都不糊**。
 	/// 180 是很轻的柔化,只为掩盖放大锯齿;想更糊调小,想全清晰把下一条调到很大。
 	static let headerImageDownsampleWidth = CGFloat(180)
+	/// 上层「完整的图」的强度。**刻意比 headerImageStrength 高** ——
+	/// 蒙版是给背景防撞色用的,不该把主体一起压淡:主体是这个源的身份,要读得清楚。
+	static let headerSubjectStrength = CGFloat(0.9)
+	/// 底层「模糊填边」的模糊程度(缩到这么多像素宽再放大,越小越糊)。
+	/// 这一层**就该糊得彻底** —— 它只负责把颜色铺到屏幕边缘,糊了才不会和上面那张清晰的图打架。
+	static let headerBackdropDownsampleWidth = CGFloat(14)
+	/// 上层「完整的图」占头图区高度的比例。
+	/// 留出上下余量:上面别顶到状态栏/灵动岛,下面给标题让位。
+	static let headerSubjectHeightRatio = CGFloat(0.62)
+	/// 上层「完整的图」顶边在头图区里的位置比例(越小越靠上)。
+	static let headerSubjectTopRatio = CGFloat(0.10)
+
 	/// 放大倍数超过这个值才启用柔化。素材像素 × 此值 ≥ 屏宽像素时,保持完全清晰。
 	/// 举例:iPhone 屏宽约 1179px,此值 4.0 → 素材 ≥295px 就完全不糊
 	/// (Daring Fireball 官方最大 314px,正好落在清晰这一侧)。

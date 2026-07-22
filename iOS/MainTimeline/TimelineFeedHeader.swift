@@ -239,11 +239,14 @@ extension MainTimelineModernViewController {
 		let useImage: Bool = bigEnough && richEnough
 
 		let layer: UIImage
+		let layerStrength: CGFloat
 		if useImage {
 			layer = Self.makeBlurredFill(source: source, size: size)
+			layerStrength = TimelineStyle.headerSubjectStrength	// 背景已在 makeBlurredFill 里按比例画淡了
 		} else {
 			let color: UIColor = analysis?.dominantColor ?? .systemGray
 			layer = Self.makeSolidFill(color: color, size: size)
+			layerStrength = TimelineStyle.headerImageStrength
 		}
 
 		let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: headerView.traitCollection)
@@ -262,7 +265,7 @@ extension MainTimelineModernViewController {
 			headerView.titleLabel.textColor = .label
 		}
 
-		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper)
+		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper, strength: layerStrength)
 		headerView.setNeedsLayout()
 		renderedKey = key
 
@@ -285,36 +288,68 @@ extension MainTimelineModernViewController {
 		return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
 	}
 
-	/// 有大图这一路:aspectFill 铺满,**默认保持清晰**。
+	/// 有大图这一路(**方案 A**:完整显示 + 模糊填边)。
 	///
-	/// ⚠️ 2026-07-22 用户反馈「好模糊,一看就是小图强行拉大」后改的:
-	/// 之前无条件把图缩到 40 像素宽再放大当"氛围层" —— 那是**我亲手把高清图糊掉**,
-	/// 抓来的 314px 大图完全白费。现在改为**按放大倍数自适应**:
-	/// 只有当素材实在不够(放大超过 headerBlurAboveUpscale 倍)才轻微柔化,
-	/// 目的是掩盖插值锯齿,而不是制造氛围。素材够大时一点都不糊。
+	/// 两层叠出来:
+	/// 1. **底层**:同一张图 aspectFill 铺满整条 + 重度模糊 —— 只负责把颜色铺到屏幕边缘,
+	///    是抽象色晕,裁掉什么都无所谓。
+	/// 2. **上层**:同一张图**完整**按高度缩放、水平居中(aspectFit)—— **一个像素都不裁**。
+	///
+	/// ⚠️ 为什么要这么改(2026-07-22 用户指出):原来只有 aspectFill 一层,
+	/// 而头图区是 393×218pt 的**横条**、素材却是**正方形**,铺满意味着
+	/// **上下各被切掉 22%**。播客封面那种内容铺满的设计还看得过去,
+	/// 但 furbo.org 那种"单个字母居中"的 logo,一裁中段就只剩「竖笔+横笔」——
+	/// 屏幕上是个白色十字,完全认不出是个 f。**标识被裁没了,等于白做。**
+	///
+	/// 底层的模糊是**有意的、必须的**:它让画面仍然铺满整条(保住原来那股浓烈感),
+	/// 同时因为糊得彻底,不会和上面那张清晰的图打架。
+	/// 这是视频播放器"模糊填边"的老手法。
 	private static func makeBlurredFill(source: UIImage, size: CGSize) -> UIImage {
 		let sourceW: CGFloat = max(source.size.width, 1)
 		let sourceH: CGFloat = max(source.size.height, 1)
+
+		// —— 底层:aspectFill 铺满,再重度模糊 ——
 		let fillScale: CGFloat = max(size.width / sourceW, size.height / sourceH)
-		let drawW: CGFloat = sourceW * fillScale
-		let drawH: CGFloat = sourceH * fillScale
-		let drawX: CGFloat = (size.width - drawW) / 2.0
-		let drawY: CGFloat = (size.height - drawH) / 2.0
+		let fillW: CGFloat = sourceW * fillScale
+		let fillH: CGFloat = sourceH * fillScale
+		let fillX: CGFloat = (size.width - fillW) / 2.0
+		let fillY: CGFloat = (size.height - fillH) / 2.0
 
 		let format = UIGraphicsImageRendererFormat()
 		format.opaque = true
 		let renderer = UIGraphicsImageRenderer(size: size, format: format)
 		let filled: UIImage = renderer.image { (ctx: UIGraphicsImageRendererContext) in
 			ctx.cgContext.interpolationQuality = .high
-			source.draw(in: CGRect(x: drawX, y: drawY, width: drawW, height: drawH))
+			source.draw(in: CGRect(x: fillX, y: fillY, width: fillW, height: fillH))
 		}
+		let backdrop: UIImage = softBlurred(filled, downsampleWidth: TimelineStyle.headerBackdropDownsampleWidth)
 
-		// 放大倍数 = 目标像素宽 / 素材像素宽。够清晰就原样返回,不做任何柔化。
+		// —— 上层:完整的图,按高度缩放、水平居中,一点不裁 ——
+		// 高度留出 headerSubjectHeightRatio,免得顶到状态栏、也给底部标题让位。
+		let subjectH: CGFloat = size.height * TimelineStyle.headerSubjectHeightRatio
+		let fitScale: CGFloat = subjectH / sourceH
+		let subjectW: CGFloat = sourceW * fitScale
+		let subjectX: CGFloat = (size.width - subjectW) / 2.0
+		let subjectY: CGFloat = size.height * TimelineStyle.headerSubjectTopRatio
+
+		// 上层是否需要柔化:只看**它自己**的放大倍数(比铺满那层小得多,通常不需要)
 		let sourcePixels: CGFloat = max(sourceW, sourceH) * source.scale
-		let targetPixels: CGFloat = size.width * UIScreen.main.scale
-		let upscale: CGFloat = targetPixels / max(sourcePixels, 1)
-		guard upscale > TimelineStyle.headerBlurAboveUpscale else { return filled }
-		return softBlurred(filled)
+		let subjectPixels: CGFloat = max(subjectW, subjectH) * UIScreen.main.scale
+		let subjectUpscale: CGFloat = subjectPixels / max(sourcePixels, 1)
+		let subjectImage: UIImage = subjectUpscale > TimelineStyle.headerBlurAboveUpscale
+			? softBlurred(source, downsampleWidth: TimelineStyle.headerImageDownsampleWidth)
+			: source
+
+		// 合成时整层会被乘上 headerSubjectStrength,所以这里把**背景**先按相对比例画淡,
+		// 最终效果:背景 = headerImageStrength、主体 = headerSubjectStrength。
+		let backdropRelativeAlpha: CGFloat = min(1, TimelineStyle.headerImageStrength / max(TimelineStyle.headerSubjectStrength, 0.01))
+		return renderer.image { (ctx: UIGraphicsImageRendererContext) in
+			ctx.cgContext.interpolationQuality = .high
+			AppAppearance.paperBackground.resolvedColor(with: UITraitCollection.current).setFill()
+			ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height))
+			backdrop.draw(in: CGRect(x: 0, y: 0, width: size.width, height: size.height), blendMode: .normal, alpha: backdropRelativeAlpha)
+			subjectImage.draw(in: CGRect(x: subjectX, y: subjectY, width: subjectW, height: subjectH))
+		}
 	}
 
 	/// 没有合格大图这一路:纯主色铺满(后续合成会给它上浓下淡的渐变)。
@@ -330,8 +365,8 @@ extension MainTimelineModernViewController {
 
 	/// 模糊:缩到几十像素宽再高质量放大。细节被压掉,放大时插值把残留抹成柔和色晕。
 	/// ⚠️ 刻意不用 CoreImage,原因见文件头与教训 L50。
-	private static func softBlurred(_ input: UIImage) -> UIImage {
-		let tinyWidth: CGFloat = max(TimelineStyle.headerImageDownsampleWidth, 2)
+	private static func softBlurred(_ input: UIImage, downsampleWidth: CGFloat) -> UIImage {
+		let tinyWidth: CGFloat = max(downsampleWidth, 2)
 		guard input.size.width > tinyWidth else { return input }
 		let aspect: CGFloat = input.size.height / max(input.size.width, 1)
 		let tinySize = CGSize(width: tinyWidth, height: max(tinyWidth * aspect, 2))
@@ -360,8 +395,7 @@ extension MainTimelineModernViewController {
 	///
 	/// 「整体蒙版」就是 headerImageStrength:小于 1 的全局不透明度,等价于盖一层纸色 ——
 	/// 强度越低,图的颜色越被纸色拉回来,越不会和页面底色撞。
-	private static func composite(layer: UIImage, size: CGSize, paper: UIColor) -> UIImage {
-		let strength: CGFloat = TimelineStyle.headerImageStrength
+	private static func composite(layer: UIImage, size: CGSize, paper: UIColor, strength: CGFloat) -> UIImage {
 		let fadeStartY: CGFloat = size.height * TimelineStyle.headerImageFadeStart
 		let clearMask: CGColor = UIColor.clear.cgColor
 		let solidMask: CGColor = UIColor.black.cgColor
