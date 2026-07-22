@@ -726,8 +726,13 @@ extension ArticleViewController {
 	/// (以前不明显:文章页顶栏是全屏最上面一条,没有对照物;
 	///  时间线做了暖纸头图之后,一深一浅并排出现就很扎眼了。)
 	///
-	/// 做法:注册明暗变化,变了就照上游原样重建一次 appearance。
-	/// **上游代码一行不动**,这里只是"再设一遍",行为与上游完全一致。
+	/// 做法:注册明暗变化,变了就重建一次 appearance,并顺带铺上本 app 的暖纸色。
+	///
+	/// ⚠️ **这两个方法之间绝不能互相调用**(2026-07-23 崩过一次,见 L58):
+	/// 曾经因为脚本改文件出错,`nnwRefreshNavigationBarAppearance` 末尾误加了一行
+	/// 调回 install → install 又调 refresh → 无限递归 → 栈溢出,**app 一启动就崩**。
+	/// 现在的分工是死的:**install 只负责"装一次 + 注册",refresh 只负责"重建外观",
+	/// refresh 里没有任何回调 install 的语句。**
 	func nnwInstallNavigationBarAppearanceUpdater() {
 		nnwRefreshNavigationBarAppearance()	// 立刻覆盖掉上游刚在 viewDidLoad 里设的那套默认色
 		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (controller: ArticleViewController, _) in
@@ -735,13 +740,20 @@ extension ArticleViewController {
 		}
 	}
 
-	/// 按当前深浅色重建导航栏外观(内容与上游 viewDidLoad 里那几行一致)。
+	/// 按当前深浅色重建导航栏外观,铺上本 app 的暖纸色。
+	///
+	/// 上游原样是 `configureWithDefaultBackground()`(系统默认色);本 fork 全局暖纸风,
+	/// 系统默认在深色下是近黑的 `#060606`,和文章正文那片 `#282828` 有色差(取样实测),
+	/// 所以改用调色板里的纸色,和 app 其它页面统一。换纸色只改 `AppAppearance.Palette`。
+	///
+	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归。**
 	func nnwRefreshNavigationBarAppearance() {
 		let appearance = UINavigationBarAppearance()
-		appearance.configureWithDefaultBackground()
+		appearance.configureWithOpaqueBackground()
+		appearance.backgroundColor = AppAppearance.paperBackground.resolvedColor(with: traitCollection)
+		appearance.shadowColor = .clear	// 去掉分隔线,和无边界风格一致
 		navigationItem.standardAppearance = appearance
 		navigationItem.scrollEdgeAppearance = appearance
 		navigationItem.compactAppearance = appearance
-		nnwInstallNavigationBarAppearanceUpdater()	// [外观] 让上面这套颜色跟随深浅色更新(实现在本文件末尾扩展)
 	}
 }
