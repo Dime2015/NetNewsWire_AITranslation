@@ -180,32 +180,36 @@ enum TimelineStyle {
 	/// 星标与时间之间的距离。
 	static let starMarginLeft = CGFloat(4)
 
-	// MARK: 单源页顶部头部区(logo + 源名 + 氛围背景,见 TimelineFeedHeader.swift)
+	// MARK: 单源页顶部头图区(见 TimelineFeedHeader.swift)
 
-	// 2026-07-22 第二版(第一版"水印"被用户否掉:太浅太糊):
-	// 顶部约 1/4 屏让出来,清晰 logo 偏上、源名偏下,背景是 logo 放大重模糊的氛围层。
-	// 高清图标由 FeedHeroIconLoader 抓取。**调头部样式只改这一段的数字**。
+	// 2026-07-22 v3(v1 水印"太浅太糊"、v2 小 logo"挺丑"都被用户否掉):
+	// 图铺满全宽、越往上越浓越往下越淡、整体压纸色蒙版防撞色、标题在最下方最淡处。
+	// 抓不到合格大图的源,用 favicon 主色做同样形状的纯色渐变,观感与有图的源一致。
+	// **调头图样式只改这一段的数字**。
 
 	/// 总开关。回退时改成 false 即可,一行都不用删。
 	static let headerEnabled = true
-	/// 头部区高度 = 屏高 × 此值(用户点名"约四分之一")。
+	/// 头图区高度 = 屏高 × 此值(用户点名"约四分之一")。
 	static let headerHeightFraction = CGFloat(0.25)
-	/// 清晰 logo 的边长(pt)。
-	static let headerLogoSize = CGFloat(96)
-	/// logo 圆角 = 边长 × 此值(0.24 ≈ app 图标的圆角味道;0.5 = 圆形)。
-	static let headerLogoCornerRadiusRatio = CGFloat(0.24)
-	/// logo 顶边在「安全区以下的可用高度」里的位置比例(越小越靠上)。
-	static let headerLogoTopRatio = CGFloat(0.06)
-	/// logo 和源名之间的间距(pt)。
-	static let headerTitleSpacing = CGFloat(14)
-	/// 氛围背景的模糊程度:先把图缩到这么多像素宽再放大(越小越糊)。这层就该糊,别心疼。
-	static let headerAmbientDownsampleWidth = CGFloat(12)
-	/// 氛围背景上纸色蒙层的不透明度(越大越素净,越小背景颜色越透出来)。
-	static let headerAmbientVeilAlpha = CGFloat(0.72)
-	/// 氛围背景从这个高度比例开始渐变融入列表底色(到底边完全融入)。
-	static let headerAmbientFadeStart = CGFloat(0.55)
-	/// 往下滚多少点,头部完全淡出、导航栏小标题接棒。
+
+	/// 图/主色的整体强度 = 「蒙版」。1 = 原色直上,越小越被纸色拉回来、越不容易撞色。
+	/// 这是**最值得先调的一个值**:嫌太抢眼调小,嫌太寡淡调大。
+	static let headerImageStrength = CGFloat(0.55)
+	/// 从这个高度比例开始往下淡出(到底边完全消失)。越小 = 淡出得越早、渐变越长。
+	static let headerImageFadeStart = CGFloat(0.18)
+	/// 模糊程度:先把图缩到这么多像素宽再放大(越小越糊)。
+	/// 40 左右能看出形和色但不刺眼;想看清图案就调大到 120+。
+	static let headerImageDownsampleWidth = CGFloat(40)
+
+	/// 标题底边距离头图区底边的距离(pt)。
+	static let headerTitleBottomInset = CGFloat(14)
+
+	/// 往下滚多少点,头图完全淡出、导航栏小标题接棒。
 	static let headerScrollFadeDistance = CGFloat(140)
-	/// 高清图标的最低像素(最长边):达标才收,不达标退回上游 144px 小图。
+
+	/// 素材要有这么多像素(最长边)才够格当整片大图,否则走主色渐变。
 	static let headerMinHeroPixels = CGFloat(180)
+	/// 非白像素还要占到这个比例才够格当大图 —— 挡掉白底 logo
+	/// (白底图拉满全宽 = 顶部一片白,比没有图还难看;它们走主色渐变反而好看)。
+	static let headerMinCoverage = CGFloat(0.35)
 }

@@ -109,37 +109,49 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ## 四、当前悬而未决(接手者先看这里)
 
-### 🚧 单源文章列表页的「源头部区」v2(2026-07-22,待用户美学验收)
+### 🚧 单源文章列表页的「源头图区」v3(2026-07-22,待用户美学验收)
 
-**演进过程**:v1 是"钢印水印"(灰度极淡+右侧出血),用户实测否掉:「太浅、太糊,效果很差」。
-v2 按用户新指示重做:**顶部约 1/4 屏让出来 —— 清晰 logo 偏上、源名偏下**,
-背景是 logo 放大重模糊的氛围层(参照 Apple Music,模糊是手法,低分辨率在这层无所谓)。
+**三版演进(都是用户看实物后否掉的,别走回头路)**:
+- v1「钢印水印」灰度 10% 浓度右侧出血 → **「太浅、太糊,效果很差」**
+- v2「小 logo + 标题」清晰小方图居中偏上 → **「还行,但是挺丑的」**(病根:小方块孤零零摆着,没氛围)
+- **v3(当前)= 用户自己提的方案**:图拉满全宽铺满顶部 1/4 屏、**越往上越浓越往下越淡**、
+  整体压一层纸色蒙版防撞色、**源名压在最下方最淡处**。成熟范式(Apple Music 艺人页)。
 
-**清晰度的解法是「抓真高清图」,不是 AI 超分**(新增 `FeedHeroIconLoader.swift`):
-候选顺序 feed.iconURL → HTMLMetadata 里最大的 apple-touch-icon → 根目录约定路径
-`/apple-touch-icon.png` → 非 .ico 的原始 favicon;最长边 ≥180px 才收;
-下载走上游 `Downloader`(统一通道,L33);磁盘缓存 `Caches/FeedHeroIcons/` + 会话内负缓存。
-**实测**:Daring Fireball 秒内抓到 314px(根目录约定路径命中),144 兜底 → 高清自动热替换,
-日志 `[头图]` 全程可查。
+**两类源、一套观感**(共用同一条合成管线,所以浓淡/蒙版口径天然一致):
 
-**交互**:单源页隐藏系统大标题(头部区自己画标题);滚动 140pt 内头部渐隐、
-导航栏小标题接棒(Apple Music 行为);换源滚回顶部、同源返回保持位置;
-文件夹/智能源页零变化(恢复系统大标题)。深浅色都支持(明暗切换重烘焙)。
+| 情况 | 做法 |
+|---|---|
+| 有合格大图(尺寸 ≥180px **且** 非白像素 ≥35%) | 图 aspectFill 铺满 + 适度模糊当氛围层 |
+| 没有(抓不到 / 抓到的是白底 logo) | 取图标**主色**做纯色渐变 |
 
-**文件**:新增 `TimelineFeedHeader.swift`(头部区全部逻辑)、`FeedHeroIconLoader.swift`(高清抓取);
-参数在 `TimelineStyle.swift`「单源页顶部头部区」段(**回退 = headerEnabled 改 false**)。
-上游钩子仍是 updateNavigationBarTitle 里那 1 行(改叫 nnwUpdateFeedHeader)。
-⚠️ 另一处上游改动:`configureCollectionView` 里我们自己那行 [外观] 背景色改为
-`config.backgroundColor = .clear` + `collectionView.backgroundColor = 纸色`
-(原 config 层盖住 backgroundView,层次改为「纸色→头部→行」,L44 的续篇)。
+⚠️ **第二个判据是我加的,用户方案里没有**:只判尺寸不够 —— 白底 logo(Benedict Evans、
+Stratechery 这类)拉满全宽就是**顶部一大片白**,比没有图还难看。让它们走主色渐变,
+而它们的主色恰好就是那个字的颜色,和有图的源摆在一起反而统一。
 
-**本轮顺带修掉的大坑(L49)**:模拟器出现两个 Babel —— 真机配置把构建产物 bundle id
-改成了 com.wenbopan,装机脚本还写死 com.ranchero,每次 install 都装出分身。
-已删空分身(用户数据在 com.ranchero,87 源/2499 篇,无损),脚本改为「存在即覆盖」。
+**新增文件**:`FeedIconColorAnalyzer.swift`(判"够不够格" + 取主色)。
+取主色两个坑:必须跳过接近纯白的像素(否则白底图的主色永远是白),
+但**不能**按饱和度过滤(Daring Fireball 的深灰就是它的身份色)。
 
-**已知未定案**:①头部区 logo 位置修正(从 window 取安全区)编译装机后**未能自截时间线页
-验证**(app 恢复到了订阅列表),等用户截图;②氛围背景在浅色下很含蓄,浓淡由
-`headerAmbientVeilAlpha` 调;③CoreImage 在本工程编译必超时(L50),模糊用的缩放法。
+**本轮踩的大坑 → L51 / L52(务必读)**:
+主色一开始全是错的(Lawfare 墨绿算成紫色)。真因是
+`IconImageCache.imageForFeed` 在真图标没下载好时会**退回一张按网址哈希染色的地球仪占位图**;
+我又把占位结果写进了 renderedKey,导致真图标到货后永不刷新。
+**修法**:改为直接问 `FeedIconDownloader` / `FaviconDownloader` 要真图标(它们会顺带发起下载),
+拿不到就**故意不设 renderedKey**,等通知补装。
+⚠️ L52 记的是排查方法:我在找到真凶前**连续两次误判**(预乘 alpha、CGContext 野指针),
+两个机制都成立、都不是本次原因;最后靠**把素材图 pngData() 落盘拷出来看一眼**当场定案。
+
+**已实测(命令行截图 + 日志,不是推测)**:Lawfare 主色 `#006A72` 墨绿,与列表图标一致;
+Daring Fireball 高清抓到 314px;渐变自顶向下平滑融入纸色,底边与列表无缝。
+
+**参数**在 `TimelineStyle.swift`「单源页顶部头图区」段,**最值得先调的是 `headerImageStrength`
+(现 0.55,即"蒙版"强度,越小越淡越不撞色)**;回退 = `headerEnabled` 改 false。
+上游钩子仍只有 `updateNavigationBarTitle` 里那 1 行;另一处是 `configureCollectionView` 里
+`config.backgroundColor = .clear` + `collectionView.backgroundColor = 纸色`(L44 续篇)。
+
+**未验证/待定**:①**有大图那条路的实际观感没能自截到**(模拟器停在 Lawfare,那是主色渐变路径),
+需用户开 Daring Fireball / 播客类源看;②深色模式没验;③进一次页面会渲染 3 次
+(布局多阶段导致,每次几毫秒的位图绘制,可接受)。
 
 ### ✅ 修「翻译 API Key 一直显示已设置」+ 两个连带问题(2026-07-22,已验收)
 
