@@ -137,6 +137,47 @@ enum FeedIconColorAnalyzer {
 	}
 }
 
+// MARK: - 由主题色推导「看得见的渐变色」
+
+extension FeedIconColorAnalyzer {
+
+	/// 把主题色变成一个**在纸色上看得见**的渐变色。
+	///
+	/// ⚠️ 为什么需要(2026-07-22 实测):Six Colors 退回主色渐变时,主色是 `#E6E6E6`(近白),
+	/// 和纸色 `#F3F0EB` 几乎一样 —— 再乘上 0.55 的蒙版,头图**在屏幕上等于不存在**。
+	/// 用户看到的现象是「头图一闪而过就没了」。
+	/// 这里保证它和纸色至少差出 minContrast,不然那片渐变白做。
+	///
+	/// 和标题色的区别:标题要**读得清**(目标 4.5:1),这里只要**看得见**(目标低得多),
+	/// 否则背景会喧宾夺主。
+	static func visibleGradientColor(brand: UIColor, paper: UIColor, minContrast: CGFloat) -> UIColor {
+		if contrastRatio(brand, paper) >= minContrast {
+			return brand
+		}
+
+		let paperIsLight: Bool = relativeLuminance(paper) > 0.5
+		var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+		guard brand.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+			return brand
+		}
+
+		// 和标题色同样的手法:锁住色相与饱和度,只沿明度轴走到看得见为止
+		var current: CGFloat = brightness
+		let step: CGFloat = paperIsLight ? -0.02 : 0.02
+		for _ in 0...60 {
+			let candidate = UIColor(hue: hue, saturation: saturation, brightness: min(max(current, 0), 1), alpha: 1)
+			if contrastRatio(candidate, paper) >= minContrast {
+				return candidate
+			}
+			current += step
+			if current <= 0 || current >= 1 {
+				break
+			}
+		}
+		return UIColor(hue: hue, saturation: saturation, brightness: paperIsLight ? 0.55 : 0.75, alpha: 1)
+	}
+}
+
 // MARK: - 由主题色推导「读得清的标题颜色」
 
 extension FeedIconColorAnalyzer {

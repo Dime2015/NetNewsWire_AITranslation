@@ -192,9 +192,8 @@ enum TimelineStyle {
 	/// 头图区高度 = 屏高 × 此值(用户点名"约四分之一")。
 	static let headerHeightFraction = CGFloat(0.25)
 
-	/// **背景层**(模糊填边 / 纯主色渐变)的强度 = 「蒙版」。
-	/// 1 = 原色直上,越小越被纸色拉回来、越不容易撞色。
-	/// 嫌背景太抢眼调小、太寡淡调大;主体的浓淡另见 headerSubjectStrength。
+	/// 图/主色的整体强度 = 「蒙版」。1 = 原色直上,越小越被纸色拉回来、越不容易撞色。
+	/// 这是**最值得先调的一个值**:嫌太抢眼调小,嫌太寡淡调大。
 	static let headerImageStrength = CGFloat(0.55)
 	/// 从这个高度比例开始往下淡出(到底边完全消失)。越小 = 淡出得越早、渐变越长。
 	static let headerImageFadeStart = CGFloat(0.18)
@@ -202,18 +201,6 @@ enum TimelineStyle {
 	/// ⚠️ 只在「素材不够大、被拉伸过头」时才用(见下一条),够大的图**一点都不糊**。
 	/// 180 是很轻的柔化,只为掩盖放大锯齿;想更糊调小,想全清晰把下一条调到很大。
 	static let headerImageDownsampleWidth = CGFloat(180)
-	/// 上层「完整的图」的强度。**刻意比 headerImageStrength 高** ——
-	/// 蒙版是给背景防撞色用的,不该把主体一起压淡:主体是这个源的身份,要读得清楚。
-	static let headerSubjectStrength = CGFloat(0.9)
-	/// 底层「模糊填边」的模糊程度(缩到这么多像素宽再放大,越小越糊)。
-	/// 这一层**就该糊得彻底** —— 它只负责把颜色铺到屏幕边缘,糊了才不会和上面那张清晰的图打架。
-	static let headerBackdropDownsampleWidth = CGFloat(14)
-	/// 上层「完整的图」占头图区高度的比例。
-	/// 留出上下余量:上面别顶到状态栏/灵动岛,下面给标题让位。
-	static let headerSubjectHeightRatio = CGFloat(0.62)
-	/// 上层「完整的图」顶边在头图区里的位置比例(越小越靠上)。
-	static let headerSubjectTopRatio = CGFloat(0.10)
-
 	/// 放大倍数超过这个值才启用柔化。素材像素 × 此值 ≥ 屏宽像素时,保持完全清晰。
 	/// 举例:iPhone 屏宽约 1179px,此值 4.0 → 素材 ≥295px 就完全不糊
 	/// (Daring Fireball 官方最大 314px,正好落在清晰这一侧)。
@@ -221,8 +208,12 @@ enum TimelineStyle {
 	/// 若觉得小素材放大后锯齿明显,调小到 3.0 会让更多源走轻柔化。
 	static let headerBlurAboveUpscale = CGFloat(4.0)
 
-	/// 标题底边距离头图区底边的距离(pt)。
-	static let headerTitleBottomInset = CGFloat(14)
+	/// 标题**基线**距离头图区底边(渐变消失的那条分界线)的距离(pt)。
+	/// 2026-07-22 用户要求「标题往下一点,站在渐变色消失的分界线上」——
+	/// 所以用基线定位而不是方框底边:方框底边下面还有一截空的下伸部空间,
+	/// 按方框对齐会看起来浮在线上方。**0 = 字正好站在线上**(下伸部略越线,有意为之);
+	/// 想抬高就给正值。
+	static let headerTitleBaselineInset = CGFloat(0)
 
 	/// 标题字号(pt)。
 	/// 2026-07-22 用户反馈「字号大了,缩小一些会更高级」——
@@ -269,6 +260,10 @@ enum TimelineStyle {
 	static let headerScrollFadeDistance = CGFloat(140)
 
 	/// 素材要有这么多像素(最长边)才够格当整片大图,否则走主色渐变。
+	/// 主色渐变至少要和纸色差出这么多对比度,否则那片渐变等于不存在。
+	/// Six Colors 的主色是近白的 #E6E6E6,不加这条头图会直接"消失"(2026-07-22 实测)。
+	/// 只要"看得见"即可,不必像标题那样"读得清",所以定得低。
+	static let headerMinGradientContrast = CGFloat(1.5)
 	static let headerMinHeroPixels = CGFloat(180)
 	/// 抓图时的"够好就收工"门槛:拿到这么大就不再试剩下的候选地址。
 	/// 低于它会把所有候选试一遍,挑最大的一张(实测很多站的 iconURL 是 32px 缩略图,

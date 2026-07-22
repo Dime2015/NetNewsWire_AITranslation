@@ -93,9 +93,12 @@ import RSWeb
 	func fetchHeroIfNeeded(for feed: Feed, onSuccess: @escaping @MainActor (UIImage) -> Void) {
 		let key = feed.feedID
 
-		// 手里已有的图有多大?已经够好就彻底收工。
-		let currentPixels: CGFloat = cachedHero(for: feed).map { max($0.size.width, $0.size.height) * $0.scale } ?? 0
-		guard currentPixels < TimelineStyle.headerPreferredHeroPixels else { return }
+		// 手里已有的图有多好?已经够好就彻底收工。
+		let currentImage: UIImage? = cachedHero(for: feed)
+		let currentPixels: CGFloat = currentImage.map { max($0.size.width, $0.size.height) * $0.scale } ?? 0
+		let currentUsable: Bool = currentImage.map { Self.isUsableAsHero($0) } ?? false
+		let currentScore: CGFloat = Self.heroScore(pixels: currentPixels, squarish: true, usable: currentUsable)
+		guard !(currentUsable && currentPixels >= TimelineStyle.headerPreferredHeroPixels) else { return }
 		guard (attemptCounts[key] ?? 0) < Self.maxAttempts else { return }
 
 		if inFlight.contains(key) {
@@ -123,6 +126,7 @@ import RSWeb
 			var bestData: Data?
 			var bestPixels: CGFloat = 0
 			var bestScore: CGFloat = 0
+			var bestUsable: Bool = false
 			var bestURL: String = ""
 
 			for url in candidates {
@@ -137,22 +141,29 @@ import RSWeb
 					let shortSide: CGFloat = max(min(image.size.width, image.size.height), 1)
 					let aspect: CGFloat = longSide / shortSide
 
-					// ⚠️ 打分要**对非方图打折**,不能只比大小:
-					// og:image 有时是一张 1200×630 的文章横幅(而且会随最新文章变),
-					// 那不是这个源的"身份图"。封面 / 头像 / logo 几乎都是方的,
-					// 所以宽高比离 1 太远的即使像素多,也不该赢过一张正经的方形图标。
+					// ⚠️ 打分**不能只比大小**,要同时看两件事(2026-07-22 两次踩坑后的版本):
+					//
+					// ① 非方图打折:og:image 有时是 1200×630 的文章横幅(还会随最新文章变),
+					//    那不是这个源的"身份图"。封面 / 头像 / logo 几乎都是方的。
+					// ② **这张图当头图能不能用**:Six Colors 的 og:image 有 1910px,
+					//    但它是**白底**的(非白像素仅 18%),铺满全宽就是一片白 ——
+					//    结果它顶掉了那张 256px、非白像素 39% 的正经 logo,
+					//    头图先闪了一下正确的图、又被换成近白的纯色渐变,视觉上等于消失。
+					//    所以「能用」是**分类优先**:能用的再小也赢不能用的。
 					let isSquarish: Bool = aspect <= TimelineStyle.headerMaxHeroAspect
-					let score: CGFloat = isSquarish ? longSide : longSide * 0.3
+					let usable: Bool = Self.isUsableAsHero(image)
+					let score: CGFloat = Self.heroScore(pixels: longSide, squarish: isSquarish, usable: usable)
 
 					if score > bestScore {
 						bestScore = score
 						bestPixels = longSide
+						bestUsable = usable
 						bestImage = image
 						bestData = data
 						bestURL = url.absoluteString
 					}
-					if isSquarish, longSide >= TimelineStyle.headerPreferredHeroPixels {
-						break	// 又大又方,不用再试剩下的候选
+					if usable, isSquarish, longSide >= TimelineStyle.headerPreferredHeroPixels {
+						break	// 又大又方又能用,不用再试剩下的候选
 					}
 				} catch {
 					continue	// 单个候选失败很正常(404 等),静静试下一个
@@ -161,12 +172,14 @@ import RSWeb
 
 			self.inFlight.remove(key)
 
-			// 只有「够大」且「比手里那张更大」才替换
+			// 只有「够大」且「综合分数比手里那张高」才替换。
+			// 分数含可用性 —— 所以一张又大又白的 og 图不会顶掉小而合格的 logo。
 			if let image = bestImage, let data = bestData,
-			   bestPixels >= TimelineStyle.headerMinHeroPixels, bestPixels > currentPixels {
+			   bestPixels >= TimelineStyle.headerMinHeroPixels, bestScore > currentScore {
 				try? data.write(to: self.diskURL(for: key))
 				self.memoryCache[key] = image
 				let better: String = currentPixels > 0 ? "(替换掉原来的 \(Int(currentPixels))px)" : ""
+				_ = bestUsable
 				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」选中 \(Int(bestPixels))px\(better, privacy: .public),\(candidates.count) 个候选里最大:\(bestURL, privacy: .public)")
 				onSuccess(image)
 			} else {
@@ -263,6 +276,20 @@ import RSWeb
 		}
 
 		return result
+	}
+
+	/// 这张图当整片头图能不能用:非白像素占比够不够(白底 logo 铺满全宽就是一片白)。
+	/// 判据和 TimelineFeedHeader 里那条**是同一个**,所以"抓来的图"和"用不用得上"口径一致。
+	static func isUsableAsHero(_ image: UIImage) -> Bool {
+		guard let analysis = FeedIconColorAnalyzer.analyze(image) else { return false }
+		return analysis.coverage >= TimelineStyle.headerMinCoverage
+	}
+
+	/// 候选图的综合分数:像素数 × 方图系数 × 可用系数。
+	/// 可用系数取 0.05 是**有意压得很狠** —— 让"能用"近乎分类优先:
+	/// 一张 1910px 但不能用的图得分 95,输给一张 256px 能用的图。
+	static func heroScore(pixels: CGFloat, squarish: Bool, usable: Bool) -> CGFloat {
+		pixels * (squarish ? 1.0 : 0.3) * (usable ? 1.0 : 0.05)
 	}
 
 	/// 把「缩略图地址」还原成「原图地址」的几种常见变体(都是 2026-07-22 curl 实测过的)。
