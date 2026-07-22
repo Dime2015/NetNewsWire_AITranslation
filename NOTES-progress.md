@@ -53,7 +53,7 @@ fork 自上游 `Ranchero-Software/NetNewsWire`,必须长期保持可 merge
 本轮(界面重做 Reeder 式暖色风 + 设置交互统一)的提交,从新到旧:
 
 ```
-0232f07df  [交互] 修「翻译 API Key 删掉后仍显示已设置」及两个连带问题(待用户验收)
+0232f07df  [交互] 修「翻译 API Key 删掉后仍显示已设置」及两个连带问题
 ce1950eb4  [文档] 本轮收尾:更新 git 状态段(界面重做 + 设置交互统一)
 a0c8a54af  [交互] 设置类子页统一为「右上勾保存 / 左上取消」
 a29eba27b  [外观] 界面重做第五步:正文阅读页背景对齐暖纸色
@@ -162,7 +162,7 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 **改动文件累计(外观三+四步)**:`AppAppearance.swift`、两个 accent colorset、`VibrantTableViewCell.swift`、
 `SettingsViewController.swift`、7 个表格子页、6 个 SwiftUI 页(ErrorLog/ActivityLog/About/CloudKitStats/Dinosaurs/AccountStats),均带 `[外观]` 标记。
 
-### ✅ 修「翻译 API Key 一直显示已设置」+ 两个连带问题(2026-07-22)
+### ✅ 修「翻译 API Key 一直显示已设置」+ 两个连带问题(2026-07-22,已验收)
 
 用户报告:把已填的 API Key 删掉后,设置页那行**不管点勾还是点叉都还写着「已设置」**。
 用户猜是「key 和服务地址填了一个就算已设置」——**不是**,判断只看 key。真原因是三条:
@@ -194,7 +194,9 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 **改动文件**:`TranslationConfig.swift`(+`isFullyConfigured`、`chatCompletionsURL` 加校验)、
 `TranslationAPIKeyViewController.swift`(去掉 return 键的 save)、
 `SettingsViewController.swift`(上游,两处:`viewWillAppear` 末尾一行 + 判断换成 `isFullyConfigured`,净 +12/-1)。
-双平台编译通过,已装模拟器。
+双平台编译通过,已装模拟器。**用户三步验收全部通过(2026-07-22)**:
+①删 key 点勾→当场变「未设置」 ②删 key 按键盘完成键再点叉→仍是「已设置」(即取消真的取消了)
+③服务地址填 abc→「未设置」,清空→恢复「已设置」。
 
 ### ✅ 设置类子页交互统一为「右上勾保存 / 左上取消」(2026-07-22,已验收)
 
