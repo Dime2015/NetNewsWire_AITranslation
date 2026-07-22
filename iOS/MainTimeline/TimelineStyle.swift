@@ -197,9 +197,16 @@ enum TimelineStyle {
 	static let headerImageStrength = CGFloat(0.55)
 	/// 从这个高度比例开始往下淡出(到底边完全消失)。越小 = 淡出得越早、渐变越长。
 	static let headerImageFadeStart = CGFloat(0.18)
-	/// 模糊程度:先把图缩到这么多像素宽再放大(越小越糊)。
-	/// 40 左右能看出形和色但不刺眼;想看清图案就调大到 120+。
-	static let headerImageDownsampleWidth = CGFloat(40)
+	/// 柔化程度:先把图缩到这么多像素宽再放大(越小越糊)。
+	/// ⚠️ 只在「素材不够大、被拉伸过头」时才用(见下一条),够大的图**一点都不糊**。
+	/// 180 是很轻的柔化,只为掩盖放大锯齿;想更糊调小,想全清晰把下一条调到很大。
+	static let headerImageDownsampleWidth = CGFloat(180)
+	/// 放大倍数超过这个值才启用柔化。素材像素 × 此值 ≥ 屏宽像素时,保持完全清晰。
+	/// 举例:iPhone 屏宽约 1179px,此值 4.0 → 素材 ≥295px 就完全不糊
+	/// (Daring Fireball 官方最大 314px,正好落在清晰这一侧)。
+	/// 用户 2026-07-22 的诉求是「别糊」,所以这个值定得比较宽松;
+	/// 若觉得小素材放大后锯齿明显,调小到 3.0 会让更多源走轻柔化。
+	static let headerBlurAboveUpscale = CGFloat(4.0)
 
 	/// 标题底边距离头图区底边的距离(pt)。
 	static let headerTitleBottomInset = CGFloat(14)
@@ -209,6 +216,10 @@ enum TimelineStyle {
 
 	/// 素材要有这么多像素(最长边)才够格当整片大图,否则走主色渐变。
 	static let headerMinHeroPixels = CGFloat(180)
+	/// 抓图时的"够好就收工"门槛:拿到这么大就不再试剩下的候选地址。
+	/// 低于它会把所有候选试一遍,挑最大的一张(实测很多站的 iconURL 是 32px 缩略图,
+	/// 而去掉尺寸后缀的同一张图有 512px)。
+	static let headerPreferredHeroPixels = CGFloat(512)
 	/// 非白像素还要占到这个比例才够格当大图 —— 挡掉白底 logo
 	/// (白底图拉满全宽 = 顶部一片白,比没有图还难看;它们走主色渐变反而好看)。
 	static let headerMinCoverage = CGFloat(0.35)

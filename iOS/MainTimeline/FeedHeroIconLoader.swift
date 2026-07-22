@@ -90,6 +90,15 @@ import RSWeb
 			guard let self else { return }
 			defer { self.inFlight.remove(key) }
 
+			// ⚠️ 不是「第一个达标的就用」,而是**挑最大的那张**(2026-07-22 用户反馈"太糊"后改)。
+			// 原因:候选里常常前面的小、后面的大 —— 比如 WordPress 的 iconURL 给的是
+			// 32×32 缩略图,而把尺寸后缀去掉的同一张图有 512×512。先到先得会白白错过大图。
+			// 折中:拿到 ≥headerPreferredHeroPixels 的就早停,不必把候选全试一遍。
+			var bestImage: UIImage?
+			var bestData: Data?
+			var bestPixels: CGFloat = 0
+			var bestURL: String = ""
+
 			for url in candidates {
 				do {
 					let response = try await Downloader.shared.download(url)
@@ -99,20 +108,29 @@ import RSWeb
 					}
 					// UIImage(data:) 的 scale 是 1,size 就是像素数
 					let px = max(image.size.width, image.size.height)
-					guard px >= TimelineStyle.headerMinHeroPixels else {
-						Self.logger.info("[头图] \(url.absoluteString, privacy: .public) 只有 \(Int(px))px,太小,试下一个")
-						continue
+					if px > bestPixels {
+						bestPixels = px
+						bestImage = image
+						bestData = data
+						bestURL = url.absoluteString
 					}
-					try? data.write(to: self.diskURL(for: key))
-					self.memoryCache[key] = image
-					Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」拿到 \(Int(px))px 高清图:\(url.absoluteString, privacy: .public)")
-					onSuccess(image)
-					return
+					if px >= TimelineStyle.headerPreferredHeroPixels {
+						break	// 已经够好,不用再试剩下的候选
+					}
 				} catch {
 					continue	// 单个候选失败很正常(404 等),静静试下一个
 				}
 			}
-			Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」\(candidates.count) 个候选全落空,本次会话退回 144px 小图")
+
+			if let image = bestImage, let data = bestData, bestPixels >= TimelineStyle.headerMinHeroPixels {
+				try? data.write(to: self.diskURL(for: key))
+				self.memoryCache[key] = image
+				Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」选中 \(Int(bestPixels))px(\(candidates.count) 个候选里最大):\(bestURL, privacy: .public)")
+				onSuccess(image)
+				return
+			}
+
+			Self.logger.info("[头图] 源「\(feed.nameForDisplay, privacy: .public)」\(candidates.count) 个候选最大才 \(Int(bestPixels))px,不够用,退回小图")
 			self.negativeCache.insert(key)
 		}
 	}
@@ -134,7 +152,13 @@ import RSWeb
 			result.append(url)
 		}
 
-		// 1. feed 自己声明的图标
+		// 1. feed 自己声明的图标 —— 先放它的「原图变体」,再放原样地址。
+		//    因为很多站给的是缩略版(实测:Marginal Revolution 给 32×32,
+		//    去掉 -32x32 后缀的同一张图是 512×512;Jetpack 的 ?fit=32,32 改成
+		//    ?fit=1024,1024 同样能拿到 512×512)。变体拿不到就自动落回原样地址。
+		for upgraded in Self.upscaledVariants(of: feed.iconURL) {
+			append(upgraded)
+		}
 		append(feed.iconURL)
 
 		// 2. 网页元数据里的 apple-touch-icon(挑面积最大的;上游已解析入库,零网络请求)
@@ -152,15 +176,71 @@ import RSWeb
 			}
 		}
 
-		// 3. 根目录的约定路径(很多站没声明但文件真的在)
-		if let homePage = feed.homePageURL, let base = URL(string: homePage),
-		   let root = URL(string: "/apple-touch-icon.png", relativeTo: base) {
-			append(root.absoluteString)
+		// 3. 根目录的约定路径(很多站没声明但文件真的在)。
+		//    大的排前面 —— 上面的挑选逻辑会取最大的那张。
+		if let homePage = feed.homePageURL, let base = URL(string: homePage) {
+			let conventionalPaths = [
+				"/apple-touch-icon-180x180.png",
+				"/apple-touch-icon-precomposed.png",
+				"/apple-touch-icon.png"
+			]
+			for path in conventionalPaths {
+				if let root = URL(string: path, relativeTo: base) {
+					append(root.absoluteString)
+				}
+			}
 		}
 
 		// 4. 原始 favicon(.ico 基本都是 32px,不值得下,跳过)
 		if let favicon = feed.faviconURL, !favicon.lowercased().hasSuffix(".ico") {
+			for upgraded in Self.upscaledVariants(of: favicon) {
+				append(upgraded)
+			}
 			append(favicon)
+		}
+
+		return result
+	}
+
+	/// 把「缩略图地址」还原成「原图地址」的几种常见变体(都是 2026-07-22 curl 实测过的)。
+	/// 返回的地址不保证存在 —— 拿不到就自动落回原样地址,没有副作用。
+	///
+	/// | 站点类型 | 缩略图地址长什么样 | 变体 | 实测收益 |
+	/// |---|---|---|---|
+	/// | WordPress | `cropped-logo-32x32.png` | 去掉 `-32x32` | 32px → 512px |
+	/// | Jetpack/Photon | `...?fit=32%2C32&ssl=1` | `fit` 改大 | 32px → 512px |
+	/// | 通用 | `...?w=64` / `?resize=64,64` | 数字改大 | 视站点 |
+	static func upscaledVariants(of urlString: String?) -> [String] {
+		guard let urlString, !urlString.isEmpty else { return [] }
+		var result = [String]()
+
+		// WordPress 的 `-宽x高` 尺寸后缀:cropped-foo-32x32.png → cropped-foo.png
+		if let range = urlString.range(of: "-[0-9]{2,4}x[0-9]{2,4}(?=\\.[a-zA-Z]{3,4})", options: .regularExpression) {
+			result.append(urlString.replacingCharacters(in: range, with: ""))
+		}
+
+		// 查询参数里的尺寸:fit / resize / w / h,统统调到 1024
+		if urlString.contains("?") {
+			var bumped = urlString
+			let patterns: [(String, String)] = [
+				("fit=[0-9]+(%2C|,)[0-9]+", "fit=1024%2C1024"),
+				("resize=[0-9]+(%2C|,)[0-9]+", "resize=1024%2C1024"),
+				("[?&]w=[0-9]+", "w=1024"),
+				("[?&]h=[0-9]+", "h=1024")
+			]
+			var changed = false
+			for (pattern, replacement) in patterns {
+				if let range = bumped.range(of: pattern, options: .regularExpression) {
+					// 保留原来的 ? 或 & 前缀
+					let matched = String(bumped[range])
+					let prefix = matched.hasPrefix("?") ? "?" : (matched.hasPrefix("&") ? "&" : "")
+					bumped = bumped.replacingCharacters(in: range, with: prefix + replacement)
+					changed = true
+				}
+			}
+			if changed {
+				result.append(bumped)
+			}
 		}
 
 		return result

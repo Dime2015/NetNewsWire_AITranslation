@@ -270,8 +270,13 @@ extension MainTimelineModernViewController {
 		return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
 	}
 
-	/// 有大图这一路:aspectFill 铺满 + 适度模糊(缩小再放大,纯 CoreGraphics,见 L50)。
-	/// 目标是「看得出形和色的氛围」,不是「看清图案」—— 因为上面还要压蒙版。
+	/// 有大图这一路:aspectFill 铺满,**默认保持清晰**。
+	///
+	/// ⚠️ 2026-07-22 用户反馈「好模糊,一看就是小图强行拉大」后改的:
+	/// 之前无条件把图缩到 40 像素宽再放大当"氛围层" —— 那是**我亲手把高清图糊掉**,
+	/// 抓来的 314px 大图完全白费。现在改为**按放大倍数自适应**:
+	/// 只有当素材实在不够(放大超过 headerBlurAboveUpscale 倍)才轻微柔化,
+	/// 目的是掩盖插值锯齿,而不是制造氛围。素材够大时一点都不糊。
 	private static func makeBlurredFill(source: UIImage, size: CGSize) -> UIImage {
 		let sourceW: CGFloat = max(source.size.width, 1)
 		let sourceH: CGFloat = max(source.size.height, 1)
@@ -288,6 +293,12 @@ extension MainTimelineModernViewController {
 			ctx.cgContext.interpolationQuality = .high
 			source.draw(in: CGRect(x: drawX, y: drawY, width: drawW, height: drawH))
 		}
+
+		// 放大倍数 = 目标像素宽 / 素材像素宽。够清晰就原样返回,不做任何柔化。
+		let sourcePixels: CGFloat = max(sourceW, sourceH) * source.scale
+		let targetPixels: CGFloat = size.width * UIScreen.main.scale
+		let upscale: CGFloat = targetPixels / max(sourcePixels, 1)
+		guard upscale > TimelineStyle.headerBlurAboveUpscale else { return filled }
 		return softBlurred(filled)
 	}
 
