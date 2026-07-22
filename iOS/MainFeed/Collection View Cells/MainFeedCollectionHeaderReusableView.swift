@@ -94,6 +94,7 @@ final class MainFeedCollectionHeaderReusableView: UICollectionReusableView {
 
 	func configureUI() {
 		headerTitle.textColor = traitCollection.userInterfaceIdiom == .pad ? .tertiaryLabel : .label
+		backgroundColor = AppAppearance.paperBackground	// [外观] 分组头也用暖纸底,别露出系统灰
 	}
 
 	private func addTapGesture() {

@@ -191,6 +191,13 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		let useSidebarAppearance = traitCollection.userInterfaceIdiom == .pad
 		var config = UICollectionLayoutListConfiguration(appearance: useSidebarAppearance ? .sidebar : .insetGrouped)
 		config.headerMode = .supplementary
+		if !useSidebarAppearance {
+			// [外观] insetGrouped 列表有自己的底色(默认系统灰),会盖过 collectionView.backgroundColor ——
+			// 必须设这个才能让卡片外的边距/空隙也变暖,消除「卡片 vs 背景」的色差。
+			config.backgroundColor = AppAppearance.paperBackground
+			// [外观] 去分隔线的真正开关在下面的 itemSeparatorHandler 里
+			//(它一旦存在就会覆盖 showsSeparators,所以这里设 showsSeparators 没用)。
+		}
 
 		config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
 			guard let self else {
@@ -286,9 +293,9 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 				return configuration
 			}
 
-			// insetGrouped appearance: separators with proper insets
+			// [外观] 订阅列表做成无边界的一整片:一条分隔线都不画。
 			configuration.bottomSeparatorVisibility = .hidden
-			configuration.topSeparatorVisibility = indexPath.row == 0 ? .hidden : .visible
+			configuration.topSeparatorVisibility = .hidden
 
 			if let cell = self.collectionView.cellForItem(at: indexPath) as? MainFeedCollectionViewCell {
 				if cell.indentationLevel == 1 {
@@ -312,7 +319,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			// This defrosts the glass.
 			collectionView.backgroundColor = .clear
 		} else {
-			collectionView.backgroundColor = .systemGroupedBackground
+			collectionView.backgroundColor = AppAppearance.paperBackground	// [外观] 暖色纸张背景(原为 .systemGroupedBackground)
 		}
 	}
 

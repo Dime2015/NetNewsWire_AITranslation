@@ -111,6 +111,12 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 				}
 			}
 		}
+		// [外观] iPhone 上把非选中态的卡片底色也抹成暖纸色,让订阅列表整片是暖背景
+		// (选中/高亮态保留系统反馈,不动)。
+		if traitCollection.userInterfaceIdiom == .phone,
+		   !(state.isHighlighted || state.isSelected || state.isFocused) {
+			backgroundConfig.backgroundColor = AppAppearance.paperBackground
+		}
 		self.backgroundConfiguration = backgroundConfig
 	}
 }

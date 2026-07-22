@@ -100,6 +100,36 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ## 四、当前悬而未决(接手者先看这里)
 
+### 🚧 界面重做成 Reeder 式暖色风格(2026-07-22 开始,分页推进中)
+
+**目标**:参照 Reeder(用户在 `external resources/screenshots/` 放了参考图,含
+`设置界面.PNG` 明确写着 "About Reeder"),把 app 做成**暖色纸张背景、无边界、无色块**的风格。
+**分步做,每页验收后再下一页**;圆形图标等元素用户还在考虑,先只做配色。
+
+**取色(命令行从截图取样,不是肉眼)**:浅色纸张 `#F3F0EB`、深色 `#1E1E1E`。
+用户明确要求:**整片无边界、无颜色分野**(不要卡片色块、不要行分隔线)。
+
+**基础设施(用户要求:以后换色只改一个地方)**:新增 `iOS/Appearance/AppAppearance.swift`,
+`AppAppearance.paperBackground` 是唯一的暖纸色(动态 UIColor,自动跟随深浅色)。
+各页都指到它。**下一步扩成一个完整调色板**(把文字色、强调色等语义色都收进来),
+真正做到"动一个色号全变"。
+
+**✅ 已完成并验收:订阅列表页(MainFeed)**。关键手法(见教训 L44/L45):
+- 列表底色必须设 **`config.backgroundColor`**(不是 `collectionView.backgroundColor`——
+  系统列表有自己一层底色会盖过它),这才消除"卡片 vs 边距"的色差;
+- 行分隔线在 `itemSeparatorHandler` 里关(它覆盖 `showsSeparators`);
+- cell / folder cell / 分组头非选中态背景抹成暖纸色;
+- **不要**用全局 `UINavigationBarAppearance` 铺色——会把大标题+iOS 26 副标题冲掉;
+  导航栏保持系统默认透明,透出下面已变暖的列表即可。
+
+**🔜 待做的页(照搬同一套手法)**:文章列表(时间线,`.plain` 列表,同样要
+`config.backgroundColor`)、设置页、添加订阅页、账户页;正文阅读页是 WebView,
+走它自己的样式层(`nnw_appearance.js`)单独对齐。
+
+**改动文件**:新增 `iOS/Appearance/AppAppearance.swift`;改
+`iOS/MainFeed/MainFeedCollectionViewController.swift`(config.backgroundColor + 关分隔线)、
+`MainFeedCollectionViewCell/FolderCell/HeaderReusableView.swift`(非选中态暖底),均带 `[外观]` 标记。
+
 ### ✅ 翻译体验五项优化:已完成并经用户验收(2026-07-22)
 
 用户真机用下来提的四点 + 一个追加,都已实现、双平台编译过、装模拟器验收。

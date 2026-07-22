@@ -161,6 +161,12 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			unreadCountLabel.font = UIFont.preferredFont(forTextStyle: .body)
 		}
 
+		// [外观] 同订阅源 cell:iPhone 非选中态卡片抹成暖纸色(选中态和下面的拖放目标态不动)
+		if traitCollection.userInterfaceIdiom == .phone,
+		   !(state.isHighlighted || state.isSelected || state.isFocused) {
+			backgroundConfig.backgroundColor = AppAppearance.paperBackground
+		}
+
 		if state.cellDropState == .targeted {
 			backgroundConfig.backgroundColor = .tertiarySystemFill
 		}
