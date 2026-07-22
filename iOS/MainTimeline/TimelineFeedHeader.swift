@@ -64,7 +64,7 @@ extension MainTimelineModernViewController {
 		}
 
 		let feed = coordinator?.timelineFeed as? Feed
-		controller.update(feed: feed, collectionView: collectionView, navigationItem: navigationItem)
+		controller.update(feed: feed, host: self, collectionView: collectionView)
 	}
 }
 
@@ -79,6 +79,11 @@ extension MainTimelineModernViewController {
 	private weak var currentFeed: Feed?
 
 	private let headerView = TimelineFeedHeaderView()
+	/// 标题所在的浮层。**必须挂在控制器的 view 上、盖在列表之上** ——
+	/// 原来标题住在 collectionView.backgroundView 里,那是在**所有文章行的下面**,
+	/// 标题往上飞会从文章文字底下穿过去。
+	private let overlay = TimelineHeaderOverlayView()
+	private weak var host: UIViewController?
 
 	/// 已渲染的内容标识(feedID + 明暗 + 宽度),避免重复渲染
 	private var renderedKey: String?
@@ -116,27 +121,37 @@ extension MainTimelineModernViewController {
 
 	// MARK: 装 / 卸
 
-	func update(feed: Feed?, collectionView: UICollectionView, navigationItem: UINavigationItem) {
+	func update(feed: Feed?, host: UIViewController, collectionView: UICollectionView) {
 		self.collectionView = collectionView
-		self.navigationItem = navigationItem
+		self.navigationItem = host.navigationItem
+		self.host = host
 		self.currentFeed = feed
 
 		guard let feed else {
 			remove()
 			return
 		}
+		let navigationItem: UINavigationItem = host.navigationItem
 
 		// —— 单一订阅源:接管顶部 ——
 
-		// 1. 隐藏系统大标题(标题改由头图区画);滚动后的小标题由 applyScrollLinkage 控制
+		// 1. 让上游那个导航栏标题让位:标题从头到尾由我们自己画(要能一路飞过去)。
+		//    ⚠️ **只把 titleView 藏起来,不要把 navigationItem.title 清空** ——
+		//    title 还兼任下一页返回按钮的文字,清了会连带影响文章页的返回按钮。
+		//    titleView 存在时会盖过 title,所以藏了它就什么都不显示了,两不耽误。
 		navigationItem.largeTitleDisplayMode = .never
-		navigationItem.title = nil
-		navTitleShown = false
+		navigationItem.titleView?.alpha = 0
 
-		// 2. 装容器
+		// 2. 停靠时导航栏要有一层底,否则文章正文会从标题背后穿过去(用户截图证实)。
+		//    用 **navigationItem 上的** appearance,不是全局 appearance 代理 ——
+		//    后者会把大标题和副标题一起冲掉(教训 L45);上游自己在文章页也是这么做的。
+		applyNavigationBarAppearance(to: navigationItem, host: host)
+
+		// 3. 装容器
 		if collectionView.backgroundView !== headerView {
 			collectionView.backgroundView = headerView
 		}
+		installOverlayIfNeeded(in: host)
 		observeScrollIfNeeded(collectionView)
 
 		// 3. 头图高度 = 屏高 × 比例(装完由 syncInset 把内容推下去)
@@ -164,17 +179,20 @@ extension MainTimelineModernViewController {
 			collectionView.contentInset.top -= appliedInset
 			appliedInset = 0
 		}
-		// 恢复系统大标题(上游 updateNavigationBarTitle 刚设过 title,别动它)
+		// 恢复上游的导航栏标题与外观(文件夹 / 智能源页面要跟原来一模一样)
+		navigationItem?.titleView?.alpha = 1
+		navigationItem?.standardAppearance = nil
+		navigationItem?.scrollEdgeAppearance = nil
 		navigationItem?.largeTitleDisplayMode = .automatic
+		overlay.removeFromSuperview()
 		renderedKey = nil
 		installedFeedID = nil
-		navTitleShown = false
 	}
 
 	/// 供通知/明暗变化后重新渲染(源和列表都不变时)
 	private func refresh() {
-		guard let feed = currentFeed, let collectionView, let navigationItem else { return }
-		update(feed: feed, collectionView: collectionView, navigationItem: navigationItem)
+		guard let feed = currentFeed, let collectionView, let host else { return }
+		update(feed: feed, host: host, collectionView: collectionView)
 	}
 
 	// MARK: 内容下移(contentInset 记账)
@@ -198,7 +216,7 @@ extension MainTimelineModernViewController {
 		let key: String = feed.feedID + "|" + (isDark ? "dark" : "light") + "|" + String(Int(width))
 		if renderedKey == key { return }
 
-		headerView.titleLabel.text = feed.nameForDisplay
+		overlay.titleLabel.text = feed.nameForDisplay
 
 		// 素材:高清优先,其次是**真**图标。
 		// ⚠️ 千万别用 IconImageCache.imageForFeed —— 真图标还没下载好时,它会退回
@@ -259,14 +277,14 @@ extension MainTimelineModernViewController {
 		// 规则和方向说明见 FeedIconColorAnalyzer.readableTitleColor ——
 		// 简单说:浅色模式往深里压、深色模式往亮里提,压到对比度达标为止。
 		if let brand = analysis?.dominantColor {
-			headerView.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
+			overlay.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
 				brand: brand,
 				paper: paper,
 				tint: TimelineStyle.headerTitleTintStrength,
 				minContrast: TimelineStyle.headerTitleMinContrast
 			)
 		} else {
-			headerView.titleLabel.textColor = .label
+			overlay.titleLabel.textColor = .label
 		}
 
 		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper)
@@ -421,18 +439,64 @@ extension MainTimelineModernViewController {
 	}
 
 	private func applyScrollLinkage() {
-		guard let collectionView, currentFeed != nil else { return }
+		guard let collectionView, let host, currentFeed != nil else { return }
 		let restY: CGFloat = -collectionView.adjustedContentInset.top
-		let progress: CGFloat = (collectionView.contentOffset.y - restY) / TimelineStyle.headerScrollFadeDistance
-		let clamped: CGFloat = min(max(progress, 0), 1)
-		headerView.contentAlpha = 1 - clamped
+		let raw: CGFloat = (collectionView.contentOffset.y - restY) / TimelineStyle.headerScrollFadeDistance
+		let progress: CGFloat = min(max(raw, 0), 1)
 
-		// 滚过大半后,导航栏顶部淡入源名(Apple Music 的行为);滚回来再收掉
-		let shouldShowNavTitle: Bool = clamped > 0.85
-		if shouldShowNavTitle != navTitleShown {
-			navTitleShown = shouldShowNavTitle
-			navigationItem?.title = shouldShowNavTitle ? currentFeed?.nameForDisplay : nil
+		// 头图(图片本身)照旧渐隐
+		headerView.contentAlpha = 1 - progress
+
+		// 标题沿一条直线飞向导航栏,同时线性缩小;纸色底在后半段淡入
+		overlay.apply(
+			progress: progress,
+			headerHeight: headerView.headerHeight,
+			navigationBarFrame: navigationBarFrame(in: host),
+			safeAreaTop: host.view.safeAreaInsets.top
+		)
+	}
+
+	/// 导航栏在宿主 view 坐标系里的位置(标题要停在它正中间)。
+	private func navigationBarFrame(in host: UIViewController) -> CGRect {
+		guard let bar = host.navigationController?.navigationBar else {
+			// 拿不到导航栏就退回"安全区顶部那一条"
+			let top: CGFloat = host.view.safeAreaInsets.top
+			return CGRect(x: 0, y: max(top - 44, 0), width: host.view.bounds.width, height: 44)
 		}
+		return host.view.convert(bar.bounds, from: bar)
+	}
+
+	/// 把浮层装到宿主控制器的 view 上(盖在列表之上、导航栏之下)。
+	private func installOverlayIfNeeded(in host: UIViewController) {
+		guard overlay.superview !== host.view else { return }
+		overlay.removeFromSuperview()
+		host.view.addSubview(overlay)
+		overlay.frame = host.view.bounds
+		overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+	}
+
+	/// 给导航栏一层纸色底(**只作用于本页面**,不是全局 appearance 代理)。
+	///
+	/// - scrollEdge(停在顶部时):**透明** —— 头图要能透上来。
+	/// - standard(滚动之后):纸色不透明 —— 停靠的标题得有干净的底,
+	///   否则文章正文直接从它背后穿过去(用户 2026-07-22 的截图就是这个样子)。
+	/// 两者之间由系统自己做交叉淡入,不用我们管。
+	private func applyNavigationBarAppearance(to navigationItem: UINavigationItem, host: UIViewController) {
+		let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: host.traitCollection)
+
+		let transparent = UINavigationBarAppearance()
+		transparent.configureWithTransparentBackground()
+		transparent.titleTextAttributes = [.foregroundColor: UIColor.clear]	// 标题由我们自己画
+
+		let solid = UINavigationBarAppearance()
+		solid.configureWithTransparentBackground()
+		solid.backgroundColor = paper
+		solid.shadowColor = .clear	// 不要那条分隔线,和无边界风格一致
+		solid.titleTextAttributes = [.foregroundColor: UIColor.clear]
+
+		navigationItem.scrollEdgeAppearance = transparent
+		navigationItem.standardAppearance = solid
+		navigationItem.compactAppearance = solid
 	}
 
 	// MARK: 图标迟到的补装
@@ -465,7 +529,6 @@ extension MainTimelineModernViewController {
 @MainActor final class TimelineFeedHeaderView: UIView {
 
 	let backgroundImageView = UIImageView()
-	let titleLabel = UILabel()
 
 	/// 头图区总高(从屏幕顶算),由控制器设置
 	var headerHeight: CGFloat = 0 {
@@ -477,10 +540,7 @@ extension MainTimelineModernViewController {
 
 	/// 滚动渐隐只作用于头图内容,不影响容器本身
 	var contentAlpha: CGFloat = 1 {
-		didSet {
-			backgroundImageView.alpha = contentAlpha
-			titleLabel.alpha = contentAlpha
-		}
+		didSet { backgroundImageView.alpha = contentAlpha }
 	}
 
 	override init(frame: CGRect) {
@@ -491,14 +551,6 @@ extension MainTimelineModernViewController {
 
 		backgroundImageView.contentMode = .scaleToFill
 		addSubview(backgroundImageView)
-
-		titleLabel.font = TimelineStyle.headerTitleFont	// 字号 / 衬线与否都在 TimelineStyle
-		titleLabel.adjustsFontSizeToFitWidth = true
-		titleLabel.minimumScaleFactor = 0.6
-		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment	// 左 / 居中 / 右,见 TimelineStyle
-		titleLabel.numberOfLines = 2
-		titleLabel.textColor = .label
-		addSubview(titleLabel)
 
 		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TimelineFeedHeaderView, _) in
 			view.onAppearanceChange?()
@@ -511,23 +563,97 @@ extension MainTimelineModernViewController {
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
-
 		backgroundImageView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
-
-		// 标题贴在头图区底部(最淡的位置),两侧留白给长源名折行。
-		// 对齐方式由 TimelineStyle.headerTitleAlignment 决定(左 / 居中 / 右)。
-		let sideMargin: CGFloat = TimelineStyle.headerTitleSideMargin
-		let maxWidth: CGFloat = max(bounds.width - sideMargin * 2, 1)
-		let fitted: CGSize = titleLabel.sizeThatFits(CGSize(width: maxWidth, height: CGFloat(10000)))
-		let titleHeight: CGFloat = min(fitted.height, headerHeight)
-		// 让最后一行的**基线**落在头图底边(渐变消失的那条分界线)上方 headerTitleBaselineInset 处。
-		// 用基线而不是方框底边来定位,是因为方框底边下面还有一截空的下伸部空间,
-		// 按方框对齐会看起来"浮在线上面"。0 = 字正好站在线上(下伸部略微越线,这是有意的)。
-		let descender: CGFloat = abs(titleLabel.font.descender)
-		let titleY: CGFloat = headerHeight - titleHeight - TimelineStyle.headerTitleBaselineInset + descender
-
-		titleLabel.frame = CGRect(x: sideMargin, y: titleY, width: maxWidth, height: titleHeight)
-
 		onLayout?()
+	}
+}
+
+// MARK: - 标题浮层(会飞的那个标题 + 停靠时的纸色底)
+
+/// 挂在**控制器的 view 上**、盖在文章列表之上的一层浮层。
+///
+/// ⚠️ 为什么标题非要住在这里、不能留在头图里(2026-07-22):
+/// 头图是 `collectionView.backgroundView`,那一层在**所有文章行的下面**。
+/// 标题要往上飞到导航栏,一路上会从文章文字**底下**穿过去 —— 看起来像鬼影。
+/// 放到这一层才是"浮在内容之上",也才是 Apple Music 那种观感。
+///
+/// 层级关系(从下往上):文章列表 → 本浮层 → 导航栏(返回/筛选两个圆钮)。
+/// 所以两个圆钮永远盖在标题上面,这是对的;而标题永远盖在正文上面,也是对的。
+@MainActor final class TimelineHeaderOverlayView: UIView {
+
+	/// 停靠时铺在导航栏那条上的纸色底。没有它,正文会直接从标题背后穿过去。
+	private let scrimView = UIView()
+	let titleLabel = UILabel()
+
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+		backgroundColor = .clear
+		isUserInteractionEnabled = false	// 纯装饰,一点也不挡下面列表的点按
+
+		scrimView.alpha = 0
+		addSubview(scrimView)
+
+		titleLabel.font = TimelineStyle.headerTitleFont
+		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment
+		// 单行:要一路缩放着飞过去,多行会让运动看起来很乱;超长源名自动压字号
+		titleLabel.numberOfLines = 1
+		titleLabel.adjustsFontSizeToFitWidth = true
+		titleLabel.minimumScaleFactor = 0.5
+		titleLabel.isAccessibilityElement = true
+		addSubview(titleLabel)
+
+		updateScrimColor()
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TimelineHeaderOverlayView, _) in
+			view.updateScrimColor()
+		}
+	}
+
+	required init?(coder: NSCoder) {
+		fatalError("不从 storyboard 创建")
+	}
+
+	private func updateScrimColor() {
+		scrimView.backgroundColor = AppAppearance.paperBackground
+	}
+
+	/// 按滚动进度摆放标题(0 = 停在头图下方靠右,1 = 停靠在导航栏正中)。
+	///
+	/// 缩放用 `transform` 而不是换字号:换字号是跳变的,做不出连续动画。
+	/// 方向上**刻意是"大字缩小"而不是"小字放大"** —— 缩小的插值损失小得多,
+	/// 停靠时看起来仍然干净。
+	func apply(progress: CGFloat, headerHeight: CGFloat, navigationBarFrame: CGRect, safeAreaTop: CGFloat) {
+		let width: CGFloat = bounds.width
+		guard width > 0, headerHeight > 0 else { return }
+
+		// 纸色底:后半段才淡入,免得刚一动就压上一片色块
+		let scrimStart: CGFloat = TimelineStyle.headerDockedScrimFadeStart
+		let scrimProgress: CGFloat = progress <= scrimStart ? 0 : (progress - scrimStart) / max(1 - scrimStart, 0.01)
+		scrimView.frame = CGRect(x: 0, y: 0, width: width, height: max(safeAreaTop, navigationBarFrame.maxY))
+		scrimView.alpha = min(max(scrimProgress, 0), 1) * TimelineStyle.headerDockedScrimAlpha
+
+		// —— 两个端点 ——
+		let sideMargin: CGFloat = TimelineStyle.headerTitleSideMargin
+		let available: CGFloat = max(width - sideMargin * 2, 1)
+
+		// 先把 transform 清掉再量尺寸,否则量到的是被缩放过的
+		titleLabel.transform = .identity
+		var fitted: CGSize = titleLabel.sizeThatFits(CGSize(width: available, height: CGFloat(10000)))
+		fitted.width = min(fitted.width, available)
+		titleLabel.bounds = CGRect(origin: .zero, size: fitted)
+
+		// 起点:右缘对齐文章行的右边距,**基线**落在头图底边(渐变消失的那条线)上
+		let descender: CGFloat = abs(titleLabel.font.descender)
+		let restBottom: CGFloat = headerHeight - TimelineStyle.headerTitleBaselineInset + descender
+		let restCenter = CGPoint(x: width - sideMargin - fitted.width / 2,
+								 y: restBottom - fitted.height / 2)
+
+		// 终点:导航栏正中
+		let dockedCenter = CGPoint(x: width / 2, y: navigationBarFrame.midY)
+
+		// 线性插值(位置 + 缩放同步进行)
+		let scale: CGFloat = 1 + (TimelineStyle.headerDockedTitleFontSize / TimelineStyle.headerTitleFontSize - 1) * progress
+		titleLabel.center = CGPoint(x: restCenter.x + (dockedCenter.x - restCenter.x) * progress,
+									y: restCenter.y + (dockedCenter.y - restCenter.y) * progress)
+		titleLabel.transform = CGAffineTransform(scaleX: scale, y: scale)
 	}
 }

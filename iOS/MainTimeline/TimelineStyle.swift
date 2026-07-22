@@ -256,8 +256,15 @@ enum TimelineStyle {
 	/// 达不到时会自动把颜色往黑(浅色模式)或往白(深色模式)压,直到达标。
 	static let headerTitleMinContrast = CGFloat(4.5)
 
-	/// 往下滚多少点,头图完全淡出、导航栏小标题接棒。
+	/// 往下滚多少点,头图完全淡出、标题飞到导航栏停靠。
 	static let headerScrollFadeDistance = CGFloat(140)
+	/// 停靠在导航栏时的字号(pt)。标题一路从 headerTitleFontSize 线性缩到这个大小。
+	static let headerDockedTitleFontSize = CGFloat(17)
+	/// 停靠时导航栏那条纸色底的不透明度。
+	/// 必须有底 —— 否则文章正文会直接从标题背后穿过去,字叠字(2026-07-22 用户截图证实)。
+	static let headerDockedScrimAlpha = CGFloat(1.0)
+	/// 纸色底在滚动进度的哪一段淡入(0~1)。留到后半段才出现,免得刚一动就压上一片色块。
+	static let headerDockedScrimFadeStart = CGFloat(0.45)
 
 	/// 素材要有这么多像素(最长边)才够格当整片大图,否则走主色渐变。
 	/// 主色渐变至少要和纸色差出这么多对比度,否则那片渐变等于不存在。
