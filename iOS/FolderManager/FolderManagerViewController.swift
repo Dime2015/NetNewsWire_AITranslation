@@ -22,7 +22,9 @@
 //  - Phase B:移动(多选「移动到…」为主,拖拽为辅)
 //  - Phase C:批量删除(可撤销)+ 删文件夹时把里面的源释放到顶层
 //  - 之后又按用户反馈做了:文件夹与源混排、拖动排序(顶层和文件夹内两层)、
-//    弹簧加载展开、落点与动画的一串修正
+//    落点分「上下边缘带」、落点与动画的一串修正
+//  - **「悬停自动展开文件夹」做过又整个拿掉了**(2026-07-23),原因见下面
+//    `isDragInProgress` 附近那段长注释。**别再加回来。**
 //
 //  ## 两条硬约束(来自 CLAUDE.md,别越界)
 //
@@ -39,8 +41,10 @@
 //     "数据源里的世界"完全一致,可退出编辑常发生在刚搬完源、两边还没对齐的那一刻)。
 //  2. **拖放相关的调用,顺序即语义**:凡是会改动 collectionView 内部状态的调用
 //     (`coordinator.drop` 之类),必须放在所有数据计算**之后**(现在用 `defer`)。
-//  3. **落点判断只有一个入口**(`dropDestination`),悬停和放手共用它 ——
+//  3. **落点判断只有一个入口**(`dropDecision`),悬停和放手共用它 ——
 //     分开写过一次,口径对不齐就成了"看着能放、松手没反应"。
+//     它的**纯规则部分**住在 `DropZoneResolver.swift`(不碰 UIKit),
+//     所以能用 `tools/sim-dropzone.swift` 离线跑决策表 —— 改完落点规则请顺手跑一次。
 //  4. 这块的时序问题**离线模拟不出来**,只能靠实测;所以**改动要克制**,
 //     尤其别为了美化动画去动已经好用的逻辑(那样弄坏过一次)。
 //
@@ -106,15 +110,26 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 	/// 用户报的「拖到需要滚屏的地方、手一停,屏幕唰地弹回去,根本没法瞄准」就是这么来的。
 	fileprivate var isDragInProgress = false
 
-	/// 拖着东西**悬停在收起的文件夹上多久,就自动把它展开**(所谓"弹簧加载")。
-	///
-	/// 0.6 秒是个折中:系统自带的弹簧加载约 0.5 秒,而这里展开会让下面所有行整体下移、
-	/// 落点跟着变,误触的代价比普通按钮高。所以宁可让手指多停一瞬,也不要**路过就展开**。
-	fileprivate static let springLoadSeconds = 0.6
-
-	/// 当前悬停着的那个文件夹(用来判断"还是不是同一个",手指微动不该重新计时)
-	private var springLoadTarget: Item?
-	private var springLoadTask: Task<Void, Never>?
+	// ⚠️⚠️ **「悬停自动展开文件夹」(弹簧加载)已于 2026-07-23 整个拿掉,别再加回来。**
+	//
+	// 它存在过大约一天,期间给用户添了两次麻烦、让 app 崩了一次:
+	//   1. **挡住落点**:拖到「A 和 B 之间的顶层」时,手指必然要靠近 B,
+	//      于是 B 总是先自己展开,那条缝就没了(用户原话:「几乎没机会触发」)。
+	//   2. **列表越撑越长**:展开之后不会自己合上,要够到靠下的位置得拖很远
+	//      (用户原话:「悬停滑动很长一段距离才能放下」)。
+	//   3. **崩过一次**(L65):展开 = 拖动途中改数据源,而那时列表里常有一个
+	//      UIKit 插的占位空隙(那条"让开的缝"),改数据源就撞断言。
+	//
+	// 而"合上"受同一条约束限制:**手指刚离开文件夹时的落点几乎都带占位,
+	// 那一刻根本没有安全的时机去删行**。也就是说这个机制天生只能开、不能关。
+	//
+	// 于是按 L66 的原则处理:**一个需要不断打补丁才能不崩、不别扭的机制,
+	// 通常说明它本来就不该存在** —— 直接删掉,而不是继续加保险。
+	//
+	// 删掉之后白拿的三件事:
+	//   · **拖动全程不再修改数据源** → L65 那条崩溃路径从代码里消失了
+	//   · 拖动期间列表长度恒定 → 落点不会在手指底下移动
+	//   · 想放进文件夹里的**指定位置**:先点开那个文件夹,再拖。少一个便利,换来全程可预测。
 
 	/// 编辑模式下已勾选的行(源和文件夹都可能在里面)。
 	///
@@ -282,16 +297,8 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 
 		// 文件夹那一行:带一个可展开的小三角
 		let folderRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
-			guard let self, let folder = self.folder(for: item) else { return }
-			var content = cell.defaultContentConfiguration()
-			content.text = folder.nameForDisplay
-			let count = folder.topLevelFeeds.count
-			content.secondaryText = count == 0 ? "空文件夹" : "\(count) 个订阅源"
-			// 图标不显式设颜色,让它继承全局强调色(陶土红)。
-			// ⚠️ 强调色的真源是 Assets 里的 primaryAccentColor 色板,不在 AppAppearance 里 ——
-			// 那是为了让 storyboard 也能按名字引到同一个颜色(见 L46)。
-			content.image = UIImage(systemName: "folder")
-			cell.contentConfiguration = content
+			guard let self else { return }
+			cell.contentConfiguration = self.rowContent(for: item, base: cell.defaultContentConfiguration())
 			cell.backgroundConfiguration = self.paperCellBackground()
 
 			// ⚠️ **这一行的外观刻意完全不看 isEditing**(2026-07-23 第三次改这里,别再加条件):
@@ -313,26 +320,8 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 
 		// 订阅源那一行
 		let feedRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
-			guard let self, let feed = self.feed(for: item) else { return }
-			var content = cell.defaultContentConfiguration()
-			content.text = feed.nameForDisplay
-			content.image = IconImageCache.shared.imageForFeed(feed)?.image
-			content.imageProperties.maximumSize = CGSize(width: 24, height: 24)
-			content.imageProperties.cornerRadius = 4
-			// ⚠️ 给图标**留一块固定宽度**,文字才会从同一条竖线开始(2026-07-23 用户发现)。
-			// 只设 maximumSize 是不够的:那只管"最大别超过 24",
-			// 而各家 favicon 的长宽比五花八门(圆的、扁的),实际占宽各不相同,
-			// 紧跟其后的标题就会参差不齐 —— 截图里 AVNo.1 比下面几行往左突出一截,就是这么来的。
-			content.imageProperties.reservedLayoutSize = CGSize(width: 24, height: 24)
-
-			// ⚠️ **文件夹里的源要额外往右缩一段**,否则编辑模式下认不出层级:
-			// 那时每行前面插了勾选圈、内容整体右移,恰好把系统 outline 自带的缩进差抹平,
-			// 于是"文件夹里的源"和"没归档的源"看起来一样深(用户 2026-07-23 实测报过)。
-			// 现在两种源混排在同一个列表里,这段缩进就是唯一的层级线索,别去掉。
-			if case .feed(_, _, let folderID) = item, folderID != nil {
-				content.directionalLayoutMargins.leading += Self.nestedFeedExtraIndent
-			}
-			cell.contentConfiguration = content
+			guard let self else { return }
+			cell.contentConfiguration = self.rowContent(for: item, base: cell.defaultContentConfiguration())
 			cell.backgroundConfiguration = self.paperCellBackground()
 			// 勾选圈**不加条件**:`displayed: .whenEditing` 已经保证了"只在编辑模式露面",
 			// 交给系统判断比自己看 isEditing 可靠 —— 后者要求每次进出编辑模式都重新配置这一行,
@@ -372,6 +361,91 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		}
 		dataSource.sectionSnapshotHandlers.willCollapseItem = { [weak self] item in
 			self?.expandedFolders.remove(item)
+		}
+	}
+
+	/// 一行显示的文字与图标。
+	///
+	/// ⚠️ **只有这一份**:创建 cell 时用它,刷新时也用它
+	/// (`refreshVisibleRowContents`)。分成两处写迟早会长歪 —— 到时候
+	/// "新画出来的行"和"原地更新的行"会长得不一样,还极难看出是哪儿不一致。
+	private func rowContent(for item: Item, base: UIListContentConfiguration) -> UIListContentConfiguration? {
+
+		var content = base
+
+		switch item {
+
+		case .folder:
+			guard let folder = folder(for: item) else { return nil }
+			content.text = folder.nameForDisplay
+			let count = folder.topLevelFeeds.count
+			content.secondaryText = count == 0 ? "空文件夹" : "\(count) 个订阅源"
+			// 图标不显式设颜色,让它继承全局强调色(陶土红)。
+			// ⚠️ 强调色的真源是 Assets 里的 primaryAccentColor 色板,不在 AppAppearance 里 ——
+			// 那是为了让 storyboard 也能按名字引到同一个颜色(见 L46)。
+			content.image = UIImage(systemName: "folder")
+
+		case .feed(_, _, let folderID):
+			guard let feed = feed(for: item) else { return nil }
+			content.text = feed.nameForDisplay
+			content.image = IconImageCache.shared.imageForFeed(feed)?.image
+			content.imageProperties.maximumSize = CGSize(width: 24, height: 24)
+			content.imageProperties.cornerRadius = 4
+			// ⚠️ 给图标**留一块固定宽度**,文字才会从同一条竖线开始(2026-07-23 用户发现)。
+			// 只设 maximumSize 是不够的:那只管"最大别超过 24",
+			// 而各家 favicon 的长宽比五花八门(圆的、扁的),实际占宽各不相同,
+			// 紧跟其后的标题就会参差不齐 —— 截图里 AVNo.1 比下面几行往左突出一截,就是这么来的。
+			content.imageProperties.reservedLayoutSize = CGSize(width: 24, height: 24)
+
+			// ⚠️ **文件夹里的源要额外往右缩一段**,否则编辑模式下认不出层级:
+			// 那时每行前面插了勾选圈、内容整体右移,恰好把系统 outline 自带的缩进差抹平,
+			// 于是"文件夹里的源"和"没归档的源"看起来一样深(用户 2026-07-23 实测报过)。
+			// 现在两种源混排在同一个列表里,这段缩进就是唯一的层级线索,别去掉。
+			if folderID != nil {
+				content.directionalLayoutMargins.leading += Self.nestedFeedExtraIndent
+			}
+		}
+
+		return content
+	}
+
+	/// 把**当前可见的**每一行的文字重算一遍。
+	///
+	/// ## 为什么非有这一步不可(2026-07-23 用户报的 bug)
+	///
+	/// 用户报:「文件夹底下那个『x 个订阅源』的数字,在拖出拖入之后不会马上更新。」
+	///
+	/// 病根在**行的身份**:一行的标识是值类型的
+	/// (账户id / 文件夹id / 源id),而"文件夹里有几个源""源叫什么名字"
+	/// **都不在身份里**。于是把一个源搬进搬出之后,文件夹那一行的身份**一个字都没变** →
+	/// diffable 判定"这一行没变" → 屏幕上现有的那一行原样保留、不重新配置 →
+	/// 副标题里的数字**停在旧值**,要等它滚出屏幕再滚回来才更新。
+	/// (同一类病之前的表现是"按了编辑,勾选圈有的出现有的不出现"。)
+	///
+	/// ## 为什么用这种"土办法",而不是 UIKit 的 reconfigure
+	///
+	/// - `NSDiffableDataSourceSectionSnapshot` **没有** `reconfigureItems`(只有普通快照有);
+	///   而普通快照**装不下文件夹的层级**(它只含当前可见的行),套回去会把展开结构压平。
+	/// - `collectionView.reconfigureItems(at:)` 有,但它是**直接对列表下命令**,
+	///   要求"列表看到的世界"和"数据源里的世界"当场一致 ——
+	///   在刚搬完源的那一刻调用会撞断言,**2026-07-23 为此崩过两次**(L66)。
+	///
+	/// 这里只是**给已经存在的 cell 换一份文字**:不新增行、不删除行、不动层级,
+	/// 完全不经过 UIKit 的批量更新机制,所以不存在上面那条崩溃路径。
+	/// 拿不到 cell(行不可见)就跳过 —— 那种行下次画出来时本来就是新算的。
+	///
+	/// ⚠️ **必须在 `apply` 的完成回调里调**:那时动画和布局才落定,
+	/// "第几行是谁"才是准的。动画途中去问,可能把 A 的文字写进 B 的那一行。
+	private func refreshVisibleRowContents() {
+
+		for indexPath in collectionView.indexPathsForVisibleItems {
+			guard let item = dataSource.itemIdentifier(for: indexPath),
+				  let cell = collectionView.cellForItem(at: indexPath) as? UICollectionViewListCell,
+				  // ⚠️ 基底必须取**全新的默认配置**,不能拿 cell 现有的那份来改:
+				  // 文件夹里的源那段额外缩进是 `+=` 上去的,拿旧的当基底
+				  // 会**每刷新一次就再往右挪 20pt**,几次之后整行缩到屏幕外面去。
+				  let content = rowContent(for: item, base: cell.defaultContentConfiguration()) else { continue }
+			cell.contentConfiguration = content
 		}
 	}
 
@@ -435,7 +509,13 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 					section.append([Item.feed(accountID: account.accountID, feedID: feed.feedID, folderID: nil)])
 				}
 			}
-			dataSource.apply(section, to: .account(accountID: account.accountID), animatingDifferences: animated)
+
+			// ⚠️ apply **完事之后**要把可见行的文字重算一遍,见 `refreshVisibleRowContents`。
+			// 放在完成回调里,是为了等动画和布局都落定 —— 那时"第几行是谁"才是准的。
+			dataSource.apply(section, to: .account(accountID: account.accountID),
+							 animatingDifferences: animated) { [weak self] in
+				self?.refreshVisibleRowContents()
+			}
 		}
 
 		restoreSelection()
@@ -1060,49 +1140,44 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 			return UICollectionViewDropProposal(operation: .cancel)
 		}
 		let point = session.location(in: collectionView)
-		let hovering = item(nearestTo: point)
-		let draggingFolder = session.localDragSession?.items.contains {
-			if case .folder = ($0.localObject as? Item) { return true }
-			return false
-		} ?? false
+		let draggingFolder = isDraggingFolder(session.localDragSession)
 
-		// 拖的是文件夹时**不做弹簧加载** —— 文件夹不能放进文件夹,展开它没有意义。
-		updateSpringLoading(hovering: draggingFolder ? nil : hovering)
-
-		guard dropDestination(at: point) != nil else {
+		guard let decision = dropDecision(at: point, draggingFolder: draggingFolder) else {
 			return UICollectionViewDropProposal(operation: .forbidden)
 		}
 
-		// 拖文件夹时一律用"插入到某处"的意图 —— 它只可能是在调顺序。
-		if draggingFolder {
-			return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
-		}
+		// 两种落点意图,给的是**两种不同的视觉反馈**:
+		// · `.insertAtDestinationIndexPath` —— 周围的行让开一条缝,意思是"插到这个位置"
+		// · `.insertIntoDestinationIndexPath` —— 目标行高亮,意思是"放进这一项里面"
+		//
+		// ⚠️ 顺带记一笔:前者会让 UIKit 在列表里**插一个占位空隙**(那条缝就是它)。
+		// 占位不在我们的数据快照里,所以**拖动途中绝不能改数据源** —— 会撞 UIKit 的
+		// 批量更新校验,直接崩(L65 为此崩过一次,当时的元凶是"悬停自动展开文件夹")。
+		// 现在那个机制已经整个拿掉,拖动全程不改数据源,这条路径不复存在。**别再往回加。**
+		return UICollectionViewDropProposal(
+			operation: .move,
+			intent: decision.resolution.isInsertInto ? .insertIntoDestinationIndexPath
+												     : .insertAtDestinationIndexPath)
+	}
 
-		// ⚠️ **两种落点意图必须分开用,这不只是观感问题,更是防崩溃的硬要求**
-		// (2026-07-23 用户实测崩过一次,栈直指 `expandFolder` 里的 apply):
-		//
-		// · `.insertAtDestinationIndexPath` 会让 UIKit 在列表里**插入一个占位空隙**
-		//   —— 就是那条"让开的缝",落点反馈全靠它。
-		//   但占位一旦存在,我们再去改数据源(弹簧加载展开文件夹)时,
-		//   UIKit 校验批量更新会发现行数对不上 → **断言失败,直接崩**。
-		// · `.insertIntoDestinationIndexPath` 不插占位(只把目标行高亮),
-		//   所以悬停在文件夹上时用它,展开才是安全的 —— 而且"放进这一项"本来就是它的语义。
-		//
-		// 于是:**悬停在文件夹行上 → insertInto(可安全展开);其余 → insertAt(让位动画)**。
-		if case .folder = hovering {
-			return UICollectionViewDropProposal(operation: .move, intent: .insertIntoDestinationIndexPath)
-		}
-		return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+	/// 这一次拖的是不是文件夹(拖文件夹只可能是在顶层调顺序)
+	private func isDraggingFolder(_ session: UIDragSession?) -> Bool {
+		session?.items.contains {
+			if case .folder = ($0.localObject as? Item) { return true }
+			return false
+		} ?? false
 	}
 
 	func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
 
-		// ⚠️ 和悬停时**调用的是同一个函数**,所以"看着能放"和"真的能放"必然一致。
 		let point = coordinator.session.location(in: collectionView)
-		guard let target = dropDestination(at: point) else { return }
 
 		let items = coordinator.items.compactMap { $0.dragItem.localObject as? Item }
 		guard !items.isEmpty else { return }
+
+		// ⚠️ 和悬停时**调用的是同一个函数**,所以"看着能放"和"真的能放"必然一致。
+		let draggingFolder = items.contains { if case .folder = $0 { return true }; return false }
+		guard let target = dropDecision(at: point, draggingFolder: draggingFolder) else { return }
 
 		// 跨账户拖拽不做(理由见 moveTapped)
 		guard items.allSatisfy({ itemAccountID($0) == target.accountID }) else {
@@ -1130,7 +1205,8 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		}
 
 		// **拖的是文件夹 → 只可能是在顶层调顺序**(上游不支持子文件夹,它没别处可去)。
-		if items.contains(where: { if case .folder = $0 { return true }; return false }) {
+		// (落点判定那边也保证了这种情况一定给出"顶层",这里再显式走一次,读代码时不用回头查。)
+		if draggingFolder {
 			reorderWithinLayer(items, at: dropIndexPath, fallbackPoint: point,
 							   container: target.account, account: target.account)
 			return
@@ -1175,98 +1251,77 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		return UIDragPreviewTarget(container: collectionView, center: point)
 	}
 
-	/// 拖动结束(不管放没放成)都要把弹簧加载的计时收掉,免得手抬起来之后文件夹还自己弹开。
-	func collectionView(_ collectionView: UICollectionView, dropSessionDidEnd session: UIDropSession) {
-		updateSpringLoading(hovering: nil)
-	}
-
-	func collectionView(_ collectionView: UICollectionView, dropSessionDidExit session: UIDropSession) {
-		updateSpringLoading(hovering: nil)
-	}
-
-	/// 悬停计时:停在同一个收起的文件夹上够久就展开它。
-	private func updateSpringLoading(hovering item: Item?) {
-
-		// 悬停对象没变就**不要重新计时** —— 手指总有微动,每次都重置的话永远等不到展开
-		guard springLoadTarget != item else { return }
-
-		springLoadTarget = item
-		springLoadTask?.cancel()
-		springLoadTask = nil
-
-		// 只对**收起着的文件夹**计时
-		guard let item, case .folder = item, !expandedFolders.contains(item) else { return }
-
-		springLoadTask = Task { @MainActor [weak self] in
-			try? await Task.sleep(for: .seconds(Self.springLoadSeconds))
-			guard !Task.isCancelled, let self, self.springLoadTarget == item else { return }
-			self.expandFolder(item)
-		}
-	}
-
-	/// 展开一个文件夹(拖拽途中用)。
-	///
-	/// ⚠️ 这里**只动这一个分组的快照**,不走 `reloadFromAccounts` ——
-	/// 拖动期间整棵重画会把滚动位置顶掉,那正是刚修好的毛病。
-	private func expandFolder(_ item: Item) {
-
-		guard case .folder(let accountID, _) = item else { return }
-		let sectionID = SectionID.account(accountID: accountID)
-		guard dataSource.snapshot().sectionIdentifiers.contains(sectionID) else { return }
-
-		var sectionSnapshot = dataSource.snapshot(for: sectionID)
-		guard sectionSnapshot.items.contains(item), !sectionSnapshot.isExpanded(item) else { return }
-
-		sectionSnapshot.expand([item])
-		expandedFolders.insert(item)		// 记下来,免得下次整体刷新时又合上
-		// ⚠️ 能安全走到这里的前提是:此刻手指悬在**文件夹行**上,
-		// 那种落点用的是不插占位的 intent(见 dropSessionDidUpdate 里的长注释)。
-		// 别把这个方法改成"任何时候都能调" —— 拖放占位存在时改数据源会直接崩。
-		dataSource.apply(sectionSnapshot, to: sectionID, animatingDifferences: true)
+	/// 一次落点判定的结论。
+	private struct DropDecision {
+		let container: Container
+		let account: Account
+		let accountID: String
+		let resolution: DropResolution
 	}
 
 	/// 把屏幕上的一个位置,翻译成「要放进哪个容器」。**悬停判定和放手执行共用这一个入口。**
-	private func dropDestination(at point: CGPoint) -> (container: Container, account: Account, accountID: String)? {
+	///
+	/// ## 判定分两步(2026-07-23 重做)
+	///
+	/// 1. **纯规则**交给 `DropZoneResolver`:给它"落点那一行是什么 + 手指在这一行的哪一段
+	///    + 手指的横向位置",它算出"要进哪个容器"。那部分不碰 UIKit,可以离线跑决策表
+	///    (`tools/sim-dropzone.swift`)。
+	/// 2. **本方法**只负责查真实对象:把结论里的"落点那个文件夹"翻成真正的 `Folder`。
+	///
+	/// ## 为什么要引入「上下边缘带」
+	///
+	/// 用户反馈:「想把 A 里的源拖到 A 和 B 之间(顶层),**必然会先触发 B 展开**,
+	/// 然后就没法拖到中间了」。属实 —— 原来只要落点压在文件夹行上,
+	/// **不管压在哪儿**都判成"放进这个文件夹",而且停 0.6 秒就自动展开它。
+	/// 于是"A 和 B 之间的顶层"只剩下一块又窄又看不见的区域(A 的最后一个子行 + 手指靠左)。
+	///
+	/// 现在给文件夹行分三段:**上边缘 = 排在它前面,中间 = 放进去,下边缘 = 排在它后面**
+	/// (Finder / Files / 各种大纲编辑器都是这个手感)。
+	/// 边缘带**不触发弹簧加载** —— 手指停在两行的分界线上时,B 不会再自己弹开。
+	private func dropDecision(at point: CGPoint, draggingFolder: Bool) -> DropDecision? {
 
-		guard let item = item(nearestTo: point),
-			  let accountID = itemAccountID(item),
+		guard let row = anchorRow(nearestTo: point),
+			  let accountID = itemAccountID(row.item),
 			  let account = AccountManager.shared.existingAccount(accountID: accountID) else { return nil }
 
-		switch item {
-		case .folder(_, let folderID):
-			// 落在文件夹行上 → 进这个文件夹
-			guard let folder = account.folders?.first(where: { $0.folderID == folderID }) else { return nil }
-			return (folder, account, accountID)
+		let resolution = DropZoneResolver.resolve(
+			anchor: anchorKind(of: row.item),
+			band: DropZoneResolver.band(of: point, in: row.frame),
+			pointX: point.x,
+			draggingFolder: draggingFolder)
 
-		case .feed(_, _, let folderID):
-			guard let folderID else {
-				// 落在**顶层的源**上 → 放到账户顶层(也就是"拿出文件夹")
-				return (account, account, accountID)
-			}
-			// 落在**某个文件夹里的源**上:默认算进那个文件夹
-			// (文件夹展开后,它下面那一片在观感上就是"文件夹里面")。
-			//
-			// ⚠️ **但手指往左退出缩进线时,算"拿到文件夹外面"**(2026-07-23 用户提的场景):
-			// 「A 展开、B 收起,我想把 A 里的一个源拖到 A 和 B 中间、不属于任何文件夹」——
-			// 那条缝**本身是有歧义的**:既可能是"放进 A 的末尾",也可能是"放到 A 和 B 之间的顶层"。
-			// 光看上下位置分不出来,所以按**水平位置**分:
-			// 文件夹里的源本来就比外面的源多缩进一段(`nestedFeedExtraIndent`),
-			// 手指退到那条缩进线左边,就是"我要把它拿出来"。
-			// (Files / Finder 里挪动嵌套项目也是这个手感。)
-			if point.x < Self.outdentThreshold {
-				return (account, account, accountID)
-			}
-			guard let folder = account.folders?.first(where: { $0.folderID == folderID }) else { return nil }
-			return (folder, account, accountID)
+		let container: Container
+		switch resolution.target {
+
+		case .topLevel:
+			container = account
+
+		case .anchorFolder:		// 放进**落点那一行**的那个文件夹
+			guard case .folder(_, let folderID) = row.item,
+				  let folder = account.folders?.first(where: { $0.folderID == folderID }) else { return nil }
+			container = folder
+
+		case .enclosingFolder:	// 落点是文件夹里的某个源 → 放进它所在的那个文件夹
+			guard case .feed(_, _, let folderID) = row.item, let folderID,
+				  let folder = account.folders?.first(where: { $0.folderID == folderID }) else { return nil }
+			container = folder
 		}
+
+		return DropDecision(container: container, account: account, accountID: accountID,
+							resolution: resolution)
 	}
 
-	/// 手指横向退到这个位置以左,就当成"要把源拿出文件夹"。
+	/// 落点那一行在规则表眼里是个什么东西。
 	///
-	/// 取值参照:文件夹里的源,内容大致从 70pt 往右开始(系统缩进 + 我们额外加的
-	/// `nestedFeedExtraIndent`)。定在 56 是让它**略微靠左于**内容起点 ——
-	/// 顺手拖不会误判成"拿出来",而有意往左带一截就能拿出来。
-	private static let outdentThreshold: CGFloat = 56
+	/// 展开状态取自 `expandedFolders` —— 那是本页唯一的一份展开记录。
+	private func anchorKind(of item: Item) -> DropAnchorKind {
+		switch item {
+		case .folder:
+			return .folder(expanded: expandedFolders.contains(item))
+		case .feed(_, _, let folderID):
+			return folderID == nil ? .looseFeed : .nestedFeed
+		}
+	}
 
 	/// 这一行现在待在哪个文件夹里(nil = 顶层)。用来判断"拖到的地方是不是它原来的容器"。
 	private func containerFolderID(of item: Item) -> Int? {
@@ -1397,23 +1452,34 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 	/// 但用户明明是"往那一片"拖的。取上方最近的一行,正好能把这些空隙
 	/// 归给它上面那个区域(文件夹的最后一个子行之下 = 还在这个文件夹的范围内)。
 	private func item(nearestTo point: CGPoint) -> Item? {
+		anchorRow(nearestTo: point)?.item
+	}
 
-		if let indexPath = collectionView.indexPathForItem(at: point) {
-			return dataSource.itemIdentifier(for: indexPath)
+	/// 同上,但**连那一行的矩形一起给出来** —— 判断"手指落在这一行的上边缘 / 中间 / 下边缘"要用。
+	///
+	/// ⚠️ 落在空白处时,返回的是**上方最近**那一行,此时 `point` 其实在 `frame` 的**下方**。
+	/// 这是有意的:那种位置本来就该算成"排在那一行后面"(`DropZoneResolver.band` 会算成下带)。
+	private func anchorRow(nearestTo point: CGPoint) -> (item: Item, frame: CGRect)? {
+
+		if let indexPath = collectionView.indexPathForItem(at: point),
+		   let item = dataSource.itemIdentifier(for: indexPath),
+		   let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame {
+			return (item, frame)
 		}
 
-		var bestIndexPath: IndexPath?
+		var best: (item: Item, frame: CGRect)?
 		var bestBottom = -CGFloat.greatestFiniteMagnitude
 		for indexPath in collectionView.indexPathsForVisibleItems {
-			guard let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { continue }
+			guard let attributes = collectionView.layoutAttributesForItem(at: indexPath),
+				  let item = dataSource.itemIdentifier(for: indexPath) else { continue }
 			let bottom = attributes.frame.maxY
 			if bottom <= point.y, bottom > bestBottom {
 				bestBottom = bottom
-				bestIndexPath = indexPath
+				best = (item, attributes.frame)
 			}
 		}
 		// 落在所有内容**上方**(列表最顶端的空白)时返回 nil —— 那里没有明确归属,不猜。
-		return bestIndexPath.flatMap { dataSource.itemIdentifier(for: $0) }
+		return best
 	}
 }
 #endif
