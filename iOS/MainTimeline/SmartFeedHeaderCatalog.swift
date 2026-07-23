@@ -47,7 +47,33 @@ import Account
 		let titleColor: UIColor
 		/// 只用于日志
 		let debugName: String
+
+		/// 滚动停靠之后,标题要不要**换成系统那套**(页面标题 + 副标题)。
+		///
+		/// 只有**首页**是 true:顶部写 app 名「Babel」当报头,
+		/// 滚上去之后换成「Feed / 更新于 x 分钟前」——
+		/// 那两行是上游一直在维护的信息(刷新时间),不该被我们的报头长期挡掉。
+		/// 用户 2026-07-23 的原话:「让 Babel 一边飞到中间,一边渐变成 Feed 更新于x分钟前」。
+		var usesSystemDockedTitle = false
 	}
+
+	/// 文件夹页的头图。**所有文件夹共用一张**(书架与文书箱,正是"文件夹"的意象)——
+	/// 身份由标题(文件夹名)承担,图只负责给这一类页面一个统一的门面。
+	static let folder = Entry(assetName: "HeaderArtFolder",
+							  // 书箱与卷册的靛蓝
+							  titleColor: UIColor(red: 0x3A / 255, green: 0x58 / 255, blue: 0x78 / 255, alpha: 1),
+							  debugName: "文件夹")
+
+	/// 订阅源列表页(首页)的头图。标题是 app 名「Babel」,当报头用。
+	static let feedList = Entry(assetName: "HeaderArtFeedList",
+								// 杂志封面与人物衣袍的靛蓝
+								titleColor: UIColor(red: 0x36 / 255, green: 0x50 / 255, blue: 0x72 / 255, alpha: 1),
+								debugName: "订阅列表",
+								usesSystemDockedTitle: true)
+
+	/// 首页头图上写的字。**不用页面原名(Feed / 订阅)**,用 app 名当报头 ——
+	/// 首页是整个 app 的门面,这是用户 2026-07-23 定的。
+	static let feedListTitle = "Babel"
 
 	/// 当前时间线展示的是不是这三个智能源之一?是就返回它的头图配置。
 	///

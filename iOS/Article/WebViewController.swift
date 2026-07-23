@@ -409,6 +409,7 @@ extension WebViewController: WKNavigationDelegate {
 		nnwMediaEnhanceIfNeeded() // [播客][YouTube] 按内容类型补上语音条 / 视频简介,实现在本文件末尾
 		nnwRecordAndAutoRestoreOnDidFinish() // [状态记忆] item③ 记住阅读模式 + 按需自动恢复译文,实现在本文件末尾
 		nnwHandOffScrollViewToNavigationBar() // [外观] 把本页滚动交给顶栏跟踪(顶部透明↔滚动毛玻璃),实现在本文件末尾
+		nnwMarkReadingBar() // [外观] 打标记类,让注入样式把网页里的标题/头像藏掉,实现在本文件末尾
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -1338,6 +1339,16 @@ extension WebViewController {
 	/// 每次滚动回调时调,按滚动方向藏/现栏。
 	func nnwUpdateBarsForScroll(_ scrollView: UIScrollView) {
 		guard isFullScreenAvailable else { return }	// 功能没开就什么都不做
+
+		// 📌 **和顶部「阅读栏」是分工,不是互斥**(2026-07-23 用户第二次调整后的方案)。
+		//
+		// 我一开始判断这两个功能互斥(栏都藏了,冻结的东西没地方待),于是让它们二选一。
+		// 用户提出了更好的安排:**系统的栏是"导航"(返回、上/下一篇、底部工具条),
+		// 读文章时该让路;我们那条是"阅读上下文"(在读谁的、什么文章、读到哪),该常驻。**
+		// 于是:下滑 → 系统的栏全藏,只留阅读栏;上滑 → 全都回来。
+		//
+		// 所以这里**不再按阅读栏是否开启来拦**,两种模式下都照常藏/现栏。
+		// (设置里的「全屏阅读」现在只决定**有没有那条阅读栏**:关 = 有,开 = 纯沉浸。)
 		let state = nnwScrollHideState
 
 		// ⚠️ 正在藏/现栏 → 这一轮的滚动是**系统自己调整安全区带来的**,不是用户在滑。
@@ -1471,5 +1482,27 @@ extension WebViewController {
 	/// 本页的滚动视图(给上面那位跨控制器取用 —— `webView` 是 private,同文件内才够得着)。
 	var nnwContentScrollView: UIScrollView? {
 		webView?.scrollView
+	}
+}
+
+// MARK: - [外观] 阅读栏的标记类
+
+extension WebViewController {
+
+	/// 给 `<html>` 打上 `nnw-reading-bar` 标记类。
+	///
+	/// 注入样式里那两条「藏掉网页标题与头像」的规则挂在这个类下面 ——
+	/// **不这么做就会连 macOS 一起藏掉**(`nnw_appearance.js` 在 `Shared/` 下,两个平台共用),
+	/// 而 macOS 没有那条 UIKit 阅读栏,藏了标题正文就没头没脑了。
+	///
+	/// 顺带白拿一件事:切回「沉浸模式」时不打这个标记,网页里的标题和头像**自动回来** ——
+	/// 两种阅读模式各自完整,不需要另写一套还原逻辑。
+	func nnwMarkReadingBar() {
+		let enabled = traitCollection.userInterfaceIdiom == .phone
+			&& !AppDefaults.shared.logicalArticleFullscreenEnabled
+		let js = enabled
+			? "document.documentElement.classList.add('nnw-reading-bar')"
+			: "document.documentElement.classList.remove('nnw-reading-bar')"
+		webView?.evaluateJavaScript(js)
 	}
 }

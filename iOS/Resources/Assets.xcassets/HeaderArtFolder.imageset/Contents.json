@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "filename" : "headerartfolder-light.jpg", "idiom" : "universal" },
+    { "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "headerartfolder-dark.jpg", "idiom" : "universal" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

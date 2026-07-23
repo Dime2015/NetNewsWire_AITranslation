@@ -762,6 +762,10 @@ extension ArticleViewController {
 			return
 		}
 		setContentScrollView(scrollView)
+		// [外观] 顺手把顶部「阅读栏」也绑到这一页(实现在 ArticleHeaderBar.swift)。
+		// 挂在这里是**有意的**:本方法的两个调用时机(网页加载完 / 翻页结束)
+		// 正好就是阅读栏需要换内容的两个时机,不用再往上游加钩子。
+		nnwUpdateArticleHeaderBar()
 		// 留这行日志是为了将来排查"顶栏又不透了":它能一眼区分**没调用**(路径断了)
 		// 和**调用了但没效果**(得换别的做法),不用靠肉眼猜。
 		Self.logger.info("[外观] 顶栏跟踪已接上,内容偏移 \(scrollView.contentOffset.y, privacy: .public)")
@@ -792,5 +796,40 @@ extension ArticleViewController {
 		navigationItem.scrollEdgeAppearance = transparent	// 在顶部:通透,和正文连成一片
 		navigationItem.standardAppearance = nil				// 滚起来:系统默认毛玻璃(自适应)
 		navigationItem.compactAppearance = nil				// 横屏紧凑态:同上,保持毛玻璃
+	}
+}
+
+// MARK: - [外观] 文章页顶部「阅读栏」的宿主(实现在 ArticleHeaderBar.swift)
+
+extension ArticleViewController {
+
+	private static var nnwHeaderBarKey: UInt8 = 0
+
+	/// 阅读栏该不该出现:**只有关掉「全屏阅读」时才有**。
+	///
+	/// 那个开关本来控制的就是"滑动藏栏的沉浸模式",两者互斥
+	/// (栏都藏了,冻结在栏里的东西没地方待)。所以直接拿它当两种阅读模式的切换,
+	/// 不新增设置项:**关(默认)= 阅读栏常驻;开 = 旧的沉浸模式**。
+	var nnwReadingBarEnabled: Bool {
+		traitCollection.userInterfaceIdiom == .phone && !AppDefaults.shared.logicalArticleFullscreenEnabled
+	}
+
+	func nnwUpdateArticleHeaderBar() {
+		let controller: ArticleHeaderBarController
+		if let existing = objc_getAssociatedObject(self, &Self.nnwHeaderBarKey) as? ArticleHeaderBarController {
+			controller = existing
+		} else {
+			guard nnwReadingBarEnabled else { return }	// 沉浸模式下压根不建
+			controller = ArticleHeaderBarController()
+			objc_setAssociatedObject(self, &Self.nnwHeaderBarKey, controller, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		}
+
+		guard nnwReadingBarEnabled else {
+			controller.detach()
+			return
+		}
+		controller.update(article: article,
+						  host: self,
+						  scrollView: currentWebViewController?.nnwContentScrollView)
 	}
 }

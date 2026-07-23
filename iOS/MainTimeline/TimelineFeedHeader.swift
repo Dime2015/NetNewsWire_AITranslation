@@ -76,7 +76,13 @@ extension MainTimelineModernViewController {
 			return .feed(feed)
 		}
 		if TimelineStyle.smartHeaderEnabled, let entry = SmartFeedHeaderCatalog.entry(for: item) {
-			return .smart(entry, title: item?.nameForDisplay ?? "")
+			return .art(entry, title: item?.nameForDisplay ?? "",
+						heightFraction: TimelineStyle.headerHeightFraction)
+		}
+		// 文件夹:所有文件夹共用一张图,身份由标题(文件夹名)承担
+		if TimelineStyle.smartHeaderEnabled, let folder = item as? Folder {
+			return .art(SmartFeedHeaderCatalog.folder, title: folder.nameForDisplay,
+						heightFraction: TimelineStyle.headerHeightFraction)
 		}
 		return nil
 	}
@@ -92,20 +98,32 @@ extension MainTimelineModernViewController {
 /// 否则就成了"两个 app 拼在一起"。
 @MainActor enum TimelineHeaderSubject {
 	case feed(Feed)
-	case smart(SmartFeedHeaderCatalog.Entry, title: String)
+	/// 手工挑的画:三个智能源 / 文件夹 / 订阅列表页。
+	/// `heightFraction` 各页可以不同 —— 订阅列表页是 1/5 屏,其余 1/4 屏。
+	case art(SmartFeedHeaderCatalog.Entry, title: String, heightFraction: CGFloat)
 
-	/// 用来判断"是不是换了一个源"(换了要滚回顶部让头图完整亮相)
+	/// 用来判断"是不是换了一个源"(换了要滚回顶部让头图完整亮相)。
+	/// ⚠️ 文件夹之间共用同一张图,所以这里要把**标题**也算进去,
+	/// 否则从「01 宏观」切到「02 社会」会被当成"没换",标题不刷新。
 	var identity: String {
 		switch self {
 		case .feed(let feed): return feed.feedID
-		case .smart(let entry, _): return "smart:" + entry.assetName
+		case .art(let entry, let title, _): return "art:" + entry.assetName + "|" + title
 		}
 	}
 
 	var title: String {
 		switch self {
 		case .feed(let feed): return feed.nameForDisplay
-		case .smart(_, let title): return title
+		case .art(_, let title, _): return title
+		}
+	}
+
+	/// 头图高度占屏高的比例
+	var heightFraction: CGFloat {
+		switch self {
+		case .feed: return TimelineStyle.headerHeightFraction
+		case .art(_, _, let fraction): return fraction
 		}
 	}
 }
@@ -144,6 +162,41 @@ extension MainTimelineModernViewController {
 
 	private var offsetObservation: NSKeyValueObservation?
 
+	/// 上游原本的 titleView(可能是 nil)。装头图时会被一个空视图顶掉,摘掉时要还回去。
+	private var savedTitleView: UIView?
+	/// 我们塞进去顶位子的那个空视图 —— 认它,免得把别人后来设的 titleView 误当成自己的
+	private var installedEmptyTitleView: UIView?
+	/// 副标题那一路的同款(iOS 26 才有 `subtitleView`)
+	private var savedSubtitleView: UIView?
+	private var installedEmptySubtitleView: UIView?
+
+	/// 下一次渲染要不要做交叉淡入。
+	///
+	/// **只有深浅色切换才置位。** 换页面、换源那种情况是硬切 —— 那时整页内容都变了,
+	/// 单给头图做淡入反而显得慢半拍。而深浅切换是"同一页原地换了个时刻",
+	/// 淡入才对得上这套素材的设计(昼夜是同一场景的两个时刻)。
+	private var crossfadeNextRender = false
+
+	/// 取用并清掉「这一次要淡入」的标记
+	private func consumeCrossfadeFlag() -> Bool {
+		let value = crossfadeNextRender
+		crossfadeNextRender = false
+		return value
+	}
+
+	/// 设标题颜色。深浅切换时跟着一起淡 —— 否则图在缓缓淡入、字却"啪"地换色,很不搭。
+	private func applyTitleColor(_ color: UIColor, crossfade: Bool) {
+		guard crossfade else {
+			overlay.titleLabel.textColor = color
+			return
+		}
+		UIView.transition(with: overlay.titleLabel,
+						  duration: TimelineStyle.headerAppearanceCrossfadeSeconds,
+						  options: [.transitionCrossDissolve, .allowUserInteraction]) {
+			self.overlay.titleLabel.textColor = color
+		}
+	}
+
 	override init() {
 		super.init()
 		// 图标可能晚于页面到货:到货后如果头图还空着,补装一次(照抄时间线自己刷新图标的那组通知)
@@ -156,8 +209,9 @@ extension MainTimelineModernViewController {
 		for name in names {
 			NotificationCenter.default.addObserver(self, selector: #selector(iconMightBeAvailable(_:)), name: name, object: nil)
 		}
-		// 明暗切换 → 头图要按新纸色重新烘焙
+		// 明暗切换 → 头图要按新纸色重新烘焙,**而且是交叉淡入,不是硬切**
 		headerView.onAppearanceChange = { [weak self] in
+			self?.crossfadeNextRender = true
 			self?.renderedKey = nil
 			self?.refresh()
 		}
@@ -183,12 +237,35 @@ extension MainTimelineModernViewController {
 
 		// —— 单一订阅源:接管顶部 ——
 
-		// 1. 让上游那个导航栏标题让位:标题从头到尾由我们自己画(要能一路飞过去)。
-		//    ⚠️ **只把 titleView 藏起来,不要把 navigationItem.title 清空** ——
-		//    title 还兼任下一页返回按钮的文字,清了会连带影响文章页的返回按钮。
-		//    titleView 存在时会盖过 title,所以藏了它就什么都不显示了,两不耽误。
+		// 1. 让系统的导航栏标题**和副标题**都别画 —— 标题从头到尾由我们自己画(要能一路飞过去)。
+		//
+		//    ⚠️ **只清 `titleTextAttributes` 是不够的**(2026-07-23 用户截图发现):
+		//    iOS 26 的 `navigationItem.subtitle` 有它自己的一套绘制,清掉主标题的颜色
+		//    它照样显示 —— 表现为首页顶部凭空多出一行「更新于 10 分钟前」,
+		//    滚上去之后还和我们自己画的那两行**叠在一起**(用户原话:「能感觉出有两个控件叠起来」)。
+		//
+		//    **装一个空的 titleView** 是最干净的解法:titleView 存在时,
+		//    系统的 title 和 subtitle 都不会画;而 `navigationItem.title` 本身没被清空 ——
+		//    它还兼任下一页返回按钮的文字,清了会连带影响文章页的返回按钮。
+		//    摘掉头图时会把原来的 titleView 还回去(见 `remove()`)。
 		navigationItem.largeTitleDisplayMode = .never
-		navigationItem.titleView?.alpha = 0
+		if installedEmptyTitleView == nil {
+			savedTitleView = navigationItem.titleView
+			let empty = UIView()
+			installedEmptyTitleView = empty
+			navigationItem.titleView = empty
+		}
+		// ⚠️ **副标题要单独再堵一次**(2026-07-23 第二次修才对):
+		// 空 titleView 只按住了主标题,`navigationItem.subtitle` 仍然照画不误 ——
+		// 表现为「刚刚更新」出现两份(系统一份 + 我们自己画的一份,错开几个点,像重影)。
+		// iOS 26 的头文件里写得很清楚:**`subtitleView` 非 nil 时,`subtitle` 会被忽略**。
+		// 所以同样塞一个空视图把它按住。iOS 26 以下没有这套 API,也就没有这个问题。
+		if #available(iOS 26.0, *), installedEmptySubtitleView == nil {
+			savedSubtitleView = navigationItem.subtitleView
+			let empty = UIView()
+			installedEmptySubtitleView = empty
+			navigationItem.subtitleView = empty
+		}
 
 		// 2. 停靠时导航栏要有一层底,否则文章正文会从标题背后穿过去(用户截图证实)。
 		//    用 **navigationItem 上的** appearance,不是全局 appearance 代理 ——
@@ -204,7 +281,7 @@ extension MainTimelineModernViewController {
 
 		// 3. 头图高度 = 屏高 × 比例(装完由 syncInset 把内容推下去)
 		let screenHeight: CGFloat = collectionView.window?.bounds.height ?? UIScreen.main.bounds.height
-		headerView.headerHeight = screenHeight * TimelineStyle.headerHeightFraction
+		headerView.headerHeight = screenHeight * subject.heightFraction
 		syncInset()
 
 		// 4. 换源时滚回顶部,让头图完整亮相;同源重进(返回)保持原位
@@ -217,8 +294,8 @@ extension MainTimelineModernViewController {
 		switch subject {
 		case .feed(let feed):
 			render(feed: feed)
-		case .smart(let entry, let title):
-			render(smart: entry, title: title)
+		case .art(let entry, let title, _):
+			render(art: entry, title: title)
 		}
 		applyScrollLinkage()
 	}
@@ -232,8 +309,20 @@ extension MainTimelineModernViewController {
 			collectionView.contentInset.top -= appliedInset
 			appliedInset = 0
 		}
-		// 恢复上游的导航栏标题与外观(文件夹 / 智能源页面要跟原来一模一样)
-		navigationItem?.titleView?.alpha = 1
+		// 恢复上游的导航栏标题与外观(没有头图的页面要跟上游原来一模一样)
+		// ⚠️ 只在 titleView 确实还是**我们塞的那个**时才还原 ——
+		// 万一别人后来设了自己的 titleView,我们不该把它顶掉。
+		if let empty = installedEmptyTitleView, navigationItem?.titleView === empty {
+			navigationItem?.titleView = savedTitleView
+		}
+		installedEmptyTitleView = nil
+		savedTitleView = nil
+		if #available(iOS 26.0, *),
+		   let empty = installedEmptySubtitleView, navigationItem?.subtitleView === empty {
+			navigationItem?.subtitleView = savedSubtitleView
+		}
+		installedEmptySubtitleView = nil
+		savedSubtitleView = nil
 		navigationItem?.standardAppearance = nil
 		navigationItem?.scrollEdgeAppearance = nil
 		navigationItem?.largeTitleDisplayMode = .automatic
@@ -272,7 +361,7 @@ extension MainTimelineModernViewController {
 	///
 	/// 但**合成、渐隐、标题定位全部共用同一条管线** —— 两类页面来回切时观感必须一致。
 	/// 唯一不同的是蒙版强度:精挑的画压那么狠等于白挑,见 `smartHeaderImageStrength`。
-	private func render(smart entry: SmartFeedHeaderCatalog.Entry, title: String) {
+	private func render(art entry: SmartFeedHeaderCatalog.Entry, title: String) {
 
 		let isDark: Bool = headerView.traitCollection.userInterfaceStyle == .dark
 		let width: CGFloat = headerView.bounds.width > 0 ? headerView.bounds.width : UIScreen.main.bounds.width
@@ -295,16 +384,18 @@ extension MainTimelineModernViewController {
 
 		// 标题染色走**和订阅源完全相同的那条规则**:给一个品牌色,
 		// 再压到"在这张纸上读得清"为止(浅色往深里压、深色往亮里提)。
-		overlay.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
+		let crossfade = consumeCrossfadeFlag()
+		applyTitleColor(FeedIconColorAnalyzer.readableTitleColor(
 			brand: entry.titleColor,
 			paper: paper,
 			tint: TimelineStyle.headerTitleTintStrength,
 			minContrast: TimelineStyle.headerTitleMinContrast
-		)
+		), crossfade: crossfade)
 
 		let layer = Self.makeBlurredFill(source: source, size: size)
-		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper,
-															  strength: TimelineStyle.smartHeaderImageStrength)
+		headerView.setHeaderImage(Self.composite(layer: layer, size: size, paper: paper,
+												 strength: TimelineStyle.smartHeaderImageStrength),
+								  crossfade: crossfade)
 		headerView.setNeedsLayout()
 		renderedKey = key
 
@@ -380,18 +471,20 @@ extension MainTimelineModernViewController {
 		// 标题染成「这个源的主题色,但保证读得清」。
 		// 规则和方向说明见 FeedIconColorAnalyzer.readableTitleColor ——
 		// 简单说:浅色模式往深里压、深色模式往亮里提,压到对比度达标为止。
+		let crossfade = consumeCrossfadeFlag()
 		if let brand = analysis?.dominantColor {
-			overlay.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
+			applyTitleColor(FeedIconColorAnalyzer.readableTitleColor(
 				brand: brand,
 				paper: paper,
 				tint: TimelineStyle.headerTitleTintStrength,
 				minContrast: TimelineStyle.headerTitleMinContrast
-			)
+			), crossfade: crossfade)
 		} else {
-			overlay.titleLabel.textColor = .label
+			applyTitleColor(.label, crossfade: crossfade)
 		}
 
-		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper)
+		headerView.setHeaderImage(Self.composite(layer: layer, size: size, paper: paper),
+								  crossfade: crossfade)
 		headerView.setNeedsLayout()
 		renderedKey = key
 
@@ -558,6 +651,19 @@ extension MainTimelineModernViewController {
 		// 头图(图片本身)照旧渐隐
 		headerView.contentAlpha = 1 - progress
 
+		// 首页:停靠之后标题换成系统那套(页面名 + 刷新时间)。
+		// **每次都重新读一遍** —— 副标题("更新于 x 分钟前")是上游在不断更新的。
+		if case .art(let entry, _, _) = currentSubject, entry.usesSystemDockedTitle {
+			// 副标题(「更新于 x 分钟前」)是 iOS 26 才有的 API;更早的系统就只显示主标题。
+			var subtitle: String?
+			if #available(iOS 26.0, *) {
+				subtitle = host.navigationItem.subtitle
+			}
+			overlay.dockedReplacement = (host.navigationItem.title, subtitle)
+		} else {
+			overlay.dockedReplacement = nil
+		}
+
 		// 标题沿一条直线飞向导航栏,同时线性缩小;纸色底在后半段淡入
 		overlay.apply(
 			progress: progress,
@@ -683,6 +789,26 @@ extension MainTimelineModernViewController {
 		fatalError("不从 storyboard 创建")
 	}
 
+	/// 换头图。
+	///
+	/// `crossfade` = 深浅色切换那种情况 —— **淡入,不是硬切**。
+	/// 这套素材的浅色/深色多半是同一场景的白天与夜晚(太阳→月亮、点起烛火),
+	/// 所以切深色的正确观感是"天黑了",而不是"图被换掉了"。
+	///
+	/// ⚠️ 用 `UIView.transition` 而不是自己叠一层临时 imageView:
+	/// 这是纯视图动画,不动数据源、不动布局,和 L65/L66 那类崩溃路径无关。
+	func setHeaderImage(_ image: UIImage?, crossfade: Bool) {
+		guard crossfade, backgroundImageView.image != nil else {
+			backgroundImageView.image = image
+			return
+		}
+		UIView.transition(with: backgroundImageView,
+						  duration: TimelineStyle.headerAppearanceCrossfadeSeconds,
+						  options: [.transitionCrossDissolve, .allowUserInteraction]) {
+			self.backgroundImageView.image = image
+		}
+	}
+
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		backgroundImageView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
@@ -732,6 +858,21 @@ extension MainTimelineModernViewController {
 
 	let titleLabel = UILabel()
 
+	/// 停靠之后要**换成**的两行字(主标题 + 副标题)。
+	///
+	/// nil = 不换,飞上去的还是原来那个标题 —— 文章列表页、文件夹页都是这样。
+	/// 首页则设成系统那套「Feed / 更新于 x 分钟前」:
+	/// 用户 2026-07-23 要的是「Babel 一边飞到中间,一边渐变成 Feed 更新于x分钟前」。
+	///
+	/// 为什么由我们自己画、而不是让系统的导航栏标题淡入:
+	/// 系统标题的透明度没有公开的调法,而这里要的正是**和飞行同步的渐变**。
+	/// 我们自己画两个 label,想怎么淡就怎么淡。
+	var dockedReplacement: (title: String?, subtitle: String?)? {
+		didSet { updateDockedLabels() }
+	}
+	private let dockedTitleLabel = UILabel()
+	private let dockedSubtitleLabel = UILabel()
+
 	override init(frame: CGRect) {
 		super.init(frame: frame)
 		backgroundColor = .clear
@@ -760,6 +901,21 @@ extension MainTimelineModernViewController {
 		titleLabel.minimumScaleFactor = 0.5
 		titleLabel.isAccessibilityElement = true
 		addSubview(titleLabel)
+
+		// 停靠替身:做成系统导航栏标题的样子(粗体 17 + 次级色小字副标题),
+		// 这样它淡入之后看起来就"本来就该长这样",而不是我们画的另一种东西。
+		dockedTitleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+		dockedTitleLabel.textColor = .label
+		dockedTitleLabel.textAlignment = .center
+		dockedSubtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
+		dockedSubtitleLabel.textColor = .secondaryLabel
+		dockedSubtitleLabel.textAlignment = .center
+		for label in [dockedTitleLabel, dockedSubtitleLabel] {
+			label.numberOfLines = 1
+			label.alpha = 0
+			label.isHidden = true
+			addSubview(label)
+		}
 
 		// 毛玻璃自带深浅色自适应,不需要手动跟随明暗重设颜色(只需切换时重建浓度滑杆,见上)。
 	}
@@ -822,6 +978,18 @@ extension MainTimelineModernViewController {
 		titleLabel.font = TimelineStyle.headerTitleFont(for: text)
 	}
 
+	/// 把停靠替身的文字装上(内容变了才动,免得每帧都重排版)
+	private func updateDockedLabels() {
+		let title = dockedReplacement?.title ?? ""
+		let subtitle = dockedReplacement?.subtitle ?? ""
+		guard dockedTitleLabel.text != title || dockedSubtitleLabel.text != subtitle else { return }
+		dockedTitleLabel.text = title
+		dockedSubtitleLabel.text = subtitle
+		dockedTitleLabel.isHidden = title.isEmpty
+		dockedSubtitleLabel.isHidden = subtitle.isEmpty
+		setNeedsLayout()
+	}
+
 	func apply(progress: CGFloat, headerHeight: CGFloat, dockBand: CGRect, safeAreaTop: CGFloat) {
 		let width: CGFloat = bounds.width
 		guard width > 0, headerHeight > 0 else { return }
@@ -882,5 +1050,41 @@ extension MainTimelineModernViewController {
 		titleLabel.center = CGPoint(x: restCenter.x + (dockedCenter.x - restCenter.x) * progress,
 									y: max(interpolatedY, minCenterY))
 		titleLabel.transform = CGAffineTransform(scaleX: scale, y: scale)
+
+		layoutDockedReplacement(progress: progress, dockBand: dockBand, width: width)
+	}
+
+	/// 停靠替身:在飞行的**后半段**接手 —— 原标题淡出、这两行淡入,位置都在停靠区正中。
+	///
+	/// 为什么是"后半段"而不是全程:前半段标题还大、还在头图里,那时它就是页面的门面;
+	/// 只有快贴到导航栏时,才该变成导航栏该有的样子。
+	private func layoutDockedReplacement(progress: CGFloat, dockBand: CGRect, width: CGFloat) {
+
+		guard dockedReplacement != nil else {
+			// 没有替身的页面(文章列表、文件夹)——保证原标题不会被上一页留下的淡出影响
+			titleLabel.alpha = 1
+			dockedTitleLabel.alpha = 0
+			dockedSubtitleLabel.alpha = 0
+			return
+		}
+
+		let swapStart: CGFloat = TimelineStyle.headerDockedSwapStart
+		let swap: CGFloat = min(max((progress - swapStart) / max(1 - swapStart, 0.01), 0), 1)
+
+		titleLabel.alpha = 1 - swap
+		dockedTitleLabel.alpha = swap
+		dockedSubtitleLabel.alpha = swap
+
+		// 两行整体在停靠区里居中;只有主标题时它自己居中
+		let hasSubtitle = !(dockedSubtitleLabel.text ?? "").isEmpty
+		let titleSize = dockedTitleLabel.sizeThatFits(CGSize(width: width, height: 100))
+		let subtitleSize = dockedSubtitleLabel.sizeThatFits(CGSize(width: width, height: 100))
+		let gap: CGFloat = hasSubtitle ? 1 : 0
+		let totalHeight = titleSize.height + (hasSubtitle ? subtitleSize.height + gap : 0)
+		let top = dockBand.midY - totalHeight / 2
+
+		dockedTitleLabel.frame = CGRect(x: 0, y: top, width: width, height: titleSize.height)
+		dockedSubtitleLabel.frame = CGRect(x: 0, y: top + titleSize.height + gap,
+										   width: width, height: subtitleSize.height)
 	}
 }

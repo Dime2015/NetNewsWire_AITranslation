@@ -138,6 +138,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 				isAnimating = true
 			}
 		}
+
+		// [外观] 首页顶部头图区(实现在 MainFeedHeaderArt.swift)。
+		// ⚠️ **必须放在本方法最后** —— 上面那段刚把 largeTitleDisplayMode 设成 .always,
+		// 而头图要自己画标题、得把系统大标题关掉。放在前面会被上面覆盖掉(实测过)。
+		nnwUpdateFeedListHeader()
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -199,8 +204,15 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		config.headerMode = .supplementary
 		if !useSidebarAppearance {
 			// [外观] insetGrouped 列表有自己的底色(默认系统灰),会盖过 collectionView.backgroundColor ——
-			// 必须设这个才能让卡片外的边距/空隙也变暖,消除「卡片 vs 背景」的色差。
-			config.backgroundColor = AppAppearance.paperBackground
+			// 必须显式处理,才能让卡片外的边距/空隙也变暖,消除「卡片 vs 背景」的色差。
+			//
+			// ⚠️ **这里给的是 `.clear`,不是纸色**(2026-07-23 改,别改回去):
+			// 顶部头图是画在 `collectionView.backgroundView` 上的,而这个 config 的底色
+			// **盖在 backgroundView 之上** —— 给它上不透明的纸色,头图就永远看不见了
+			// (实测:图确实渲染了、日志也正常,屏幕上就是没有)。
+			// 设成 `.clear` 之后,露出的是 `collectionView.backgroundColor`(下面设的纸色),
+			// 观感完全一样,而头图能透出来。文章列表页当初也是这么解决的(L44 续篇)。
+			config.backgroundColor = .clear
 			// [外观] 去分隔线的真正开关在下面的 itemSeparatorHandler 里
 			//(它一旦存在就会覆盖 showsSeparators,所以这里设 showsSeparators 没用)。
 		}

@@ -54,6 +54,23 @@
 	//    (下面的点击拦截只调用 preventDefault,**不动 DOM**,所以不违反这条。)
 	// ------------------------------------------------------------------
 	const STYLE = `
+		/* [阅读栏] 大标题与右上角头像**改由 UIKit 画**(iOS/Article/ArticleHeaderBar.swift),
+		   所以网页里的这两个要藏起来。
+
+		   ⚠️ **必须挂在 .nnw-reading-bar 这个标记类下面,不能无条件藏**:
+		   本文件在 Shared/ 下,**macOS 也会加载它** —— macOS 没有那条 UIKit 阅读栏,
+		   无条件藏掉标题会把 macOS 的正文弄成没头没脑的一段。
+		   标记类由 iOS 侧在网页加载完时打上(见 WebViewController.nnwMarkReadingBar),
+		   于是:macOS 不受影响;iOS 上切回「沉浸模式」时标记不打,标题自动回来。
+
+		   ⚠️ 用 display:none 而不是删元素 —— 翻译功能靠 .articleTitle 定位标题(L12),
+		   元素必须留在 DOM 里。 */
+		.nnw-reading-bar .articleTitle { display: none; }
+		/* 整个表头(源名 + 作者 + 右上角头像)一起藏 —— 这三样都搬到阅读栏里去了。
+		   ⚠️ 藏「headerContainer」而不是只藏里面那两个单元格:
+		   只藏单元格的话,那张空表格仍然占着行高,正文顶上会多出一段莫名的空白。 */
+		.nnw-reading-bar .headerContainer { display: none; }
+
 		/* 我们自己的「次要文字」颜色(图注、作者名都用它)。
 		   为什么不直接用上游的 --article-date-color:那个变量定义在默认主题的
 		   stylesheet.css 里,换成别的主题就可能不存在,颜色会静默失效。
