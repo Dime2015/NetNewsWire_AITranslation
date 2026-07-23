@@ -739,18 +739,22 @@ extension ArticleViewController {
 		}
 	}
 
-	/// 按当前深浅色重建导航栏外观,铺上本 app 的暖纸色。
+	/// 按当前深浅色重建导航栏外观,用**系统毛玻璃**(和订阅列表页一样的渐变透明质感)。
 	///
-	/// 上游原样是 `configureWithDefaultBackground()`(系统默认色);本 fork 全局暖纸风,
-	/// 系统默认在深色下是近黑的 `#060606`,和文章正文那片 `#282828` 有色差(取样实测),
-	/// 所以改用调色板里的纸色,和 app 其它页面统一。换纸色只改 `AppAppearance.Palette`。
+	/// 2026-07-23 用户要求文章页顶栏也做成订阅列表那种"渐变透明毛玻璃"。
+	/// 那个效果就是系统默认的 `configureWithDefaultBackground()` —— 深浅色自适应、
+	/// 内容在顶部时透、往下滚渐显毛玻璃。上游本来就是这个,所以这里用回它。
 	///
-	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归。**
+	/// ⚠️ **本方法真正要解决的是"深浅色跟随"**(见 install 的说明):
+	/// `UINavigationBarAppearance` 会把创建时的颜色固化,viewDidLoad 只跑一次 →
+	/// 切深浅色不更新。所以必须在明暗变化时重建一次,这才是本方法存在的理由。
+	/// (上一轮我还顺手把它改成了不透明纸色 —— 那是**过度修复**,把用户现在想要的
+	///  毛玻璃透明质感给盖掉了,本轮撤回。)
+	///
+	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
 	func nnwRefreshNavigationBarAppearance() {
 		let appearance = UINavigationBarAppearance()
-		appearance.configureWithOpaqueBackground()
-		appearance.backgroundColor = AppAppearance.paperBackground.resolvedColor(with: traitCollection)
-		appearance.shadowColor = .clear	// 去掉分隔线,和无边界风格一致
+		appearance.configureWithDefaultBackground()	// 系统毛玻璃,深浅自适应
 		navigationItem.standardAppearance = appearance
 		navigationItem.scrollEdgeAppearance = appearance
 		navigationItem.compactAppearance = appearance

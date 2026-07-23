@@ -592,8 +592,13 @@ extension MainTimelineModernViewController {
 /// 所以两个圆钮永远盖在标题上面,这是对的;而标题永远盖在正文上面,也是对的。
 @MainActor final class TimelineHeaderOverlayView: UIView {
 
-	/// 停靠时铺在导航栏那条上的纸色底。没有它,正文会直接从标题背后穿过去。
-	private let scrimView = UIView()
+	/// 停靠时铺在导航栏那条上的底。没有它,正文会直接从标题背后穿过去。
+	///
+	/// 2026-07-23 用户要求文章列表页顶栏也做成订阅列表那种"渐变透明毛玻璃"。
+	/// 所以这里从原来的**纯纸色 UIView** 换成**系统毛玻璃** —— 滚动后停靠时,
+	/// 这层毛玻璃和订阅列表 / 文章内容页观感一致(半透明、深浅自适应),
+	/// 而顶部还在头图区时它 alpha=0、完全不挡头图。
+	private let scrimView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
 	let titleLabel = UILabel()
 
 	override init(frame: CGRect) {
@@ -613,18 +618,11 @@ extension MainTimelineModernViewController {
 		titleLabel.isAccessibilityElement = true
 		addSubview(titleLabel)
 
-		updateScrimColor()
-		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TimelineHeaderOverlayView, _) in
-			view.updateScrimColor()
-		}
+		// 毛玻璃(systemChromeMaterial)自带深浅色自适应,不需要手动跟随明暗重设颜色。
 	}
 
 	required init?(coder: NSCoder) {
 		fatalError("不从 storyboard 创建")
-	}
-
-	private func updateScrimColor() {
-		scrimView.backgroundColor = AppAppearance.paperBackground
 	}
 
 	/// 按滚动进度摆放标题(0 = 停在头图下方靠右,1 = 停靠在导航栏正中)。
