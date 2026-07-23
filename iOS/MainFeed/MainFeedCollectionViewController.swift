@@ -367,12 +367,6 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 			let sectionID = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
 
-			// [界面] 账户分组头右侧的「新建文件夹」按钮。放在这里(而不是下面的账户分支里)
-			// 是因为分组头会被复用 —— 智能订阅那一档也必须走一次,好把按钮藏起来。
-			headerView.nnwInstallAddFolderButton(accountID: sectionID.isEmpty ? nil : sectionID,
-												 target: self,
-												 action: #selector(self.nnwAddFolderTapped))
-
 			// Smart feeds section
 			if sectionID.isEmpty {
 				headerView.sectionHeaderType = .smartFeeds
@@ -839,14 +833,9 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	@IBAction func add(_ sender: UIBarButtonItem) {
-		// [发现] 原本这里弹一个操作单(添加订阅 / 添加文件夹 / 搜索订阅源)。
-		// 现在直接进订阅发现页,理由:
-		//   · 「添加文件夹」已移到账户分组头右侧的按钮上
-		//   · 「添加订阅」和「搜索订阅源」本来就是同一件事 ——
-		//     粘一个网址本身就是搜索的一种,发现页两种输入都收
-		// 于是操作单只剩一项,存在的意义就没有了:少点一次,也少一次选择。
+		// [管理] 弹一个两项的选单:文件夹管理 / 搜索订阅源。
 		// 实现见 Shared/Discovery/MainFeedCollectionViewController+Discovery.swift
-		showFeedDiscovery()
+		nnwShowAddMenu(from: sender)
 	}
 
 	@IBAction func toggleFilter(_ sender: Any) {
