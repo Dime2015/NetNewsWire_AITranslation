@@ -75,6 +75,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		configureDiffableDataSource()
 		collectionView.dragDelegate = self
 		collectionView.dropDelegate = self
+		// [管理] 订阅列表页**不要拖动整理**(2026-07-23 用户要求):拖动换顺序、
+		// 拖进/拖出文件夹这些都归「文件夹管理」页管,这一页保持"只看不动"。
+		// 顺带消掉一个真实的隐患:那边的拖动走的是上游自己的搬运逻辑,
+		// **不会更新我们记的顺序**(Shared/FeedOrder/),搬完位置会显得莫名其妙。
+		// (iPhone 上这个开关本来就默认关着,只有 iPad 默认开 —— 这里把意图写死。)
+		collectionView.dragInteractionEnabled = false
 		becomeFirstResponder()
     }
 

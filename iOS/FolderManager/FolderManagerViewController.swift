@@ -16,11 +16,13 @@
 //  这些上游一个都没有。所以本页的定位是「批量与整理」,
 //  **不追求把左滑那些单个操作再实现一遍**。
 //
-//  ## 分三阶段做(用户要求每阶段停下来验收)
+//  ## 现在做到哪了(三个阶段都已完成,2026-07-23)
 //
-//  - **Phase A(当前)**:展示 + 新建文件夹 + 重命名
+//  - Phase A:展示 + 新建文件夹 + 重命名
 //  - Phase B:移动(多选「移动到…」为主,拖拽为辅)
-//  - Phase C:批量删除 + 删文件夹时把源释放到顶层
+//  - Phase C:批量删除(可撤销)+ 删文件夹时把里面的源释放到顶层
+//  - 之后又按用户反馈做了:文件夹与源混排、拖动排序(顶层和文件夹内两层)、
+//    弹簧加载展开、落点与动画的一串修正
 //
 //  ## 两条硬约束(来自 CLAUDE.md,别越界)
 //
@@ -28,7 +30,19 @@
 //     (`addFolder` / `renameFolder` / `moveFeed` / …),**一行实现都不改**。
 //  2. **没有子文件夹**:上游模型里写死了 `subfolders are not supported`
 //     (`Folder.folders` 恒为 nil),所以层级永远只有「账户 → 文件夹 → 源」两层。
-//     Phase C 说的「释放到上一层级」= 释放到账户顶层,不存在更上面一层。
+//     「释放到上一层级」= 释放到账户顶层,不存在更上面一层。
+//
+//  ## ⚠️ 改这个文件前必读(都是付出过代价的,详见 NOTES-lessons L65 / L66)
+//
+//  1. **别在 cell 的 accessories 里加 `isEditing` 条件** —— 一加就需要在进出编辑模式时
+//     手动重新配置每一行,而那个调用**接连崩过两次**(它要求"列表看到的世界"和
+//     "数据源里的世界"完全一致,可退出编辑常发生在刚搬完源、两边还没对齐的那一刻)。
+//  2. **拖放相关的调用,顺序即语义**:凡是会改动 collectionView 内部状态的调用
+//     (`coordinator.drop` 之类),必须放在所有数据计算**之后**(现在用 `defer`)。
+//  3. **落点判断只有一个入口**(`dropDestination`),悬停和放手共用它 ——
+//     分开写过一次,口径对不齐就成了"看着能放、松手没反应"。
+//  4. 这块的时序问题**离线模拟不出来**,只能靠实测;所以**改动要克制**,
+//     尤其别为了美化动画去动已经好用的逻辑(那样弄坏过一次)。
 //
 
 #if os(iOS)
@@ -181,8 +195,12 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		selectedItems.removeAll()
 		updateNavigationItems()
 		updateToolbar()
-		// 重画一遍,好让每行换上/摘掉左边那个勾选圈
-		reloadFromAccounts(animated: animated)
+
+		// ⚠️ **这里刻意不做任何"重新配置每一行"的动作**(2026-07-23,接连崩两次后的结论):
+		// 每行的外观已经完全不依赖编辑状态了(勾选圈由 `.whenEditing` 自己管、
+		// 展开三角样式固定),所以进出编辑模式什么都不用刷 —— 系统会自己让圈露面/收起。
+		// 曾经在这里调 `reconfigureItems`,它要求"列表看到的世界"和"数据源里的世界"完全一致,
+		// 而退出编辑常常发生在刚搬完源、两边还没对齐的那一刻 → 直接撞断言。
 	}
 
 
@@ -276,17 +294,21 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			cell.contentConfiguration = content
 			cell.backgroundConfiguration = self.paperCellBackground()
 
-			if self.isEditing {
-				// 编辑模式:文件夹**也能勾**(批量删文件夹)。
-				// ⚠️ 展开三角必须从 `.header` 换成 `.cell` 样式 ——
-				// `.header` 是"点整行就展开",而编辑模式下点整行的含义已经变成"勾选"了,
-				// 两者抢同一个点击必然打架。`.cell` 样式下:**点三角展开,点行选中**,各管各的。
-				cell.accessories = [.multiselect(displayed: .whenEditing),
-									.outlineDisclosure(options: .init(style: .cell))]
-			} else {
-				// 平时:`.header` 样式 = 点整行就能展开/收起,不用去瞄那个小三角
-				cell.accessories = [.outlineDisclosure(options: .init(style: .header))]
-			}
+			// ⚠️ **这一行的外观刻意完全不看 isEditing**(2026-07-23 第三次改这里,别再加条件):
+			//
+			// 曾经让展开三角跟着编辑模式换样式(`.header` ↔ `.cell`),
+			// 结果每次进出编辑模式都得手动 `reconfigureItems` 重跑一遍外观 ——
+			// 而那个调用**接连崩了两次**(它要求"列表看到的世界"和"数据源里的世界"完全一致,
+			// 可退出编辑模式常常发生在刚搬完源、两边还没对齐的那一刻)。
+			//
+			// 现在发现根本不用换:两个附件各管各的点击,天然不冲突 ——
+			//   · 点**勾选圈** → 勾选(`.whenEditing` 保证它只在编辑模式露面)
+			//   · 点**整行**  → 展开/收起(`.header` 样式)
+			// 编辑模式下"点整行仍是展开"反而更顺手:想勾文件夹里的某个源,本来就得先展开看看。
+			cell.accessories = [
+				.multiselect(displayed: .whenEditing),
+				.outlineDisclosure(options: .init(style: .header))
+			]
 		}
 
 		// 订阅源那一行
@@ -312,8 +334,10 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			}
 			cell.contentConfiguration = content
 			cell.backgroundConfiguration = self.paperCellBackground()
-			// 编辑模式下每个源前面出现勾选圈;平时什么都不显示
-			cell.accessories = self.isEditing ? [.multiselect(displayed: .whenEditing)] : []
+			// 勾选圈**不加条件**:`displayed: .whenEditing` 已经保证了"只在编辑模式露面",
+			// 交给系统判断比自己看 isEditing 可靠 —— 后者要求每次进出编辑模式都重新配置这一行,
+			// 漏一次就变成"有的行有圈、有的没有"(2026-07-23 踩过)。
+			cell.accessories = [.multiselect(displayed: .whenEditing)]
 		}
 
 		dataSource = UICollectionViewDiffableDataSource<SectionID, Item>(collectionView: collectionView) { collectionView, indexPath, item in
@@ -724,7 +748,24 @@ extension FolderManagerViewController {
 	/// 逐个搬。**故意串行**而不是一起发:
 	/// 它们改的是同一批容器,并发搬容易互相踩;而且本地账户每次都是瞬时的,串行也不慢。
 	/// 同步账户下每次是一个网络请求,串行还能避免把对方服务器打出限流(L33 的教训)。
-	private func performMove(_ items: [Item], to destination: Container, in account: Account) {
+	/// `insertingAt` = 搬过去之后落在新容器的第几位。
+	/// **拖拽**会给出这个位置(用户明确指了地方);**菜单里的「移动到…」**不给(它没有位置概念),
+	/// 那时就清掉排序位置、让它按名字落到末尾。
+	private func performMove(_ items: [Item], to destination: Container, in account: Account,
+							 insertingAt insertIndex: Int? = nil) {
+
+		// 搬过去之后新容器该是什么次序 —— **必须在搬之前算**,
+		// 因为搬完之后容器内容就变了,再算就分不清"原有的"和"刚进来的"。
+		let plannedOrder: [String]? = insertIndex.map { index in
+			var order = orderKeys(in: destination, account: account)
+			let movingIDs = items.compactMap { item -> String? in
+				guard case .feed(_, let feedID, _) = item else { return nil }
+				return feedID
+			}
+			order.removeAll { movingIDs.contains($0) }
+			order.insert(contentsOf: movingIDs, at: max(0, min(index, order.count)))
+			return order
+		}
 
 		Task { @MainActor in
 
@@ -748,12 +789,17 @@ extension FolderManagerViewController {
 				}
 			}
 
-			// 换了容器就忘掉它原来的排序位置,让它按名字落在新容器的末尾。
-			// 不忘的话,它会带着旧位置插进新文件夹中间,看起来像随机乱跳。
-			FeedOrderStore.shared.forgetOrder(forFeedIDs: items.compactMap {
-				guard case .feed(_, let feedID, _) = $0 else { return nil }
-				return feedID
-			})
+			if let plannedOrder {
+				// 拖拽过来的:落在用户指的那个位置
+				FeedOrderStore.shared.setOrder(plannedOrder)
+			} else {
+				// 从菜单搬过来的:没有位置可言,忘掉旧位置、按名字落到末尾。
+				// 不忘的话它会带着**旧容器里的**位置插进新容器中间,看起来像随机乱跳。
+				FeedOrderStore.shared.forgetOrder(forFeedIDs: items.compactMap {
+					guard case .feed(_, let feedID, _) = $0 else { return nil }
+					return feedID
+				})
+			}
 
 			// 搬完退出编辑模式:选中的东西已经不在原位了,继续留着勾没有意义
 			setEditing(false, animated: true)
@@ -1064,25 +1110,69 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 			return
 		}
 
-		// **拖的是文件夹 → 只可能是在顶层调顺序**(上游不支持子文件夹)。
+		// UIKit 自己算好的插入位置 —— **就是视觉上"让开的那条缝"所在的位置**。
+		// 拿它当准,松手后的落位才和拖动时看到的一致。
+		let dropIndexPath = coordinator.destinationIndexPath
+
+		// 告诉系统"预览就落在手指松开的地方",省得它把预览**缩着飞回原点再消失**
+		// (用户原话:「拖动的目标会往画面深处缩小,很影响判断」)。
+		//
+		// ⚠️⚠️ **这段必须放在所有数据计算之后,所以用 defer。**
+		// 曾经把它写在前面,结果同区域排序整个失效、拖进文件夹落点偏两行 ——
+		// 因为 `coordinator.drop(...)` 会**当场改动列表的内部状态**,
+		// 而下面算插入位置时要拿落点去问"那一行是谁"(`itemIdentifier(for:)`),
+		// 问到的就成了错的行:算成原位就表现为"拖了没反应",算偏就表现为"落到第三行"。
+		// **调用顺序在这里就是语义的一部分,别再挪到前面去。**
+		defer {
+			for droppedItem in coordinator.items {
+				coordinator.drop(droppedItem.dragItem, to: previewTarget(for: droppedItem, fallback: point))
+			}
+		}
+
+		// **拖的是文件夹 → 只可能是在顶层调顺序**(上游不支持子文件夹,它没别处可去)。
 		if items.contains(where: { if case .folder = $0 { return true }; return false }) {
-			reorderTopLevel(items, droppedAt: point, in: target.account)
+			reorderWithinLayer(items, at: dropIndexPath, fallbackPoint: point,
+							   container: target.account, account: target.account)
 			return
 		}
 
-		// **落点就在源自己待着的那个容器里 → 这是"调顺序",不是"搬家"。**
-		// 判据是所在容器一致(顶层 ↔ 顶层,或同一个文件夹内),
+		// **落点就在源自己待着的那一层 → 这是"调顺序",不是"搬家"。**
+		// 判据是所在容器一致(顶层 ↔ 顶层,或同一个文件夹内);
 		// 那种情况下走 moveFeed 是空操作(源容器==目标容器会被跳过),只有排序才有意义。
 		if items.allSatisfy({ containerFolderID(of: $0) == targetFolderID(of: target.container) }) {
-			if targetFolderID(of: target.container) == nil {
-				reorderTopLevel(items, droppedAt: point, in: target.account)	// 顶层:和文件夹混在一起排
-			} else {
-				reorder(items, droppedAt: point, in: target)					// 文件夹内部:只排源
-			}
+			reorderWithinLayer(items, at: dropIndexPath, fallbackPoint: point,
+							   container: target.container, account: target.account)
 			return
 		}
 
-		performMove(items, to: target.container, in: target.account)
+		// 搬进别的容器:也要落在**手指指的那个位置**,而不是一律排到末尾
+		// (用户 2026-07-23 报「拖进文件夹后总是跑到最底下」)。
+		// ⚠️ 这里要按**目标那一层**的次序算位置。顶层是"文件夹和散源混排"的一串,
+		// 早先只拿散源来算,于是从文件夹里拖到两个文件夹之间时会排到所有散源的最后。
+		let insertIndex = insertionIndex(in: orderKeys(in: target.container, account: target.account),
+										 at: dropIndexPath, fallbackPoint: point,
+										 layerFolderID: targetFolderID(of: target.container))
+		performMove(items, to: target.container, in: target.account, insertingAt: insertIndex)
+	}
+
+	/// 预览该落在哪儿。
+	///
+	/// ⚠️ **落到"它现在真正待的那一行的正中",而不是手指松开的位置**(2026-07-23 用户反馈):
+	/// 手指松开时通常并不在行的水平正中,拿它当落点,预览就会**歪在右边**停一下再消失
+	/// (用户原话:「会往右边错位停在被放下的那一行,然后卡住一秒」)。
+	/// 此时数据已经重排完(本方法在 defer 里、排序之后才调),
+	/// 所以直接问"这一项现在在第几行"就能拿到它最终的位置,预览一步到位。
+	///
+	/// 查不到就退回手指位置 —— **跨容器搬家时就会走这条**:
+	/// 源换了文件夹,它的身份(带着所在文件夹)已经变了,按旧身份查不到新行。
+	private func previewTarget(for droppedItem: UICollectionViewDropItem, fallback point: CGPoint) -> UIDragPreviewTarget {
+
+		if let item = droppedItem.dragItem.localObject as? Item,
+		   let indexPath = dataSource.indexPath(for: item),
+		   let attributes = collectionView.layoutAttributesForItem(at: indexPath) {
+			return UIDragPreviewTarget(container: collectionView, center: attributes.center)
+		}
+		return UIDragPreviewTarget(container: collectionView, center: point)
 	}
 
 	/// 拖动结束(不管放没放成)都要把弹簧加载的计时收掉,免得手抬起来之后文件夹还自己弹开。
@@ -1153,12 +1243,30 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 				// 落在**顶层的源**上 → 放到账户顶层(也就是"拿出文件夹")
 				return (account, account, accountID)
 			}
-			// 落在**某个文件夹里的源**上 → 也算进那个文件夹。
-			// 这条是用户明确要求的:文件夹展开后,它下面那一片在观感上就是"文件夹里面"。
+			// 落在**某个文件夹里的源**上:默认算进那个文件夹
+			// (文件夹展开后,它下面那一片在观感上就是"文件夹里面")。
+			//
+			// ⚠️ **但手指往左退出缩进线时,算"拿到文件夹外面"**(2026-07-23 用户提的场景):
+			// 「A 展开、B 收起,我想把 A 里的一个源拖到 A 和 B 中间、不属于任何文件夹」——
+			// 那条缝**本身是有歧义的**:既可能是"放进 A 的末尾",也可能是"放到 A 和 B 之间的顶层"。
+			// 光看上下位置分不出来,所以按**水平位置**分:
+			// 文件夹里的源本来就比外面的源多缩进一段(`nestedFeedExtraIndent`),
+			// 手指退到那条缩进线左边,就是"我要把它拿出来"。
+			// (Files / Finder 里挪动嵌套项目也是这个手感。)
+			if point.x < Self.outdentThreshold {
+				return (account, account, accountID)
+			}
 			guard let folder = account.folders?.first(where: { $0.folderID == folderID }) else { return nil }
 			return (folder, account, accountID)
 		}
 	}
+
+	/// 手指横向退到这个位置以左,就当成"要把源拿出文件夹"。
+	///
+	/// 取值参照:文件夹里的源,内容大致从 70pt 往右开始(系统缩进 + 我们额外加的
+	/// `nestedFeedExtraIndent`)。定在 56 是让它**略微靠左于**内容起点 ——
+	/// 顺手拖不会误判成"拿出来",而有意往左带一截就能拿出来。
+	private static let outdentThreshold: CGFloat = 56
 
 	/// 这一行现在待在哪个文件夹里(nil = 顶层)。用来判断"拖到的地方是不是它原来的容器"。
 	private func containerFolderID(of item: Item) -> Int? {
@@ -1171,40 +1279,35 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		(container as? Folder)?.folderID
 	}
 
-	// MARK: - 顶层调顺序(文件夹和没归档的源混在一起)
+	// MARK: - 调顺序(顶层 / 文件夹内共用一套)
 
-	/// 顶层的排序:**文件夹和散源是平级的**,可以互相插队。
+	/// 把拖动的这些项挪到落点那个位置,并把**所在那一层**的新次序记下来。
 	///
-	/// 这和文件夹内部的排序(下面那个 `reorder`)是两件事:
-	/// 那里只排源,这里排的是"账户底下那一串条目"。
-	private func reorderTopLevel(_ items: [Item], droppedAt point: CGPoint, in account: Account) {
+	/// ## 「一层」是什么
+	///
+	/// · **顶层** = 文件夹和没归档的源**混排**的那一串(文件夹可以排在源中间)
+	/// · **某个文件夹内** = 它自己那些源
+	///
+	/// 两层用的是同一套算法,只是"这一层有哪些项"和"项的键怎么取"不同 ——
+	/// 所以这里只有一个实现,免得两边各写一遍再慢慢长歪(之前就是分开写的)。
+	///
+	/// ⚠️ 顺序是**我们自己存的**(`FeedOrderStore`)—— 上游把源放在 `Set` 里,
+	/// 模型层根本没有顺序可言,列表的排列是显示时现算的。
+	private func reorderWithinLayer(_ items: [Item], at dropIndexPath: IndexPath?, fallbackPoint: CGPoint,
+									container: Container, account: Account) {
 
-		let entries = FeedOrderStore.shared.sortedTopLevel(
-			folders: account.sortedFolders ?? [],
-			looseFeeds: Array(account.topLevelFeeds))
+		let layerFolderID = targetFolderID(of: container)
+		var orderedKeys = orderKeys(in: container, account: account)
 
-		var orderedKeys = entries.map { FeedOrderStore.shared.key(for: $0) }
-
-		// 被拖的那些条目的键
-		let movingKeys = items.compactMap { item -> String? in
-			switch item {
-			case .folder:
-				guard let folder = folder(for: item) else { return nil }
-				return FeedOrderStore.orderKey(forFolderNamed: folder.nameForDisplay)
-			case .feed(_, let feedID, let folderID):
-				return folderID == nil ? feedID : nil		// 文件夹**里**的源不参与顶层排序
-			}
-		}
+		// 被拖的那些项在这一层的键(不属于这一层的忽略)
+		let movingKeys = items.compactMap { layerKey(of: $0, layerFolderID: layerFolderID) }
 		guard !movingKeys.isEmpty else { return }
 
-		// 落点那一行 → 插到它后面
-		var insertIndex = orderedKeys.count
-		if let landedOn = item(nearestTo: point), let landedKey = topLevelKey(of: landedOn),
-		   let index = orderedKeys.firstIndex(of: landedKey) {
-			insertIndex = index + 1
-		}
+		var insertIndex = insertionIndex(in: orderedKeys, at: dropIndexPath,
+										 fallbackPoint: fallbackPoint, layerFolderID: layerFolderID)
 
-		// 摘除会让后面的下标前移,插入点要跟着往前挪同样的格数(同 reorder)
+		// 先把被拖的从原位摘掉,再插到新位置。
+		// ⚠️ 摘除会让后面的下标前移,所以插入点要跟着往前挪同样的格数,否则会偏。
 		let removedBefore = movingKeys.filter { key in
 			guard let index = orderedKeys.firstIndex(of: key) else { return false }
 			return index < insertIndex
@@ -1214,68 +1317,78 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		orderedKeys.insert(contentsOf: movingKeys, at: insertIndex)
 
 		FeedOrderStore.shared.setOrder(orderedKeys)
-		reloadFromAccounts(animated: true)
+		// ⚠️ **不要带动画**:系统的拖放收尾动画正在播,再叠一套数据更新动画,
+		// 看起来就是"闪一下再跳位"。数据瞬时到位,视觉移动交给系统那套动画收尾。
+		reloadFromAccounts(animated: false)
 	}
 
-	/// 这一行在顶层的排序键。**文件夹里的源没有顶层键** ——
-	/// 落在它身上时应当归给它所在的那个文件夹(由调用方处理),不参与顶层排序。
-	private func topLevelKey(of item: Item) -> String? {
+	/// 某一层当前的次序(键)。顶层是文件夹和散源混排,文件夹内只有源。
+	private func orderKeys(in container: Container, account: Account) -> [String] {
+		if let folder = container as? Folder {
+			return sortedForDisplay(folder.topLevelFeeds).map { $0.feedID }
+		}
+		return FeedOrderStore.shared.sortedTopLevel(
+			folders: account.sortedFolders ?? [],
+			looseFeeds: Array(account.topLevelFeeds)
+		).map { FeedOrderStore.shared.key(for: $0) }
+	}
+
+	/// 这一项在指定那一层里的键(不属于这一层就返回 nil)。
+	private func layerKey(of item: Item, layerFolderID: Int?) -> String? {
 		switch item {
 		case .folder:
-			guard let folder = folder(for: item) else { return nil }
+			guard layerFolderID == nil, let folder = folder(for: item) else { return nil }
 			return FeedOrderStore.orderKey(forFolderNamed: folder.nameForDisplay)
-		case .feed(_, let feedID, let folderID):
-			return folderID == nil ? feedID : nil
+		case .feed(_, let feedID, let itemFolderID):
+			return itemFolderID == layerFolderID ? feedID : nil
 		}
 	}
 
-	// MARK: - 文件夹内部调顺序
+	/// 落点那一行,在指定层里对应"插到谁的位置/谁的后面"。
+	private func insertionAnchor(for item: Item, layerFolderID: Int?) -> (key: String, after: Bool)? {
 
-	/// 把拖动的源插到落点那一行**后面**,然后把这个容器的新次序记下来。
+		// 就在这一层里 → 占据它的位置(把它往下推)
+		if let key = layerKey(of: item, layerFolderID: layerFolderID) {
+			return (key, false)
+		}
+
+		// ⚠️ **落在某个文件夹里的源上,而我们要放到顶层** —— 就是用户那个场景:
+		// 「A 展开、B 收起,把 A 里的源拖到 A 和 B 中间」。
+		// 那一行在顶层没有自己的位置,它所属的**整个文件夹**才是顶层的一项,
+		// 所以插到**那个文件夹之后**,正好落在 A 和 B 中间。
+		if layerFolderID == nil,
+		   case .feed(let accountID, _, let itemFolderID) = item,
+		   let itemFolderID,
+		   let account = AccountManager.shared.existingAccount(accountID: accountID),
+		   let folder = account.folders?.first(where: { $0.folderID == itemFolderID }) {
+			return (FeedOrderStore.orderKey(forFolderNamed: folder.nameForDisplay), true)
+		}
+		return nil
+	}
+
+	/// 算出该插到第几个位置。
 	///
-	/// ⚠️ 顺序是**我们自己存的**(`FeedOrderStore`)—— 上游把源放在 `Set` 里,
-	/// 模型层根本没有顺序可言,列表的排列是显示时按名字现算的。
-	/// 所以"拖动排序"只能靠旁边存一份次序,再让**管理页和主列表用同一套排序规则**去读它。
-	private func reorder(_ items: [Item], droppedAt point: CGPoint,
-						 in target: (container: Container, account: Account, accountID: String)) {
+	/// ⚠️ **优先用 UIKit 自己算好的 `destinationIndexPath`** —— 那就是拖动时看到的
+	/// "让开的那条缝",它已经判过手指落在行的上半还是下半。
+	/// 早先一律"插在落点那一行的后面",于是拖到第一行会落到第二位(2026-07-23 用户报过)。
+	/// 只有它给不出来时(手指落在列表末尾的空白),才退回"排在上方最近那一项之后"。
+	private func insertionIndex(in orderedKeys: [String], at dropIndexPath: IndexPath?,
+								fallbackPoint: CGPoint, layerFolderID: Int?) -> Int {
 
-		// 这个容器当前显示的全部源(已经是排好序的)
-		let folderID = targetFolderID(of: target.container)
-		let currentFeeds: [Feed]
-		if let folder = target.container as? Folder {
-			currentFeeds = sortedForDisplay(folder.topLevelFeeds)
-		} else {
-			currentFeeds = sortedForDisplay(target.account.topLevelFeeds)
+		if let dropIndexPath,
+		   let item = dataSource.itemIdentifier(for: dropIndexPath),
+		   let anchor = insertionAnchor(for: item, layerFolderID: layerFolderID),
+		   let index = orderedKeys.firstIndex(of: anchor.key) {
+			return anchor.after ? index + 1 : index
 		}
 
-		var orderedIDs = currentFeeds.map { $0.feedID }
-		let movingIDs = items.compactMap { item -> String? in
-			guard case .feed(_, let feedID, _) = item else { return nil }
-			return feedID
-		}
-		guard !movingIDs.isEmpty else { return }
-
-		// 落点那一行(拖到空白处时是它上方最近的一行)
-		var insertIndex = orderedIDs.count
-		if let landedOn = item(nearestTo: point),
-		   case .feed(_, let landedFeedID, let landedFolderID) = landedOn,
-		   landedFolderID == folderID,
-		   let index = orderedIDs.firstIndex(of: landedFeedID) {
-			insertIndex = index + 1		// 插在它后面 —— 和"让开的那条缝"出现的位置一致
+		if let landed = item(nearestTo: fallbackPoint),
+		   let anchor = insertionAnchor(for: landed, layerFolderID: layerFolderID),
+		   let index = orderedKeys.firstIndex(of: anchor.key) {
+			return index + 1		// 落在空白:排在上方最近那一项之后
 		}
 
-		// 先把被拖的从原位摘掉,再插到新位置。
-		// ⚠️ 摘除会让后面的下标前移,所以插入点要跟着往前挪同样的格数,否则会偏。
-		let removedBefore = movingIDs.filter { id in
-			guard let index = orderedIDs.firstIndex(of: id) else { return false }
-			return index < insertIndex
-		}.count
-		orderedIDs.removeAll { movingIDs.contains($0) }
-		insertIndex = max(0, min(insertIndex - removedBefore, orderedIDs.count))
-		orderedIDs.insert(contentsOf: movingIDs, at: insertIndex)
-
-		FeedOrderStore.shared.setOrder(orderedIDs)
-		reloadFromAccounts(animated: true)
+		return orderedKeys.count
 	}
 
 	/// 找这个位置对应的那一行;**落在空白处也不算失败** —— 取它上方最近的一行。
