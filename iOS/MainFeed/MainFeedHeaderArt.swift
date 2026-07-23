@@ -43,7 +43,8 @@ extension MainFeedCollectionViewController {
 	/// 为什么挂在 `viewWillAppear` 而不是 `viewDidLoad`:从别的页面返回时
 	/// 导航栏的外观、工具栏都会被重设一遍,头图这边也要跟着重新接管一次。
 	/// (而且它内部有防重入:同一个内容不会重复渲染。)
-	func nnwUpdateFeedListHeader() {
+	/// - Parameter crossfade: 换档引起的换图请传 true —— 整幅插画硬切会像闪了一下
+	func nnwUpdateFeedListHeader(crossfade: Bool = false) {
 		guard TimelineStyle.headerEnabled, TimelineStyle.smartHeaderEnabled else { return }
 
 		let controller: TimelineFeedHeaderController
@@ -54,7 +55,15 @@ extension MainFeedCollectionViewController {
 			objc_setAssociatedObject(self, &Self.nnwHeaderKey, controller, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 		}
 
-		controller.update(subject: .art(SmartFeedHeaderCatalog.feedList,
+		if crossfade {
+			controller.nnwCrossfadeNextRender()
+		}
+
+		// [阅读档] 三个档各一张画(2026-07-23):换档时头图跟着换,一眼看出自己在哪一档。
+		// 换图的淡入淡出由头图控制器自己做(和深浅色切换共用同一套交叉淡入)。
+		let entry = SmartFeedHeaderCatalog.feedListEntry(for: NNWReadingModeStore.shared.mode)
+
+		controller.update(subject: .art(entry,
 										title: SmartFeedHeaderCatalog.feedListTitle,
 										heightFraction: TimelineStyle.feedListHeaderHeightFraction),
 						  host: self,

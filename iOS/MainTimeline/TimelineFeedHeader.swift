@@ -221,6 +221,16 @@ extension MainTimelineModernViewController {
 		}
 	}
 
+	/// [阅读档] 下一次渲染请用**交叉淡入**,别硬切。
+	///
+	/// 原来只有"系统切深浅色"会走淡入。首页的头图现在还会**跟着底部三档换画**
+	///(2026-07-23),那也该淡入 —— 硬切一张整幅插画,观感像闪了一下。
+	/// 复用同一个标志位,所以两种情况的时长、曲线天然一致。
+	func nnwCrossfadeNextRender() {
+		crossfadeNextRender = true
+		renderedKey = nil		// 不清掉的话,若只是换档没换外观,render 会因为 key 相同直接返回
+	}
+
 	// MARK: 装 / 卸
 
 	func update(subject: TimelineHeaderSubject?, host: UIViewController, collectionView: UICollectionView) {

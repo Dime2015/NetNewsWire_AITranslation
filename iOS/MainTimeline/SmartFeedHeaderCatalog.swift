@@ -75,6 +75,39 @@ import Account
 	/// 首页是整个 app 的门面,这是用户 2026-07-23 定的。
 	static let feedListTitle = "Babel"
 
+	/// [阅读档] 首页头图**跟着底部三档换**(2026-07-23 用户要求):
+	/// 换档时页面本身的变化(哪些源、有没有数字)不够醒目,让头图跟着换,
+	/// **一眼就知道自己在哪一档** —— 头图从装饰变成了状态指示。
+	///
+	/// 三幅画都出自同一套素材:
+	/// | 档 | 画的是什么 |
+	/// |---|---|
+	/// | 未读 | 一个人在读杂志(手上这本 = 还没读完的) |
+	/// | 全部 | 一屋子成捆的杂志(全部家当都在这儿) |
+	/// | ★ | 那具铠甲 / 一箱珍藏(值得收着的) |
+	///
+	/// ⚠️ 后两张是**为首页单独裁过**的(`HeaderArtFeedList*`),不是直接借用
+	/// 「已加星标」那张 —— 那张按 1/4 屏(比例 1.84)裁,首页是 1/5 屏(2.30),
+	/// 直接拿来会被 aspectFill 再切掉两成,正是 L72 那次把主体切没的成因。
+	static func feedListEntry(for mode: NNWReadingMode) -> Entry {
+		switch mode {
+		case .unread:
+			return feedList
+		case .all:
+			return Entry(assetName: "HeaderArtFeedListAll",
+						 // 同一间屋子、同一件衣袍的靛蓝,和「未读」那张保持一家
+						 titleColor: UIColor(red: 0x36 / 255, green: 0x50 / 255, blue: 0x72 / 255, alpha: 1),
+						 debugName: "首页·全部",
+						 usesSystemDockedTitle: true)
+		case .starred:
+			return Entry(assetName: "HeaderArtFeedListStarred",
+						 // 器物与花枝的赭金(和「已加星标」页同一个色,它们本来就是同一幅画)
+						 titleColor: UIColor(red: 0x8A / 255, green: 0x5A / 255, blue: 0x2B / 255, alpha: 1),
+						 debugName: "首页·星标",
+						 usesSystemDockedTitle: true)
+		}
+	}
+
 	/// 当前时间线展示的是不是这三个智能源之一?是就返回它的头图配置。
 	///
 	/// 用**对象身份**比对(`===`),而不是比名字 —— 名字会随语言变,

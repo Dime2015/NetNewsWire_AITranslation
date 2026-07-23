@@ -154,6 +154,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		// ⚠️ **必须放在本方法最后** —— 上面那段刚把 largeTitleDisplayMode 设成 .always,
 		// 而头图要自己画标题、得把系统大标题关掉。放在前面会被上面覆盖掉(实测过)。
 		nnwUpdateFeedListHeader()
+
+		// [阅读档] 底部三档控件(星标/未读/全部)+ 左右滑切换 + 藏掉右上角漏斗。
+		// 实现全在 iOS/ReadingMode/ 下。**必须排在上面 configureToolbarWithProgressView() 之后**,
+		// 否则会撞上「工具栏必须正好 3 项」那条守卫(见那个文件的注释)。
+		nnwUpdateReadingMode()
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -312,6 +317,13 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			return config
 		}
 
+		// [阅读档] 拿掉行上的左滑(2026-07-23 用户要求):这一页的左右滑要留给「星标/未读/全部」档位切换,
+		// 两者共存的话手指往左划到底是"划出行操作"还是"切档"没法区分。
+		// **上游那一整块原样留着**(上面那段),只在这里覆盖掉 —— 将来 upstream 改它也不会冲突。
+		// ⚠️ 功能一个都没丢:重命名 / 删除 / 全部标为已读 / 打开主页 全都在**长按菜单**里
+		//(makeFeedContextMenu / makeFolderContextMenu),另外删除与重命名在「文件夹管理」页里也有。
+		config.trailingSwipeActionsConfigurationProvider = nil
+
 		config.itemSeparatorHandler = { (indexPath, sectionSeparatorConfiguration) in
 			var configuration = sectionSeparatorConfiguration
 
@@ -412,7 +424,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 			headerView.sectionHeaderType = .account(sectionID)
 			headerView.headerTitle.text = account.nameForDisplay
-			headerView.unreadCount = account.unreadCount
+			// [阅读档] 一行换一行:账户分组头上的数字也跟着档位走(全部档不显示;★档显示星标合计)
+			headerView.unreadCount = NNWReadingModeStore.shared.displayedAccountCount(for: account)
 			headerView.disclosureExpanded = self.coordinator.isExpanded(account)
 			headerView.addInteraction(UIContextMenuInteraction(delegate: self))
 
@@ -700,7 +713,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		if let sidebarItem = node.representedObject as? SidebarItem {
 			cell.feedTitle.text = sidebarItem.nameForDisplay
-			cell.unreadCount = sidebarItem.unreadCount
+			// [阅读档] 一行换一行:「全部」档不显示任何数字(传 0,上游 cell 自己会把标签藏起来)
+			cell.unreadCount = NNWReadingModeStore.shared.displayedCount(for: sidebarItem)
 			cell.indentationLevel = indentationLevel
 			configureIcon(cell, sidebarItem: sidebarItem)
 		}
@@ -712,7 +726,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		if let folder = node.representedObject as? Folder {
 			cell.folderTitle.text = folder.nameForDisplay
-			cell.unreadCount = folder.unreadCount
+			// [阅读档] 一行换一行,理由同上面那个 configure
+			cell.unreadCount = NNWReadingModeStore.shared.displayedCount(for: folder)
 			configureIcon(cell, sidebarItem: folder)
 		}
 
@@ -782,7 +797,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		if let account = unreadCountProvider as? Account {
 			if let headerView = findHeaderViewForAccount(account) {
-				headerView.unreadCount = account.unreadCount
+				// [阅读档] 一行换一行,理由同分组头那处
+				headerView.unreadCount = NNWReadingModeStore.shared.displayedAccountCount(for: account)
 			}
 			return
 		}
@@ -793,11 +809,13 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 				  sidebarItemNode.node.representedObject === unreadCountProvider as AnyObject else {
 				continue
 			}
+			// [阅读档] 一行换一行 ×2:「全部」档不显示数字。
+			// ⚠️ 这两行是"切到全部档后数字过一会儿自己回来"的真凶 —— 后台同步一完成就会走到这里。
 			if let feedCell = cell as? MainFeedCollectionViewCell {
-				feedCell.unreadCount = unreadCountProvider.unreadCount
+				feedCell.unreadCount = NNWReadingModeStore.shared.displayedCount(unreadCount: unreadCountProvider.unreadCount)
 			}
 			if let folderCell = cell as? MainFeedCollectionViewFolderCell {
-				folderCell.unreadCount = unreadCountProvider.unreadCount
+				folderCell.unreadCount = NNWReadingModeStore.shared.displayedCount(unreadCount: unreadCountProvider.unreadCount)
 			}
 		}
 	}

@@ -84,6 +84,33 @@ let pages: [Page] = [
 		 aspect: 2.30,
 		 why: "1/5 屏更扁,纵向收在「脸 + 杂志」这一段,封面字样落在最浓处"),
 
+	// —— 下面两张是**首页专用**的另外两个档位(2026-07-23 加,底部三档切换用) ——
+	// 首页三个档各一张画:未读 = 上面那张读杂志的;全部 = 一屋子成捆的杂志;★ = 那具铠甲。
+	// ⚠️ 它们必须**单独裁一遍**,不能直接借用「已加星标」现成的资源:
+	// 那张是按 1.84(1/4 屏)裁的,而首页是 2.30(1/5 屏),直接拿来 aspectFill
+	// 会再从中间切掉两成 —— 正是 L72 那次"把人头切掉"的成因。
+
+	Page(assetName: "HeaderArtFeedListAll",
+		 lightFile: "全部Feed 浅色.png",
+		 darkFile: "全部Feed 深色.png",
+		 // 和「Feed页」那张是同一间屋子的另一幕(用户 2026-07-23 提供),
+		 // 所以沿用同一个纵向取法:脸落在最浓的顶部,成捆的杂志往下延伸进渐隐区。
+		 // ⚠️ 不敢再往下挪:再挪就切到发髻和头顶了(L72 的教训,宁可让下半部淡掉)。
+		 crop: CGRect(x: 0.000, y: 0.064, width: 1.000, height: 0.772),
+		 darkCrop: nil,		// 真·同场景昼夜版:同构图、月亮升起、烛火点上(已逐张看过)
+		 aspect: 2.30,
+		 why: "首页「全部」档:脸在最浓处,成捆的杂志往下淡出;深浅同场景共用一框"),
+
+	Page(assetName: "HeaderArtFeedListStarred",
+		 lightFile: "已加星标 浅色.png",
+		 darkFile: "已加星标 深色.png",
+		 // 浅色是那具铠甲。1/5 屏更扁,只能收得更紧:让头盔与胴甲落在最浓的上半部。
+		 crop: CGRect(x: 0.230, y: 0.064, width: 0.770, height: 0.595),
+		 // 深色是**另一幅画**(一箱珍藏),焦点完全不同,单独一个框(同 SmartFeedHeaderStarred 的道理)
+		 darkCrop: CGRect(x: 0.048, y: 0.361, width: 0.478, height: 0.369),
+		 aspect: 2.30,
+		 why: "首页★档:和「已加星标」同一幅画,但按 1/5 屏重裁,免得 aspectFill 再切一刀"),
+
 	Page(assetName: "SmartFeedHeaderToday",
 		 lightFile: "今日未读 浅色.png",
 		 darkFile: "今日未读 深色.png",

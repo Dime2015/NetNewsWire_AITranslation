@@ -891,11 +891,14 @@ private extension MainTimelineModernViewController {
 	func configureToolbar() {
 		if traitCollection.userInterfaceIdiom == .phone {
 			if #available(iOS 26, *) {
+				// [阅读档] 搜索框让位给三档控件(2026-07-23 用户要求),搜索改到右上角当放大镜按钮。
+				// 实现在 iOS/ReadingMode/MainTimelineModernViewController+ReadingMode.swift
+				nnwUseCompactSearchPlacement()
 				if let markAllAsRead = toolbarItems?.first {
 					toolbarItems = [
 						markAllAsRead,
 						.flexibleSpace(),
-						navigationItem.searchBarPlacementBarButtonItem,
+						nnwReadingModeToolbarItem(),		// [阅读档] 一行换一行:原来这里是 navigationItem.searchBarPlacementBarButtonItem
 						.flexibleSpace(),
 						nextUnreadButton
 					]
@@ -912,7 +915,9 @@ private extension MainTimelineModernViewController {
 
 	func resetUI(resetScroll: Bool) {
 		let shouldShowFilterButton = coordinator?.shouldShowFilterButton() ?? false
-		navigationItem.rightBarButtonItem = shouldShowFilterButton ? filterButton : nil
+		// [阅读档] 一行换一行:每个源各自的「只看未读」漏斗已由底部三档统一接管,按用户要求拿掉。
+		// 想还原成上游行为,把 NNWReadingModeStore.showsPerFeedFilterButton 改回 true 即可。
+		navigationItem.rightBarButtonItem = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? filterButton : nil
 
 		if isReadArticlesFiltered {
 			filterButton.tintColor = Assets.Colors.primaryAccent

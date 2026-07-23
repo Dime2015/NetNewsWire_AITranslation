@@ -1742,7 +1742,9 @@ private extension SceneCoordinator {
 					}
 				}
 
-				snapshot.appendItems(siNodes, toSection: sectionID)
+				// [阅读档] 一行换一行:★ 档下只留「已加星标」和有星标的源/文件夹。
+				// 实现在 iOS/ReadingMode/NNWReadingModeFeedListFilter.swift,其它档位原样放行。
+				snapshot.appendItems(NNWReadingModeFeedList.filtered(siNodes, sectionID: sectionID), toSection: sectionID)
 			}
 		}
 
@@ -2470,5 +2472,23 @@ extension SceneCoordinator {
 			return
 		}
 		navigationController.popToViewController(mainFeedCollectionViewController, animated: false)
+	}
+}
+
+// MARK: - [阅读档] 换档之后要重建订阅列表
+
+extension SceneCoordinator {
+
+	/// 重新造一遍订阅列表(树 + 快照)。
+	///
+	/// ⚠️ **为什么非得在这个文件里加这么一行**(按 CLAUDE.md 第 2 节的要求说明):
+	/// 上游的 `rebuildBackingStores()` 写在本文件的 `private extension` 里 ——
+	/// **别的文件里的扩展根本够不着**(L5 记过的同一类情况)。
+	/// 所以照老规矩:实现纯追加在文件末尾,只把它转成一个外面能调的名字,一行,不改上游任何逻辑。
+	///
+	/// 什么时候需要:切到 ★ 档(列表要只留有星标的源)、星标数重新数完之后。
+	/// 「未读↔全部」那两档不用走这里 —— 它们会通过 `toggleReadFeedsFilter()` 顺带重建。
+	func nnwRebuildFeedList() {
+		rebuildBackingStores()
 	}
 }

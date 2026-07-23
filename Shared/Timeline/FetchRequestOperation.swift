@@ -184,12 +184,25 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 				guard let sidebarItem = fetcher as? SidebarItem, let sidebarItemID = sidebarItem.sidebarItemID else {
 					return false
 				}
+				// [阅读档] 底部三档是总闸,盖过上游"每个源各记一份"的表(实现见 iOS/ReadingMode/)。
+				// ⚠️ 借上游自己的守卫排除「全部未读」那个智能源 —— 它的定义就是"未读",
+				// 让总闸把它改成"显示已读"会自相矛盾(上游 canToggle 对它返回 false)。
+				if hidingReadArticlesState.canToggleHidingReadArticles(for: sidebarItemID),
+				   let forced = NNWReadingModeStore.shared.hidesReadArticles {
+					return forced
+				}
 				return hidingReadArticlesState.isHidingReadArticles(for: sidebarItemID)
 			}
 
 			for fetcher in fetchers {
 				let articles: Set<Article>
-				if fetcherHidesReadArticles(fetcher) {
+				// [阅读档] ★ 档:只要加过星的。
+				// **取全部再在内存里筛** —— 和上游自己算未读是同一个套路
+				//(`Feed.fetchUnreadArticles()` 就是 `fetchArticles().unreadArticles()`),
+				// 而且这条路上游在「全部」档下本来就要走一遍,没有新增的数据库开销。
+				if NNWReadingModeStore.shared.mode == .starred {
+					articles = await fetcher.fetchArticlesAsync().filter { $0.status.starred }
+				} else if fetcherHidesReadArticles(fetcher) {
 					articles = await fetcher.fetchUnreadArticlesAsync()
 				} else {
 					articles = await fetcher.fetchArticlesAsync()
