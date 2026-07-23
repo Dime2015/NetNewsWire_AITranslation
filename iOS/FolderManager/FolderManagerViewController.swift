@@ -51,10 +51,24 @@ import RSCore
 		case feed(accountID: String, feedID: String, folderID: Int?)
 	}
 
+	/// 一个分组。**每个账户拆成两组**:上面是文件夹,下面是"不在文件夹里"的源。
+	///
+	/// ⚠️ 为什么非拆不可(2026-07-23 用户实测发现):
+	/// 本来是一个账户一组、文件夹在前散源在后,靠**缩进**区分"文件夹里的源"和"散源"。
+	/// 但一进编辑模式,每行前面要插一个勾选圈、内容整体右移,
+	/// **恰好把那点缩进差吃掉了** —— 展开最后一个文件夹后,里面的源和下面的散源看起来一样深,
+	/// 根本分不清某个源到底归没归档。
+	/// 与其去调几个点的缩进差(长列表里照样难分辨),不如**从结构上分开**:
+	/// 分组标题一摆,不管在不在编辑模式都一目了然,顺便给没归类的源一个明确的名分。
+	private enum SectionID: Hashable {
+		case folders(accountID: String)
+		case looseFeeds(accountID: String)
+	}
+
 	// MARK: - 界面部件
 
 	private var collectionView: UICollectionView!
-	private var dataSource: UICollectionViewDiffableDataSource<String, Item>!
+	private var dataSource: UICollectionViewDiffableDataSource<SectionID, Item>!
 
 	/// 哪些文件夹当前是展开的。列表刷新时要照着它把展开状态复原,
 	/// 否则每次收到一条通知,用户手动展开的文件夹就会全部合上。
@@ -62,6 +76,13 @@ import RSCore
 
 	/// 正在等待执行的刷新(用来做防抖,见 `scheduleReload`)
 	private var pendingReloadTask: Task<Void, Never>?
+
+	/// 编辑模式下已勾选的源。
+	///
+	/// ⚠️ 为什么不直接问 `collectionView.indexPathsForSelectedItems`:
+	/// 列表随时会因为一条通知整棵重画,重画后 UIKit 那边的选中就没了。
+	/// 自己记一份,刷新后还能把勾恢复上。
+	private var selectedFeeds = Set<Item>()
 
 	// MARK: - 生命周期
 
@@ -87,21 +108,68 @@ import RSCore
 	// MARK: - 导航栏
 
 	private func configureNavigationItem() {
+		updateNavigationItems()
+	}
+
+	/// 按「在不在编辑模式」摆导航栏按钮。
+	///
+	/// 编辑模式下**故意把左上角那个「完成」收起来**:那个是"关掉整个页面",
+	/// 而右上角的「完成」是"退出多选" —— 两个都叫完成、意思还不一样,并排放必然点错。
+	private func updateNavigationItems() {
+
+		if isEditing {
+			navigationItem.leftBarButtonItem = nil
+			navigationItem.rightBarButtonItems = [editButtonItem]
+			return
+		}
 
 		navigationItem.leftBarButtonItem = UIBarButtonItem(
 			title: "完成", style: .done, target: self, action: #selector(doneTapped))
 
-		// 右上角先只放「新建文件夹」。Phase B 要在这里加「编辑」(多选),
-		// 到时候两个按钮并排放,或者把新建收进一个 `…` 菜单里,看那时的拥挤程度再定。
 		let addFolderItem = UIBarButtonItem(
 			image: UIImage(systemName: "folder.badge.plus"),
 			style: .plain, target: self, action: #selector(addFolderTapped))
 		addFolderItem.accessibilityLabel = "新建文件夹"
-		navigationItem.rightBarButtonItem = addFolderItem
+		// 顺序是「编辑」在最右、「新建文件夹」在它左边
+		navigationItem.rightBarButtonItems = [editButtonItem, addFolderItem]
+	}
+
+	/// 进出编辑(多选)模式。`editButtonItem` 会自动调到这里。
+	override func setEditing(_ editing: Bool, animated: Bool) {
+		super.setEditing(editing, animated: animated)
+
+		collectionView.isEditing = editing
+		selectedFeeds.removeAll()
+		updateNavigationItems()
+		updateToolbar()
+		// 重画一遍,好让每行换上/摘掉左边那个勾选圈
+		reloadFromAccounts(animated: animated)
 	}
 
 	@objc private func doneTapped() {
 		dismiss(animated: true)
+	}
+
+	// MARK: - 底部工具栏(只在编辑模式出现)
+
+	private func updateToolbar() {
+
+		guard isEditing else {
+			navigationController?.setToolbarHidden(true, animated: true)
+			return
+		}
+
+		let count = selectedFeeds.count
+		let title = count == 0 ? "移动到…" : "移动 \(count) 项到…"
+		let moveItem = UIBarButtonItem(title: title, style: .plain, target: self, action: #selector(moveTapped))
+		moveItem.isEnabled = count > 0		// 一个都没选时置灰,免得点了没反应让人以为坏了
+
+		toolbarItems = [
+			UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+			moveItem,
+			UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+		]
+		navigationController?.setToolbarHidden(false, animated: true)
 	}
 
 	// MARK: - 列表
@@ -134,6 +202,16 @@ import RSCore
 		collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 		collectionView.backgroundColor = AppAppearance.paperBackground
 		collectionView.delegate = self
+		collectionView.allowsMultipleSelectionDuringEditing = true	// 编辑模式下能勾多个
+
+		// 拖拽:把源拖进文件夹 / 拖出到顶层。
+		// `dragInteractionEnabled` 在 iPhone 上默认是关的(只有 iPad 开),必须显式打开。
+		// ⚠️ 拖拽是**辅助**手段(用户拍板):77 个源的规模下,拖到屏幕外的文件夹要边拖边等滚屏,
+		// 批量整理仍以「勾选 + 移动到…」为主。所以这里只做最直接的两种落点,不搞复杂的自动滚动。
+		collectionView.dragDelegate = self
+		collectionView.dropDelegate = self
+		collectionView.dragInteractionEnabled = true
+
 		view.addSubview(collectionView)
 	}
 
@@ -166,10 +244,11 @@ import RSCore
 			content.imageProperties.cornerRadius = 4
 			cell.contentConfiguration = content
 			cell.backgroundConfiguration = self.paperCellBackground()
-			cell.accessories = []
+			// 编辑模式下每个源前面出现勾选圈;平时什么都不显示
+			cell.accessories = self.isEditing ? [.multiselect(displayed: .whenEditing)] : []
 		}
 
-		dataSource = UICollectionViewDiffableDataSource<String, Item>(collectionView: collectionView) { collectionView, indexPath, item in
+		dataSource = UICollectionViewDiffableDataSource<SectionID, Item>(collectionView: collectionView) { collectionView, indexPath, item in
 			switch item {
 			case .folder:
 				return collectionView.dequeueConfiguredReusableCell(using: folderRegistration, for: indexPath, item: item)
@@ -178,13 +257,13 @@ import RSCore
 			}
 		}
 
-		// 分组头 = 账户名
+		// 分组头
 		let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
 			elementKind: UICollectionView.elementKindSectionHeader) { [weak self] headerView, _, indexPath in
 			guard let self else { return }
-			let accountID = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+			let sectionID = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
 			var content = headerView.defaultContentConfiguration()
-			content.text = AccountManager.shared.existingAccount(accountID: accountID)?.nameForDisplay ?? ""
+			content.text = self.headerTitle(for: sectionID)
 			headerView.contentConfiguration = content
 		}
 		dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
@@ -201,6 +280,22 @@ import RSCore
 		}
 		dataSource.sectionSnapshotHandlers.willCollapseItem = { [weak self] item in
 			self?.expandedFolders.remove(item)
+		}
+	}
+
+	/// 分组标题该写什么。
+	///
+	/// 「不在文件夹里」这个标题**只在该账户确实有文件夹时才用** ——
+	/// 一个文件夹都没有的账户,所有源本来就都是散的,再写"不在文件夹里"是废话,
+	/// 那时候把账户名写在这儿更有用(多账户时才分得清是谁的源)。
+	private func headerTitle(for sectionID: SectionID) -> String {
+		switch sectionID {
+		case .folders(let accountID):
+			return AccountManager.shared.existingAccount(accountID: accountID)?.nameForDisplay ?? ""
+		case .looseFeeds(let accountID):
+			guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { return "" }
+			let hasFolders = !(account.folders?.isEmpty ?? true)
+			return hasFolders ? "不在文件夹里" : account.nameForDisplay
 		}
 	}
 
@@ -222,35 +317,63 @@ import RSCore
 
 		let accounts = AccountManager.shared.sortedActiveAccounts
 
-		var snapshot = NSDiffableDataSourceSnapshot<String, Item>()
-		snapshot.appendSections(accounts.map { $0.accountID })
+		// 先把这一轮要有哪些分组定下来。**空的分组不放** ——
+		// 否则会出现一个只有标题、底下什么都没有的空壳。
+		var snapshot = NSDiffableDataSourceSnapshot<SectionID, Item>()
+		for account in accounts {
+			if !(account.sortedFolders ?? []).isEmpty {
+				snapshot.appendSections([.folders(accountID: account.accountID)])
+			}
+			if !account.topLevelFeeds.isEmpty {
+				snapshot.appendSections([.looseFeeds(accountID: account.accountID)])
+			}
+		}
 		dataSource.apply(snapshot, animatingDifferences: false)
 
 		for account in accounts {
 
-			var section = NSDiffableDataSourceSectionSnapshot<Item>()
-
-			// 先文件夹(按名字排),每个文件夹下面挂它自己的源
-			for folder in account.sortedFolders ?? [] {
-				let folderItem = Item.folder(accountID: account.accountID, folderID: folder.folderID)
-				section.append([folderItem])
-				let feedItems = sortedByName(folder.topLevelFeeds).map {
-					Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: folder.folderID)
+			// —— 上半组:文件夹,每个文件夹下面挂它自己的源 ——
+			let folders = account.sortedFolders ?? []
+			if !folders.isEmpty {
+				var foldersSection = NSDiffableDataSourceSectionSnapshot<Item>()
+				for folder in folders {
+					let folderItem = Item.folder(accountID: account.accountID, folderID: folder.folderID)
+					foldersSection.append([folderItem])
+					let feedItems = sortedByName(folder.topLevelFeeds).map {
+						Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: folder.folderID)
+					}
+					foldersSection.append(feedItems, to: folderItem)
+					if expandedFolders.contains(folderItem) {
+						foldersSection.expand([folderItem])
+					}
 				}
-				section.append(feedItems, to: folderItem)
-				if expandedFolders.contains(folderItem) {
-					section.expand([folderItem])
-				}
+				dataSource.apply(foldersSection, to: .folders(accountID: account.accountID), animatingDifferences: animated)
 			}
 
-			// 再是不在任何文件夹里的源
-			let looseFeedItems = sortedByName(account.topLevelFeeds).map {
-				Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: nil)
+			// —— 下半组:不在任何文件夹里的源 ——
+			let looseFeeds = sortedByName(account.topLevelFeeds)
+			if !looseFeeds.isEmpty {
+				var looseSection = NSDiffableDataSourceSectionSnapshot<Item>()
+				looseSection.append(looseFeeds.map {
+					Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: nil)
+				})
+				dataSource.apply(looseSection, to: .looseFeeds(accountID: account.accountID), animatingDifferences: animated)
 			}
-			section.append(looseFeedItems)
-
-			dataSource.apply(section, to: account.accountID, animatingDifferences: animated)
 		}
+
+		restoreSelection()
+	}
+
+	/// 重画之后把勾选恢复上 —— UIKit 那边的选中会随着重画丢掉,而用户勾了半天不该白勾。
+	private func restoreSelection() {
+		guard isEditing else { return }
+		for item in selectedFeeds {
+			guard let indexPath = dataSource.indexPath(for: item) else { continue }
+			collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
+		}
+		// 选中的源可能已经被别处删掉了,顺手把已经不存在的清掉,免得计数虚高
+		selectedFeeds = selectedFeeds.filter { dataSource.indexPath(for: $0) != nil }
+		updateToolbar()
 	}
 
 	private func sortedByName(_ feeds: Set<Feed>) -> [Feed] {
@@ -409,7 +532,11 @@ import RSCore
 	/// 出错就明说。**不要静默失败** —— 同步账户下这些操作会真的发网络请求,
 	/// 失败了不吭声的话,用户会以为改成功了(教训 L43)。
 	private func presentFailure(_ title: String, _ error: Error) {
-		let alert = UIAlertController(title: title, message: error.localizedDescription, preferredStyle: .alert)
+		presentMessage(title, error.localizedDescription)
+	}
+
+	private func presentMessage(_ title: String, _ message: String) {
+		let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
 		alert.addAction(UIAlertAction(title: "好", style: .default))
 		present(alert, animated: true)
 	}
@@ -419,14 +546,206 @@ import RSCore
 
 extension FolderManagerViewController: UICollectionViewDelegate {
 
+	func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+
+		// 非编辑模式:一律放行。
+		// ⚠️ **故意不返回 false 来禁止选中** —— 文件夹行的展开三角用的是 `.header` 样式
+		// (点整行就能展开),那个样式搭在 cell 的点击上,把选中整个禁掉很可能连展开也点不动。
+		// 用「允许选中、马上取消」绕开这个耦合(已由用户实测确认能展开)。
+		guard isEditing else { return true }
+
+		// 编辑模式:只有**源**能勾。文件夹不参与多选 ——
+		// Phase B 只做"移动源",而且文件夹那一行还要留着点开/收起的功能。
+		if case .feed = dataSource.itemIdentifier(for: indexPath) { return true }
+		return false
+	}
+
 	func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-		// Phase A 还没有选中态要表达(多选是 Phase B 的事),点完就取消高亮。
-		//
-		// ⚠️ 这里**故意不用 `shouldSelectItemAt` 返回 false 来禁止选中**:
-		// 文件夹行的展开三角用的是 `.header` 样式(点整行就能展开),
-		// 而那个样式是搭在 cell 的点击上的 —— 一旦把选中整个禁掉,
-		// 很可能连展开都点不动了。用「允许选中、马上取消」绕开这个耦合更稳。
-		collectionView.deselectItem(at: indexPath, animated: true)
+
+		guard isEditing else {
+			collectionView.deselectItem(at: indexPath, animated: true)
+			return
+		}
+		guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
+		selectedFeeds.insert(item)
+		updateToolbar()
+	}
+
+	func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
+		guard isEditing, let item = dataSource.itemIdentifier(for: indexPath) else { return }
+		selectedFeeds.remove(item)
+		updateToolbar()
+	}
+}
+
+// MARK: - 移动源:选好了往哪儿放
+
+extension FolderManagerViewController {
+
+	@objc private func moveTapped() {
+
+		let items = Array(selectedFeeds)
+		guard !items.isEmpty else { return }
+
+		// 跨账户移动不做:不同账户背后是不同的同步服务,"移动"在那边没有对应语义,
+		// 真要挪只能在目标账户重新订阅一次。与其做一个似是而非的,不如明说不支持。
+		let accountIDs = Set(items.compactMap { itemAccountID($0) })
+		guard accountIDs.count == 1,
+			  let accountID = accountIDs.first,
+			  let account = AccountManager.shared.existingAccount(accountID: accountID) else {
+			presentMessage("暂不支持跨账户移动", "请分别在各自的账户里整理。")
+			return
+		}
+
+		let picker = UIAlertController(title: "移动 \(items.count) 项到", message: nil, preferredStyle: .actionSheet)
+		picker.popoverPresentationController?.barButtonItem = toolbarItems?.first { $0.isEnabled && $0.title != nil }
+
+		for folder in account.sortedFolders ?? [] {
+			picker.addAction(UIAlertAction(title: folder.nameForDisplay, style: .default) { [weak self] _ in
+				self?.performMove(items, to: folder, in: account)
+			})
+		}
+		// 「拿出文件夹」就是移到账户本身(顶层)。上游模型里没有更上面一层了。
+		picker.addAction(UIAlertAction(title: "不放在文件夹里", style: .default) { [weak self] _ in
+			self?.performMove(items, to: account, in: account)
+		})
+		picker.addAction(UIAlertAction(title: "取消", style: .cancel))
+		present(picker, animated: true)
+	}
+
+	private func itemAccountID(_ item: Item) -> String? {
+		switch item {
+		case .folder(let accountID, _), .feed(let accountID, _, _):
+			return accountID
+		}
+	}
+
+	/// 这个源现在待在哪个容器里(文件夹,或者账户顶层)。移动时要告诉上游"从哪儿搬"。
+	private func sourceContainer(for item: Item, in account: Account) -> Container? {
+		guard case .feed(_, _, let folderID) = item else { return nil }
+		guard let folderID else { return account }
+		return account.folders?.first { $0.folderID == folderID }
+	}
+
+	/// 逐个搬。**故意串行**而不是一起发:
+	/// 它们改的是同一批容器,并发搬容易互相踩;而且本地账户每次都是瞬时的,串行也不慢。
+	/// 同步账户下每次是一个网络请求,串行还能避免把对方服务器打出限流(L33 的教训)。
+	private func performMove(_ items: [Item], to destination: Container, in account: Account) {
+
+		Task { @MainActor in
+
+			var failedNames: [String] = []
+			var movedCount = 0
+
+			for item in items {
+				guard let feed = feed(for: item),
+					  let source = sourceContainer(for: item, in: account) else { continue }
+				if source === destination { continue }		// 已经在目标里了,跳过
+
+				do {
+					try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+						account.moveFeed(feed, from: source, to: destination) { result in
+							continuation.resume(with: result)
+						}
+					}
+					movedCount += 1
+				} catch {
+					failedNames.append(feed.nameForDisplay)
+				}
+			}
+
+			// 搬完退出编辑模式:选中的东西已经不在原位了,继续留着勾没有意义
+			setEditing(false, animated: true)
+
+			// 有失败就说清楚**哪几个**失败了 —— 只说"移动失败"用户不知道该重试哪个
+			if !failedNames.isEmpty {
+				let list = failedNames.joined(separator: "、")
+				presentMessage("有 \(failedNames.count) 项没能移动",
+							   "成功 \(movedCount) 项。失败的是:\(list)")
+			}
+		}
+	}
+}
+
+// MARK: - 拖拽:把源拖进文件夹 / 拖出到顶层
+//
+// ⚠️ 定位是**辅助手段**(用户拍板):适合"顺手把眼前这个源丢进旁边的文件夹",
+// 批量整理仍然走「勾选 + 移动到…」。所以这里刻意只认两种落点、不做自动滚动 ——
+// 拖着一个源满屏找文件夹本来就不是好体验,做多了反而鼓励用户走难走的路。
+
+extension FolderManagerViewController: UICollectionViewDragDelegate {
+
+	func collectionView(_ collectionView: UICollectionView,
+						itemsForBeginning session: UIDragSession,
+						at indexPath: IndexPath) -> [UIDragItem] {
+
+		// 只让**源**能被拖起来。文件夹不能拖 —— 没有子文件夹,拖它没有任何去处。
+		guard let item = dataSource.itemIdentifier(for: indexPath),
+			  case .feed = item,
+			  let feed = feed(for: item) else { return [] }
+
+		let dragItem = UIDragItem(itemProvider: NSItemProvider(object: feed.nameForDisplay as NSString))
+		// 真正靠的是这个 localObject(拖到哪儿之后按它找回是哪个源);
+		// 上面那个文字 provider 只是为了拖动时有个像样的预览。
+		dragItem.localObject = item
+		return [dragItem]
+	}
+}
+
+extension FolderManagerViewController: UICollectionViewDropDelegate {
+
+	func collectionView(_ collectionView: UICollectionView,
+						dropSessionDidUpdate session: UIDropSession,
+						withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
+
+		// 只接受本页面内部拖过来的东西(从别的 app 拖文字进来没有意义)
+		guard session.localDragSession != nil,
+			  let destinationIndexPath,
+			  let target = dataSource.itemIdentifier(for: destinationIndexPath) else {
+			return UICollectionViewDropProposal(operation: .cancel)
+		}
+
+		switch target {
+		case .folder:
+			// 悬停在文件夹行上 → 放进这个文件夹
+			return UICollectionViewDropProposal(operation: .move, intent: .insertIntoDestinationIndexPath)
+		case .feed(_, _, let folderID):
+			// 悬停在**顶层的源**上 → 表示"拿出文件夹,放到顶层"。
+			// 悬停在文件夹里的源上则不接受:那种落点很含糊(是想进这个文件夹?还是排序?),
+			// 与其猜错不如不接。
+			return UICollectionViewDropProposal(operation: folderID == nil ? .move : .forbidden,
+												intent: .insertAtDestinationIndexPath)
+		}
+	}
+
+	func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+
+		guard let destinationIndexPath = coordinator.destinationIndexPath,
+			  let target = dataSource.itemIdentifier(for: destinationIndexPath) else { return }
+
+		let items = coordinator.items.compactMap { $0.dragItem.localObject as? Item }
+		guard !items.isEmpty else { return }
+
+		// 目标容器:文件夹行 → 那个文件夹;顶层的源 → 账户本身(即拿出文件夹)
+		let destination: Container?
+		switch target {
+		case .folder:
+			destination = folder(for: target)
+		case .feed(_, _, let folderID):
+			destination = folderID == nil ? account(for: target) : nil
+		}
+
+		guard let destination,
+			  let accountID = itemAccountID(target),
+			  let account = AccountManager.shared.existingAccount(accountID: accountID) else { return }
+
+		// 跨账户拖拽同样不做(理由见 moveTapped)
+		guard items.allSatisfy({ itemAccountID($0) == accountID }) else {
+			presentMessage("暂不支持跨账户移动", "请分别在各自的账户里整理。")
+			return
+		}
+
+		performMove(items, to: destination, in: account)
 	}
 }
 
