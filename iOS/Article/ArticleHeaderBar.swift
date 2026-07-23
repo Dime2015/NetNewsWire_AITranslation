@@ -154,6 +154,8 @@ import Images
 	private var installedArticleID: String?
 	/// 上次量出来的头区高度(内容宽度变化时要重算)
 	private var measuredHeight: CGFloat = 0
+	/// 上次量高度时用的宽度 —— 宽度一变就得重量
+	private var measuredWidth: CGFloat = 0
 
 	/// 内容总高上次变化的时刻 —— 进度条据此冻结(见 Style.progressFreezeSeconds)
 	private var lastContentSizeChange: Date?
@@ -175,6 +177,8 @@ import Images
 		// 正文里的链接、图片全点不动。只有"源名那一行"例外(见 NNWPassThroughView)。
 		container.backgroundColor = .clear
 		container.passThroughExcept = { [weak self] in self?.sourceLabel }
+		// 宽度变了就重新量、重新摆(转屏;也兜住"第一次布局时宽度还不对"的情况)
+		container.onLayout = { [weak self] in self?.layoutAndApply() }
 
 		scrimView.frame = .zero
 		container.addSubview(scrimView)
@@ -236,12 +240,17 @@ import Images
 			installedArticleID = article.articleID
 			applyContent(for: article)
 			measuredHeight = 0
+			measuredWidth = 0
 			lastProgress = 0
 			lastContentSizeChange = nil
 			lastContentHeight = 0
 		}
 
+		// ⚠️ 换了滚动视图就必须重量一次高度并重新下推内容 ——
+		// 否则 `measuredHeight` 还是上一页算的,新页的 inset 就补不上。
+		let switchedScrollView = (self.scrollView !== scrollView)
 		bind(to: scrollView)
+		if switchedScrollView { measuredHeight = 0; measuredWidth = 0 }
 		layoutAndApply()
 	}
 
@@ -272,6 +281,15 @@ import Images
 
 	private func bind(to scrollView: UIScrollView) {
 		guard self.scrollView !== scrollView else { return }
+
+		// ⚠️ **换页之前,先把上一页的 contentInset 还回去**(2026-07-23 真机实测的 bug):
+		// 一条阅读栏要伺候好几个网页(UIPageViewController 会预载前后页)。
+		// 原来换页时只是把 `scrollView` 指过去,却没有还旧那一页的 inset ——
+		// 于是 ①旧页永远多出一段顶部空白;②`appliedInset` 记着的是旧页的数,
+		// 新页 syncInset 时算出的差值接近 0 → **新页根本没被下推**,
+		// 正文顶到阅读栏底下,而"停在顶部"的基准位置也就错了 ——
+		// 表现就是用户报的「拉到最上面还是显示冻结后的样子」。
+		releaseInset()
 		self.scrollView = scrollView
 		offsetObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
 			MainActor.assumeIsolated { self?.layoutAndApply() }
@@ -294,14 +312,21 @@ import Images
 		}
 	}
 
+	/// 把当前这一页的 contentInset 还回去(换页、卸载都要做)。
+	private func releaseInset() {
+		if let scrollView, appliedInset != 0 {
+			let offsetBefore = scrollView.contentOffset.y
+			scrollView.contentInset.top -= appliedInset
+			scrollView.contentOffset.y = offsetBefore + appliedInset	// 理由同 syncInset
+		}
+		appliedInset = 0
+	}
+
 	/// 摘掉阅读栏,把 contentInset 还回去。
 	func detach() {
 		offsetObservation = nil
 		sizeObservation = nil
-		if let scrollView, appliedInset != 0 {
-			scrollView.contentInset.top -= appliedInset
-		}
-		appliedInset = 0
+		releaseInset()
 		scrollView = nil
 		installedArticleID = nil
 		container.removeFromSuperview()
@@ -341,13 +366,15 @@ import Images
 		// 不再用导航栏那一条(它被返回键和上/下一篇占着,见 dockedStripHeight 的说明)。
 		let dockBand = CGRect(x: 0, y: safeTop, width: width, height: Style.dockedStripHeight)
 
-		// —— 头区高度(只在需要时重量)——
-		if measuredHeight == 0 {
-			let textWidth = width - Style.iconLeading * 2
+		// —— 头区高度 ——
+		// ⚠️ **宽度变了也要重量**(转屏、分屏):原来只在"高度为 0"时算一次,
+		// 于是换了宽度之后标题行数变了,内容却还按旧高度下推,正文要么被压住要么空一截。
+		let textWidth = width - Style.iconLeading * 2
+		if measuredHeight == 0 || abs(measuredWidth - width) > 0.5 {
+			measuredWidth = width
 			let sourceSize = sourceLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
-			let titleSize = restTitleLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
 			measuredHeight = Style.topPadding + Style.restIconSize + Style.iconTitleGap
-				+ titleSize.height + Style.sourceTitleGap + sourceSize.height + Style.bottomPadding
+				+ titleHeight(width: textWidth) + Style.sourceTitleGap + sourceSize.height + Style.bottomPadding
 			syncInset()
 		}
 
@@ -363,12 +390,40 @@ import Images
 	}
 
 	/// 内容往下让出头区的高度。**只在高度变了时做一次,绝不在每帧做**(L63)。
+	///
+	/// ⚠️⚠️ **改 inset 的同时必须把 contentOffset 挪同样的距离**
+	/// (2026-07-23 真机上一连三个症状,都是漏了这一步):
+	///
+	/// 顶部内边距一加,"滚到顶"这个基准就从 0 变成了 −250 —— 可内容还停在 0,
+	/// 于是**一进文章就等于「已经往下滚了 250pt」**。后果按对齐程度依次是:
+	///   · 完全没对上 → 飞行进度直接算成 1:一进来就是冻结态,正文被压在栏底下
+	///   · 对上一半   → 进度停在中间:两套元素(大标题 + 冻结小标题)同时画,叠成一团
+	///   · 换页残留   → 「拉到最上面还是冻结的样子」
+	/// 三个看起来完全不同的现象,其实是同一处漏掉。
+	///
+	/// 补上这一行之后,视觉位置在改 inset 前后**完全不动**,"顶"仍然是"顶"。
+	/// (先记下改之前的偏移再算,而不是相信系统会不会自己调 —— 那个行为随场景而变,不可靠。)
 	private func syncInset() {
 		guard let scrollView else { return }
-		let target = measuredHeight
-		guard abs(target - appliedInset) > 0.5 else { return }
-		scrollView.contentInset.top += (target - appliedInset)
-		appliedInset = target
+		let delta = measuredHeight - appliedInset
+		guard abs(delta) > 0.5 else { return }
+		let offsetBefore = scrollView.contentOffset.y
+		scrollView.contentInset.top += delta
+		scrollView.contentOffset.y = offsetBefore - delta
+		appliedInset = measuredHeight
+	}
+
+	/// 量标题真正要占多高。
+	///
+	/// ⚠️ **必须用 `textRect(forBounds:limitedToNumberOfLines:)`,不能用 `sizeThatFits`**
+	/// (2026-07-23 用户报「文字错乱」才发现):
+	/// 那两个在多行 + 自定义字体的情况下会给出**不一样的**结果,而 UILabel 画字时用的是前者。
+	/// 一旦算矮了,UILabel **不会裁剪**,多出来的行会溢出框外、压在下面那行上 ——
+	/// 表现就是源名和标题叠在一起。
+	private func titleHeight(width: CGFloat) -> CGFloat {
+		let bounds = CGRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+		return ceil(restTitleLabel.textRect(forBounds: bounds,
+											limitedToNumberOfLines: Style.restTitleMaxLines).height)
 	}
 
 	private func applyGeometry(flight: CGFloat, width: CGFloat, dockBand: CGRect, safeTop: CGFloat) {
@@ -393,9 +448,9 @@ import Images
 		// (不试图把多行标题"变形"成单行 —— 那是做不到的,只能交接。)
 		let restTitleTop = safeTop + Style.topPadding + Style.restIconSize + Style.iconTitleGap
 		restTitleLabel.transform = .identity
-		let titleSize = restTitleLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
+		let titleH = titleHeight(width: textWidth)
 		restTitleLabel.frame = CGRect(x: Style.iconLeading, y: restTitleTop,
-									  width: textWidth, height: titleSize.height)
+									  width: textWidth, height: titleH)
 		let rise = (restTitleTop - dockBand.midY) * flight * 0.5	// 往上走一半路,剩下的交给淡出
 		let shrink = 1 - 0.15 * flight
 		restTitleLabel.transform = CGAffineTransform(translationX: 0, y: -rise)
@@ -408,7 +463,7 @@ import Images
 		// 往下滑就飞到小图标右边的上面一行。两端都是单行,所以**直接位移**,不用交接;
 		// 也刻意让两端**字号相同** —— 一行小小的次要文字,缩放的收益微乎其微,
 		// 而做缩放就得处理 transform 和 frame 打架、文字发虚。
-		let restSourceY = restTitleTop + titleSize.height + Style.sourceTitleGap
+		let restSourceY = restTitleLabel.frame.maxY + Style.sourceTitleGap
 		let dockedTextX = Style.iconLeading + Style.dockedIconSize + Style.dockedTitleGap
 		let dockedSourceY = dockBand.minY + Style.dockedInnerPadding
 		let sourceX = Style.iconLeading + (dockedTextX - Style.iconLeading) * flight
@@ -501,6 +556,14 @@ import Images
 
 	/// 唯一允许接收点击的子视图(用闭包取,免得循环引用)
 	var passThroughExcept: (() -> UIView?)?
+
+	/// 容器尺寸变了(转屏、分屏、首次布局)时叫一声 —— 头区要按新宽度重量。
+	var onLayout: (() -> Void)?
+
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		onLayout?()
+	}
 
 	override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
 		guard let target = passThroughExcept?(), !target.isHidden, target.alpha > 0.01 else { return nil }

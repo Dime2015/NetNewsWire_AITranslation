@@ -408,7 +408,29 @@
 		}
 	`;
 
+	// ==================================================================
+	// 阅读栏的标记类:**在文档一开始就打上**
+	// ==================================================================
+	//
+	// 上面那两条「藏掉网页表头与大标题」的规则挂在 .nnw-reading-bar 下面。
+	// 标记原本由 iOS 侧在网页加载完(didFinish)时才打 —— 但注入脚本本身是
+	// **document start** 就跑的,而 didFinish 要等图片等子资源全部到齐。
+	// 真机上一篇长文的这个间隔可能**好几秒**,那几秒里规则在、标记不在,
+	// 于是网页自己的表头照常显示,和我们的阅读栏同时出现(用户 2026-07-23 实测)。
+	//
+	// → 改成在这里(document start)就按平台打上,竞态从根上消失。
+	// macOS 没有阅读栏,不能打;判据用 UA 里的 Macintosh —— 这是 document start
+	// 就拿得到的少数信息之一。
+	// iOS 侧只在**关掉阅读栏(沉浸模式)**时把它摘掉,那条路径少见,闪一下可以接受。
+	function markReadingBarIfNeeded() {
+		if (/Macintosh/.test(navigator.userAgent)) {
+			return;
+		}
+		document.documentElement.classList.add("nnw-reading-bar");
+	}
+
 	function inject() {
+		markReadingBarIfNeeded();
 		if (document.getElementById(ELEMENT_ID)) {
 			return;
 		}

@@ -70,7 +70,18 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	override func viewDidLoad() {
 		super.viewDidLoad()
 		registerForNotifications()
-		configureCurrentActivityButton()
+		// [界面] 拿掉工具栏上的「当前活动」按钮(2026-07-23 用户要求)。
+		//
+		// 那是上游 2026 年新增的**诊断面板**:点开看 app 此刻在刷新哪些源、同步到哪一步。
+		// 用户几乎用不到 —— 它不可操作,刷新一两秒就结束根本来不及点,
+		// 而"刷新完了没"底部进度条已经表达了;它主要是给同步账户排查用的,
+		// 而用户用的是本机账户。拿掉之后底部工具栏更宽松。
+		//
+		// 只注释这一行调用,**方法本身和相关代码原样留着** —— 想要回来就把这行放开。
+		// ⚠️ 顺带确认过一个已知陷阱**不适用**:`configureToolbarWithProgressView` 里
+		// 那条「工具栏必须正好 3 项」的守卫只在 iOS 26 **以下**生效
+		// (26 那条分支开头就 return,本来就不装进度条),所以少一个按钮不会把它弄坏。
+		// configureCurrentActivityButton()
 		configureCollectionView()
 		configureDiffableDataSource()
 		collectionView.dragDelegate = self

@@ -400,6 +400,11 @@ extension WebViewController: UIContextMenuInteractionDelegate {
 
 extension WebViewController: WKNavigationDelegate {
 
+	/// 网页刚开始渲染就来一次 —— 比 didFinish 早得多(didFinish 要等图片等子资源全到齐)。
+	func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+		nnwMarkReadingBar()	// [外观] 沉浸模式下尽早摘掉阅读栏的标记类
+	}
+
 	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
 		for (index, view) in view.subviews.enumerated() {
 			if index != 0, let oldWebView = view as? PreloadedWebView {
@@ -1500,9 +1505,14 @@ extension WebViewController {
 	func nnwMarkReadingBar() {
 		let enabled = traitCollection.userInterfaceIdiom == .phone
 			&& !AppDefaults.shared.logicalArticleFullscreenEnabled
-		let js = enabled
-			? "document.documentElement.classList.add('nnw-reading-bar')"
-			: "document.documentElement.classList.remove('nnw-reading-bar')"
-		webView?.evaluateJavaScript(js)
+		// ⚠️ **打标记这件事已经交给注入脚本在 document start 做了**(见 nnw_appearance.js
+		// 的 markReadingBarIfNeeded)。原因:这里是 didFinish,要等图片等子资源全部到齐,
+		// 真机上可能晚好几秒 —— 那几秒里网页自己的表头照常显示,和阅读栏同时出现
+		// (用户 2026-07-23 真机实测)。
+		//
+		// 所以这里现在**只负责一件事:沉浸模式下把它摘掉**。
+		// 常规路径(有阅读栏)一个 JS 都不用发,自然也就没有竞态。
+		guard !enabled else { return }
+		webView?.evaluateJavaScript("document.documentElement.classList.remove('nnw-reading-bar')")
 	}
 }
