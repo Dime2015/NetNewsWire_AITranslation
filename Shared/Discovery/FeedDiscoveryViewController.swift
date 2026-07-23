@@ -102,19 +102,17 @@ import os
 
 		title = "搜索订阅源"
 
-		// ⚠️ **这个页面的右上角永远只有「取消」,而且永远是同一个词。**
-		//
-		// 改造前这里是「完成」,和结果行上的「订阅」按钮语义打架 ——
-		// 用户不知道点哪个才算加成功,是不是还得回来按一下「完成」。
+		// ⚠️ **这个页面刻意一个「完成 / 取消」按钮都没有**(2026-07-23 改成推入式页面后)。
 		//
 		// 根本原因是:**这个页面没有「提交」这个动作**。
 		// 点一条结果就订阅一条、当场生效,没有需要确认的表单,
-		// 自然也就不需要「完成」。既然只是「离开这个页面」,那就叫「取消」。
+		// 所以「完成」是假的(会让人以为不按就没加成功),「取消」也是假的(取消不掉已订阅的)。
+		// 改成推入式页面之后,离开就是系统返回按钮的事,不需要我们再放一个。
 		//
-		// 订阅与否只由结果行自己表达:[订阅] → 转圈 → ✓ 已订阅。
-		// 一个地方说一件事,不重复。
-		navigationItem.leftBarButtonItem = UIBarButtonItem(
-			barButtonSystemItem: .cancel, target: self, action: #selector(done))
+		// 订阅与否只由结果行自己表达:[订阅] → 转圈 → ✓ 已订阅。一个地方说一件事,不重复。
+		//
+		// (改造史:最早这里是「完成」,和结果行的「订阅」语义打架;
+		//  后来改成「取消」;现在连按钮本身都不需要了。)
 
 		searchController.searchBar.delegate = self
 		searchController.searchBar.placeholder = source.placeholder
@@ -142,9 +140,12 @@ import os
 											   object: nil)
 	}
 
-	@objc private func done() {
-		searchTask?.cancel()
-		dismiss(animated: true)
+	/// 离开页面时把在飞的搜索请求掐掉,别让它回来往已经不在的界面上写东西。
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		if isMovingFromParent {		// 真的被返回掉了,而不是被别的页面盖住
+			searchTask?.cancel()
+		}
 	}
 
 	@objc private func sourceChanged() {

@@ -64,28 +64,27 @@ extension MainFeedCollectionViewController {
 
 	/// [管理] 打开文件夹 / 订阅源管理页。
 	func nnwShowFolderManager() {
+		nnwPush(FolderManagerViewController())
+	}
 
-		let managerViewController = FolderManagerViewController()
-		let navController = UINavigationController(rootViewController: managerViewController)
-
-		// 和发现页一致的呈现方式:iPad 上 formSheet,iPhone 上全屏
-		navController.modalPresentationStyle = .formSheet
-		navController.preferredContentSize = AddFeedViewController.preferredContentSizeForFormSheetDisplay
-
-		present(navController, animated: true)
+	/// 把页面**推进当前的导航栈**(而不是弹一张卡片)。
+	///
+	/// ⚠️ 2026-07-23 用户要求:这两个页面都从「卡片式弹出」改成「进入新页面」。
+	/// 理由是它们都不是"填个东西就走"的小表单 —— 发现页要反复搜索、管理页要长时间整理,
+	/// 卡片那种"临时浮在上面"的观感和实际用法不符,而且卡片顶部还压掉一截可视高度。
+	///
+	/// 改成推入之后连带三件事(都已处理,别改回去):
+	///   ① 两个页面各自的「取消 / 完成」按钮都去掉了 —— 用系统返回按钮回上一页
+	///   ② 管理页编辑模式的底部操作条走导航控制器的工具栏,
+	///      离开时不用自己恢复:主列表页在 `viewWillAppear` 里本来就会把工具栏设回来
+	///   ③ 主列表页一定在导航栈里(故事板决定的),所以这里不会拿到 nil
+	private func nnwPush(_ viewController: UIViewController) {
+		navigationController?.pushViewController(viewController, animated: true)
 	}
 
 	/// 打开订阅发现页。
 	func showFeedDiscovery() {
-
-		let discoveryViewController = FeedDiscoveryViewController(style: .insetGrouped)
-		let navController = UINavigationController(rootViewController: discoveryViewController)
-
-		// 和上游添加订阅页保持一致的呈现方式:iPad 上用 formSheet,iPhone 上全屏
-		navController.modalPresentationStyle = .formSheet
-		navController.preferredContentSize = AddFeedViewController.preferredContentSizeForFormSheetDisplay
-
-		present(navController, animated: true)
+		nnwPush(FeedDiscoveryViewController(style: .insetGrouped))
 	}
 }
 

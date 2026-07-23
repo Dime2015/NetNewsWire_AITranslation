@@ -1352,12 +1352,8 @@ struct SidebarItemNode: Hashable, Sendable {
 	}
 
 	func showSettings(scrollToArticlesSection: Bool = false) {
-		let settingsNavController = UIStoryboard.settings.instantiateInitialViewController() as! UINavigationController
-		let settingsViewController = settingsNavController.topViewController as! SettingsViewController
-		settingsViewController.scrollToArticlesSection = scrollToArticlesSection
-		settingsNavController.modalPresentationStyle = .formSheet
-		settingsViewController.presentingParentController = rootSplitViewController
-		rootSplitViewController.present(settingsNavController, animated: true)
+		// [管理] 改为推入式页面(原来是 formSheet 卡片),实现在本文件末尾扩展
+		nnwShowSettings(scrollToArticlesSection: scrollToArticlesSection)
 	}
 
 	func showCurrentActivity() {
@@ -1513,6 +1509,8 @@ struct SidebarItemNode: Hashable, Sendable {
 	/// `SFSafariViewController` or `SettingsViewController`,
 	/// otherwise, this function does nothing.
 	func dismissIfLaunchingFromExternalAction() {
+		nnwPopSettingsIfPushed()	// [管理] 设置页现在是推入式的,不在 presented 里,得单独收(实现在本文件末尾扩展)
+
 		guard let presentedController = mainFeedCollectionViewController.presentedViewController else {
 			return
 		}
@@ -2426,5 +2424,51 @@ private extension SceneCoordinator {
 		}
 
 		return true
+	}
+}
+
+// MARK: - [管理] 设置页改为「推入式页面」(2026-07-23 新增,本 fork)
+//
+// 用户要求:设置页和「搜索订阅源」「文件夹管理」一样,都做成从右边滑入的独立页面,
+// 而不是浮在上面的卡片(formSheet)。理由是设置页要逐项翻看、还会往下钻好几层子页,
+// 卡片那种"临时浮一下"的观感与实际用法不符,顶部还压掉一截可视高度。
+//
+// ⚠️ **为什么这段非写在 SceneCoordinator.swift 里不可**(按 CLAUDE.md 第 2 节的要求说明):
+// 它要用 `rootSplitViewController` 和 `mainFeedCollectionViewController`,
+// 而这两个属性都是 **private** —— 别的文件里的扩展根本够不着(L5 记过的同一类情况)。
+// 所以只能按 L5 的老规矩办:**实现纯追加在文件末尾**,上游方法体里只留一行调用,
+// 上游改中间、我们改末尾,`git pull upstream` 时几乎不会撞车。
+
+extension SceneCoordinator {
+
+	/// 把设置页推进主导航栈。
+	func nnwShowSettings(scrollToArticlesSection: Bool) {
+
+		// 故事板给这个控制器留了 `storyboardIdentifier`,可以直接取出来用 ——
+		// 不必像原来那样先实例化它自带的那层导航控制器、再把它从里面摘出来。
+		let settingsViewController = UIStoryboard.settings
+			.instantiateViewController(withIdentifier: "SettingsViewController") as! SettingsViewController
+		settingsViewController.scrollToArticlesSection = scrollToArticlesSection
+
+		// 设置页里仍有几个**弹出式**的子流程(比如添加账户),它们要有人替自己 present。
+		// 所以这一行**不能删** —— 推入式只改了设置页自己的出场方式,没改它内部那些弹窗。
+		settingsViewController.presentingParentController = rootSplitViewController
+
+		mainFeedCollectionViewController.navigationController?
+			.pushViewController(settingsViewController, animated: true)
+	}
+
+	/// 从外部动作(点通知、点小组件)进来时,把推入式的设置页收掉。
+	///
+	/// ⚠️ **为什么需要这个**:上游原来靠 `presentedViewController` 找到设置页并 dismiss 它。
+	/// 改成推入式之后设置页不再是"被弹出的",那条路径**找不到它了** ——
+	/// 不补这一手的话,用户开着设置页时点一条通知,设置页会**赖在导航栈上**,
+	/// 新推进来的时间线/文章会叠在它上面,返回时还得穿过设置页,很怪。
+	func nnwPopSettingsIfPushed() {
+		guard let navigationController = mainFeedCollectionViewController.navigationController,
+			  navigationController.viewControllers.contains(where: { $0 is SettingsViewController }) else {
+			return
+		}
+		navigationController.popToViewController(mainFeedCollectionViewController, animated: false)
 	}
 }

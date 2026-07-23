@@ -90,6 +90,9 @@ import RSCore
 		super.viewDidLoad()
 
 		title = "文件夹管理"
+		// 用小标题:推入式页面会继承上一页的大标题模式,而本页内容多、还有两层分组标题,
+		// 再顶一个大标题会把可视区域压掉一大截。
+		navigationItem.largeTitleDisplayMode = .never
 		view.backgroundColor = AppAppearance.paperBackground
 
 		configureNavigationItem()
@@ -113,18 +116,19 @@ import RSCore
 
 	/// 按「在不在编辑模式」摆导航栏按钮。
 	///
-	/// 编辑模式下**故意把左上角那个「完成」收起来**:那个是"关掉整个页面",
-	/// 而右上角的「完成」是"退出多选" —— 两个都叫完成、意思还不一样,并排放必然点错。
+	/// ⚠️ 本页是**推入式页面**(2026-07-23 从卡片式弹出改的),所以左上角
+	/// **不放自己的「完成 / 关闭」** —— 回上一页是系统返回按钮的事。
+	/// 编辑模式下则把返回按钮**藏起来**:那时右上角是「完成(退出多选)」,
+	/// 左边再摆一个「< Feed」,两个都是"离开"的意思、去处却不同,必然点错。
+	/// 想走人就先点「完成」退出多选,返回按钮自己会回来。
 	private func updateNavigationItems() {
 
+		navigationItem.hidesBackButton = isEditing
+
 		if isEditing {
-			navigationItem.leftBarButtonItem = nil
 			navigationItem.rightBarButtonItems = [editButtonItem]
 			return
 		}
-
-		navigationItem.leftBarButtonItem = UIBarButtonItem(
-			title: "完成", style: .done, target: self, action: #selector(doneTapped))
 
 		let addFolderItem = UIBarButtonItem(
 			image: UIImage(systemName: "folder.badge.plus"),
@@ -132,6 +136,16 @@ import RSCore
 		addFolderItem.accessibilityLabel = "新建文件夹"
 		// 顺序是「编辑」在最右、「新建文件夹」在它左边
 		navigationItem.rightBarButtonItems = [editButtonItem, addFolderItem]
+	}
+
+	/// 进出本页时管好底部工具栏。
+	///
+	/// 工具栏是**整个导航栈共用的一条**,所以推进来时得把主列表那套(设置 / `+`)先收起来,
+	/// 否则会看到一条内容不对的残留工具栏。
+	/// 离开时不用自己恢复 —— 主列表页在它的 `viewWillAppear` 里本来就会把工具栏设回来。
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		navigationController?.setToolbarHidden(!isEditing, animated: false)
 	}
 
 	/// 进出编辑(多选)模式。`editButtonItem` 会自动调到这里。
@@ -146,9 +160,6 @@ import RSCore
 		reloadFromAccounts(animated: animated)
 	}
 
-	@objc private func doneTapped() {
-		dismiss(animated: true)
-	}
 
 	// MARK: - 底部工具栏(只在编辑模式出现)
 

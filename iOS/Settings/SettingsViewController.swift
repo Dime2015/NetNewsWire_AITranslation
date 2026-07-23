@@ -113,6 +113,7 @@ final class SettingsViewController: UITableViewController {
 		tableView.estimatedRowHeight = 44
 
 		AppAppearance.applyPaperStyle(to: tableView)	// [外观] 暖纸底 + 无分隔线(cell 底色见下方 willDisplay)
+		nnwAdaptNavigationItemForPush()	// [管理] 推入式页面不需要自带的「完成」按钮(实现在本文件末尾扩展)
 	}
 
 	// [外观] 把每个 cell 的卡片底色也刷成暖纸色,消除「白卡片 vs 暖背景」的色差。
@@ -670,5 +671,29 @@ private extension SettingsViewController {
 		let vc = SFSafariViewController(url: url)
 		vc.modalPresentationStyle = .pageSheet
 		present(vc, animated: true)
+	}
+}
+
+// MARK: - [管理] 适配「推入式页面」(2026-07-23 新增,本 fork)
+
+extension SettingsViewController {
+
+	/// 设置页改成推入式之后,故事板里自带的那个「完成」按钮就多余了 —— 去掉它。
+	///
+	/// ⚠️ **为什么是代码里藏、而不是去故事板删**:
+	/// `Settings.storyboard` 是上游高频改动的大文件,动它 merge 冲突风险高(L6)。
+	/// 这里一行代码就能达到同样效果,故事板一个字符都不用碰。
+	///
+	/// 那个按钮原本的动作是 `dismiss` —— 页面现在不是"被弹出的",dismiss 什么也不会发生,
+	/// 留着就是一个点了没反应的死按钮。回上一页交给系统返回按钮。
+	///
+	/// **仍然只在被推入时才去掉**:万一以后有别的入口把设置页当卡片弹出来,
+	/// 那种场景下「完成」是唯一的出路,不能一并抹掉。
+	func nnwAdaptNavigationItemForPush() {
+		let isPushed = navigationController?.viewControllers.count ?? 0 > 1
+		guard isPushed else { return }
+		navigationItem.rightBarButtonItem = nil
+		// 设置项很多,用小标题给内容多留一截高度(与文件夹管理页保持一致)
+		navigationItem.largeTitleDisplayMode = .never
 	}
 }
