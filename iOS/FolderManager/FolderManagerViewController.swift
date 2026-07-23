@@ -36,6 +36,7 @@
 import UIKit
 import Account
 import RSCore
+import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,见 makeNode(for:)
 
 @MainActor final class FolderManagerViewController: UIViewController {
 
@@ -77,12 +78,12 @@ import RSCore
 	/// 正在等待执行的刷新(用来做防抖,见 `scheduleReload`)
 	private var pendingReloadTask: Task<Void, Never>?
 
-	/// 编辑模式下已勾选的源。
+	/// 编辑模式下已勾选的行(源和文件夹都可能在里面)。
 	///
 	/// ⚠️ 为什么不直接问 `collectionView.indexPathsForSelectedItems`:
 	/// 列表随时会因为一条通知整棵重画,重画后 UIKit 那边的选中就没了。
 	/// 自己记一份,刷新后还能把勾恢复上。
-	private var selectedFeeds = Set<Item>()
+	private var selectedItems = Set<Item>()
 
 	// MARK: - 生命周期
 
@@ -153,7 +154,7 @@ import RSCore
 		super.setEditing(editing, animated: animated)
 
 		collectionView.isEditing = editing
-		selectedFeeds.removeAll()
+		selectedItems.removeAll()
 		updateNavigationItems()
 		updateToolbar()
 		// 重画一遍,好让每行换上/摘掉左边那个勾选圈
@@ -170,15 +171,24 @@ import RSCore
 			return
 		}
 
-		let count = selectedFeeds.count
-		let title = count == 0 ? "移动到…" : "移动 \(count) 项到…"
-		let moveItem = UIBarButtonItem(title: title, style: .plain, target: self, action: #selector(moveTapped))
-		moveItem.isEnabled = count > 0		// 一个都没选时置灰,免得点了没反应让人以为坏了
+		let count = selectedItems.count
+		let hasFolderSelected = selectedItems.contains { if case .folder = $0 { return true }; return false }
+
+		// 「移动」只对源有意义 —— 文件夹没地方可搬(没有子文件夹)。
+		// 所以一旦勾中了文件夹就把它置灰,而不是搬一半再报错。
+		let moveTitle = count == 0 ? "移动到…" : "移动 \(count) 项到…"
+		let moveItem = UIBarButtonItem(title: moveTitle, style: .plain, target: self, action: #selector(moveTapped))
+		moveItem.isEnabled = count > 0 && !hasFolderSelected
+
+		let deleteItem = UIBarButtonItem(title: count == 0 ? "删除" : "删除 \(count) 项",
+										 style: .plain, target: self, action: #selector(deleteTapped))
+		deleteItem.isEnabled = count > 0
+		deleteItem.tintColor = .systemRed		// 破坏性操作要一眼看出来
 
 		toolbarItems = [
-			UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
 			moveItem,
-			UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+			UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+			deleteItem
 		]
 		navigationController?.setToolbarHidden(false, animated: true)
 	}
@@ -241,8 +251,18 @@ import RSCore
 			content.image = UIImage(systemName: "folder")
 			cell.contentConfiguration = content
 			cell.backgroundConfiguration = self.paperCellBackground()
-			// `.header` 样式 = **点整行**就能展开/收起,不用去瞄那个小三角
-			cell.accessories = [.outlineDisclosure(options: .init(style: .header))]
+
+			if self.isEditing {
+				// 编辑模式:文件夹**也能勾**(批量删文件夹)。
+				// ⚠️ 展开三角必须从 `.header` 换成 `.cell` 样式 ——
+				// `.header` 是"点整行就展开",而编辑模式下点整行的含义已经变成"勾选"了,
+				// 两者抢同一个点击必然打架。`.cell` 样式下:**点三角展开,点行选中**,各管各的。
+				cell.accessories = [.multiselect(displayed: .whenEditing),
+									.outlineDisclosure(options: .init(style: .cell))]
+			} else {
+				// 平时:`.header` 样式 = 点整行就能展开/收起,不用去瞄那个小三角
+				cell.accessories = [.outlineDisclosure(options: .init(style: .header))]
+			}
 		}
 
 		// 订阅源那一行
@@ -378,12 +398,12 @@ import RSCore
 	/// 重画之后把勾选恢复上 —— UIKit 那边的选中会随着重画丢掉,而用户勾了半天不该白勾。
 	private func restoreSelection() {
 		guard isEditing else { return }
-		for item in selectedFeeds {
+		for item in selectedItems {
 			guard let indexPath = dataSource.indexPath(for: item) else { continue }
 			collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
 		}
 		// 选中的源可能已经被别处删掉了,顺手把已经不存在的清掉,免得计数虚高
-		selectedFeeds = selectedFeeds.filter { dataSource.indexPath(for: $0) != nil }
+		selectedItems = selectedItems.filter { dataSource.indexPath(for: $0) != nil }
 		updateToolbar()
 	}
 
@@ -565,10 +585,9 @@ extension FolderManagerViewController: UICollectionViewDelegate {
 		// 用「允许选中、马上取消」绕开这个耦合(已由用户实测确认能展开)。
 		guard isEditing else { return true }
 
-		// 编辑模式:只有**源**能勾。文件夹不参与多选 ——
-		// Phase B 只做"移动源",而且文件夹那一行还要留着点开/收起的功能。
-		if case .feed = dataSource.itemIdentifier(for: indexPath) { return true }
-		return false
+		// 编辑模式:源和文件夹都能勾(Phase C 起文件夹也能批量删)。
+		// 文件夹的展开改由三角负责,不再和"点行选中"抢同一个点击。
+		return true
 	}
 
 	func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -578,13 +597,13 @@ extension FolderManagerViewController: UICollectionViewDelegate {
 			return
 		}
 		guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
-		selectedFeeds.insert(item)
+		selectedItems.insert(item)
 		updateToolbar()
 	}
 
 	func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
 		guard isEditing, let item = dataSource.itemIdentifier(for: indexPath) else { return }
-		selectedFeeds.remove(item)
+		selectedItems.remove(item)
 		updateToolbar()
 	}
 }
@@ -595,7 +614,7 @@ extension FolderManagerViewController {
 
 	@objc private func moveTapped() {
 
-		let items = Array(selectedFeeds)
+		let items = Array(selectedItems)
 		guard !items.isEmpty else { return }
 
 		// 跨账户移动不做:不同账户背后是不同的同步服务,"移动"在那边没有对应语义,
@@ -675,6 +694,178 @@ extension FolderManagerViewController {
 							   "成功 \(movedCount) 项。失败的是:\(list)")
 			}
 		}
+	}
+}
+
+// MARK: - 删除(Phase C)
+//
+// 两条硬要求(用户拍板):
+// ① **删文件夹时弹窗给两个选择**:把里面的源移到外面 / 连源一起删。
+//    上游只有后者(`removeFolder` 会把里面的源一并带走),前者是本页补的。
+// ② **批量删源接上游的撤销** —— 复用 `Shared/Commands/DeleteCommand.swift`,
+//    它本来就支持一次删多个 + 注册 UndoManager,于是"摇一摇撤销"是白拿的。
+
+extension FolderManagerViewController {
+
+	@objc fileprivate func deleteTapped() {
+
+		let items = Array(selectedItems)
+		guard !items.isEmpty else { return }
+
+		let folders = items.compactMap { folder(for: $0) }
+		let feedCount = items.count - folders.count
+
+		// 没选文件夹 → 只是删几个源,确认一下就行
+		guard !folders.isEmpty else {
+			confirmDelete(title: "删除 \(feedCount) 个订阅源",
+						  message: "这些源的文章和已读状态会一起删掉。删错了可以摇一摇撤销。") { [weak self] in
+				self?.deleteWithUndo(items)
+			}
+			return
+		}
+
+		// 选了文件夹:先问里面的源怎么办。
+		// **空文件夹不用问** —— 没有源要安置,问了反而是噪音。
+		let feedsInsideCount = folders.reduce(0) { $0 + $1.topLevelFeeds.count }
+		guard feedsInsideCount > 0 else {
+			confirmDelete(title: "删除 \(folders.count) 个空文件夹",
+						  message: "删错了可以摇一摇撤销。") { [weak self] in
+				self?.deleteWithUndo(items)
+			}
+			return
+		}
+
+		askHowToHandleFeedsInside(items: items, folders: folders,
+								  feedsInsideCount: feedsInsideCount, alsoDeletingFeeds: feedCount)
+	}
+
+	/// 删文件夹时的两条路:把源留下,还是一起删。
+	private func askHowToHandleFeedsInside(items: [Item], folders: [Folder],
+										   feedsInsideCount: Int, alsoDeletingFeeds: Int) {
+
+		let title = "删除 \(folders.count) 个文件夹"
+		let message = "里面还有 \(feedsInsideCount) 个订阅源,要怎么处理?"
+		let alert = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+		alert.popoverPresentationController?.barButtonItem = toolbarItems?.last
+
+		alert.addAction(UIAlertAction(title: "把源移到文件夹外面,只删文件夹", style: .default) { [weak self] _ in
+			self?.releaseFeedsThenDelete(items: items, folders: folders)
+		})
+		alert.addAction(UIAlertAction(title: "连同里面的源一起删除", style: .destructive) { [weak self] _ in
+			self?.deleteWithUndo(items)
+		})
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+		present(alert, animated: true)
+	}
+
+	/// 先把文件夹里的源搬到顶层,再删空掉的文件夹。
+	///
+	/// ⚠️ **顺序不能反**:必须先搬完再删。反过来的话,`removeFolder` 会把里面的源一起带走,
+	/// 那就不是"释放"而是"删掉"了。
+	///
+	/// ⚠️ **被用户勾中的源是例外,不搬** —— 他既勾了文件夹(要释放里面的源)、又单独勾了其中某个源,
+	/// 那就是明确想删掉那一个。不搬它,它会随文件夹一起被删,正合其意。
+	///
+	/// ⚠️ **搬运失败就停手,不往下删** —— 半搬半删会留下一地无法解释的残局。
+	private func releaseFeedsThenDelete(items: [Item], folders: [Folder]) {
+
+		Task { @MainActor in
+
+			var failedNames: [String] = []
+
+			for folder in folders {
+				guard let account = folder.account else { continue }
+				for feed in folder.topLevelFeeds {
+					// 这个源自己也被勾了 → 用户想删它,别搬
+					let feedItem = Item.feed(accountID: account.accountID, feedID: feed.feedID, folderID: folder.folderID)
+					if selectedItems.contains(feedItem) { continue }
+
+					do {
+						try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+							account.moveFeed(feed, from: folder, to: account) { result in
+								continuation.resume(with: result)
+							}
+						}
+					} catch {
+						failedNames.append(feed.nameForDisplay)
+					}
+				}
+			}
+
+			guard failedNames.isEmpty else {
+				let list = failedNames.joined(separator: "、")
+				presentMessage("没能把源移出来,文件夹保留了",
+							   "失败的是:\(list)。文件夹没有删除,免得连累里面的源。")
+				setEditing(false, animated: true)
+				return
+			}
+
+			deleteWithUndo(items)
+		}
+	}
+
+	/// 走上游那条**可撤销**的删除命令。
+	///
+	/// ⚠️ 撤销能盖住的只有「删除」这一步。若刚才选的是"把源移到外面",
+	/// **那个移动不在撤销范围内** —— 撤销后文件夹会回来,但里面是空的、源留在顶层。
+	/// (这是取舍:移动和删除是两个独立操作,硬凑成一个可撤销的整体不值当。)
+	private func deleteWithUndo(_ items: [Item]) {
+
+		guard let undoManager else {
+			presentMessage("删不了", "系统没有给这个页面提供撤销支持,为安全起见没有执行删除。")
+			return
+		}
+
+		let nodes = items.compactMap { makeNode(for: $0) }
+		guard !nodes.isEmpty,
+			  let command = DeleteCommand(nodesToDelete: nodes,
+										  undoManager: undoManager,
+										  errorHandler: { [weak self] error in
+										  	self?.presentFailure("删除时出错", error)
+										  }) else {
+			presentMessage("删不了", "这些项目里没有可以删除的内容。")
+			return
+		}
+
+		command.perform()
+		setEditing(false, animated: true)
+	}
+
+	/// 给上游的删除命令搭一个它认得的「节点」。
+	///
+	/// 上游那条命令是给主列表的树形结构写的,它靠 `node.parent` 判断这一项属于谁:
+	/// **父节点是文件夹 → 从那个文件夹里删;父节点是根 → 从账户顶层删**。
+	/// 我们这个页面没有那棵树,所以现搭一个够用的父子关系给它看
+	/// (只需要两层,因为上游模型不支持子文件夹)。
+	private func makeNode(for item: Item) -> Node? {
+
+		guard let account = account(for: item) else { return nil }
+		// 根节点:代表账户本身。`isRoot` 判定的就是"有没有父节点",所以它的 parent 必须是 nil。
+		let rootNode = Node(representedObject: account, parent: nil)
+
+		switch item {
+		case .folder:
+			guard let folder = folder(for: item) else { return nil }
+			return Node(representedObject: folder, parent: rootNode)
+
+		case .feed(_, _, let folderID):
+			guard let feed = feed(for: item) else { return nil }
+			guard let folderID, let folder = account.folders?.first(where: { $0.folderID == folderID }) else {
+				// 顶层的源:父节点直接是根 → 上游会从账户顶层删
+				return Node(representedObject: feed, parent: rootNode)
+			}
+			// 文件夹里的源:中间垫一层文件夹节点 → 上游会从那个文件夹里删
+			let folderNode = Node(representedObject: folder, parent: rootNode)
+			return Node(representedObject: feed, parent: folderNode)
+		}
+	}
+
+	/// 破坏性操作统一走这个确认框。**删除永远要问一次** —— 批量删尤其。
+	private func confirmDelete(title: String, message: String, onConfirm: @escaping () -> Void) {
+		let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+		alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in onConfirm() })
+		present(alert, animated: true)
 	}
 }
 
