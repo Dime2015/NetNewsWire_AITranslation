@@ -67,19 +67,25 @@
 			}
 		}
 
-		/* [外观] 正文页背景对齐 app 的暖纸色。
-		   本 <style> 插在 <head>、在主题 stylesheet.css 之后,所以盖过主题的 body 背景;
-		   只改背景、不动主题的文字色 —— 默认主题下深色文字在暖纸上依然清晰。
-		   ⚠️ 这两个色值是暖纸色的**第二处**(正文是 WebView,CSS 读不了 Swift 的
-		   AppAppearance 调色板)。改暖纸色时,这里要和 AppAppearance.Palette 一起改:
-		   浅 #F3F0EB / 深 #1E1E1E。 */
+		/* [外观] 正文页背景**故意留空(透明)** —— 纸色由 UIKit 画在 WebView 底下。
+		   (2026-07-23 改。原来这里写死了 #F3F0EB / #1E1E1E 两个色值。)
+
+		   ⚠️ 这不是"顺手简化",是顶栏能安全做透明的**前提**,别改回来:
+
+		   顶栏一旦透明,露出的就是它背后的 WebView。而网页的深浅色走的是网页自己的
+		   `prefers-color-scheme`,不保证和 app 同步 —— 曾经浅色模式下顶栏透出网页的
+		   深色底,整条顶栏变成一片黑(见 NOTES-lessons L60,用户截图为证)。
+
+		   现在把纸色的**所有权收归 UIKit**(WebViewController 的 view 背景,
+		   用 AppAppearance.paperBackground 这个动态色,系统级自适应、不经过任何回调),
+		   网页只负责画文字和图片。于是顶栏透出来的永远是正确的纸色,
+		   最坏情况也只是正文文字颜色慢半拍,**顶栏再也不可能变黑**。
+
+		   配套改动在 `WebViewController.nnwUseUIKitPaperBackground()`,两处必须同时在:
+		   只改这里 → 正文变成 WebView 默认白底;只改那里 → 网页底盖住 UIKit 底,白改。
+		   改暖纸色现在**只需改 AppAppearance.Palette 一处**(这里不再有色值)。 */
 		html, body {
-			background-color: #F3F0EB;
-		}
-		@media (prefers-color-scheme: dark) {
-			html, body {
-				background-color: #1E1E1E;
-			}
+			background-color: transparent;
 		}
 
 		/* 藏掉 Substack 塞在每张图下面的两个按钮。

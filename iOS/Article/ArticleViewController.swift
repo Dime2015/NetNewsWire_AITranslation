@@ -546,6 +546,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 		coordinator.selectArticle(article, animations: [.select, .scroll, .navigation])
 		articleExtractorButton.buttonState = currentWebViewController?.articleExtractorButtonState ?? .off
 		translationController.resetForNewArticle()	// [翻译] 本 fork 新增:滑动翻页后重置按钮图标
+		nnwTrackCurrentArticleScrolling()	// [外观] 翻页后顶栏要改盯新这一页的滚动(实现在本文件末尾扩展)
 
 		for viewController in previousViewControllers {
 			if let webViewController = viewController as? WebViewController {
@@ -740,17 +741,56 @@ extension ArticleViewController {
 	/// (上一轮我还顺手把它改成了不透明纸色 —— 那是**过度修复**,把用户现在想要的
 	///  毛玻璃透明质感给盖掉了,本轮撤回。)
 	///
+	/// 让顶栏跟踪**当前这一页文章**的滚动 —— 「顶部通透 / 往下滚渐显毛玻璃」的开关。
+	///
+	/// iOS 自带这个两态切换,订阅列表页什么都没写就有,是因为系统自己找得到那一页的滚动视图。
+	/// 而这里的 WKWebView 藏在 `UIPageViewController` 的子页面里,系统找不到 →
+	/// 只好一直按"已经滚起来了"处理 → **毛玻璃常驻,从来不给透明那一态**
+	/// (这正是"文章页顶栏偏实、不够透"折腾多轮的真正原因)。
+	/// `setContentScrollView` 是系统给的正规接口(iOS 15+,本工程最低 17),把线接上就行。
+	///
+	/// ⚠️ **前提是纸色底已经归 UIKit 管**(`WebViewController.nnwUseUIKitPaperBackground`)。
+	/// 顶栏透明后露出的是背后的 WebView —— 当年正是因为网页自己画底、深浅色和 app 不同步,
+	/// 浅色模式下顶栏透出网页的深色底、变成一片黑(L60)。两件事必须一起在,别只留一个。
+	///
+	/// 调用时机有两处,缺一不可:①网页加载完(本页第一次准备好);
+	/// ②翻页动画结束(翻到的那页可能早就加载完了,不会再触发 ①)。
+	/// 重复调用无害 —— 传同一个滚动视图进去,系统不会有额外动作。
+	func nnwTrackCurrentArticleScrolling() {
+		guard let scrollView = currentWebViewController?.nnwContentScrollView else {
+			Self.logger.info("[外观] 顶栏跟踪:这一刻还没有 WebView,跳过(稍后网页加载完会再来一次)")
+			return
+		}
+		setContentScrollView(scrollView)
+		// 留这行日志是为了将来排查"顶栏又不透了":它能一眼区分**没调用**(路径断了)
+		// 和**调用了但没效果**(得换别的做法),不用靠肉眼猜。
+		Self.logger.info("[外观] 顶栏跟踪已接上,内容偏移 \(scrollView.contentOffset.y, privacy: .public)")
+	}
+
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
 	func nnwRefreshNavigationBarAppearance() {
-		// 三个 appearance 全设 **nil** —— 回落系统默认导航栏毛玻璃(深浅自适应)。
+		// 顶栏要的是**两态**:内容在顶部 = 通透;往下滚 = 毛玻璃。所以两态要分开设,
+		// 一个都不能少 ——
 		//
-		// ⚠️ 这是回退到「已知安全」的方案(2026-07-23):
-		// 曾试过 scrollEdge = 完全透明 想让它更"透",但透明会**露出背后 WKWebView 的底**,
-		// 而 web 的深浅色不总跟 app 同步 —— 浅色模式下顶栏直接变成一片黑(用户截图证实)。
-		// 所以放弃 scrollEdge 透明,回到全 nil:虽然毛玻璃偏实、不够"透"(用户不满意),
-		// 但至少深浅色都正常、不出 bug。**"顶栏渐变透明"这个效果留待后续用更周全的方案做。**
-		navigationItem.standardAppearance = nil
-		navigationItem.scrollEdgeAppearance = nil
-		navigationItem.compactAppearance = nil
+		// ⚠️ **别图省事全设 nil**(2026-07-23 差点又栽在这):
+		// iOS 15 起,普通标题栏的 `scrollEdgeAppearance` 若为 nil,会**直接回落成
+		// `standardAppearance`** —— 于是"在顶部"和"滚动中"用的是同一套毛玻璃,
+		// 永远不可能出现透明那一态。这正是文章页"顶栏偏实、怎么调都不够透"的真正原因。
+		// (订阅列表页不用写这行是因为它开了大标题模式 `prefersLargeTitles`,
+		//  那种模式下系统给的 scrollEdge 默认值本来就是透明 —— 场景不同,别照搬它的"零代码"。)
+		//
+		// ⚠️ 透明这一态曾经把浅色模式的顶栏变成一片黑(L60)。那不是"透明"的错,
+		// 是当时**网页自己画底、深浅色和 app 不同步**,透出了错的东西。现在纸色底已归 UIKit
+		// (`WebViewController.nnwUseUIKitPaperBackground`),透出来的一定是对的纸色。
+		//
+		// 深浅色安全性:透明外观里**没有任何写死的颜色**(背景透明、标题用系统 label 动态色),
+		// 所以不存在 L59 那种"创建时固化、之后不跟随"的问题,设一次就永久自适应。
+		let transparent = UINavigationBarAppearance()
+		transparent.configureWithTransparentBackground()
+		transparent.shadowColor = .clear	// 顶部不要那条分隔线,和暖纸无边界风格一致
+
+		navigationItem.scrollEdgeAppearance = transparent	// 在顶部:通透,和正文连成一片
+		navigationItem.standardAppearance = nil				// 滚起来:系统默认毛玻璃(自适应)
+		navigationItem.compactAppearance = nil				// 横屏紧凑态:同上,保持毛玻璃
 	}
 }

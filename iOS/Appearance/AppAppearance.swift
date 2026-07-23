@@ -21,8 +21,11 @@
 //  以后各页需要新颜色(正文字色、次要文字、强调色…),就往这两层各加一条,
 //  边做边长,不空建一个用不上的大调色板。
 //
-//  注意:文章正文阅读页是 WKWebView,背景由主题 CSS / nnw_appearance.js 管,
-//  不在这里,是另一条杆。
+//  注意:文章正文阅读页虽然是 WKWebView,但它的**纸色底也归这里管**(2026-07-23 改)——
+//  网页设成透明,底由 `WebViewController` 的 view 铺 `paperBackground`。
+//  这么做是为了让顶栏能安全地做透明:透出来的必须是 UIKit 的动态色(系统自适应),
+//  而不是网页自己画的底(深浅色和 app 不同步,浅色模式下顶栏会变黑,见 L60)。
+//  网页那边只剩文字和图的颜色,仍由主题 CSS / nnw_appearance.js 管。
 //
 //  ⚠️ 别用全局 UINavigationBarAppearance 去铺色 —— 会把大标题和 iOS 26 副标题
 //  一起冲掉(见 NOTES-lessons L45)。正路:各列表设自己的 config.backgroundColor

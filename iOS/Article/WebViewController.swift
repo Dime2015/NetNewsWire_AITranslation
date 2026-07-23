@@ -408,6 +408,7 @@ extension WebViewController: WKNavigationDelegate {
 		}
 		nnwMediaEnhanceIfNeeded() // [播客][YouTube] 按内容类型补上语音条 / 视频简介,实现在本文件末尾
 		nnwRecordAndAutoRestoreOnDidFinish() // [状态记忆] item③ 记住阅读模式 + 按需自动恢复译文,实现在本文件末尾
+		nnwHandOffScrollViewToNavigationBar() // [外观] 把本页滚动交给顶栏跟踪(顶部透明↔滚动毛玻璃),实现在本文件末尾
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -587,7 +588,7 @@ private extension WebViewController {
 				// us from easily swiping between WKWebViews.  This hack fixes that.
 				webView.scrollView.contentInset = UIEdgeInsets(top: 0, left: -1, bottom: 0, right: 0)
 
-				webView.underPageBackgroundColor = AppAppearance.paperBackground	// [外观] 过度滚动/加载时露出的底色 = 暖纸(正文内容背景由 nnw_appearance.js 的 CSS 管)
+				self.nnwUseUIKitPaperBackground(webView)	// [外观] 纸色底改由 UIKit 画、WebView 透明(实现在本文件末尾扩展)
 
 				webView.scrollView.setZoomScale(1.0, animated: false)
 
@@ -1362,5 +1363,67 @@ extension WebViewController {
 			showBars()			// 内容下移(往回看)→ 现栏
 			state.accumulated = 0
 		}
+	}
+}
+
+// MARK: - [外观] 顶栏「渐变透明毛玻璃」的两块地基(2026-07-23 新增,本 fork)
+//
+// 目标:让文章内容页的顶栏和订阅列表页一样 —— **内容在顶部时通透、往下滚渐显毛玻璃、
+// 深浅色自适应**。这件事此前折腾多轮没做成,原因和修法都写在这里,别再走回头路。
+//
+// 为什么以前做不成,两个原因,下面两个方法各解决一个:
+//
+// ① **透明不安全**:顶栏透明后,那一条露出的是背后的 WKWebView。而网页的深浅色走网页
+//    自己的 `prefers-color-scheme`,不保证和 app 同步 —— 实测浅色模式下顶栏透出网页
+//    的深色底,变成一片黑(L60)。
+//    → `nnwUseUIKitPaperBackground` 把纸色底的所有权从网页收归 UIKit。
+//
+// ② **系统压根不给透明态**:iOS 的「顶部透明 ↔ 滚动毛玻璃」是系统自带的,但前提是
+//    **导航栏知道该盯着哪个滚动视图**。订阅列表页背后就是普通列表,系统自己找得到;
+//    而这里的 WKWebView 藏在 UIPageViewController 的子页面里,系统找不到 →
+//    只好按"已经滚动了"处理 → 毛玻璃常驻,永远没有透明那一态。
+//    → `nnwHandOffScrollViewToNavigationBar` 用系统正规接口把滚动视图指给导航栏。
+//
+// 两块缺一不可:只做 ① 没有透明态,只做 ② 就会复现 L60 的浅色顶栏变黑。
+
+extension WebViewController {
+
+	/// 把正文的纸色底从「网页画」改成「UIKit 画」。
+	///
+	/// 做法:WebView 自己不画背景(透明),露出它的 superview —— 也就是本控制器的 view,
+	/// 由它铺 `AppAppearance.paperBackground`。那是个 UIKit 动态色,深浅色由系统自动重解析,
+	/// **不依赖任何"变化了通知我"的回调**(L59 的教训:能让系统自适应的就别自己监听重建,
+	/// 何况 `registerForTraitChanges` 在 UIPageViewController 子树里实测根本不触发)。
+	///
+	/// 配套改动在 `Shared/Appearance/nnw_appearance.js`(把 html/body 背景设成 transparent),
+	/// **两处必须同时在**:只改这里 → 网页自己的底盖在上面,白改;只改那边 → 正文变 WebView 默认白底。
+	///
+	/// `underPageBackgroundColor` 设成 `.clear` 是有意的:它是过度滚动(橡皮筋)那块的底色,
+	/// 留着不透明的纸色也不难看,但那样纸色就有了**两个来源**、且其中一个在 WebView 里
+	/// (深浅色重解析时机不受我们控制,正是 L60 那类风险)。收成一个来源更稳(L56)。
+	func nnwUseUIKitPaperBackground(_ webView: PreloadedWebView) {
+		webView.isOpaque = false					// 不画自己的底,露出下面的 UIKit 纸色
+		webView.backgroundColor = .clear
+		webView.scrollView.backgroundColor = .clear
+		webView.underPageBackgroundColor = .clear	// 橡皮筋区域也交给 UIKit,纸色只留一个来源
+		view.backgroundColor = AppAppearance.paperBackground	// ← 纸色的唯一来源(动态色,自适应深浅)
+	}
+
+	/// 告诉导航栏「请盯着本页的滚动视图」,这样系统才肯给出「顶部透明 / 滚动毛玻璃」两态。
+	///
+	/// 用的是系统正规接口 `setContentScrollView`(iOS 15+,本工程最低 iOS 17)。
+	/// 设在 `ArticleViewController` 上 —— 顶栏归它管(navigationItem 在它身上),
+	/// 本控制器只是它翻页容器里的一页。
+	///
+	/// ⚠️ 用 `as? ArticleViewController` 强转是**有意的**,照抄本文件已有的做法
+	/// (见 `nnwRecordAndAutoRestoreOnDidFinish` 里对译文自动恢复的调用):
+	/// 这样不用去动上游的 `WebViewControllerDelegate` 协议,merge 时少一个冲突点。
+	func nnwHandOffScrollViewToNavigationBar() {
+		(delegate as? ArticleViewController)?.nnwTrackCurrentArticleScrolling()
+	}
+
+	/// 本页的滚动视图(给上面那位跨控制器取用 —— `webView` 是 private,同文件内才够得着)。
+	var nnwContentScrollView: UIScrollView? {
+		webView?.scrollView
 	}
 }
