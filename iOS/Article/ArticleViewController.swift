@@ -714,29 +714,18 @@ extension ArticleViewController {
 
 extension ArticleViewController {
 
-	/// 让文章页顶栏的背景色**跟着系统深浅色变**。
+	/// 让文章页顶栏用「系统默认导航栏外观」(渐变透明毛玻璃 + 深浅自适应,和订阅列表页一样)。
 	///
 	/// ⚠️ 为什么需要这一段(2026-07-22 用户报告:深色模式下文章页顶端仍是浅色):
-	/// 上游在 `viewDidLoad` 里设了一次
-	/// `appearance.configureWithDefaultBackground()` + 三个 appearance。
-	/// 而 `UINavigationBarAppearance` 会把**当时解析出来的颜色固化**成静态值 ——
-	/// viewDidLoad 只跑一次,之后切换深浅色它不会自己更新,于是顶栏一直停在
-	/// 首次创建时的那套颜色。
-	/// (以前不明显:文章页顶栏是全屏最上面一条,没有对照物;
-	///  时间线做了暖纸头图之后,一深一浅并排出现就很扎眼了。)
+	/// 上游在 `viewDidLoad` 里设了一次 `appearance.configureWithDefaultBackground()` +
+	/// 三个 appearance。`UINavigationBarAppearance` 会把**创建时的颜色/材质固化**成静态值,
+	/// viewDidLoad 只跑一次 → 之后切深浅色不更新,顶栏停在首次创建时那套(浅色)。
 	///
-	/// 做法:注册明暗变化,变了就重建一次 appearance,并顺带铺上本 app 的暖纸色。
-	///
-	/// ⚠️ **这两个方法之间绝不能互相调用**(2026-07-23 崩过一次,见 L58):
-	/// 曾经因为脚本改文件出错,`nnwRefreshNavigationBarAppearance` 末尾误加了一行
-	/// 调回 install → install 又调 refresh → 无限递归 → 栈溢出,**app 一启动就崩**。
-	/// 现在的分工是死的:**install 只负责"装一次 + 注册",refresh 只负责"重建外观",
-	/// refresh 里没有任何回调 install 的语句。**
+	/// 只调一次就够了 —— refresh 把三个 appearance 设成 nil、回落到系统内置默认,
+	/// 那个是**永久深浅自适应**的,不需要"变了再重建"(实测 registerForTraitChanges
+	/// 在"停在文章页切深浅色"时根本不触发,见 L59,所以本来也没法靠它重建)。
 	func nnwInstallNavigationBarAppearanceUpdater() {
-		nnwRefreshNavigationBarAppearance()	// 立刻覆盖掉上游刚在 viewDidLoad 里设的那套默认色
-		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (controller: ArticleViewController, _) in
-			controller.nnwRefreshNavigationBarAppearance()
-		}
+		nnwRefreshNavigationBarAppearance()	// 覆盖掉上游 viewDidLoad 设的那套固化外观
 	}
 
 	/// 按当前深浅色重建导航栏外观,用**系统毛玻璃**(和订阅列表页一样的渐变透明质感)。
@@ -753,10 +742,20 @@ extension ArticleViewController {
 	///
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
 	func nnwRefreshNavigationBarAppearance() {
-		let appearance = UINavigationBarAppearance()
-		appearance.configureWithDefaultBackground()	// 系统毛玻璃,深浅自适应
-		navigationItem.standardAppearance = appearance
-		navigationItem.scrollEdgeAppearance = appearance
-		navigationItem.compactAppearance = appearance
+		// 把三个 appearance 全设为 **nil** —— 交给系统默认导航栏外观。
+		//
+		// ⚠️ 这是 2026-07-23 第二次修「深色顶栏发浅」时定的做法,日志证明的(见 L59):
+		// 上一轮我用「明暗变化时重建 appearance」,但实测 `registerForTraitChanges`
+		// 在"停在文章页切深浅色"时**根本不触发**(切深色后没有任何 refresh 日志),
+		// 于是浅色下创建的毛玻璃一直固化着。而上游 viewDidLoad 里显式设的
+		// `configureWithDefaultBackground()` 同样是**一次性固化、不自适应** —— 那才是
+		// 深色顶栏发浅的根因。
+		//
+		// 设 nil 后,导航栏回落到系统内置默认外观,那个是**天然深浅自适应**的毛玻璃
+		// (订阅列表页就是这个,因为它压根没设过 appearance)。**设一次就永久自适应,
+		// 不再依赖任何"变了要重建"的触发。**
+		navigationItem.standardAppearance = nil
+		navigationItem.scrollEdgeAppearance = nil
+		navigationItem.compactAppearance = nil
 	}
 }

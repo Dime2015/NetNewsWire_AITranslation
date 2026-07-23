@@ -842,6 +842,12 @@ UIPageViewController 翻页不触发 viewWillAppear,可能保持前一篇的藏/
 **考古结论**:订阅列表页那个效果**没有任何代码** —— 只有 `prefersLargeTitles = true`,
 剩下是 iOS 大标题模式的系统默认(`configureWithDefaultBackground` 的毛玻璃)。
 
+**⚠️ 文章内容页深色顶栏发浅,前后修了两次,第二次(nil)才对(见 L59)**:
+第一次改回 `configureWithDefaultBackground()` + 靠 `registerForTraitChanges` 重建 ——
+**日志证明那个监听在"停在文章页切深浅色"时根本不触发**(上一轮"以为修好"是因为
+测试用了"先切深色再进文章"这条绕开 bug 的路径)。第二次改为把三个 appearance 设 **nil**、
+回落系统默认导航栏(永久深浅自适应),不再依赖任何触发。同时去掉了那个没用的 trait 监听。
+
 **① 文章内容页**:改回系统毛玻璃 —— **撤回上一轮的过度修复**。
 上一轮修"深色顶栏浅色"时做了两件事:a) 明暗变化重建 appearance(对的、必需);
 b) 把背景从系统毛玻璃改成不透明纸色(过度)。用户现在要的毛玻璃透明正是被 b 盖掉的,
