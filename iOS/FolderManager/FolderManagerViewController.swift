@@ -13,8 +13,11 @@
 //
 //  上游主列表的左滑只能**一次操作一个**。用户有 77 个源、7 个文件夹,
 //  真正缺的是**批量**和**整理**:批量移动、批量删除、删文件夹时把里面的源留下。
-//  这些上游一个都没有。所以本页的定位是「批量与整理」,
-//  **不追求把左滑那些单个操作再实现一遍**。
+//  这些上游一个都没有。所以本页的定位是「批量与整理」。
+//
+//  📌 顺带也做了左滑的单个操作(重命名 / 删除):既然人已经在这一页整理,
+//  为了删一个源再退回主列表去左滑很别扭。但**单个删除复用批量那条路的实现**
+//  (见「删除」那一节的 `beginDelete`),不另写一套。
 //
 //  ## 现在做到哪了(三个阶段都已完成,2026-07-23)
 //
@@ -266,12 +269,31 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		config.backgroundColor = AppAppearance.paperBackground
 		config.showsSeparators = false			// 和 app 其它列表一致的无边界暖纸风
 
-		// 左滑:重命名。
-		// ⚠️ 这里**故意不提供删除** —— 删除留给 Phase C 统一做(要带撤销、
-		// 还要处理「删文件夹时里面的源怎么办」)。现在放一个语义不完整的删除,
-		// 反而会让人以为已经做好了。
+		// 左滑:删除(靠边)+ 重命名。
+		//
+		// 📌 **2026-07-23 加上了删除**(用户要求)。这里原先**故意只有重命名**,
+		// 注释写的是「删除留给 Phase C 统一做,现在放一个语义不完整的删除反而误导」。
+		// 现在 Phase C 已经做完,那套东西(可撤销 + 删文件夹的两条路)是现成的,
+		// 左滑只是**接上同一条路**,而不是另写一套删除 —— 所以两处的行为永远一致。
+		//
+		// ⚠️ 三个刻意的选择:
+		// 1. **风格用 `.normal` + 自己涂红,不用 `.destructive`**。
+		//    `.destructive` 会让 UIKit 自作主张把那一行**立刻抽走**,而本页的行是
+		//    「等账户发通知 → 重画列表」才消失的 —— 两边抢着删同一行,正是 L65 / L66 崩过的那类。
+		//    涂成红色观感一模一样,但删行的事仍然只有数据源一个人做。
+		// 2. **关掉「一滑到底自动执行」**:最靠边的键现在是删除,不关的话手滑一大下就直奔删除。
+		// 3. **删除排在最靠边**(数组第一个 = 最右),和系统邮件一致,肌肉记忆对得上。
 		config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
 			guard let self, let item = self.dataSource.itemIdentifier(for: indexPath) else { return nil }
+
+			let deleteAction = UIContextualAction(style: .normal, title: nil) { [weak self] _, _, completion in
+				self?.beginDelete(items: [item], anchor: .row(indexPath))
+				completion(true)		// 只是把左滑收回去;真正删掉那一行的是数据源
+			}
+			deleteAction.image = UIImage(systemName: "trash")
+			deleteAction.backgroundColor = .systemRed
+			deleteAction.accessibilityLabel = "删除"
+
 			let renameAction = UIContextualAction(style: .normal, title: nil) { [weak self] _, _, completion in
 				self?.promptRename(item)
 				completion(true)
@@ -279,7 +301,10 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			renameAction.image = UIImage(systemName: "pencil")
 			renameAction.backgroundColor = .systemOrange
 			renameAction.accessibilityLabel = "重命名"
-			return UISwipeActionsConfiguration(actions: [renameAction])
+
+			let configuration = UISwipeActionsConfiguration(actions: [deleteAction, renameAction])
+			configuration.performsFirstActionWithFullSwipe = false
+			return configuration
 		}
 
 		let layout = UICollectionViewCompositionalLayout.list(using: config)
@@ -934,46 +959,86 @@ extension FolderManagerViewController {
 
 extension FolderManagerViewController {
 
-	@objc fileprivate func deleteTapped() {
+	/// 删除的弹窗要挂在屏幕的哪个位置。
+	/// iPhone 上无所谓,但 **iPad 的 actionSheet 没有锚点会直接崩**,所以两个入口各自报一下自己在哪。
+	fileprivate enum DeleteAnchor {
+		case toolbar				// 编辑模式:底部工具栏的「删除 N 项」
+		case row(IndexPath)			// 左滑:被滑的那一行
+	}
 
-		let items = Array(selectedItems)
+	/// 编辑模式下点底部「删除 N 项」。
+	@objc fileprivate func deleteTapped() {
+		beginDelete(items: Array(selectedItems), anchor: .toolbar)
+	}
+
+	/// 删除的**唯一入口**,批量(编辑模式)和单个(左滑)都走这里。
+	///
+	/// ⚠️ 刻意让两个入口共用同一条路:确认文案、删文件夹的两条路、撤销,
+	/// 都只有一份实现 —— 否则左滑那条迟早和批量那条的行为对不上。
+	/// 所以这里判断「哪些源不搬」只看**传进来的 items**,不看 `selectedItems`
+	/// (左滑时压根没有选中项)。
+	private func beginDelete(items: [Item], anchor: DeleteAnchor) {
+
 		guard !items.isEmpty else { return }
 
 		let folders = items.compactMap { folder(for: $0) }
 		let feedCount = items.count - folders.count
 
-		// 没选文件夹 → 只是删几个源,确认一下就行
+		// 没有文件夹 → 只是删源,确认一下就行
 		guard !folders.isEmpty else {
-			confirmDelete(title: "删除 \(feedCount) 个订阅源",
-						  message: "这些源的文章和已读状态会一起删掉。删错了可以摇一摇撤销。") { [weak self] in
+			// 只删一个时把名字写出来 —— 左滑删的就是这一行,报个名字才对得上
+			let title: String
+			if items.count == 1, let name = feed(for: items[0])?.nameForDisplay {
+				title = "删除「\(name)」"
+			} else {
+				title = "删除 \(feedCount) 个订阅源"
+			}
+			confirmDelete(title: title,
+						  message: "文章和已读状态会一起删掉。删错了可以摇一摇撤销。") { [weak self] in
 				self?.deleteWithUndo(items)
 			}
 			return
 		}
 
-		// 选了文件夹:先问里面的源怎么办。
+		// 有文件夹:先问里面的源怎么办。
 		// **空文件夹不用问** —— 没有源要安置,问了反而是噪音。
 		let feedsInsideCount = folders.reduce(0) { $0 + $1.topLevelFeeds.count }
 		guard feedsInsideCount > 0 else {
-			confirmDelete(title: "删除 \(folders.count) 个空文件夹",
-						  message: "删错了可以摇一摇撤销。") { [weak self] in
+			let title: String
+			if items.count == 1, let name = folders.first?.nameForDisplay {
+				title = "删除空文件夹「\(name)」"
+			} else {
+				title = "删除 \(folders.count) 个空文件夹"
+			}
+			confirmDelete(title: title, message: "删错了可以摇一摇撤销。") { [weak self] in
 				self?.deleteWithUndo(items)
 			}
 			return
 		}
 
 		askHowToHandleFeedsInside(items: items, folders: folders,
-								  feedsInsideCount: feedsInsideCount, alsoDeletingFeeds: feedCount)
+								  feedsInsideCount: feedsInsideCount,
+								  alsoDeletingFeeds: feedCount, anchor: anchor)
 	}
 
 	/// 删文件夹时的两条路:把源留下,还是一起删。
 	private func askHowToHandleFeedsInside(items: [Item], folders: [Folder],
-										   feedsInsideCount: Int, alsoDeletingFeeds: Int) {
+										   feedsInsideCount: Int, alsoDeletingFeeds: Int,
+										   anchor: DeleteAnchor) {
 
-		let title = "删除 \(folders.count) 个文件夹"
+		let isSingle = items.count == 1
+		let titleText = isSingle ? "删除文件夹「\(folders[0].nameForDisplay)」" : "删除 \(folders.count) 个文件夹"
 		let message = "里面还有 \(feedsInsideCount) 个订阅源,要怎么处理?"
-		let alert = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
-		alert.popoverPresentationController?.barButtonItem = toolbarItems?.last
+		let alert = UIAlertController(title: titleText, message: message, preferredStyle: .actionSheet)
+		switch anchor {
+		case .toolbar:
+			alert.popoverPresentationController?.barButtonItem = toolbarItems?.last
+		case .row(let indexPath):
+			if let cell = collectionView.cellForItem(at: indexPath) {
+				alert.popoverPresentationController?.sourceView = cell
+				alert.popoverPresentationController?.sourceRect = cell.bounds
+			}
+		}
 
 		// 文案刻意做短(2026-07-23 用户定的)。两项的区别全在"和订阅源"三个字上,
 		// 上面那句 message(「里面还有 N 个订阅源,要怎么处理?」)已经交代了处境,
@@ -993,11 +1058,14 @@ extension FolderManagerViewController {
 	/// ⚠️ **顺序不能反**:必须先搬完再删。反过来的话,`removeFolder` 会把里面的源一起带走,
 	/// 那就不是"释放"而是"删掉"了。
 	///
-	/// ⚠️ **被用户勾中的源是例外,不搬** —— 他既勾了文件夹(要释放里面的源)、又单独勾了其中某个源,
+	/// ⚠️ **这次要删的源是例外,不搬** —— 用户既勾了文件夹(要释放里面的源)、又单独勾了其中某个源,
 	/// 那就是明确想删掉那一个。不搬它,它会随文件夹一起被删,正合其意。
+	/// (只看**本次要删的 items**,不看 `selectedItems`:左滑删单个文件夹时压根没有选中项。)
 	///
 	/// ⚠️ **搬运失败就停手,不往下删** —— 半搬半删会留下一地无法解释的残局。
 	private func releaseFeedsThenDelete(items: [Item], folders: [Folder]) {
+
+		let deletingItems = Set(items)
 
 		Task { @MainActor in
 
@@ -1006,9 +1074,9 @@ extension FolderManagerViewController {
 			for folder in folders {
 				guard let account = folder.account else { continue }
 				for feed in folder.topLevelFeeds {
-					// 这个源自己也被勾了 → 用户想删它,别搬
+					// 这个源自己也在本次删除名单里 → 用户想删它,别搬
 					let feedItem = Item.feed(accountID: account.accountID, feedID: feed.feedID, folderID: folder.folderID)
-					if selectedItems.contains(feedItem) { continue }
+					if deletingItems.contains(feedItem) { continue }
 
 					do {
 						try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -1026,7 +1094,7 @@ extension FolderManagerViewController {
 				let list = failedNames.joined(separator: "、")
 				presentMessage("没能把源移出来,文件夹保留了",
 							   "失败的是:\(list)。文件夹没有删除,免得连累里面的源。")
-				setEditing(false, animated: true)
+				exitEditingIfNeeded()
 				return
 			}
 
@@ -1058,6 +1126,15 @@ extension FolderManagerViewController {
 		}
 
 		command.perform()
+		exitEditingIfNeeded()
+	}
+
+	/// 删完收工:**只在真的处于编辑模式时**才退出。
+	///
+	/// ⚠️ 左滑删除时并不在编辑模式,无条件调 `setEditing(false)` 会顺手重建导航栏按钮、
+	/// 再对着本就藏着的工具栏做一次隐藏动画 —— 没必要,也可能闪一下。
+	private func exitEditingIfNeeded() {
+		guard isEditing else { return }
 		setEditing(false, animated: true)
 	}
 
