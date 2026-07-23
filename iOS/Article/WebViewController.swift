@@ -530,6 +530,7 @@ extension WebViewController: UIViewControllerTransitioningDelegate {
 extension WebViewController: UIScrollViewDelegate {
 
 	func scrollViewDidScroll(_ scrollView: UIScrollView) {
+		nnwUpdateBarsForScroll(scrollView)	// [外观] 滚动方向驱动藏/现栏(沉浸阅读),实现在本文件末尾扩展
 		scrollPositionQueue.add(self, #selector(scrollPositionDidChange))
 	}
 
@@ -1283,5 +1284,83 @@ extension WebViewController {
 
 		// 若这篇被记为"上次翻过"且本地有匹配的完整缓存 → 自动秒显译文(交给翻译层判断)。
 		(delegate as? ArticleViewController)?.nnwAutoApplyTranslationFromCacheIfNeeded()
+	}
+}
+
+// MARK: - [外观] 滚动时自动隐藏/显示顶栏与底栏(沉浸阅读)
+//
+// 用户 2026-07-23 要求:读文章时下滑正文 → 顶栏 + 底栏一起消失(沉浸);
+// 上滑 → 栏回来。取代原来"点导航栏切换全屏"的点击交互。
+//
+// 复用上游现成的 hideBars()/showBars()(它俩本就是顶底一起藏、还管状态栏和安全区),
+// 本扩展只决定"根据滚动方向调用哪一个"。上游那两个方法一行未动。
+//
+// 判据不用系统的 hidesBarsOnSwipe —— 正文在 WKWebView 里,滚动发生在 web 的
+// scrollView 内部,系统开关收不到;所以自己在 scrollViewDidScroll 里按方向判断。
+
+/// 记录滚动累积距离的小状态盒(扩展不能加存储属性,用关联对象挂上去)。
+private final class NNWScrollBarsHideState {
+	var lastOffsetY: CGFloat = 0
+	var accumulated: CGFloat = 0
+	var primed = false
+}
+
+extension WebViewController {
+
+	private static var nnwScrollHideStateKey: UInt8 = 0
+	private var nnwScrollHideState: NNWScrollBarsHideState {
+		if let existing = objc_getAssociatedObject(self, &Self.nnwScrollHideStateKey) as? NNWScrollBarsHideState {
+			return existing
+		}
+		let created = NNWScrollBarsHideState()
+		objc_setAssociatedObject(self, &Self.nnwScrollHideStateKey, created, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		return created
+	}
+
+	/// 同方向拖动累积超过这么多点(pt)才切换栏 —— 防止读时微调位置就闪来闪去。
+	/// 觉得太灵敏就调大、太迟钝就调小。
+	private static let nnwBarsToggleThreshold: CGFloat = 44
+
+	/// 每次滚动回调时调,按滚动方向藏/现栏。
+	func nnwUpdateBarsForScroll(_ scrollView: UIScrollView) {
+		guard isFullScreenAvailable else { return }	// 功能没开就什么都不做
+		let state = nnwScrollHideState
+		let y = scrollView.contentOffset.y
+		let topEdge = -scrollView.adjustedContentInset.top
+		defer { state.lastOffsetY = y }
+
+		// 第一帧只记基准,不判断(否则会拿一个巨大的初始 delta 乱触发)
+		guard state.primed else {
+			state.primed = true
+			return
+		}
+
+		// 到顶:强制显示。否则栏藏着、又滚不动了,返回键就永远找不回来。
+		if y <= topEdge + 4 {
+			if navigationController?.isNavigationBarHidden == true {
+				showBars()
+			}
+			state.accumulated = 0
+			return
+		}
+
+		// 只在用户**主动拖动**时判断方向;惯性滑行、程序滚动都不切换,更稳。
+		guard scrollView.panGestureRecognizer.state == .changed else { return }
+
+		let delta = y - state.lastOffsetY
+		// 方向一反转就把累积清零 —— 这样反向只要再拖 threshold 点就能切换,不迟钝。
+		if (delta > 0) != (state.accumulated >= 0) {
+			state.accumulated = 0
+		}
+		state.accumulated += delta
+
+		let hidden = navigationController?.isNavigationBarHidden ?? false
+		if state.accumulated > Self.nnwBarsToggleThreshold, !hidden {
+			hideBars()			// 内容上移(往下读)→ 藏栏
+			state.accumulated = 0
+		} else if state.accumulated < -Self.nnwBarsToggleThreshold, hidden {
+			showBars()			// 内容下移(往回看)→ 现栏
+			state.accumulated = 0
+		}
 	}
 }

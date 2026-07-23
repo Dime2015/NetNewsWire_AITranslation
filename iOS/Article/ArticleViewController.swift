@@ -141,7 +141,8 @@ final class ArticleViewController: UIViewController {
 			fullScreenTapZone.widthAnchor.constraint(equalToConstant: 150),
 			fullScreenTapZone.heightAnchor.constraint(equalToConstant: 44)
 		])
-		fullScreenTapZone.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapNavigationBar)))
+		// [外观] 去掉"点导航栏切换全屏"的点击手势 —— 改为滚动方向驱动藏/现栏(用户 2026-07-23)。
+		// fullScreenTapZone 仍作为 titleView 占位(空 view,无副作用),只是不再挂点击。
 		navigationItem.titleView = fullScreenTapZone
 
 		articleExtractorButton.addTarget(self, action: #selector(toggleArticleExtractor(_:)), for: .touchUpInside)
@@ -221,12 +222,10 @@ final class ArticleViewController: UIViewController {
 	}
 
 	override func viewWillAppear(_ animated: Bool) {
-		let hideToolbars = AppDefaults.shared.logicalArticleFullscreenEnabled
-		if hideToolbars {
-			currentWebViewController?.hideBars()
-		} else {
-			currentWebViewController?.showBars()
-		}
+		// [外观] 进文章时**总是先显示栏**,之后由滚动方向决定藏/现(见 WebViewController 末尾扩展)。
+		// 原来这里按持久的全屏状态,上次退出时藏着的话一进来就藏 —— 那是"点击切全屏"时代的语义;
+		// 现在改成滚动驱动,一进来该看到标题栏和工具栏,往下读才沉浸。
+		currentWebViewController?.showBars()
 		super.viewWillAppear(animated)
 	}
 

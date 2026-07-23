@@ -45,8 +45,8 @@
 "Wm4-Y1-7nX.text" = "在 Babel 内打开链接";
 "bO3-aT-4AW.text" = "启用 JavaScript";
 "FkT-O9-gpj.text" = "部分内容(例如视频和内嵌的社交媒体帖子)可能需要 JavaScript 才能正常显示。";
-"79e-5s-vd0.text" = "启用全屏阅读";
-"a30-nc-ZS4.text" = "点按文章顶栏进入全屏。点按顶部或底部退出。";
+"79e-5s-vd0.text" = "滚动时隐藏工具栏";
+"a30-nc-ZS4.text" = "阅读文章时,向下滚动会隐藏顶栏和底栏进入沉浸阅读,向上滚动它们会重新出现。";
 
 /* 外观分区 */
 "2Fp-li-dGP.text" = "配色";

@@ -395,7 +395,7 @@ final class AppDefaults: Sendable {
 										Key.timelineNumberOfLines: 2,
 										Key.timelineIconDimension: IconSize.medium.rawValue,
 										Key.timelineSortDirection: ComparisonResult.orderedDescending.rawValue,
-										Key.articleFullscreenAvailable: false,
+										Key.articleFullscreenAvailable: true,	// [外观] A 路线:默认开启"滚动隐藏工具栏"(用户可在设置里关)
 										Key.articleFullscreenEnabled: false,
 										Key.confirmMarkAllAsRead: true,
 										Key.articleContentJavascriptEnabled: true,
