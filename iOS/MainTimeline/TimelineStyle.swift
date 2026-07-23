@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import CoreText
 
 /// 文章列表(时间线)的外观参数,集中一处。
 ///
@@ -189,6 +190,18 @@ enum TimelineStyle {
 
 	/// 总开关。回退时改成 false 即可,一行都不用删。
 	static let headerEnabled = true
+
+	/// 三个智能源(今天 / 全部未读 / 已加星标)要不要也有头图。
+	/// 关掉它,那三页就回到上游原样(系统大标题、没有头图),订阅源页不受影响。
+	static let smartHeaderEnabled = true
+
+	/// 智能源头图的蒙版强度。**故意比订阅源的 0.55 高。**
+	///
+	/// 理由:订阅源那张图是**抓来的**,什么颜色都可能有,压狠一点是为了防撞色;
+	/// 而这三张是**手工挑好、还专门做过白平衡与统一曝光的画**
+	/// (见 tools/make-header-assets.swift),压到 0.55 等于白挑。
+	/// 嫌太抢眼往下调,嫌太寡淡往上调,1.0 是原色直上。
+	static let smartHeaderImageStrength = CGFloat(0.80)
 	/// 头图区高度 = 屏高 × 此值(用户点名"约四分之一")。
 	static let headerHeightFraction = CGFloat(0.25)
 
@@ -226,14 +239,88 @@ enum TimelineStyle {
 	/// ⚠️ New York **没有中文字形**,中文源名(如「硅谷101」)会自动回退到苹方,
 	/// 中英混排的源名会出现两种字体 —— 若觉得别扭,把这里改成 false。
 	static let headerTitleUsesSerif = true
-	/// 标题字体(由上面两个值拼出来,不用直接改这里)。
-	static var headerTitleFont: UIFont {
+
+	/// 中文标题是否也用衬线体(打包进来的思源宋体)。
+	/// 改成 false 就立刻回到苹方黑体,字体文件仍在包里但不会被用到。
+	static let headerTitleUsesCJKSerif = true
+
+	/// 打包的中文衬线体的 PostScript 名。
+	/// **必须和 `iOS/Fonts/` 里那个文件内部的名字一致**,改字体时一起改(见该目录的 README-vendor.md)。
+	private static let bundledCJKSerifName = "NotoSerifCJKsc-Bold"
+
+	/// 标题字体。**要传入实际显示的文字** —— 中文和西文用的是两种字体,
+	/// 得看内容才知道该给哪个。
+	///
+	/// ## ⚠️ 中文衬线是**打包进来的**,iOS 自己一个都没有(2026-07-23 实测)
+	///
+	/// 我一度写了「中文用宋体(STSongti-SC-Bold)」,毫无效果 ——
+	/// **宋体是 macOS 才有的字体**。在 app 里向系统要过一次完整名单:
+	/// iOS 26.5 上认识简体字的**只有苹方(PingFang)的四个地区版 × 六个字重,
+	/// 全是黑体,一个衬线都没有**。
+	///
+	/// 试过、都不行的路(**别再重试**,详见 NOTES-lessons L70):
+	/// - `STSongti-SC-Bold` / `Songti SC` —— iOS 没有,`UIFont(name:)` 返回 nil,静默回退
+	/// - 日文明朝体 `HiraMinProN-W6` —— iOS 确实带,但**缺简体专用字**
+	///   (实测「读」「标」「观」「严」「肃」「长」都没有),用了会一个标题里半衬线半黑体
+	/// - `withDesign(.serif)` —— 只影响西文(得到 New York),对汉字无效
+	///
+	/// 所以最后打包了思源宋体的子集(2.1MB,见 `iOS/Fonts/README-vendor.md`)。
+	@MainActor static func headerTitleFont(for text: String) -> UIFont {
+
 		let base = UIFont.systemFont(ofSize: headerTitleFontSize, weight: .bold)
+
+		// —— 中文:用打包的思源宋体 ——
+		if headerTitleUsesCJKSerif, text.nnwContainsCJK {
+			nnwRegisterBundledSerifIfNeeded()
+			if let serif = UIFont(name: bundledCJKSerifName, size: headerTitleFontSize),
+			   nnwFont(serif, covers: text) {
+				return serif
+			}
+			// ⚠️ **缺字就整条退回黑体**,而不是让系统逐字回退。
+			// 打包的是子集(GB2312 全集 6763 字),订阅源名却是任意的 ——
+			// 逐字回退会出现"一个标题里半衬线半黑体",那比统一黑体难看得多。
+			return base
+		}
+
+		// —— 西文:苹果自带的 New York ——
 		guard headerTitleUsesSerif,
 			  let descriptor = base.fontDescriptor.withDesign(.serif) else {
 			return base
 		}
 		return UIFont(descriptor: descriptor, size: headerTitleFontSize)
+	}
+
+	/// 把打包的字体注册给系统(只做一次)。
+	///
+	/// **故意不走 `Info.plist` 的 `UIAppFonts`** —— 那是上游文件,
+	/// 加一条就多一个 merge 冲突点。运行时注册的效果完全一样。
+	@MainActor private static var bundledSerifRegistered = false
+
+	@MainActor private static func nnwRegisterBundledSerifIfNeeded() {
+		guard !bundledSerifRegistered else { return }
+		bundledSerifRegistered = true		// 不管成没成都只试一次,免得每次画标题都重来
+
+		guard let url = Bundle.main.url(forResource: "NotoSerifCJKsc-Bold-subset", withExtension: "otf") else {
+			print("[头图] 打包的中文衬线体没找到 —— 中文标题会用黑体")
+			return
+		}
+		var error: Unmanaged<CFError>?
+		if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
+			// 已经注册过会报错,那不算问题;其余情况记一笔,免得又变成静默回退(L70)
+			print("[头图] 中文衬线体注册未成功:\(error?.takeUnretainedValue().localizedDescription ?? "未知")")
+		}
+	}
+
+	/// 这个字体认不认得全这段文字里的每一个字。
+	private static func nnwFont(_ font: UIFont, covers text: String) -> Bool {
+		let ctFont = font as CTFont
+		for scalar in text.unicodeScalars {
+			var utf16 = Array(String(scalar).utf16)
+			var glyphs = [CGGlyph](repeating: 0, count: utf16.count)
+			guard CTFontGetGlyphsForCharacters(ctFont, &utf16, &glyphs, utf16.count),
+				  !glyphs.contains(0) else { return false }
+		}
+		return true
 	}
 
 	/// 标题的水平对齐。**改这一个值就能切换左 / 居中 / 右**,方便对比着挑。
@@ -299,4 +386,20 @@ enum TimelineStyle {
 	/// 非白像素还要占到这个比例才够格当大图 —— 挡掉白底 logo
 	/// (白底图拉满全宽 = 顶部一片白,比没有图还难看;它们走主色渐变反而好看)。
 	static let headerMinCoverage = CGFloat(0.35)
+}
+
+extension String {
+
+	/// 这段文字里有没有汉字。
+	///
+	/// 只看**汉字区**(不看假名、标点):判据是"New York 缺不缺这些字",而它缺的正是汉字。
+	/// 中英混排(如「硅谷101」)也算 —— 混排时以汉字为主,整条用宋体
+	/// 才不会一行里出现两种衬线。
+	var nnwContainsCJK: Bool {
+		unicodeScalars.contains { scalar in
+			(0x4E00...0x9FFF).contains(scalar.value)			// 基本汉字
+				|| (0x3400...0x4DBF).contains(scalar.value)	// 扩展 A
+				|| (0xF900...0xFAFF).contains(scalar.value)	// 兼容汉字
+		}
+	}
 }

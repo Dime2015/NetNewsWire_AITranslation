@@ -51,7 +51,7 @@ extension MainTimelineModernViewController {
 	private static var nnwHeaderKey: UInt8 = 0
 
 	/// 每次时间线切换订阅源时调用(挂在 updateNavigationBarTitle 里 —— 那是切源的必经之地)。
-	/// 单一订阅源 → 装/换头图区;文件夹、智能源、搜索等 → 摘掉头图区、恢复系统大标题。
+	/// 单一订阅源、三个智能源 → 装/换头图区;文件夹、搜索等 → 摘掉头图区、恢复系统大标题。
 	func nnwUpdateFeedHeader() {
 		guard TimelineStyle.headerEnabled, let collectionView else { return }
 
@@ -63,8 +63,50 @@ extension MainTimelineModernViewController {
 			objc_setAssociatedObject(self, &Self.nnwHeaderKey, controller, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 		}
 
-		let feed = coordinator?.timelineFeed as? Feed
-		controller.update(feed: feed, host: self, collectionView: collectionView)
+		controller.update(subject: Self.nnwHeaderSubject(for: coordinator?.timelineFeed),
+						  host: self, collectionView: collectionView)
+	}
+
+	/// 当前时间线该不该有头图,有的话是哪一种。
+	///
+	/// 顺序有讲究:先问是不是真订阅源(那是主路径),再问是不是三个智能源之一。
+	/// 都不是(文件夹、搜索结果)→ nil,头图区会被摘掉,页面恢复上游原样。
+	@MainActor private static func nnwHeaderSubject(for item: SidebarItem?) -> TimelineHeaderSubject? {
+		if let feed = item as? Feed {
+			return .feed(feed)
+		}
+		if TimelineStyle.smartHeaderEnabled, let entry = SmartFeedHeaderCatalog.entry(for: item) {
+			return .smart(entry, title: item?.nameForDisplay ?? "")
+		}
+		return nil
+	}
+}
+
+/// 头图区要展示的东西。
+///
+/// 两类来源、**一套渲染管线**(压蒙版 + 上浓下淡 + 标题压在最下方最淡处):
+/// - `.feed` —— 真订阅源,素材是**抓来的**(源自己的图标/封面)
+/// - `.smart` —— 今天 / 全部未读 / 已加星标,素材是**手工挑的画**,随 app 打包
+///
+/// 共用管线是有意的:两类页面来回切时,顶部的观感必须是同一种东西,
+/// 否则就成了"两个 app 拼在一起"。
+@MainActor enum TimelineHeaderSubject {
+	case feed(Feed)
+	case smart(SmartFeedHeaderCatalog.Entry, title: String)
+
+	/// 用来判断"是不是换了一个源"(换了要滚回顶部让头图完整亮相)
+	var identity: String {
+		switch self {
+		case .feed(let feed): return feed.feedID
+		case .smart(let entry, _): return "smart:" + entry.assetName
+		}
+	}
+
+	var title: String {
+		switch self {
+		case .feed(let feed): return feed.nameForDisplay
+		case .smart(_, let title): return title
+		}
 	}
 }
 
@@ -76,7 +118,13 @@ extension MainTimelineModernViewController {
 
 	private weak var collectionView: UICollectionView?
 	private weak var navigationItem: UINavigationItem?
-	private weak var currentFeed: Feed?
+	/// 当前展示的是哪一个(真订阅源 / 智能源),nil = 这个页面不该有头图
+	private var currentSubject: TimelineHeaderSubject?
+	/// 当前的真订阅源(只有 `.feed` 那一路才有)。图标迟到的补装要用它比对身份。
+	private var currentFeed: Feed? {
+		if case .feed(let feed) = currentSubject { return feed }
+		return nil
+	}
 
 	private let headerView = TimelineFeedHeaderView()
 	/// 标题所在的浮层。**必须挂在控制器的 view 上、盖在列表之上** ——
@@ -121,13 +169,13 @@ extension MainTimelineModernViewController {
 
 	// MARK: 装 / 卸
 
-	func update(feed: Feed?, host: UIViewController, collectionView: UICollectionView) {
+	func update(subject: TimelineHeaderSubject?, host: UIViewController, collectionView: UICollectionView) {
 		self.collectionView = collectionView
 		self.navigationItem = host.navigationItem
 		self.host = host
-		self.currentFeed = feed
+		self.currentSubject = subject
 
-		guard let feed else {
+		guard let subject else {
 			remove()
 			return
 		}
@@ -160,13 +208,18 @@ extension MainTimelineModernViewController {
 		syncInset()
 
 		// 4. 换源时滚回顶部,让头图完整亮相;同源重进(返回)保持原位
-		let switched: Bool = (installedFeedID != feed.feedID)
-		installedFeedID = feed.feedID
+		let switched: Bool = (installedFeedID != subject.identity)
+		installedFeedID = subject.identity
 		if switched {
 			collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: false)
 		}
 
-		render(feed: feed)
+		switch subject {
+		case .feed(let feed):
+			render(feed: feed)
+		case .smart(let entry, let title):
+			render(smart: entry, title: title)
+		}
 		applyScrollLinkage()
 	}
 
@@ -191,8 +244,8 @@ extension MainTimelineModernViewController {
 
 	/// 供通知/明暗变化后重新渲染(源和列表都不变时)
 	private func refresh() {
-		guard let feed = currentFeed, let collectionView, let host else { return }
-		update(feed: feed, host: host, collectionView: collectionView)
+		guard let subject = currentSubject, let collectionView, let host else { return }
+		update(subject: subject, host: host, collectionView: collectionView)
 	}
 
 	// MARK: 内容下移(contentInset 记账)
@@ -210,13 +263,64 @@ extension MainTimelineModernViewController {
 
 	// MARK: 渲染
 
+	/// 智能源(今天 / 全部未读 / 已加星标)的头图。
+	///
+	/// 和订阅源那一路的区别只有**素材从哪来**:
+	/// - 订阅源:抓来的图标/封面,尺寸参差,所以要判"够不够格"、要按放大倍数决定糊不糊
+	/// - 智能源:随 app 打包的画,尺寸和色调都是**事先加工好的**
+	///   (见 `tools/make-header-assets.swift`),不需要判断,直接用
+	///
+	/// 但**合成、渐隐、标题定位全部共用同一条管线** —— 两类页面来回切时观感必须一致。
+	/// 唯一不同的是蒙版强度:精挑的画压那么狠等于白挑,见 `smartHeaderImageStrength`。
+	private func render(smart entry: SmartFeedHeaderCatalog.Entry, title: String) {
+
+		let isDark: Bool = headerView.traitCollection.userInterfaceStyle == .dark
+		let width: CGFloat = headerView.bounds.width > 0 ? headerView.bounds.width : UIScreen.main.bounds.width
+		let key: String = entry.assetName + "|" + (isDark ? "dark" : "light") + "|" + String(Int(width))
+		if renderedKey == key { return }
+
+		overlay.setTitle(title)
+
+		// 资源目录里那张图。深浅两版由系统按当前外观自动选 ——
+		// ⚠️ 必须显式带上 traitCollection,否则拿到的可能是另一种外观下的那张。
+		guard let source = UIImage(named: entry.assetName, in: nil, compatibleWith: headerView.traitCollection) else {
+			Self.logger.error("[头图] 智能源「\(entry.debugName, privacy: .public)」的素材 \(entry.assetName, privacy: .public) 没找到")
+			headerView.backgroundImageView.image = nil
+			renderedKey = nil
+			return
+		}
+
+		let size = CGSize(width: width, height: max(headerView.headerHeight, 1))
+		let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: headerView.traitCollection)
+
+		// 标题染色走**和订阅源完全相同的那条规则**:给一个品牌色,
+		// 再压到"在这张纸上读得清"为止(浅色往深里压、深色往亮里提)。
+		overlay.titleLabel.textColor = FeedIconColorAnalyzer.readableTitleColor(
+			brand: entry.titleColor,
+			paper: paper,
+			tint: TimelineStyle.headerTitleTintStrength,
+			minContrast: TimelineStyle.headerTitleMinContrast
+		)
+
+		let layer = Self.makeBlurredFill(source: source, size: size)
+		headerView.backgroundImageView.image = Self.composite(layer: layer, size: size, paper: paper,
+															  strength: TimelineStyle.smartHeaderImageStrength)
+		headerView.setNeedsLayout()
+		renderedKey = key
+
+		Self.logger.info("""
+			[头图] 已装:智能源「\(entry.debugName, privacy: .public)」用打包素材 \
+			\(Int(source.size.width * source.scale))px;头图高 \(Int(self.headerView.headerHeight))pt
+			""")
+	}
+
 	private func render(feed: Feed) {
 		let isDark: Bool = headerView.traitCollection.userInterfaceStyle == .dark
 		let width: CGFloat = headerView.bounds.width > 0 ? headerView.bounds.width : UIScreen.main.bounds.width
 		let key: String = feed.feedID + "|" + (isDark ? "dark" : "light") + "|" + String(Int(width))
 		if renderedKey == key { return }
 
-		overlay.titleLabel.text = feed.nameForDisplay
+		overlay.setTitle(feed.nameForDisplay)
 
 		// 素材:高清优先,其次是**真**图标。
 		// ⚠️ 千万别用 IconImageCache.imageForFeed —— 真图标还没下载好时,它会退回
@@ -388,8 +492,8 @@ extension MainTimelineModernViewController {
 	///
 	/// 「整体蒙版」就是 headerImageStrength:小于 1 的全局不透明度,等价于盖一层纸色 ——
 	/// 强度越低,图的颜色越被纸色拉回来,越不会和页面底色撞。
-	private static func composite(layer: UIImage, size: CGSize, paper: UIColor) -> UIImage {
-		let strength: CGFloat = TimelineStyle.headerImageStrength
+	private static func composite(layer: UIImage, size: CGSize, paper: UIColor,
+								  strength: CGFloat = TimelineStyle.headerImageStrength) -> UIImage {
 		let fadeStartY: CGFloat = size.height * TimelineStyle.headerImageFadeStart
 		let clearMask: CGColor = UIColor.clear.cgColor
 		let solidMask: CGColor = UIColor.black.cgColor
@@ -439,7 +543,14 @@ extension MainTimelineModernViewController {
 	}
 
 	private func applyScrollLinkage() {
-		guard let collectionView, let host, currentFeed != nil else { return }
+		// ⚠️ 这里判的是**有没有头图**(currentSubject),不是"有没有真订阅源"。
+		// 2026-07-23 踩过:`currentFeed` 后来改成了"只有真订阅源才有值"的派生属性,
+		// 而这个 guard 还写着它 —— 于是三个智能源走到这里**直接返回**,后果有两个,
+		// 而且看起来像两个不相干的 bug:
+		//   ① `overlay.apply` 从没被调用 → 标题从来没被布局过 → **头图上没有标题**
+		//   ② `headerView.contentAlpha` 从没被重置 → 带着上一页滚动后的残留值(可能是 0)
+		//      → **返回再进来,头图整个不见了**
+		guard let collectionView, let host, currentSubject != nil else { return }
 		let restY: CGFloat = -collectionView.adjustedContentInset.top
 		let raw: CGFloat = (collectionView.contentOffset.y - restY) / TimelineStyle.headerScrollFadeDistance
 		let progress: CGFloat = min(max(raw, 0), 1)
@@ -639,7 +750,9 @@ extension MainTimelineModernViewController {
 			view.rebuildScrimForAppearanceChange()
 		}
 
-		titleLabel.font = TimelineStyle.headerTitleFont
+		// 初始字体给一个;真正的字体在每次设标题时按内容重挑
+		// (中文走宋体、西文走 New York,见 setTitle)。
+		titleLabel.font = TimelineStyle.headerTitleFont(for: "")
 		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment
 		// 单行:要一路缩放着飞过去,多行会让运动看起来很乱;超长源名自动压字号
 		titleLabel.numberOfLines = 1
@@ -699,6 +812,16 @@ extension MainTimelineModernViewController {
 	/// 缩放用 `transform` 而不是换字号:换字号是跳变的,做不出连续动画。
 	/// 方向上**刻意是"大字缩小"而不是"小字放大"** —— 缩小的插值损失小得多,
 	/// 停靠时看起来仍然干净。
+	/// 设标题。**字体按内容挑**:中文用宋体,西文用 New York。
+	///
+	/// 为什么不在初始化时定死:New York(苹果的衬线体)**没有中文字形**,
+	/// 中文标题会静默回退到黑体,和英文源的衬线标题不是一路。
+	/// 而字体只有拿到实际文字才知道该用哪个,所以跟着 text 一起设。
+	func setTitle(_ text: String) {
+		titleLabel.text = text
+		titleLabel.font = TimelineStyle.headerTitleFont(for: text)
+	}
+
 	func apply(progress: CGFloat, headerHeight: CGFloat, dockBand: CGRect, safeAreaTop: CGFloat) {
 		let width: CGFloat = bounds.width
 		guard width > 0, headerHeight > 0 else { return }
