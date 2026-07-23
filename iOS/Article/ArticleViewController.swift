@@ -742,20 +742,15 @@ extension ArticleViewController {
 	///
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
 	func nnwRefreshNavigationBarAppearance() {
-		// 复刻订阅列表页那种「顶部透、下滚渐显毛玻璃」:
+		// 三个 appearance 全设 **nil** —— 回落系统默认导航栏毛玻璃(深浅自适应)。
 		//
-		// - **scrollEdge(内容在顶部时)= 完全透明**。订阅列表页看着那么"透",
-		//   就是因为大标题模式的 scrollEdge 默认透明。文章页是小标题、默认没有这个透明态
-		//   (2026-07-23 用户反馈"浅色顶栏太不透明"),所以这里显式补上。
-		//   透明**没有深浅色问题**(透明就是透明),不受 L59 那个自适应难题影响。
-		// - **standard / compact(滚动之后)= nil**,回落系统默认毛玻璃(永久深浅自适应)。
-		//   而且文章页往下滚会藏栏(沉浸阅读),往上唤回时若不在顶部才是这个毛玻璃态。
-		//
-		// 两态各取所长:透明态解决"够不够透",毛玻璃态用 nil 解决"深浅自适应"(L59)。
-		let transparent = UINavigationBarAppearance()
-		transparent.configureWithTransparentBackground()
-		navigationItem.scrollEdgeAppearance = transparent
+		// ⚠️ 这是回退到「已知安全」的方案(2026-07-23):
+		// 曾试过 scrollEdge = 完全透明 想让它更"透",但透明会**露出背后 WKWebView 的底**,
+		// 而 web 的深浅色不总跟 app 同步 —— 浅色模式下顶栏直接变成一片黑(用户截图证实)。
+		// 所以放弃 scrollEdge 透明,回到全 nil:虽然毛玻璃偏实、不够"透"(用户不满意),
+		// 但至少深浅色都正常、不出 bug。**"顶栏渐变透明"这个效果留待后续用更周全的方案做。**
 		navigationItem.standardAppearance = nil
+		navigationItem.scrollEdgeAppearance = nil
 		navigationItem.compactAppearance = nil
 	}
 }
