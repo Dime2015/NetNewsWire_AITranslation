@@ -114,6 +114,10 @@ import os
 		// (改造史:最早这里是「完成」,和结果行的「订阅」语义打架;
 		//  后来改成「取消」;现在连按钮本身都不需要了。)
 
+		// [外观] 和 app 其它列表页统一成暖纸风(2026-07-23 用户反馈这页配色没跟上)。
+		// 每个 cell 的底色要在下面的 willDisplay 里逐个刷 —— 表格没有"统一设所有 cell 背景"的入口。
+		AppAppearance.applyPaperStyle(to: tableView)
+
 		searchController.searchBar.delegate = self
 		searchController.searchBar.placeholder = source.placeholder
 		searchController.searchBar.autocapitalizationType = .none
@@ -369,6 +373,12 @@ import os
 		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
 		configureIcon(on: cell, for: result)
 		return cell
+	}
+
+	/// [外观] 把每个 cell 的底色也刷成暖纸色,消除「白卡片 vs 暖背景」的色差,
+	/// 并换上和设置页一致的淡暖"药丸"选中效果(取代系统蓝)。
+	override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+		AppAppearance.applyPaperStyle(to: cell)
 	}
 
 	/// 结果行左边的小图标。

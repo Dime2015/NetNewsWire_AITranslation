@@ -73,7 +73,7 @@
 		   ⚠️ 这不是"顺手简化",是顶栏能安全做透明的**前提**,别改回来:
 
 		   顶栏一旦透明,露出的就是它背后的 WebView。而网页的深浅色走的是网页自己的
-		   `prefers-color-scheme`,不保证和 app 同步 —— 曾经浅色模式下顶栏透出网页的
+		   「prefers-color-scheme」,不保证和 app 同步 —— 曾经浅色模式下顶栏透出网页的
 		   深色底,整条顶栏变成一片黑(见 NOTES-lessons L60,用户截图为证)。
 
 		   现在把纸色的**所有权收归 UIKit**(WebViewController 的 view 背景,
@@ -81,7 +81,7 @@
 		   网页只负责画文字和图片。于是顶栏透出来的永远是正确的纸色,
 		   最坏情况也只是正文文字颜色慢半拍,**顶栏再也不可能变黑**。
 
-		   配套改动在 `WebViewController.nnwUseUIKitPaperBackground()`,两处必须同时在:
+		   配套改动在「WebViewController.nnwUseUIKitPaperBackground()」,两处必须同时在:
 		   只改这里 → 正文变成 WebView 默认白底;只改那里 → 网页底盖住 UIKit 底,白改。
 		   改暖纸色现在**只需改 AppAppearance.Palette 一处**(这里不再有色值)。 */
 		html, body {
@@ -342,11 +342,16 @@
 			padding: 14px;
 			border-radius: 12px;
 			background: var(--code-background-color, rgba(127, 127, 127, 0.12));
+			text-align: center;		/* 里面每一行都居中(2026-07-23 用户要求) */
 		}
 
+		/* 语音条**独占一行、拉满宽度**。
+		   ⚠️ 这三行缺一不可:audio 默认是 inline 元素,不设 block 的话
+		   后面的「在播客中打开」会贴着它排在同一行,文字还会拦腰折断(用户截图为证)。 */
 		#nnwPodcastPlayer audio {
-			width: 100%;
 			display: block;
+			width: 100%;
+			margin: 0 auto;
 		}
 
 		#nnwPodcastPlayer .nnwPodcastMeta {
@@ -355,8 +360,10 @@
 			color: var(--nnw-secondary-text);
 		}
 
+		/* 「在『播客』中打开这一期」也**自成一行** ——
+		   原来是 inline-block,会去挤语音条那一行。 */
 		#nnwPodcastPlayer .nnwPodcastAppleLink {
-			display: inline-block;
+			display: block;
 			margin-top: 10px;
 			font-size: 0.9em;
 		}

@@ -95,7 +95,10 @@ private extension SidebarTreeControllerDelegate {
 			}
 		}
 
-		return updatedChildNodes.sortedAlphabeticallyWithFoldersAtEnd()
+		// [管理] 源按用户在文件夹管理页拖出来的顺序排,文件夹仍按字母排在后面。
+		// 没人拖过时结果和上游原来的 sortedAlphabeticallyWithFoldersAtEnd() 完全一致。
+		// 实现在 Shared/FeedOrder/FeedOrderStore.swift
+		return updatedChildNodes.nnwSortedForDisplay()
 	}
 
 	func createNode(representedObject: Any, parent: Node) -> Node? {
