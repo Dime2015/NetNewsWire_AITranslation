@@ -598,7 +598,11 @@ extension MainTimelineModernViewController {
 	/// 所以这里从原来的**纯纸色 UIView** 换成**系统毛玻璃** —— 滚动后停靠时,
 	/// 这层毛玻璃和订阅列表 / 文章内容页观感一致(半透明、深浅自适应),
 	/// 而顶部还在头图区时它 alpha=0、完全不挡头图。
-	private let scrimView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+	// 材质用 **systemThinMaterial**(较透),不用 systemChromeMaterial ——
+	// 后者是给工具栏设计的、偏实,2026-07-23 用户反馈"完全不透"。thin 能透出下面
+	// 内容的模糊感(像订阅列表页),又足够糊掉滚过顶栏的文字、不至于和停靠标题重叠。
+	// 想更透就换 .systemUltraThinMaterial,更实就换回 .systemChromeMaterial。
+	private let scrimView = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
 	let titleLabel = UILabel()
 
 	override init(frame: CGRect) {
