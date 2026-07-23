@@ -131,6 +131,13 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 	//   · 拖动期间列表长度恒定 → 落点不会在手指底下移动
 	//   · 想放进文件夹里的**指定位置**:先点开那个文件夹,再拖。少一个便利,换来全程可预测。
 
+	/// 拖动中「现在松手就会放进去」的那个文件夹行。
+	///
+	/// 用户 2026-07-23:「我不知道我松手,它是会落在两个文件夹中间,还是某个文件夹里面」——
+	/// 系统对这两种落点本来就有区分(让开一条缝 / 目标行高亮),
+	/// 但那层系统高亮压在我们自铺的暖纸底色上**几乎看不见**,所以自己画一层。
+	private var dropTargetFolder: Item?
+
 	/// 编辑模式下已勾选的行(源和文件夹都可能在里面)。
 	///
 	/// ⚠️ 为什么不直接问 `collectionView.indexPathsForSelectedItems`:
@@ -299,7 +306,7 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		let folderRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
 			guard let self else { return }
 			cell.contentConfiguration = self.rowContent(for: item, base: cell.defaultContentConfiguration())
-			cell.backgroundConfiguration = self.paperCellBackground()
+			cell.backgroundConfiguration = self.paperCellBackground(highlighted: item == self.dropTargetFolder)
 
 			// ⚠️ **这一行的外观刻意完全不看 isEditing**(2026-07-23 第三次改这里,别再加条件):
 			//
@@ -383,7 +390,10 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			// 图标不显式设颜色,让它继承全局强调色(陶土红)。
 			// ⚠️ 强调色的真源是 Assets 里的 primaryAccentColor 色板,不在 AppAppearance 里 ——
 			// 那是为了让 storyboard 也能按名字引到同一个颜色(见 L46)。
-			content.image = UIImage(systemName: "folder")
+			//
+			// 拖动中「松手就会放进这个文件夹」时换成**实心**图标 —— 和底色高亮是两条独立的线索,
+			// 一深一浅、一色一形,哪种屏幕条件下都至少能认出一个。
+			content.image = UIImage(systemName: item == dropTargetFolder ? "folder.fill" : "folder")
 
 		case .feed(_, _, let folderID):
 			guard let feed = feed(for: item) else { return nil }
@@ -459,12 +469,32 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		}
 	}
 
-	/// cell 的暖纸底色(和设置页等其它列表一致)
-	private func paperCellBackground() -> UIBackgroundConfiguration {
+	/// cell 的暖纸底色(和设置页等其它列表一致)。
+	///
+	/// `highlighted` = 拖动中「现在松手就会放进这个文件夹」,给它铺一层强调色。
+	/// 为什么要自己画:系统对「放进这一项」的落点只做**很淡的一层高亮**,
+	/// 而我们给每一行都铺了自定义暖纸底色,那层系统高亮几乎看不出来
+	/// (用户 2026-07-23:「我不知道我松手,它是会落在两个文件夹中间,还是某个文件夹里面」)。
+	private func paperCellBackground(highlighted: Bool = false) -> UIBackgroundConfiguration {
 		var background = UIBackgroundConfiguration.listPlainCell()
-		background.backgroundColor = AppAppearance.paperBackground
+		background.backgroundColor = highlighted
+			? Assets.Colors.primaryAccent.withAlphaComponent(Self.dropTargetTintAlpha)
+			: AppAppearance.paperBackground
 		return background
 	}
+
+	/// 落点高亮的浓度。要够显眼(一眼分得出"进去"还是"插在旁边"),又不能盖住文字。
+	///
+	/// 定这个数时是**算过的**,不是拍脑袋(我点不了模拟器,但色差可以直接算):
+	/// 把强调色按不同浓度叠在暖纸底上,和普通行比每通道的差值 ——
+	/// | 浓度 | 浅色下的色差 | 深色下的色差 |
+	/// |---|---|---|
+	/// | 0.18 | (9, 26, 32) | (33, 17, 10) |
+	/// | 0.22 | (11, 32, 39) | (40, 20, 12) |
+	/// | **0.28** | **(14, 40, 50)** | **(51, 26, 15)** |
+	/// 0.18 / 0.22 在浅色下偏弱(这是个**转瞬即逝**的提示,宁可过一点也别看不见),
+	/// 所以取 0.28。文字仍是深色压在浅底上,可读性不受影响。
+	private static let dropTargetTintAlpha: CGFloat = 0.28
 
 	// MARK: - 把账户里的内容读成列表
 
@@ -1143,8 +1173,13 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let draggingFolder = isDraggingFolder(session.localDragSession)
 
 		guard let decision = dropDecision(at: point, draggingFolder: draggingFolder) else {
+			updateDropTargetHighlight(nil)
 			return UICollectionViewDropProposal(operation: .forbidden)
 		}
+
+		// **让"松手会进这个文件夹"看得见。**
+		// 高亮的条件和落点意图**出自同一个 decision**,所以看到的和放手的结果必然一致。
+		updateDropTargetHighlight(decision.resolution.target == .anchorFolder ? decision.anchor : nil)
 
 		// 两种落点意图,给的是**两种不同的视觉反馈**:
 		// · `.insertAtDestinationIndexPath` —— 周围的行让开一条缝,意思是"插到这个位置"
@@ -1168,7 +1203,21 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		} ?? false
 	}
 
+	/// 手指拖出列表范围了 —— 把落点高亮撤掉,不然它会留在屏幕上。
+	func collectionView(_ collectionView: UICollectionView, dropSessionDidExit session: UIDropSession) {
+		updateDropTargetHighlight(nil)
+	}
+
+	/// 拖放结束(放成了、取消了都算)—— 同上。
+	func collectionView(_ collectionView: UICollectionView, dropSessionDidEnd session: UIDropSession) {
+		updateDropTargetHighlight(nil)
+	}
+
 	func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+
+		// 先把高亮撤掉:接下来这一行的内容就要变了,让它带着"要放进来"的样子被重画很怪。
+		// (只是改颜色和图标,不动数据源,放在这里是安全的。)
+		updateDropTargetHighlight(nil)
 
 		let point = coordinator.session.location(in: collectionView)
 
@@ -1257,6 +1306,8 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let account: Account
 		let accountID: String
 		let resolution: DropResolution
+		/// 落点归属的那一行(高亮要知道该点亮谁)
+		let anchor: Item
 	}
 
 	/// 把屏幕上的一个位置,翻译成「要放进哪个容器」。**悬停判定和放手执行共用这一个入口。**
@@ -1308,7 +1359,31 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		}
 
 		return DropDecision(container: container, account: account, accountID: accountID,
-							resolution: resolution)
+							resolution: resolution, anchor: row.item)
+	}
+
+	/// 给「松手就会放进去」的那个文件夹加一层显眼的高亮(底色 + 实心图标)。
+	///
+	/// ⚠️ **这里只改已经存在的那两行 cell 的外观** —— 不增删行、不动数据源,
+	/// 所以不受"拖动途中不能改数据源"那条约束的限制(L65 那条崩溃路径与此无关)。
+	/// 这也是为什么落点提示能做,而"悬停自动展开/合上"做不了:一个只是换颜色,
+	/// 另一个要增删行。
+	///
+	/// 只在**目标变了**时才动手,免得每次手指移动都刷一遍。
+	private func updateDropTargetHighlight(_ item: Item?) {
+
+		guard dropTargetFolder != item else { return }
+
+		let previous = dropTargetFolder
+		dropTargetFolder = item
+
+		// 旧的取消高亮、新的点亮 —— 两行都要刷
+		for target in [previous, item].compactMap({ $0 }) {
+			guard let indexPath = dataSource.indexPath(for: target),
+				  let cell = collectionView.cellForItem(at: indexPath) as? UICollectionViewListCell else { continue }
+			cell.backgroundConfiguration = paperCellBackground(highlighted: target == dropTargetFolder)
+			cell.contentConfiguration = rowContent(for: target, base: cell.defaultContentConfiguration())
+		}
 	}
 
 	/// 落点那一行在规则表眼里是个什么东西。
