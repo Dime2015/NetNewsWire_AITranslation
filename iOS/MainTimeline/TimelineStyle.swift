@@ -260,11 +260,28 @@ enum TimelineStyle {
 	static let headerScrollFadeDistance = CGFloat(140)
 	/// 停靠在导航栏时的字号(pt)。标题一路从 headerTitleFontSize 线性缩到这个大小。
 	static let headerDockedTitleFontSize = CGFloat(17)
-	/// 停靠时导航栏那条纸色底的不透明度。
-	/// 必须有底 —— 否则文章正文会直接从标题背后穿过去,字叠字(2026-07-22 用户截图证实)。
-	static let headerDockedScrimAlpha = CGFloat(1.0)
-	/// 纸色底在滚动进度的哪一段淡入(0~1)。留到后半段才出现,免得刚一动就压上一片色块。
+	// MARK: 停靠时导航栏那条毛玻璃底
+	//
+	// 必须有底 —— 否则文章正文会直接从标题背后穿过去,字叠字(2026-07-22 用户截图证实)。
+	// 但底又不能太厚,否则整条看起来像块挡板(2026-07-23 用户反馈"毛玻璃太厚")。
+	// 下面三个值就是调这个平衡的,**调顶栏观感只改这里**。
+
+	/// 毛玻璃**浓度**上限(0=完全没有,1=该材质的完整强度)。**嫌厚就往下调,嫌糊不住字就往上调。**
+	///
+	/// ⚠️ 这是"浓度"不是"不透明度",两者不是一回事(2026-07-23 改)。
+	/// 以前用的是 `scrimView.alpha`,苹果明确说毛玻璃视图的 alpha 小于 1 会让模糊失真 ——
+	/// 而且那样调出来的"薄"是**清晰内容和模糊内容叠加**的重影,不是真的薄。
+	/// 现在改由 `UIViewPropertyAnimator` 驱动 effect 本身,停在任意档位都是
+	/// **系统插值出来的真毛玻璃**(模糊半径和着色一起按比例减弱),alpha 全程保持 1。
+	static let headerDockedScrimStrength = CGFloat(0.7)
+	/// 毛玻璃在滚动进度的哪一段开始出现(0~1)。留到后半段才现,免得刚一动就压上一片。
 	static let headerDockedScrimFadeStart = CGFloat(0.45)
+	/// 底边**羽化**高度(pt):毛玻璃在导航栏下沿往下这么多点里渐渐散掉,不留硬边。
+	/// 目的是让顶栏看起来像"一层薄雾浮在内容上",而不是"一条切齐的带子"。
+	/// 这段羽化在导航栏**下方**,不会削弱标题底下的那块,所以不影响标题可读性。
+	static let headerDockedScrimFeather = CGFloat(24)
+	/// 毛玻璃材质。ultraThin 是系统里最透的一档;想更实就换 .systemThinMaterial。
+	static let headerDockedScrimMaterial = UIBlurEffect.Style.systemUltraThinMaterial
 
 	/// 素材要有这么多像素(最长边)才够格当整片大图,否则走主色渐变。
 	/// 主色渐变至少要和纸色差出这么多对比度,否则那片渐变等于不存在。

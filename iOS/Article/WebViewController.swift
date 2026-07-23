@@ -1304,6 +1304,19 @@ private final class NNWScrollBarsHideState {
 	var lastOffsetY: CGFloat = 0
 	var accumulated: CGFloat = 0
 	var primed = false
+
+	/// 正在藏/现栏的过程中 —— 这段时间里**一切滚动回调都不作数**。
+	///
+	/// ⚠️ 没有这道闸门会**栈溢出崩溃**(2026-07-23 用户实测,栈里 28000 层递归)。
+	/// 回路是这样闭合的:
+	///   藏栏 → 导航栏收起 → 安全区变了 → 系统自动调整滚动位置 →
+	///   位置变了又回调滚动 → 我们又判断方向 → 现栏 → 安全区又变 → …… 来回拉锯没有尽头。
+	///
+	/// 这个回路本来就存在,只是在把网页滚动视图交给导航栏跟踪
+	/// (`setContentScrollView`,让顶栏能做"顶部通透/滚动毛玻璃")之后,
+	/// 导航栏会**主动**去更新那个滚动视图的安全区,回路才闭合得又快又紧。
+	/// 所以闸门和那个功能是配套的,**别删**。
+	var isTogglingBars = false
 }
 
 extension WebViewController {
@@ -1326,6 +1339,12 @@ extension WebViewController {
 	func nnwUpdateBarsForScroll(_ scrollView: UIScrollView) {
 		guard isFullScreenAvailable else { return }	// 功能没开就什么都不做
 		let state = nnwScrollHideState
+
+		// ⚠️ 正在藏/现栏 → 这一轮的滚动是**系统自己调整安全区带来的**,不是用户在滑。
+		// 必须原地返回,否则会无限套娃直到栈溢出(见 isTogglingBars 的说明)。
+		// 放在最前面(连 lastOffsetY 都不记),因为切换结束后会重新取基准。
+		guard !state.isTogglingBars else { return }
+
 		let y = scrollView.contentOffset.y
 		let topEdge = -scrollView.adjustedContentInset.top
 		defer { state.lastOffsetY = y }
@@ -1339,7 +1358,7 @@ extension WebViewController {
 		// 到顶:强制显示。否则栏藏着、又滚不动了,返回键就永远找不回来。
 		if y <= topEdge + 4 {
 			if navigationController?.isNavigationBarHidden == true {
-				showBars()
+				nnwToggleBars(hide: false)
 			}
 			state.accumulated = 0
 			return
@@ -1357,10 +1376,37 @@ extension WebViewController {
 
 		let hidden = navigationController?.isNavigationBarHidden ?? false
 		if state.accumulated > Self.nnwBarsToggleThreshold, !hidden {
-			hideBars()			// 内容上移(往下读)→ 藏栏
-			state.accumulated = 0
+			nnwToggleBars(hide: true)	// 内容上移(往下读)→ 藏栏
 		} else if state.accumulated < -Self.nnwBarsToggleThreshold, hidden {
-			showBars()			// 内容下移(往回看)→ 现栏
+			nnwToggleBars(hide: false)	// 内容下移(往回看)→ 现栏
+		}
+	}
+
+	/// 藏/现栏的**唯一入口** —— 把闸门落下、切换、再择机抬起。
+	///
+	/// ⚠️ **不要绕过它直接调 `hideBars()` / `showBars()`**,那样就没有闸门保护,
+	/// 会重新炸出 28000 层递归的栈溢出(见 `isTogglingBars`)。
+	///
+	/// 闸门为什么要拖到下一轮 runloop 才抬起:切换栏引发的布局(安全区变化 →
+	/// 滚动位置被系统调整 → 又回调滚动)是在**本轮同步**跑完的,必须整段罩住。
+	/// 抬闸时顺手 `primed = false`:切换期间滚动位置被系统改过,
+	/// 直接接着算方向会拿到一个混着"系统调整量"的假 delta,重新取一次基准最干净。
+	private func nnwToggleBars(hide: Bool) {
+		let state = nnwScrollHideState
+		state.isTogglingBars = true
+		state.accumulated = 0
+
+		if hide {
+			hideBars()
+		} else {
+			showBars()
+		}
+
+		DispatchQueue.main.async { [weak self] in
+			guard let self else { return }
+			let state = self.nnwScrollHideState
+			state.isTogglingBars = false
+			state.primed = false		// 下一帧重新取基准
 			state.accumulated = 0
 		}
 	}

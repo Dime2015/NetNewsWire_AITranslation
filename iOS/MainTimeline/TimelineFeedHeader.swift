@@ -594,14 +594,31 @@ extension MainTimelineModernViewController {
 
 	/// 停靠时铺在导航栏那条上的底。没有它,正文会直接从标题背后穿过去。
 	///
-	/// 2026-07-23 用户要求文章列表页顶栏也做成订阅列表那种"渐变透明毛玻璃"。
-	/// 所以这里从原来的**纯纸色 UIView** 换成**系统毛玻璃** —— 滚动后停靠时,
-	/// 这层毛玻璃和订阅列表 / 文章内容页观感一致(半透明、深浅自适应),
-	/// 而顶部还在头图区时它 alpha=0、完全不挡头图。
-	// 材质用 **systemUltraThinMaterial**(最透的一档) —— chrome/thin 都偏实,
-	// 2026-07-23 用户两次反馈"完全不透"。ultraThin 能明显透出下面内容的模糊感。
-	// 想更实就往回换 .systemThinMaterial / .systemChromeMaterial。
-	private let scrimView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+	/// 效果目标(2026-07-23 用户要求):和订阅列表页 / 文章内容页一样的"渐变透明毛玻璃" ——
+	/// 顶部还在头图区时完全没有它、一点不挡头图;往下滚才渐渐现出一层**薄**毛玻璃。
+	///
+	/// ⚠️ **effect 初始是 nil,浓度由下面的 `scrimAnimator` 驱动,别在这里直接给它 effect。**
+	private let scrimView = UIVisualEffectView(effect: nil)
+
+	/// 给毛玻璃底边做羽化的遮罩:上面那段全实,最后 `headerDockedScrimFeather` 点渐隐到透明。
+	/// 没有它,毛玻璃的下沿是一条切齐的硬边,整条看起来像块挡板而不是一层雾。
+	private let scrimMask = CAGradientLayer()
+
+	/// 驱动**毛玻璃浓度**的动画器 —— 它不播放,只是被当成一根"浓度滑杆"用。
+	///
+	/// ⚠️ **为什么不用 `scrimView.alpha`**(2026-07-23 改,这是本轮的关键修正):
+	/// 苹果明确说毛玻璃视图的 alpha 小于 1 会让模糊失真;而且拿 alpha 调出来的"薄",
+	/// 本质是**清晰内容和模糊内容叠加**的重影,不是真的薄。
+	/// 官方做法是把"从无到毛玻璃"这个变化交给 `UIViewPropertyAnimator`,再用
+	/// `fractionComplete` 把它**停在任意档位** —— 那是系统插值出来的真毛玻璃
+	/// (模糊半径和着色一起按比例减弱)。于是"厚度"变成一个可调的旋钮
+	/// (`TimelineStyle.headerDockedScrimStrength`),而 alpha 全程保持 1。
+	///
+	/// ⚠️ **这个动画器停在"暂停中"状态时被释放会直接崩溃**(UIKit 的硬性要求)。
+	/// 本类是主线程隔离的,Swift 6 不允许在 `deinit` 里访问它,所以收尾改在
+	/// `willMove(toWindow:)`:离开窗口就停掉,回来时按需重建。**别把这段挪进 deinit。**
+	private var scrimAnimator: UIViewPropertyAnimator?
+
 	let titleLabel = UILabel()
 
 	override init(frame: CGRect) {
@@ -609,8 +626,18 @@ extension MainTimelineModernViewController {
 		backgroundColor = .clear
 		isUserInteractionEnabled = false	// 纯装饰,一点也不挡下面列表的点按
 
-		scrimView.alpha = 0
+		// 羽化遮罩:自上而下「实 → 实 → 透」,拐点位置在 apply() 里按实际高度算。
+		scrimMask.startPoint = CGPoint(x: 0.5, y: 0)
+		scrimMask.endPoint = CGPoint(x: 0.5, y: 1)
+		scrimMask.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+		scrimView.layer.mask = scrimMask
 		addSubview(scrimView)
+
+		// 切深浅色时把浓度滑杆重建一次 —— 毛玻璃材质的深浅两套颜色是在
+		// 动画器建立时插值固化的,不重建的话切换后会停在旧的那套(L59 的同类问题)。
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TimelineHeaderOverlayView, _) in
+			view.rebuildScrimForAppearanceChange()
+		}
 
 		titleLabel.font = TimelineStyle.headerTitleFont
 		titleLabel.textAlignment = TimelineStyle.headerTitleAlignment
@@ -621,11 +648,50 @@ extension MainTimelineModernViewController {
 		titleLabel.isAccessibilityElement = true
 		addSubview(titleLabel)
 
-		// 毛玻璃(systemChromeMaterial)自带深浅色自适应,不需要手动跟随明暗重设颜色。
+		// 毛玻璃自带深浅色自适应,不需要手动跟随明暗重设颜色(只需切换时重建浓度滑杆,见上)。
 	}
 
 	required init?(coder: NSCoder) {
 		fatalError("不从 storyboard 创建")
+	}
+
+	// MARK: 毛玻璃浓度滑杆的生命周期
+
+	/// 拿到浓度滑杆,没有就现建一根(建好就停在起点,等人喂进度)。
+	private func scrimAnimatorIfNeeded() -> UIViewPropertyAnimator {
+		if let existing = scrimAnimator { return existing }
+		let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
+			guard let self else { return }
+			self.scrimView.effect = UIBlurEffect(style: TimelineStyle.headerDockedScrimMaterial)
+		}
+		// 到头了也不要自动"结束" —— 结束后这根滑杆就作废了,之后再喂进度不会有任何反应。
+		animator.pausesOnCompletion = true
+		scrimAnimator = animator
+		return animator
+	}
+
+	/// 停掉并丢弃浓度滑杆,顺便把毛玻璃清空。
+	private func stopScrimAnimator() {
+		scrimAnimator?.stopAnimation(true)
+		scrimAnimator = nil
+		scrimView.effect = nil
+	}
+
+	/// 深浅色切换时重建滑杆,并把浓度接回原来的位置(观感上没有跳变)。
+	private func rebuildScrimForAppearanceChange() {
+		let fraction = scrimAnimator?.fractionComplete ?? 0
+		stopScrimAnimator()
+		guard fraction > 0 else { return }
+		scrimAnimatorIfNeeded().fractionComplete = fraction
+	}
+
+	/// ⚠️ 页面离开窗口时必须停掉滑杆 —— 它停在"暂停中"状态时被释放会**直接崩溃**。
+	/// 这里是 deinit 的替身(本类主线程隔离,Swift 6 不让在 deinit 里碰它)。
+	override func willMove(toWindow newWindow: UIWindow?) {
+		super.willMove(toWindow: newWindow)
+		if newWindow == nil {
+			stopScrimAnimator()
+		}
 	}
 
 	/// 按滚动进度摆放标题(0 = 停在头图下方靠右,1 = 停靠在导航栏正中)。
@@ -637,11 +703,34 @@ extension MainTimelineModernViewController {
 		let width: CGFloat = bounds.width
 		guard width > 0, headerHeight > 0 else { return }
 
-		// 纸色底:后半段才淡入,免得刚一动就压上一片色块
+		// —— 毛玻璃底:后半段才现,免得刚一动就压上一片 ——
 		let scrimStart: CGFloat = TimelineStyle.headerDockedScrimFadeStart
 		let scrimProgress: CGFloat = progress <= scrimStart ? 0 : (progress - scrimStart) / max(1 - scrimStart, 0.01)
-		scrimView.frame = CGRect(x: 0, y: 0, width: width, height: max(safeAreaTop, dockBand.maxY))
-		scrimView.alpha = min(max(scrimProgress, 0), 1) * TimelineStyle.headerDockedScrimAlpha
+
+		// 高度 = 「实的那段」(盖住状态栏+导航栏)+「羽化那段」(在导航栏下方渐渐散掉)
+		let solidHeight: CGFloat = max(safeAreaTop, dockBand.maxY)
+		let feather: CGFloat = TimelineStyle.headerDockedScrimFeather
+		scrimView.frame = CGRect(x: 0, y: 0, width: width, height: solidHeight + feather)
+		scrimView.alpha = 1	// ⚠️ 恒为 1,浓度由滑杆调(理由见 scrimAnimator 的说明)
+
+		// 遮罩跟着尺寸走。⚠️ 必须关掉 CALayer 的隐式动画 —— 否则每帧的 frame/locations 变化
+		// 都会被排成一段 0.25 秒的动画,羽化就跟不上手指了。
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		scrimMask.frame = scrimView.bounds
+		let solidRatio = solidHeight / max(scrimView.bounds.height, 1)
+		scrimMask.locations = [0, NSNumber(value: Double(solidRatio)), 1]
+		CATransaction.commit()
+
+		// 浓度:0 → 上限。
+		// 回到顶部(不需要毛玻璃)时**顺手把滑杆停掉**:一来省得白留一根,
+		// 二来它停在"暂停中"状态时被释放会崩,活着的时间越短越安全。
+		let strength: CGFloat = min(max(scrimProgress, 0), 1) * TimelineStyle.headerDockedScrimStrength
+		if strength > 0 {
+			scrimAnimatorIfNeeded().fractionComplete = strength
+		} else if scrimAnimator != nil {
+			stopScrimAnimator()
+		}
 
 		// —— 两个端点 ——
 		let sideMargin: CGFloat = TimelineStyle.headerTitleSideMargin
