@@ -742,20 +742,20 @@ extension ArticleViewController {
 	///
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
 	func nnwRefreshNavigationBarAppearance() {
-		// 把三个 appearance 全设为 **nil** —— 交给系统默认导航栏外观。
+		// 复刻订阅列表页那种「顶部透、下滚渐显毛玻璃」:
 		//
-		// ⚠️ 这是 2026-07-23 第二次修「深色顶栏发浅」时定的做法,日志证明的(见 L59):
-		// 上一轮我用「明暗变化时重建 appearance」,但实测 `registerForTraitChanges`
-		// 在"停在文章页切深浅色"时**根本不触发**(切深色后没有任何 refresh 日志),
-		// 于是浅色下创建的毛玻璃一直固化着。而上游 viewDidLoad 里显式设的
-		// `configureWithDefaultBackground()` 同样是**一次性固化、不自适应** —— 那才是
-		// 深色顶栏发浅的根因。
+		// - **scrollEdge(内容在顶部时)= 完全透明**。订阅列表页看着那么"透",
+		//   就是因为大标题模式的 scrollEdge 默认透明。文章页是小标题、默认没有这个透明态
+		//   (2026-07-23 用户反馈"浅色顶栏太不透明"),所以这里显式补上。
+		//   透明**没有深浅色问题**(透明就是透明),不受 L59 那个自适应难题影响。
+		// - **standard / compact(滚动之后)= nil**,回落系统默认毛玻璃(永久深浅自适应)。
+		//   而且文章页往下滚会藏栏(沉浸阅读),往上唤回时若不在顶部才是这个毛玻璃态。
 		//
-		// 设 nil 后,导航栏回落到系统内置默认外观,那个是**天然深浅自适应**的毛玻璃
-		// (订阅列表页就是这个,因为它压根没设过 appearance)。**设一次就永久自适应,
-		// 不再依赖任何"变了要重建"的触发。**
+		// 两态各取所长:透明态解决"够不够透",毛玻璃态用 nil 解决"深浅自适应"(L59)。
+		let transparent = UINavigationBarAppearance()
+		transparent.configureWithTransparentBackground()
+		navigationItem.scrollEdgeAppearance = transparent
 		navigationItem.standardAppearance = nil
-		navigationItem.scrollEdgeAppearance = nil
 		navigationItem.compactAppearance = nil
 	}
 }
