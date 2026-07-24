@@ -1444,7 +1444,7 @@ struct SidebarItemNode: Hashable, Sendable {
 
 	func showBrowserForCurrentFeed() {
 		if let ip = currentFeedIndexPath, let url = homePageURLForFeed(ip) {
-			UIApplication.shared.open(url, options: [:])
+			NNWLinkOpener.open(url, from: rootSplitViewController)	// [链接] 一行换一行:跟着「app 内打开」开关走(原来无条件跳系统浏览器)
 		}
 	}
 
@@ -1452,14 +1452,14 @@ struct SidebarItemNode: Hashable, Sendable {
 		guard let url = article.preferredURL else {
 			return
 		}
-		UIApplication.shared.open(url, options: [:])
+		NNWLinkOpener.open(url, from: rootSplitViewController)	// [链接] 一行换一行,理由同上
 	}
 
 	func showBrowserForCurrentArticle() {
 		guard let url = currentArticle?.preferredURL else {
 			return
 		}
-		UIApplication.shared.open(url, options: [:])
+		NNWLinkOpener.open(url, from: rootSplitViewController)	// [链接] 一行换一行,理由同上
 	}
 
 	func showInAppBrowser() {

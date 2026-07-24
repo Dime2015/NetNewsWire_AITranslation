@@ -1077,8 +1077,8 @@ extension MainFeedCollectionViewController {
 		}
 
 		let title = NSLocalizedString("Open Home Page", comment: "Command")
-		let action = UIAction(title: title, image: Assets.Images.safari) { _ in
-			UIApplication.shared.open(url, options: [:])
+		let action = UIAction(title: title, image: Assets.Images.safari) { [weak self] _ in
+			NNWLinkOpener.open(url, from: self)	// [链接] 一行换一行:跟着「app 内打开」开关走
 		}
 		return action
 	}
@@ -1091,8 +1091,8 @@ extension MainFeedCollectionViewController {
 		}
 
 		let title = NSLocalizedString("Open Home Page", comment: "Command")
-		let action = UIAlertAction(title: title, style: .default) { _ in
-			UIApplication.shared.open(url, options: [:])
+		let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
+			NNWLinkOpener.open(url, from: self)	// [链接] 一行换一行,理由同上
 			completion(true)
 		}
 		return action
