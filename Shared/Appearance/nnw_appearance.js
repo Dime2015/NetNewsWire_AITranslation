@@ -70,6 +70,13 @@
 		   ⚠️ 藏「headerContainer」而不是只藏里面那两个单元格:
 		   只藏单元格的话,那张空表格仍然占着行高,正文顶上会多出一段莫名的空白。 */
 		.nnw-reading-bar .headerContainer { display: none; }
+		/* 日期那一行也藏(2026-07-23 用户报「作者和日期重合」):
+		   模板里日期是**独立的一行**(.articleDateline / .articleDatelineTitle,见 template.html),
+		   不在 headerContainer、也不是 articleTitle,所以上面两条藏不到它。
+		   藏掉标题和表头后,它会顶到正文最上面,正好落在阅读栏画的「源名·作者」上,叠成一团。
+		   阅读栏本身就是这篇文章的表头,日期归它管(需要的话后面加进那条栏),网页这行留着只会打架。 */
+		.nnw-reading-bar .articleDateline,
+		.nnw-reading-bar .articleDatelineTitle { display: none; }
 
 		/* 我们自己的「次要文字」颜色(图注、作者名都用它)。
 		   为什么不直接用上游的 --article-date-color:那个变量定义在默认主题的
@@ -624,6 +631,41 @@
 			event.preventDefault();
 		}, true); // 捕获阶段:要赶在浏览器处理链接跳转之前
 	}
+
+	// ⚠️ **打标记 + 藏表头这两件事要在 document start 就做,不能等 inject()**
+	// (2026-07-23 用户报「老式表头先出现、十几秒后才刷新成新式」)。
+	//
+	// 病根:`inject()` 被推迟到了 DOMContentLoaded,而它里面才 markReadingBarIfNeeded()
+	// + 装隐藏样式。一篇长文从 document start 到 DOMContentLoaded 可能好几秒 ——
+	// 那几秒里既没标记也没隐藏规则,网页自己的原生表头照常显示,直到 inject 跑起来才消失。
+	//
+	// 修法:把「打标记」和「一小段只含隐藏规则的样式」提到最前面,当场就装上。
+	// `<html>`(documentElement)在 document start 一定存在,所以样式挂它身上即可,
+	// 不用等 <head>。图片排版那些还是留给 inject() 在 DOM 备好后做。
+	function installReadingBarHideStyleEarly() {
+		if (/Macintosh/.test(navigator.userAgent)) {
+			return;
+		}
+		if (document.getElementById("nnwReadingBarHideEarly")) {
+			return;
+		}
+		var root = document.head || document.documentElement;
+		if (!root) {
+			return;
+		}
+		var style = document.createElement("style");
+		style.id = "nnwReadingBarHideEarly";
+		// 和上面 STYLE 里那几条隐藏规则一致(重复无害,双保险:早的先挡住,晚的兜底)
+		style.textContent =
+			".nnw-reading-bar .articleTitle," +
+			".nnw-reading-bar .headerContainer," +
+			".nnw-reading-bar .articleDateline," +
+			".nnw-reading-bar .articleDatelineTitle { display: none; }";
+		root.appendChild(style);
+	}
+
+	markReadingBarIfNeeded();
+	installReadingBarHideStyleEarly();
 
 	if (document.readyState === "loading") {
 		document.addEventListener("DOMContentLoaded", inject);

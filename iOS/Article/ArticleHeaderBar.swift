@@ -165,6 +165,14 @@ import Images
 	/// 源站主页 —— 点「源名 · 作者」那行时打开
 	private var feedHomePageURL: URL?
 
+	/// 网页装载完了没(false = 还在装)。
+	///
+	/// ⚠️ **装载期间 WebKit 会自己重置滚动位置**,那一瞬的 contentOffset 不可信 ——
+	/// 拿它算飞行进度会得出"半冻结"的鬼样子(2026-07-23 用户截图:翻页中途
+	/// 大标题、冻结小标题、正文三层叠在一起)。所以**没装载完一律按"停在顶部"画**,
+	/// didFinish 之后才信真实偏移。这是把挂载提前到 renderPage(治"表头闪现")的必要配套。
+	private var contentSettled = true
+
 	// MARK: - 装 / 卸
 
 	override init() {
@@ -179,6 +187,8 @@ import Images
 		container.passThroughExcept = { [weak self] in self?.sourceLabel }
 		// 宽度变了就重新量、重新摆(转屏;也兜住"第一次布局时宽度还不对"的情况)
 		container.onLayout = { [weak self] in self?.layoutAndApply() }
+		// [方案 C] 页面被销毁 / 移出层级时,把毛玻璃动画器停掉,免得它在"活动中"被释放而崩溃(L62)
+		container.onWillLeaveWindow = { [weak self] in self?.stopScrimAnimator() }
 
 		scrimView.frame = .zero
 		container.addSubview(scrimView)
@@ -219,9 +229,12 @@ import Images
 	///
 	/// 调用时机跟着 `nnwTrackCurrentArticleScrolling()` 走 —— 那是**已有的**方法,
 	/// 网页加载完、翻页结束时都会调到,正是我们需要的两处。**不用往上游加新钩子。**
-	func update(article: Article?, host: UIViewController, scrollView: UIScrollView?) {
+	/// `contentSettled`:true = 网页装载完(didFinish)、偏移可信;false = 刚开始装载;
+	/// nil = 只是布局变化(转屏等),装载状态不变。
+	func update(article: Article?, host: UIViewController, scrollView: UIScrollView?, contentSettled: Bool? = nil) {
 
 		self.host = host
+		if let contentSettled { self.contentSettled = contentSettled }
 
 		guard let article, let scrollView else {
 			detach()
@@ -358,6 +371,13 @@ import Images
 
 		guard let host, let scrollView, container.superview != nil else { return }
 
+		// ⚠️ **不在窗口上就什么都不做**(2026-07-23 修一个必崩:页面被滑走销毁时,
+		// 惯性滚动还在每帧触发 KVO 回调 —— 这里若继续跑,会把刚被 willMove(toWindow:)
+		// 停掉的毛玻璃动画器**又重新建出来**,随后页面释放,动画器在"活动中"被释放 → 崩(L62)。
+		// 崩溃栈里 _smoothScrollWithUpdateTime + UIViewPropertyAnimator dealloc 就是这条路。)
+		// 页面被滑回来时 layoutSubviews 会再触发 onLayout,一切自动恢复。
+		guard container.window != nil else { return }
+
 		let width = host.view.bounds.width
 		guard width > 0 else { return }
 
@@ -381,9 +401,16 @@ import Images
 		container.frame = CGRect(x: 0, y: 0, width: width, height: safeTop + measuredHeight)
 
 		// —— 飞行进度(0 = 停在顶部,1 = 完全冻结)——
-		let restY = -scrollView.adjustedContentInset.top
-		let travelled = scrollView.contentOffset.y - restY
-		let flight = min(max(travelled / Style.flightDistance, 0), 1)
+		// ⚠️ 网页还没装载完时偏移不可信(WebKit 装载中会自己重置滚动位置),
+		// 一律按"停在顶部"画;didFinish 之后才用真实偏移(见 contentSettled 的说明)。
+		let flight: CGFloat
+		if contentSettled {
+			let restY = -scrollView.adjustedContentInset.top
+			let travelled = scrollView.contentOffset.y - restY
+			flight = min(max(travelled / Style.flightDistance, 0), 1)
+		} else {
+			flight = 0
+		}
 
 		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop)
 		applyProgressRing(scrollView: scrollView, flight: flight)
@@ -560,9 +587,22 @@ import Images
 	/// 容器尺寸变了(转屏、分屏、首次布局)时叫一声 —— 头区要按新宽度重量。
 	var onLayout: (() -> Void)?
 
+	/// **即将离开窗口**(所属页面被销毁 / 移出层级)时叫一声。
+	/// ⚠️ 这是**方案 C 之后必须补的一环**(L62):每页一份之后,滑走一页 = 那一页连同它的
+	/// 阅读栏一起销毁,而毛玻璃动画器若正停在"活动中"被释放会**直接崩溃**。
+	/// 所以离开窗口时先把它停掉。整页共享那版几乎不销毁,才一直没暴露这个坑。
+	var onWillLeaveWindow: (() -> Void)?
+
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		onLayout?()
+	}
+
+	override func willMove(toWindow newWindow: UIWindow?) {
+		super.willMove(toWindow: newWindow)
+		if newWindow == nil {
+			onWillLeaveWindow?()
+		}
 	}
 
 	override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

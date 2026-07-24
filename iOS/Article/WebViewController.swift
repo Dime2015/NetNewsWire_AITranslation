@@ -107,6 +107,15 @@ final class WebViewController: UIViewController {
 		}
 	}
 
+	// [外观] 阅读栏(方案 C:每页一份)。放在布局回调里,是为了兜住一种情形:
+	// UIPageViewController 预载的相邻页,在**变可见、拿到真实尺寸**之前 renderPage/didFinish
+	// 可能都已经跑过(那时 view.bounds 还是 0,挂栏被跳过)。等它真正被滑到、这里一定会触发,
+	// 保证栏能挂上。nnwUpdateReadingBar 幂等,重复调无害。实现在 WebViewController+ReadingBar.swift。
+	override func viewDidLayoutSubviews() {
+		super.viewDidLayoutSubviews()
+		nnwUpdateReadingBar()
+	}
+
 	override func viewWillDisappear(_ animated: Bool) {
 		super.viewWillDisappear(animated)
 		// Pause in-flight media before the view goes away. Leaving a video playing during
@@ -415,6 +424,7 @@ extension WebViewController: WKNavigationDelegate {
 		nnwRecordAndAutoRestoreOnDidFinish() // [状态记忆] item③ 记住阅读模式 + 按需自动恢复译文,实现在本文件末尾
 		nnwHandOffScrollViewToNavigationBar() // [外观] 把本页滚动交给顶栏跟踪(顶部透明↔滚动毛玻璃),实现在本文件末尾
 		nnwMarkReadingBar() // [外观] 打标记类,让注入样式把网页里的标题/头像藏掉,实现在本文件末尾
+		nnwUpdateReadingBar(contentSettled: true) // [外观] 阅读栏(方案 C):装载完了,从这一刻起滚动偏移可信
 	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -664,6 +674,11 @@ private extension WebViewController {
 
 		WebViewConfiguration.addContentBlockingRules(to: webView)
 		webView.loadHTMLString(html, baseURL: Self.nnwAdjustedBaseURL(rendering.baseURL)) // [YouTube] 见文件末尾
+
+		// [外观] 阅读栏(方案 C:每页一份)—— 网页刚开始装载就把栏挂上、正文往下推,
+		// 不等 didFinish(治「老式表头闪现十几秒」)。contentSettled: false =
+		// 装载期间按"停在顶部"画,别信 WebKit 装载中的滚动偏移。实现在 WebViewController+ReadingBar.swift。
+		nnwUpdateReadingBar(contentSettled: false)
 	}
 
 	func finalScrollPosition(scrollingUp: Bool) -> CGFloat {
@@ -1412,8 +1427,22 @@ extension WebViewController {
 		state.isTogglingBars = true
 		state.accumulated = 0
 
+		// ⚠️⚠️ **藏栏前先记住现在是不是「阅读栏模式」**(2026-07-24 修一串连环 bug 的钥匙):
+		//
+		// 上游 `hideBars()` 的第一行是 `AppDefaults.shared.articleFullscreenEnabled = true` ——
+		// 它把"栏现在藏着"**持久化成了设置项**(上游语义:全屏开关 = 当前状态)。
+		// 而阅读栏模式的判断读的正是这个值 → 一藏栏,阅读栏立刻被误判成"用户开了沉浸模式"
+		// 而整个拆掉(用户截图:下滑到底顶栏全消失、位置乱跳)。
+		// 更糟的是**藏着栏时杀掉 app,这个标记永久留在 true** —— 下次启动全 app 变沉浸模式。
+		//
+		// 所以:阅读栏模式下藏完栏,**立刻把标记写回 false**。上游那两个方法一行未动。
+		let wasReadingBarMode = !AppDefaults.shared.logicalArticleFullscreenEnabled
+
 		if hide {
 			hideBars()
+			if wasReadingBarMode {
+				AppDefaults.shared.articleFullscreenEnabled = false
+			}
 		} else {
 			showBars()
 		}

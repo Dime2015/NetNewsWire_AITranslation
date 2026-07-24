@@ -762,10 +762,9 @@ extension ArticleViewController {
 			return
 		}
 		setContentScrollView(scrollView)
-		// [外观] 顺手把顶部「阅读栏」也绑到这一页(实现在 ArticleHeaderBar.swift)。
-		// 挂在这里是**有意的**:本方法的两个调用时机(网页加载完 / 翻页结束)
-		// 正好就是阅读栏需要换内容的两个时机,不用再往上游加钩子。
-		nnwUpdateArticleHeaderBar()
+		// [外观] 阅读栏（方案 C）已改成**每个 WebViewController 自己挂**(见 WebViewController+ReadingBar.swift),
+		// 不再由这里的整页共享浮层负责 —— 那版翻页时会滞留/错位,已废弃。
+		// 本方法现在只剩一件事:把当前页的滚动交给导航栏跟踪(顶部透明↔滚动毛玻璃)。
 		// 留这行日志是为了将来排查"顶栏又不透了":它能一眼区分**没调用**(路径断了)
 		// 和**调用了但没效果**(得换别的做法),不用靠肉眼猜。
 		Self.logger.info("[外观] 顶栏跟踪已接上,内容偏移 \(scrollView.contentOffset.y, privacy: .public)")
@@ -799,37 +798,9 @@ extension ArticleViewController {
 	}
 }
 
-// MARK: - [外观] 文章页顶部「阅读栏」的宿主(实现在 ArticleHeaderBar.swift)
-
-extension ArticleViewController {
-
-	private static var nnwHeaderBarKey: UInt8 = 0
-
-	/// 阅读栏该不该出现:**只有关掉「全屏阅读」时才有**。
-	///
-	/// 那个开关本来控制的就是"滑动藏栏的沉浸模式",两者互斥
-	/// (栏都藏了,冻结在栏里的东西没地方待)。所以直接拿它当两种阅读模式的切换,
-	/// 不新增设置项:**关(默认)= 阅读栏常驻;开 = 旧的沉浸模式**。
-	var nnwReadingBarEnabled: Bool {
-		traitCollection.userInterfaceIdiom == .phone && !AppDefaults.shared.logicalArticleFullscreenEnabled
-	}
-
-	func nnwUpdateArticleHeaderBar() {
-		let controller: ArticleHeaderBarController
-		if let existing = objc_getAssociatedObject(self, &Self.nnwHeaderBarKey) as? ArticleHeaderBarController {
-			controller = existing
-		} else {
-			guard nnwReadingBarEnabled else { return }	// 沉浸模式下压根不建
-			controller = ArticleHeaderBarController()
-			objc_setAssociatedObject(self, &Self.nnwHeaderBarKey, controller, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-		}
-
-		guard nnwReadingBarEnabled else {
-			controller.detach()
-			return
-		}
-		controller.update(article: article,
-						  host: self,
-						  scrollView: currentWebViewController?.nnwContentScrollView)
-	}
-}
+// MARK: - [外观] 文章页顶部「阅读栏」
+//
+// 阅读栏已改成**每个 WebViewController 各自带一份**(方案 C,2026-07-23) ——
+// 实现搬到了 `WebViewController+ReadingBar.swift`,由那一页自己的生命周期挂载。
+// 原来这里那套"整页共享一层浮层、每翻一页重新绑"的做法翻页时会滞留/错位,已整体废弃。
+// `ArticleHeaderBarController` 那个类本身仍在用,只是宿主从本控制器换成了 WebViewController。
