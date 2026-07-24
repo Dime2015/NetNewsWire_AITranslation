@@ -349,7 +349,25 @@ swiftc -o /tmp/sim-readingmode "iOS/ReadingMode/ReadingModeRules.swift" "tools/s
 文件夹没了、里面的源出现在「不在文件夹里」组;④选「连同里面的源一起删除」→ 都没了,
 摇一摇能整个撤销回来;⑤勾中文件夹时「移动到…」应该是灰的。
 
-### 🆕 app 图标换 v3(浮世绘武士看手机,2026-07-24,**待用户验收**)
+### 🆕 品牌名收口:代码零写死,改名一条命令(2026-07-24,已完成)
+
+**用户要求**:盘点所有出现「Babel」的地方,做到想换名字时一键替换。
+
+**盘点结果**(全部落点与归属,详表在 `iOS/NNWBrand.swift` 文件头):
+- 主屏 app 名:xcconfig `APP_DISPLAY_NAME`(唯一真源,流经 Info.plist 的 CFBundleDisplayName)
+- 中文文案 ~17 处(设置页/关于页等):`i18n/zh-Hans.json` + `Settings.strings`
+- 首页头图报头:曾是 Swift 里唯一写死的 `feedListTitle = "Babel"` —— **已收口**
+- bundle id / target / User-Agent / 英文原文:**故意不改**(原因见 rebrand.py 开头)
+
+**收口做法**:新增 `iOS/NNWBrand.swift`,运行时从 Bundle 读显示名;
+`feedListTitle` 改为引用它。**从此代码里零写死品牌名**(兜底值都刻意用中性的「RSS」)。
+**改名的完整动作只剩一条命令**:`python3 i18n/rebrand.py <新名字>` + 重新编译。
+规矩写进了 NNWBrand 文件头与 rebrand.py 文档:**新功能显示品牌名一律引用 NNWBrand.displayName**。
+(`rebrand.py --check` 报的 zh-Hans.json 里 9 处 NetNewsWire 是 JSON 的**键**=英文原文,机制本来就跳过。)
+
+顺带白捡一个确认:截图时看到冻结小标题显示**翻译后的中文标题** —— 标题喂给阅读栏在真机数据上工作正常。
+
+### 🆕 app 图标换 v3(浮世绘武士看手机,2026-07-24,**已验收**)
 
 用户提供三张 v3 素材(`external resources/app icon/app icon v3 {light,dark,mono}.png`,
 1254×1254 无透明通道,同一场景昼夜版:白天晒太阳 / 夜里对月亮 / 单色灰度)。

@@ -14,6 +14,13 @@
      · iOS/**/zh-Hans.lproj/*.strings        (storyboard 的中文译文)
 3. 提醒你重新跑注入脚本和编译
 
+代码里的品牌名(2026-07-24 起)
+------------------------------
+Swift 侧**没有写死的品牌名**:所有代码落点统一走 `iOS/NNWBrand.swift`,
+运行时从 Bundle 读 CFBundleDisplayName(= 本脚本改的那个 APP_DISPLAY_NAME)。
+所以本脚本改完 + 重新编译,代码里的品牌名自动跟上,不需要改任何 .swift。
+新增功能要显示品牌名时,一律引用 NNWBrand.displayName,禁止写死字符串。
+
 刻意不做的事(重要)
 ------------------
 · **不改 bundle id**。一改,iOS 会把它当成另一个 app 重新安装,

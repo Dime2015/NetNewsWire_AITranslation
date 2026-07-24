@@ -73,7 +73,8 @@ import Account
 
 	/// 首页头图上写的字。**不用页面原名(Feed / 订阅)**,用 app 名当报头 ——
 	/// 首页是整个 app 的门面,这是用户 2026-07-23 定的。
-	static let feedListTitle = "Babel"
+	/// [品牌] 运行时从 Bundle 读,不写死(2026-07-24 收口):改名只需跑 rebrand.py,见 NNWBrand。
+	static var feedListTitle: String { NNWBrand.displayName }
 
 	/// [阅读档] 首页头图**跟着底部三档换**(2026-07-23 用户要求):
 	/// 换档时页面本身的变化(哪些源、有没有数字)不够醒目,让头图跟着换,
