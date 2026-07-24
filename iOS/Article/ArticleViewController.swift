@@ -768,6 +768,9 @@ extension ArticleViewController {
 		// 留这行日志是为了将来排查"顶栏又不透了":它能一眼区分**没调用**(路径断了)
 		// 和**调用了但没效果**(得换别的做法),不用靠肉眼猜。
 		Self.logger.info("[外观] 顶栏跟踪已接上,内容偏移 \(scrollView.contentOffset.y, privacy: .public)")
+		// [长图] 顺手给分享按钮装上长按菜单(幂等,只装一次)。挂在这里是老规矩:
+		// 本方法是"页面就绪"的必经之地,不用往上游加新钩子。实现在本文件末尾扩展。
+		nnwInstallLongImageMenuIfNeeded()
 	}
 
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
@@ -804,3 +807,60 @@ extension ArticleViewController {
 // 实现搬到了 `WebViewController+ReadingBar.swift`,由那一页自己的生命周期挂载。
 // 原来这里那套"整页共享一层浮层、每翻一页重新绑"的做法翻页时会滞留/错位,已整体废弃。
 // `ArticleHeaderBarController` 那个类本身仍在用,只是宿主从本控制器换成了 WebViewController。
+
+// MARK: - [长图] 长按分享按钮 → 生成文章长图(T22,2026-07-24)
+
+extension ArticleViewController {
+
+	/// 给分享按钮装长按菜单。**短按行为一点没变**(还是系统分享单)——
+	/// UIBarButtonItem 同时有 action 和 menu 时,点按走 action、长按弹 menu,是系统自带的分工。
+	/// 幂等:装过就不再装。
+	func nnwInstallLongImageMenuIfNeeded() {
+		guard actionBarButtonItem.menu == nil else { return }
+		actionBarButtonItem.menu = UIMenu(children: [
+			UIAction(title: "分享长图",
+					 image: UIImage(systemName: "photo.on.rectangle.angled")) { [weak self] _ in
+				self?.nnwShareLongImage()
+			}
+		])
+	}
+
+	private func nnwShareLongImage() {
+
+		guard let webViewController = currentWebViewController, webViewController.article != nil else { return }
+
+		// 生成要一两秒,给个转圈提示(没有按钮 —— 过程很短,做取消得不偿失)
+		let progress = UIAlertController(title: nil, message: "正在生成长图…", preferredStyle: .alert)
+		let spinner = UIActivityIndicatorView(style: .medium)
+		spinner.translatesAutoresizingMaskIntoConstraints = false
+		spinner.startAnimating()
+		progress.view.addSubview(spinner)
+		NSLayoutConstraint.activate([
+			spinner.centerXAnchor.constraint(equalTo: progress.view.centerXAnchor),
+			spinner.bottomAnchor.constraint(equalTo: progress.view.bottomAnchor, constant: -20),
+			progress.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 90)
+		])
+		present(progress, animated: true)
+
+		Task { [weak self] in
+			guard let self else { return }
+			do {
+				let image = try await ArticleLongImageExporter.export(from: webViewController)
+				progress.dismiss(animated: true) {
+					// 先预览再决定(2026-07-24 用户要求):预览页里有「保存到相册」和「分享」
+					let preview = UINavigationController(rootViewController: LongImagePreviewViewController(image: image))
+					preview.modalPresentationStyle = .fullScreen
+					self.present(preview, animated: true)
+				}
+			} catch {
+				progress.dismiss(animated: true) {
+					let alert = UIAlertController(title: "生成长图失败",
+												  message: error.localizedDescription,
+												  preferredStyle: .alert)
+					alert.addAction(UIAlertAction(title: "好", style: .default))
+					self.present(alert, animated: true)
+				}
+			}
+		}
+	}
+}

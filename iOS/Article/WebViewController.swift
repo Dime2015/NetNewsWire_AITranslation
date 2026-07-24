@@ -1103,6 +1103,43 @@ extension WebViewController {
 	}
 }
 
+// MARK: - [长图] 分享长图的桥接(T22,实现在 ArticleLongImageExporter.swift + nnw_snapshot.js)
+
+extension WebViewController {
+
+	/// 给导出器用的 WKWebView(webView 是 private,同文件的扩展才够得着 —— 老规矩,同翻译桥接)。
+	var nnwWebViewForSnapshot: WKWebView? { webView }
+
+	/// 进入截图模式:注入脚本(幂等)→ 露出标题区、强制加载图片。
+	func nnwSnapshotPrepare() async throws -> Bool {
+		_ = try await nnwTranslationEvaluateReturningBool(NNWSnapshotScript.source)
+		return try await nnwTranslationEvaluateReturningBool("window.nnwSnapshot.prepare()")
+	}
+
+	/// 还有几张图没加载完(0 = 可以截了)。
+	func nnwSnapshotPendingImageCount() async throws -> Int {
+		let text = try await nnwTranslationEvaluateReturningString("String(window.nnwSnapshot.pendingImageCount())")
+		return Int(text ?? "0") ?? 0
+	}
+
+	/// 退出截图模式,页面复位。幂等。
+	func nnwSnapshotFinish() async throws -> Bool {
+		try await nnwTranslationEvaluateReturningBool("window.nnwSnapshot.finish()")
+	}
+}
+
+/// nnw_snapshot.js 的装载器(照抄 TranslationScript 的做法)。
+enum NNWSnapshotScript {
+	static let source: String = {
+		guard let url = Bundle.main.url(forResource: "nnw_snapshot", withExtension: "js"),
+			  let text = try? String(contentsOf: url, encoding: .utf8) else {
+			assertionFailure("nnw_snapshot.js 没有被打进 app 包,长图功能无法工作")
+			return ""
+		}
+		return text
+	}()
+}
+
 private extension WebViewController {
 
 	/// 确保 translation.js 已经注入到当前页面。

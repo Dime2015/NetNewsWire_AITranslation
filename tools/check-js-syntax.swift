@@ -34,7 +34,8 @@ let defaultTargets = [
 	"Shared/Appearance/nnw_appearance.js",
 	"Shared/Podcast/nnw_podcast.js",
 	"Shared/YouTube/nnw_youtube.js",
-	"Shared/Translation/translation.js"
+	"Shared/Translation/translation.js",
+	"Shared/Snapshot/nnw_snapshot.js"
 ]
 
 let args = Array(CommandLine.arguments.dropFirst())
