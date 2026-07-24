@@ -18,13 +18,15 @@ import os
 /// 界面结构(从上到下):
 ///   搜索框(导航栏下面)
 ///   分段控件:播客 / Reddit        ← 决定用哪个后端去搜
-///   ┌ 第 0 组:放进哪个文件夹        ← 点一下弹出上游现成的文件夹选择器
+///   ┌ 第 0 组:放进哪个文件夹        ← 点一下弹动作单选(默认顶层)
 ///   └ 第 1 组:搜索结果,点一条就订阅
 ///
-/// **订阅、选文件夹这两件事全部复用上游现成的东西,禁区一行没改**:
+/// **订阅走上游公开接口,禁区一行没改**:
 ///   - 订阅        Account.createFeed(...)                 公开接口
-///   - 选文件夹     AddFeedFolderViewController             故事板里现成的
-///   - 记住上次的文件夹  AddFeedDefaultContainer
+///   - 选文件夹     ~~AddFeedFolderViewController~~ → 2026-07-24 改自绘动作单
+///     (上游那套在推入式页面下只显示账户、选不了文件夹,详见 showFolderPicker 注释;
+///      数据仍只走 sortedActiveAccounts / sortedFolders 公开接口)
+///   - ~~记住上次的文件夹~~ → 每次默认顶层(用户拍板),不再读写 AddFeedDefaultContainer
 @MainActor final class FeedDiscoveryViewController: UITableViewController {
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FeedDiscovery")
@@ -86,8 +88,9 @@ import os
 
 	private var isSearching = false
 
-	/// 订阅到哪里。沿用上游记住的「上次选的文件夹」,和系统自带的添加订阅页保持一致。
-	private var container: Container? = AddFeedDefaultContainer.defaultContainer
+	/// 订阅到哪里。**默认是账户顶层(不放进文件夹)**,不再沿用"上次选的文件夹"
+	/// (2026-07-24 用户拍板:每次打开都从最外层开始,想进文件夹再手动选)。
+	private var container: Container? = AccountManager.shared.defaultAccount
 
 	/// 正在搜索的任务。换关键词时要把上一次的取消掉,
 	/// 否则慢的那次后回来会把新结果盖掉(L11 那个教训的同类)。
@@ -302,14 +305,41 @@ import os
 		}
 	}
 
+	/// 🔧 2026-07-24 重写:原来复用上游的 AddFeedFolderViewController(卡片弹出),
+	/// 用户实测**列表里只有账户、选不了任何文件夹**。那套界面是给上游自己的添加页
+	/// 设计的,被我们改成推入式页面后用 `.currentContext` 弹出,行为不可靠。
+	/// 改用和文件夹管理页「移动到…」**同款的动作单**(用户验收过的模式):
+	/// 数据只走 Account 公开接口(sortedActiveAccounts / sortedFolders),行为完全归我们管。
 	private func showFolderPicker() {
-		let navController = UIStoryboard.add
-			.instantiateViewController(withIdentifier: "AddFeedFolderNavViewController") as! UINavigationController
-		navController.modalPresentationStyle = .currentContext
-		let folderViewController = navController.topViewController as! AddFeedFolderViewController
-		folderViewController.delegate = self
-		folderViewController.initialContainer = container
-		present(navController, animated: true)
+
+		let picker = UIAlertController(title: "订阅到", message: nil, preferredStyle: .actionSheet)
+		if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: 0)) {
+			picker.popoverPresentationController?.sourceView = cell
+			picker.popoverPresentationController?.sourceRect = cell.bounds
+		}
+
+		let accounts = AccountManager.shared.sortedActiveAccounts
+		for account in accounts {
+			// 顶层(不放进文件夹)。个别同步服务不允许订阅放根层,那就不给这一项
+			if !account.behaviors.contains(.disallowFeedInRootFolder) {
+				let rootTitle = accounts.count > 1
+					? "\(account.nameForDisplay)(不放进文件夹)" : "不放进文件夹"
+				picker.addAction(UIAlertAction(title: rootTitle, style: .default) { [weak self] _ in
+					self?.container = account
+					self?.tableView.reloadData()
+				})
+			}
+			for folder in account.sortedFolders ?? [] {
+				let title = accounts.count > 1
+					? "\(account.nameForDisplay) / \(folder.nameForDisplay)" : folder.nameForDisplay
+				picker.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+					self?.container = folder
+					self?.tableView.reloadData()
+				})
+			}
+		}
+		picker.addAction(UIAlertAction(title: "取消", style: .cancel))
+		present(picker, animated: true)
 	}
 
 	private var folderLabel: String {
@@ -543,13 +573,8 @@ extension FeedDiscoveryViewController: UISearchBarDelegate {
 
 // MARK: - 文件夹选择器的回调
 
-extension FeedDiscoveryViewController: AddFeedFolderViewControllerDelegate {
-
-	func didSelect(container: Container) {
-		self.container = container
-		AddFeedDefaultContainer.saveDefaultContainer(container)
-		tableView.reloadData()
-	}
-}
+// 📌 原来这里有一个 AddFeedFolderViewControllerDelegate 扩展(接上游选择器的回调)。
+// 2026-07-24 选择器改为自绘动作单后不再需要;也**不再写 AddFeedDefaultContainer** ——
+// 按用户要求,本页每次打开都默认顶层,不记忆上次的选择。
 
 #endif
