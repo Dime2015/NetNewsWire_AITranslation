@@ -249,7 +249,13 @@
 					if (text.length === 0) {
 						continue;
 					}
-					if (text.length > maxGroupChars / 2 && child.children.length >= 2) {
+					// ⚠️ 下钻条件是 >= 1 个子元素,不是 >= 2(2026-07-24 修):
+					// 阅读模式(Readability)的输出外面包着**单子元素的壳**
+					// (<div id="readability-page-1"><div>正文…</div></div>)。
+					// 原来写 >= 2,这层壳钻不进去 → **整篇文章成了一个组** →
+					// 流式藏"第 0 组"时全篇消失(用户报的),翻译也没有分组并行可言。
+					// >= 1 时递归会一层层剥壳,直到见到真正的段落们。
+					if (text.length > maxGroupChars / 2 && child.children.length >= 1) {
 						var childrenTextLength = 0;
 						for (var j = 0; j < child.children.length; j++) {
 							childrenTextLength += normalizeSpace(child.children[j].textContent).length;
@@ -348,6 +354,17 @@
 			}
 			var leadNodes = element.querySelectorAll('[data-nnw-group="0"]');
 			if (leadNodes.length === 0) {
+				return false;
+			}
+			// 兜底(2026-07-24):第 0 组大得离谱(> 5000 字符,正常约 750)就不流式 ——
+			// 藏掉它等于把大半篇文章变没。切分器修好后不该再发生,但这类"整篇被当成一组"
+			// 的伤害太大(用户报过全篇消失),值得留一道闸。返回 false 后调用方
+			// 会走非流式赛跑:原文一直显示,译文好了整块替换,只是没有逐字效果。
+			var leadTextLength = 0;
+			for (var g = 0; g < leadNodes.length; g++) {
+				leadTextLength += normalizeSpace(leadNodes[g].textContent).length;
+			}
+			if (leadTextLength > 5000) {
 				return false;
 			}
 			this.streamLeadEnd();	// 上一条流的残留(理论上没有,双保险)

@@ -55,8 +55,9 @@ enum TranslationCache {
 	/// 版本史:1=初版;2=专有名词一律保留英文(2026-07-19);
 	/// 3=指纹从 HTML 改为纯文字,旧指纹全部无效(2026-07-19,见 L18);
 	/// 4=提示词 v2(重写式翻译 + 反翻译腔指令 + 示范)+ 温度 0.45(2026-07-24);
-	/// 5=先导块 500→750,组边界全部挪动 —— 旧的按组存的未完成缓存套到新边界会丢内容(2026-07-24)。
-	private nonisolated static let promptGeneration = "5"
+	/// 5=先导块 500→750,组边界全部挪动 —— 旧的按组存的未完成缓存套到新边界会丢内容(2026-07-24);
+	/// 6=切分器学会剥单子元素的壳(阅读模式整篇一组的 bug)—— 阅读模式文章的组边界全变(2026-07-24)。
+	private nonisolated static let promptGeneration = "6"
 
 	/// 磁盘上最多留多少篇。超了删最旧的。
 	private nonisolated static let maxEntries = 50
