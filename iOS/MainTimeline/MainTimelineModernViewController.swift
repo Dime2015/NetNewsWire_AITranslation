@@ -243,6 +243,11 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			didPushArticleViewController = false
 			self.deselectIfNecessary()
 		}
+
+		// [阅读档] 首页点了「全局搜索」的放大镜 → 在这里打开搜索框。
+		// **必须是 viewDidAppear** —— 这是系统唯一保证"页面已经在屏幕上、导航栏也排好了"的时刻。
+		// 早于它打开,搜索框会排在没有安全区的地方,或者干脆不出现(前后错了两版,见 L79)。
+		nnwConsumePendingGlobalSearch()
 	}
 
 	func deselectIfNecessary() {
@@ -1098,13 +1103,34 @@ extension MainTimelineModernViewController: UISearchControllerDelegate {
 		searchController.searchBar.showsScopeBar = true
 	}
 
+	// [阅读档] 搜索**已经展开之后**,把摆法换成经典的「标题下面一条」。
+	// 为什么必须这么做:范围切换条(本列表 / 全部文章)只在那种摆法下才会显示 ——
+	// 从某个源里点右上角放大镜进来时走的是系统的"内嵌按钮"摆法,范围条就没了(用户实测)。
+	// ⚠️ 放在 didPresent 而不是 willPresent:改摆法和展开搜索**必须分处两个排版回合**,
+	// 挤在一起只会生效一半(这一轮已经吃过两次亏了)。
+	func didPresentSearchController(_ searchController: UISearchController) {
+		nnwUseStackedSearchPlacementIfNeeded()
+	}
+
 	func willDismissSearchController(_ searchController: UISearchController) {
 		coordinator?.endSearching()
 		searchController.searchBar.showsScopeBar = false
 		// Async to avoid an iOS 26 UINavigationBar crash during the search-bar dismissal transition.
 		DispatchQueue.main.async {
 			self.updateToolbar()
+			// [阅读档] 搜索期间用的是经典的「标题下面一条」摆法,退出了就换回"右上角一个放大镜"
+			self.nnwRestoreSearchPlacement()
+			// [阅读档] 兜底:万一 didDismiss 那条回调没来(不同 iOS 版本的收起流程不完全一样),
+			// 也要保证点了 X 能离开这个空页面。已经退过就不会再退一次(那个标记只生效一次)。
+			self.nnwSchedulePopFallbackAfterSearch()
 		}
+	}
+
+	// [阅读档] 搜索**关闭动画结束**之后:如果这次是从首页的放大镜进来的,直接回首页。
+	// 放在 didDismiss(不是 willDismiss)是因为它要做的是"退出这一页",
+	// 必须等搜索自己的收起动画放完 —— 两件事挤在同一拍里做会打架(这一轮反复吃过的亏)。
+	func didDismissSearchController(_ searchController: UISearchController) {
+		nnwPopIfCameFromGlobalSearch()
 	}
 
 }

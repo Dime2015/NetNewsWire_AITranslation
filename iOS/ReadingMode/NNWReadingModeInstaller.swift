@@ -77,6 +77,42 @@ extension UIViewController {
 		// resetScroll: false —— 换档不该把人拉回列表顶部,他多半正读到中间
 		coordinator.refreshTimeline(resetScroll: false)
 	}
+
+	/// 换档时那一下过渡动画。**两个页面共用**,所以观感一致。
+	///
+	/// 2026-07-23 用户反馈「动画效果稍微再明显一点点」→ 从原地淡入淡出改成
+	/// **跟着方向的横向滑入 + 淡入**:往右边那一档切,内容就从右边滑进来。
+	/// 比纯淡入好在**有方向感** —— 和"我刚才往左滑了一下"对得上,
+	/// 也让"这是换了一整屏内容"这件事说得更清楚。
+	///
+	/// ⚠️ **只动 transform 和 alpha,绝不碰 `contentInset` / `contentOffset`**(L73:
+	/// 那两个是一对,动一个必须动另一个;而且滚动回调里改布局会成环,L63)。
+	/// transform 是画上去的位移,滚动位置一点没变,所以这条路是安全的。
+	///
+	/// - Parameter forward: true = 切到右边那一档(手指往左滑)
+	static func animateSwitch(_ view: UIView?, forward: Bool) {
+
+		guard let view else { return }
+
+		let travel: CGFloat = 34
+		view.transform = CGAffineTransform(translationX: forward ? travel : -travel, y: 0)
+		view.alpha = 0.15
+
+		// `.beginFromCurrentState`:连着快滑好几下时,从当前位置接着动,不会跳回起点
+		UIView.animate(withDuration: 0.34, delay: 0,
+					   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4,
+					   options: [.allowUserInteraction, .beginFromCurrentState]) {
+			view.transform = .identity
+			view.alpha = 1
+		}
+	}
+
+	/// 从哪一档切到哪一档,是"往右"还是"往左"。
+	static func isForward(from old: NNWReadingMode, to new: NNWReadingMode) -> Bool {
+		let order = NNWReadingMode.allCases
+		guard let a = order.firstIndex(of: old), let b = order.firstIndex(of: new) else { return true }
+		return b > a
+	}
 }
 
 #endif

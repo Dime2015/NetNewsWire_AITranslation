@@ -143,7 +143,7 @@ extension MainFeedCollectionViewController {
 	}
 
 	@objc private func nnwGlobalSearchTapped() {
-		coordinator.showSearch()
+		coordinator.nnwShowGlobalSearch()
 	}
 
 	// MARK: - 星标数到货了要重画
@@ -195,6 +195,7 @@ extension MainFeedCollectionViewController {
 
 	private func nnwSelectReadingMode(_ mode: NNWReadingMode) {
 
+		let previous = NNWReadingModeStore.shared.mode
 		guard NNWReadingModeStore.shared.setMode(mode) else { return }
 
 		// 控件外观不用管 —— 它自己盯着通知(两个页面各一条,谁改了大家都跟上)
@@ -203,13 +204,9 @@ extension MainFeedCollectionViewController {
 		// 三个档各一张头图(Phase 3):换档时把画也换掉,交叉淡入
 		nnwUpdateFeedListHeader(crossfade: true)
 
-		// 列表内容整片变了,给一点过渡 —— 否则"手一滑,内容瞬间变样"像是 app 抽了一下。
-		// ⚠️ 只做**淡入淡出**,不碰 contentInset / contentOffset(L73:那两个是一对,动一个必须动另一个)。
-		if let collectionView {
-			UIView.transition(with: collectionView, duration: 0.22,
-							  options: [.transitionCrossDissolve, .allowUserInteraction],
-							  animations: {}, completion: nil)
-		}
+		// 内容整片换了,给一段**带方向的**过渡(两个页面共用同一份实现)
+		NNWReadingModeApply.animateSwitch(collectionView,
+										  forward: NNWReadingModeApply.isForward(from: previous, to: mode))
 
 		nnwReloadVisibleRowCounts()
 	}

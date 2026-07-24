@@ -2492,3 +2492,48 @@ extension SceneCoordinator {
 		rebuildBackingStores()
 	}
 }
+
+// MARK: - [阅读档] 首页右上角的「全局搜索」
+
+extension SceneCoordinator {
+
+	/// 从**订阅源列表页**发起搜全部订阅源。
+	///
+	/// ## 为什么不直接用上游的 `showSearch()`
+	///
+	/// 上游那条路本身是对的(取消当前源 → 推出文章列表页 → 打开搜索框、范围设成「全部」),
+	/// 但它原来**只有外接键盘 ⌘F 和长按桌面图标**两个入口 —— 那两种情形下页面往往已经在屏幕上了。
+	/// 现在首页多了个放大镜,于是第一次出现「**一边推页面、一边打开搜索框**」的时序:
+	///
+	/// 上游是 `asyncAfter(.now())` 之后就激活搜索,那时被推的页面**还没进窗口**,
+	/// 搜索框会按"没有安全区"排版 —— 表现为整块内容**正好上移一个状态栏的高度**,
+	/// 搜索框和时间叠在一起(2026-07-23 用户截图 2)。
+	///
+	/// 所以这里换成:推完页面之后**等它真的进了窗口、转场也结束了**,再激活搜索。
+	/// 这是 **L73** 那条的又一次应验:我算的时机和系统算的时机不一致。
+	func nnwShowGlobalSearch() {
+		selectSidebarItem(indexPath: nil) { [weak self] in
+			guard let self else { return }
+			self.rootSplitViewController.show(.supplementary)
+			self.mainTimelineViewController?.nnwRequestGlobalSearch()
+		}
+	}
+}
+
+// MARK: - [阅读档] 从全局搜索退回订阅源列表
+
+extension SceneCoordinator {
+
+	/// 回到订阅源列表那一栏。
+	///
+	/// ⚠️ **为什么不能用 `popViewController`**(2026-07-23,用户报"点 X 还是留在空白页"):
+	/// iPhone 上这些页面是**分栏控制器**在管(collapsed 状态),
+	/// 时间线那一页未必和订阅列表在同一个导航栈里 —— 那样 `pop` 就是个空操作,
+	/// 不报错、不崩溃,**静默什么都没发生**(又一个 L19 形状的坑)。
+	///
+	/// `show(.primary)` 是分栏控制器自己的接口:不管当前是合并还是并排,
+	/// 它都知道"回到第一栏"该怎么走。
+	func nnwReturnToFeedList() {
+		rootSplitViewController.show(.primary)
+	}
+}
