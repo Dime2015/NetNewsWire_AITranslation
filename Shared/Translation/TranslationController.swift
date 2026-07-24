@@ -224,6 +224,13 @@ enum TranslationScript {
 	/// 给它一个更短的固定阈值,让「开头出现中文」尽快发生。
 	private nonisolated static let leadHedgeDelay: TimeInterval = 4
 
+	/// 先导块的赛跑份数(2026-07-24 用户拍板):**开局就并发 4 份、谁先成功用谁**,
+	/// 不再"等 4 秒才补一份"。
+	/// 为什么值得:所有正文组都在等先导块的译文当示范(方案 C),它慢一秒整篇静止一秒;
+	/// 而服务商延迟方差极大(T5 实测同尺寸 22s vs 81.6s),取 4 份里最快的能把尾延迟砍掉大半。
+	/// 成本:先导块只有 ~500 字符,多花 3 份小请求 ≈ 零。
+	private nonisolated static let leadRaceCopies = 4
+
 	/// 按一组的大小估它的对冲阈值。
 	private nonisolated static func bodyHedgeDelay(forChars count: Int) -> TimeInterval {
 		max(minBodyHedgeDelay, Double(count) / hedgeCharsPerSecond * hedgeSlowFactor)
@@ -235,9 +242,15 @@ enum TranslationScript {
 	// 要随每个请求重复一遍,十几段下来的固定开销比正文本身还大;
 	// 而且各段互相看不见,术语容易前后不一致。
 
-	/// 先导块的目标字符数。约合英文 100 词,够读半分钟 ——
+	/// 先导块的目标字符数。约合英文 150 词,够读四十多秒 ——
 	/// 它单独先翻,让用户几秒内就有东西可读,不用干等全文。
-	private static let leadChunkCharacters = 500
+	///
+	/// 500 → 750(2026-07-24 用户拍板):流式上线后,先导块变大不再增加"干等"
+	/// (第一个字出现的时间只取决于首字延迟,和块大小无关),
+	/// 而阅读跑道和方案 C 的示范都变厚。代价是正文各组晚起跑约 2~5 秒,可接受。
+	/// ⚠️ 改这个数会挪动所有组的边界 —— **必须同时把 TranslationCache.promptGeneration +1**,
+	/// 否则旧的"未完成缓存"按旧边界存的组套到新边界上会丢内容。
+	private static let leadChunkCharacters = 750
 
 	/// 第 1 组的目标字符数,之后逐组翻倍(2000、4000……)。
 	/// 为什么第 1 组要小:读者读完先导块马上就要读它,它必须最快回来。
@@ -616,14 +629,38 @@ enum TranslationScript {
 				Self.logger.debug("[翻译] 先导块复用缓存,零请求")
 			} else {
 				let leadStartedAt = Date()
-				// [翻译] item①:先导块在关键路径上,用对冲把「开头等 30 秒」压下去。
-				if let hedged = await hedgedTranslate(htmlChunk: first.html,
-													  context: context,
-													  service: service,
-													  delay: Self.leadHedgeDelay) {
-					firstTranslation = hedged
+				// [翻译] 先导块在关键路径上(所有正文组都在等它的译文当示范,方案 C),
+				// 用 4 路赛跑把它的延迟压到"4 份里最快的那份"(见 leadRaceCopies 的说明)。
+				// 服务支持流式(2026-07-24)→ 4 条流赛跑,冠军的译文**一边生成一边上屏**;
+				// 不支持(Mock)→ 非流式赛跑,行为和以前一样。
+				var raced: String?
+				if let streamingService = service as? StreamingTranslationService,
+				   (try? await webViewController.nnwTranslationStreamLeadBegin()) == true {
+					var lastPush = Date.distantPast
+					raced = await racedStreamingTranslate(htmlChunk: first.html,
+														  context: context,
+														  service: streamingService,
+														  copies: Self.leadRaceCopies) { [weak webViewController] accumulated in
+						// 节流:每 0.12 秒最多上屏一次。冠军流是顺序 await 的,这里没有并发竞争
+						await MainActor.run {
+							guard Date().timeIntervalSince(lastPush) >= 0.12 else { return }
+							lastPush = Date()
+							guard let webViewController else { return }
+							Task { _ = try? await webViewController.nnwTranslationStreamLeadUpdate(accumulated) }
+						}
+					}
+					// 成功失败都要收尾:拆临时容器、原文复位(成功路径下一步 applyGroup 正式替换)
+					_ = try? await webViewController.nnwTranslationStreamLeadEnd()
 				} else {
-					// 两份对冲都失败:再直接发一次,好拿到能说人话的错误抛给用户。
+					raced = await racedTranslate(htmlChunk: first.html,
+												 context: context,
+												 service: service,
+												 copies: Self.leadRaceCopies)
+				}
+				if let raced {
+					firstTranslation = raced
+				} else {
+					// 全失败:再直接发一次,好拿到能说人话的错误抛给用户。
 					try Task.checkCancellation()
 					firstTranslation = try await service.translate(htmlChunk: first.html, context: context)
 				}
@@ -777,6 +814,84 @@ enum TranslationScript {
 	///     让外层该重试重试、该报错报错(拿到能说人话的原因)。
 	///   - 第一份迟迟**不回**(尾延迟)→ 到点补发一份,谁先成功用谁。
 	///
+	/// 流式赛跑的「冠军门」:4 条流里**谁先吐出第一个字,谁就是冠军**,
+	/// 只有冠军的增量上屏,其余三条在下一次回调时得知落选、立刻自我了断(停止花钱)。
+	private actor StreamWinnerGate {
+		private var winner: Int?
+		/// 第 `id` 条流来认领。第一个来的成为冠军;之后只有冠军自己再来才返回 true。
+		func claim(_ id: Int) -> Bool {
+			if winner == nil { winner = id }
+			return winner == id
+		}
+	}
+
+	/// 流式赛跑翻译(先导块专用,2026-07-24):并发 `copies` 条**流式**请求,
+	/// 第一条产出增量的流成为冠军,它的增量通过 `onWinnerDelta` 渐进上屏;
+	/// 其余的流自我了断。冠军跑完返回完整译文;全失败返回 nil(上层回落到非流式)。
+	///
+	/// 顺序安全:冠军是**单独一条**顺序读取的流,每个增量都 await 完 onWinnerDelta
+	/// 才读下一行 —— 上屏天然按序,不需要额外去重/排序。
+	nonisolated private func racedStreamingTranslate(htmlChunk: String,
+													 context: TranslationContext,
+													 service: StreamingTranslationService,
+													 copies: Int,
+													 onWinnerDelta: @Sendable @escaping (String) async -> Void) async -> String? {
+
+		let gate = StreamWinnerGate()
+
+		return await withTaskGroup(of: String?.self) { group in
+			for id in 0..<max(copies, 1) {
+				group.addTask {
+					try? await service.translateStreaming(htmlChunk: htmlChunk, context: context) { accumulated in
+						guard await gate.claim(id) else { return false }	// 落选 → 让这条流自我了断
+						await onWinnerDelta(accumulated)
+						return true
+					}
+				}
+			}
+			var remaining = max(copies, 1)
+			while let result = await group.next() {
+				if let result {
+					group.cancelAll()
+					return result
+				}
+				remaining -= 1
+				if remaining == 0 { return nil }
+			}
+			return nil
+		}
+	}
+
+	/// 赛跑翻译(非流式版,MockTranslationService 这类不支持流式的服务用):
+	/// 开局就并发 `copies` 份同样的请求,**谁先成功用谁**,其余立刻取消;
+	/// 全失败返回 nil(交给上层拿可读错误)。
+	///
+	/// 和下面 hedgedTranslate 的区别:对冲是"慢了才补一份"(省钱,给普通组用),
+	/// 赛跑是"一开始就全发"(费一点小钱,换关键路径的最低延迟,只给先导块用)。
+	nonisolated private func racedTranslate(htmlChunk: String,
+											context: TranslationContext,
+											service: TranslationService,
+											copies: Int) async -> String? {
+
+		await withTaskGroup(of: String?.self) { group in
+			for _ in 0..<max(copies, 1) {
+				group.addTask {
+					try? await service.translate(htmlChunk: htmlChunk, context: context)
+				}
+			}
+			var remaining = max(copies, 1)
+			while let result = await group.next() {
+				if let result {
+					group.cancelAll()	// 有一份成功,其余的钱不用再花
+					return result
+				}
+				remaining -= 1
+				if remaining == 0 { return nil }
+			}
+			return nil
+		}
+	}
+
 	/// nonisolated:只用到入参、不碰实例状态,这样它能在并发任务里直接跑,不必回主线程。
 	nonisolated private func hedgedTranslate(htmlChunk: String,
 											 context: TranslationContext,

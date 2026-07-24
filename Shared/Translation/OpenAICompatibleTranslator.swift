@@ -10,7 +10,7 @@
 
 import Foundation
 
-struct OpenAICompatibleTranslator: TranslationService {
+struct OpenAICompatibleTranslator: StreamingTranslationService {
 
 	let config: TranslationConfig
 	let model: String
@@ -27,15 +27,31 @@ struct OpenAICompatibleTranslator: TranslationService {
 	/// - "保留 HTML 标签":防止译文把网页结构搞坏(CLAUDE.md 第 5 节的地基)
 	/// - "不要解释、不要代码块标记":LLM 很爱加 ```html 或者"以下是译文:"
 	/// - "流畅、易读、偏口语":用户指定的风格
+	/// v2(2026-07-24):用户反馈"读起来累、句子结构不顺"。v1 只说了"要流畅、别翻译腔",
+	/// 没说**怎么做** —— 对速度档模型,要给具体的操作指令和一个示范才管用。
+	/// ⚠️ 改这段记得把 TranslationCache.promptGeneration +1,否则旧译文一直从缓存里跳出来。
 	private static let systemPrompt = """
-	你是一位专业的中英翻译,负责把英文文章翻译成简体中文。
+	你是一位资深的中文译者,把英文文章翻译成简体中文。你的目标读者是把中文当母语的人,\
+	译文要让他们读起来毫不费劲,就像原本就是用中文写的。
 
-	翻译风格要求:
-	- 流畅、易读、偏口语,像中文母语者自然写出来的句子
-	- 不要逐字硬译,不要翻译腔
-	- **所有专有名词一律保留英文原文,禁止翻译、禁止音译**。包括但不限于:
-	  人名(写 Steve Jobs,不写"史蒂夫·乔布斯";写 Chiu,不写"邱")、
-	  公司名、产品名、品牌名、网站名、刊物名、书名、技术术语与缩写(API、RSS 等)
+	翻译方法(核心:重写,不是转换):
+	- 先读懂整段的意思,然后**用中文把这个意思重新讲一遍** —— 忘掉英文的句子结构
+	- 英文的长句要拆:定语从句、插入语拆成独立短句,按中文习惯**先因后果、先条件后结论**地排
+	- 每句话的主语要清楚。英文靠代词(it/this/which)串起来的地方,中文里把指代对象直接写出来
+	- 少用"被"字:英文被动句多数应转成中文主动句("was acquired by X" → "X 收购了它")
+	- 这些翻译腔的标志词能不用就不用:"进行""作出""对于""关于""其""之一""所""性""化"
+	- 语气跟着原文走:原文轻松就轻松,原文严肃就严肃,不要一律翻成书面腔
+
+	示范(注意句子是怎么拆散重排的):
+	原文:The company, which had been struggling with declining ad revenue for years, \
+	announced that it would be laying off 12% of its workforce.
+	差的译文:这家多年来一直在与不断下降的广告收入作斗争的公司宣布,它将裁员其12%的员工。
+	好的译文:这家公司的广告收入连年下滑,如今宣布裁员 12%。
+
+	专有名词(硬规则):
+	- **所有专有名词一律保留英文原文,禁止翻译、禁止音译**。包括:
+	  人名(写 Steve Jobs,不写"史蒂夫·乔布斯")、公司名、产品名、品牌名、
+	  网站名、刊物名、书名、技术术语与缩写(API、RSS 等)
 
 	输出格式要求(非常重要,违反任何一条都会导致显示错乱):
 	- 输入是一段 HTML 片段。你必须**原样保留所有 HTML 标签、属性和结构**,只翻译标签之间的文字
@@ -113,8 +129,11 @@ struct OpenAICompatibleTranslator: TranslationService {
 				ChatRequest.Message(role: "system", content: Self.systemPrompt),
 				ChatRequest.Message(role: "user", content: userPrompt(htmlChunk: htmlChunk, context: context))
 			],
-			temperature: 0.3,
-			provider: providerPreference
+			// 0.3 → 0.45(2026-07-24):温度太低译文发僵,是"读着累"的帮凶之一。
+			// 0.45 仍然偏保守 —— 翻译要的是稳定,不是创意。
+			temperature: 0.45,
+			provider: providerPreference,
+			stream: nil
 		)
 		request.httpBody = try JSONEncoder().encode(body)
 
@@ -138,6 +157,86 @@ struct OpenAICompatibleTranslator: TranslationService {
 		}
 
 		return Self.cleanUp(content, original: htmlChunk)
+	}
+
+	// MARK: - 流式翻译(先导块专用,2026-07-24)
+
+	/// 和 `translate` 同一套请求,只是 `stream: true`,译文一边生成一边通过 `onDelta` 送出。
+	/// SSE 的逐行解析在 `SSEStreamParser`(纯逻辑,已离线验证 15 种帧)。
+	func translateStreaming(htmlChunk: String,
+							context: TranslationContext,
+							onDelta: @Sendable (String) async -> Bool) async throws -> String {
+
+		guard !htmlChunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			throw TranslationError.emptyContent
+		}
+		guard let url = config.chatCompletionsURL else {
+			throw TranslationError.notConfigured("baseURL 不是合法网址:\(config.baseURL)")
+		}
+
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.timeoutInterval = Self.requestTimeout
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+		request.setValue("https://github.com/Dime2015/NetNewsWire_AITranslation", forHTTPHeaderField: "HTTP-Referer")
+		request.setValue("NetNewsWire AI Translation", forHTTPHeaderField: "X-Title")
+
+		let providerPreference: ChatRequest.Provider? =
+			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Provider(sort: "throughput") : nil
+
+		let body = ChatRequest(
+			model: model,
+			messages: [
+				ChatRequest.Message(role: "system", content: Self.systemPrompt),
+				ChatRequest.Message(role: "user", content: userPrompt(htmlChunk: htmlChunk, context: context))
+			],
+			temperature: 0.45,
+			provider: providerPreference,
+			stream: true
+		)
+		request.httpBody = try JSONEncoder().encode(body)
+
+		let bytes: URLSession.AsyncBytes
+		let response: URLResponse
+		do {
+			(bytes, response) = try await URLSession.shared.bytes(for: request)
+		} catch {
+			throw TranslationError.networkFailure(underlying: error)
+		}
+
+		// 错误状态时响应体不是 SSE 而是一段 JSON,读一点出来给用户看原因
+		if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+			var errorBody = ""
+			for try await line in bytes.lines {
+				errorBody += line
+				if errorBody.count > 500 { break }
+			}
+			throw TranslationError.serverError(status: http.statusCode,
+											   message: Self.errorMessage(from: Data(errorBody.utf8)))
+		}
+
+		var accumulated = ""
+		lineLoop: for try await line in bytes.lines {
+			switch SSEStreamParser.parse(line: line) {
+			case .delta(let text):
+				accumulated += text
+				// onDelta 返回 false = 调用方不要这条流了(赛跑输了)→ 立刻停,别再花钱
+				guard await onDelta(accumulated) else {
+					throw CancellationError()
+				}
+			case .done:
+				break lineLoop
+			case .ignore:
+				continue
+			}
+		}
+
+		let cleaned = Self.cleanUp(accumulated, original: htmlChunk)
+		guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			throw TranslationError.invalidResponse
+		}
+		return cleaned
 	}
 
 	// MARK: - 连通性自检
@@ -165,7 +264,8 @@ struct OpenAICompatibleTranslator: TranslationService {
 			model: model,
 			messages: [ChatRequest.Message(role: "user", content: "只回复两个字:你好")],
 			temperature: 0,
-			provider: nil
+			provider: nil,
+			stream: nil
 		)
 		request.httpBody = try JSONEncoder().encode(body)
 
@@ -277,6 +377,9 @@ private struct ChatRequest: Encodable {
 	let messages: [Message]
 	let temperature: Double
 	let provider: Provider?
+	/// 流式开关。nil 时整个字段不出现在请求里(同 provider,靠 encodeIfPresent),
+	/// 非流式请求的 JSON 和以前一个字节都不差。
+	let stream: Bool?
 }
 
 private struct ChatResponse: Decodable {

@@ -63,6 +63,14 @@ extension WebViewController {
 		objc_setAssociatedObject(self, &Self.nnwModeCaptureKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 	}
 
+	/// [翻译] 把标题的译文喂给本页的阅读栏(nil = 还原成文章原标题)。
+	/// 由翻译的桥接(`nnwTranslationApplyTitle` / `nnwTranslationRestore`)调用。
+	/// 栏还没建(沉浸模式 / 页面还没就绪)就什么都不做 —— 建的时候 applyContent 会用原标题,
+	/// 而翻译的 applyTitle 在页面就绪后才可能发生,顺序天然是对的。
+	func nnwSetReadingBarTitleOverride(_ text: String?) {
+		nnwReadingBar?.setTitleOverride(text)
+	}
+
 	/// 本页自己的阅读栏(没建过就是 nil)。
 	private var nnwReadingBar: ArticleHeaderBarController? {
 		get { objc_getAssociatedObject(self, &Self.nnwReadingBarKey) as? ArticleHeaderBarController }

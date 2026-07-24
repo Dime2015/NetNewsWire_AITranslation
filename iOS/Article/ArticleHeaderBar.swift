@@ -127,14 +127,15 @@ import Images
 
 	private let container = NNWPassThroughView()
 	private let scrimView = UIVisualEffectView(effect: nil)
-	private let iconView = UIImageView()
+	// 可点的部件用「按下有反馈」的子类(2026-07-24,让用户知道这里能点,见文件末尾两个小类)
+	private let iconView = NNWTappableImageView()
 	private let ringLayer = CAShapeLayer()
-	/// 停在顶部时的大标题(多行、衬线)
-	private let restTitleLabel = UILabel()
-	/// 冻结在顶栏里的小标题(单行)
-	private let dockedTitleLabel = UILabel()
-	/// 「源名 · 作者」那一行。**两个状态共用同一个**(都是单行,直接平移过去就行)
-	private let sourceLabel = UILabel()
+	/// 停在顶部时的大标题(多行、衬线)。点 = 开原文
+	private let restTitleLabel = NNWTappableLabel()
+	/// 冻结在顶栏里的小标题(单行)。点 = 开原文
+	private let dockedTitleLabel = NNWTappableLabel()
+	/// 「源名 · 作者」那一行。**两个状态共用同一个**(都是单行,直接平移过去就行)。点 = 开原文
+	private let sourceLabel = NNWTappableLabel()
 
 	/// 毛玻璃的浓度滑杆。
 	/// ⚠️ **不能用 `scrimView.alpha` 调浓淡**(L62):alpha 会让模糊失真,
@@ -162,8 +163,14 @@ import Images
 	private var lastProgress: CGFloat = 0
 	/// 上次看到的内容总高 —— 用来判断这次变化是"大幅"还是"排版沉降"
 	private var lastContentHeight: CGFloat = 0
-	/// 源站主页 —— 点「源名 · 作者」那行时打开
+	/// 源站主页 —— 点**图标**时打开(2026-07-24 用户定的分工,见「点击」那节)
 	private var feedHomePageURL: URL?
+	/// 文章原文地址 —— 点标题 / 源名那行时打开
+	private var articleURL: URL?
+	/// 文章原标题(applyContent 时存下)
+	private var baseTitle: String = ""
+	/// [翻译] 标题的译文覆盖。非 nil 时标签显示它而不是原标题(见 setTitleOverride)
+	private var titleOverride: String?
 
 	/// 网页装载完了没(false = 还在装)。
 	///
@@ -182,9 +189,13 @@ import Images
 
 	private func configureViews() {
 		// ⚠️ 容器本身**必须让点击穿过去**,否则整条头区会盖住下面的网页,
-		// 正文里的链接、图片全点不动。只有"源名那一行"例外(见 NNWPassThroughView)。
+		// 正文里的链接、图片全点不动。只放行几个明确可点的部件(见 NNWPassThroughView):
+		// 两个标题 + 源名那行(开原文)、图标(开主页)。
 		container.backgroundColor = .clear
-		container.passThroughExcept = { [weak self] in self?.sourceLabel }
+		container.passThroughTargets = { [weak self] in
+			guard let self else { return [] }
+			return [self.restTitleLabel, self.dockedTitleLabel, self.sourceLabel, self.iconView]
+		}
 		// 宽度变了就重新量、重新摆(转屏;也兜住"第一次布局时宽度还不对"的情况)
 		container.onLayout = { [weak self] in self?.layoutAndApply() }
 		// [方案 C] 页面被销毁 / 移出层级时,把毛玻璃动画器停掉,免得它在"活动中"被释放而崩溃(L62)
@@ -196,6 +207,9 @@ import Images
 		iconView.contentMode = .scaleAspectFill
 		iconView.clipsToBounds = true
 		iconView.layer.cornerCurve = .continuous
+		// 点图标开源站主页(2026-07-24 用户定的分工:图标目标大、离标题远,主页归它)
+		iconView.isUserInteractionEnabled = true
+		iconView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openFeedHomePage)))
 		container.addSubview(iconView)
 
 		// 进度环:画在图标外面一圈
@@ -207,21 +221,30 @@ import Images
 
 		restTitleLabel.numberOfLines = Style.restTitleMaxLines
 		restTitleLabel.textColor = .label
+		restTitleLabel.highlightedTextColor = .secondaryLabel	// 按下变浅一档 = "能点"的反馈
+		// 点标题开**原文**(2026-07-24 用户要求,分工见「点击」那节)
+		restTitleLabel.isUserInteractionEnabled = true
+		restTitleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openArticleURL)))
 		container.addSubview(restTitleLabel)
 
 		dockedTitleLabel.numberOfLines = 1
 		dockedTitleLabel.textColor = .label
+		dockedTitleLabel.highlightedTextColor = .secondaryLabel
 		dockedTitleLabel.alpha = 0
 		dockedTitleLabel.lineBreakMode = .byTruncatingTail
+		dockedTitleLabel.isUserInteractionEnabled = true
+		dockedTitleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openArticleURL)))
 		container.addSubview(dockedTitleLabel)
 
 		sourceLabel.numberOfLines = 1
 		sourceLabel.font = .systemFont(ofSize: 12, weight: .medium)
 		sourceLabel.textColor = .secondaryLabel
+		sourceLabel.highlightedTextColor = .tertiaryLabel
 		sourceLabel.lineBreakMode = .byTruncatingTail
-		// 点它打开源站 —— 网页里那行原本是个超链接,藏掉之后这份可点击性由我们接回来
+		// 源名那行也开**原文**(不再开主页):字太小、冻结态又和标题挨得近,
+		// 分两种行为必点错 → 和标题统一。主页改由图标负责。
 		sourceLabel.isUserInteractionEnabled = true
-		sourceLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openFeedHomePage)))
+		sourceLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openArticleURL)))
 		container.addSubview(sourceLabel)
 	}
 
@@ -251,6 +274,7 @@ import Images
 		// 换文章 → 换内容、重量高度、重置进度
 		if installedArticleID != article.articleID {
 			installedArticleID = article.articleID
+			titleOverride = nil		// [翻译] 标题覆盖只属于上一篇,换文章必须清掉
 			applyContent(for: article)
 			measuredHeight = 0
 			measuredWidth = 0
@@ -269,27 +293,55 @@ import Images
 
 	/// 把这篇文章的图标和标题装上
 	private func applyContent(for article: Article) {
-		let title = article.title ?? article.rawLink ?? ""
-		restTitleLabel.text = title
-		// 和其它页的标题同一套字体规则(西文 New York 衬线、中文思源宋体)
-		let titleFont = TimelineStyle.headerTitleFont(for: title)
-		restTitleLabel.font = titleFont
-		dockedTitleLabel.text = title
-		// ⚠️ 飘上去之后**必须还是同一个字体**,只是小一号(用户 2026-07-23 指出)。
-		// 原来这里写死了系统黑体 —— 于是大标题是衬线、飞上去却变成黑体,
-		// 看起来像"换了个标题",而不是"同一个标题飞上去了"。
-		// `withSize` 会保住字族与字重,只改字号,正是要的。
-		dockedTitleLabel.font = titleFont.withSize(Style.dockedTitleFontSize)
-
-		// 「源名 · 作者」—— 作者可能没有,那就只显示源名(不留一个孤零零的分隔点)
-		let feedName = article.feed?.nameForDisplay ?? ""
-		let author = article.authors?.first?.name ?? ""
-		sourceLabel.text = [feedName, author].filter { !$0.isEmpty }.joined(separator: " · ")
+		baseTitle = article.title ?? article.rawLink ?? ""
+		applyTitleText()
 
 		feedHomePageURL = (article.feed?.homePageURL).flatMap { URL(string: $0) }
+		articleURL = article.preferredURL	// 点标题开原文用(2026-07-24)
+
+		// 「源名 · 作者」—— 作者可能没有,那就只显示源名(不留一个孤零零的分隔点)。
+		// 行尾的小 ↗ 是**常驻的"能点"提示**(2026-07-24 用户要求):这一行静止态贴着大标题、
+		// 冻结态是第一行,两种状态都看得见 —— 一个符号覆盖整块"点了开原文"的区域。
+		// 只在真有原文地址时加,免得挂一个点了没反应的箭头。
+		let feedName = article.feed?.nameForDisplay ?? ""
+		let author = article.authors?.first?.name ?? ""
+		var sourceText = [feedName, author].filter { !$0.isEmpty }.joined(separator: " · ")
+		if articleURL != nil, !sourceText.isEmpty {
+			sourceText += "  ↗"
+		}
+		sourceLabel.text = sourceText
 
 		iconView.image = IconImageCache.shared.imageForArticle(article)?.image
 		iconView.isHidden = (iconView.image == nil)
+	}
+
+	/// 把「当前该显示的标题」写进两个标签(覆盖优先,没有覆盖用文章原标题)。
+	///
+	/// 字体每次都重挑 —— 覆盖成中文译文时要换到思源宋体,还原成英文时换回 New York
+	/// (`headerTitleFont(for:)` 按文字内容选字体,正是干这个的)。
+	private func applyTitleText() {
+		let title = titleOverride ?? baseTitle
+		restTitleLabel.text = title
+		let titleFont = TimelineStyle.headerTitleFont(for: title)
+		restTitleLabel.font = titleFont
+		dockedTitleLabel.text = title
+		// ⚠️ 飘上去之后**必须还是同一个字体**,只是小一号(用户 2026-07-23 指出):
+		// `withSize` 保住字族与字重,只改字号。
+		dockedTitleLabel.font = titleFont.withSize(Style.dockedTitleFontSize)
+	}
+
+	/// [翻译] 用译文覆盖标题(nil = 撤销覆盖,回到文章原标题)。
+	///
+	/// 为什么需要:阅读栏把网页标题藏掉、由 UIKit 重画,而翻译只改了网页里那份 ——
+	/// 不喂给这里,用户看到的标题永远是原文(2026-07-24 用户报的)。
+	/// 换标题后**必须重量高度**:中文标题通常比英文短,行数可能从 3 行变 2 行,
+	/// 不重量的话正文上方会留一段空白(measuredHeight 归零,layoutAndApply 会重量并同步 inset)。
+	func setTitleOverride(_ text: String?) {
+		guard titleOverride != text else { return }
+		titleOverride = text
+		applyTitleText()
+		measuredHeight = 0
+		layoutAndApply()
 	}
 
 	private func bind(to scrollView: UIScrollView) {
@@ -544,9 +596,23 @@ import Images
 		CATransaction.commit()
 	}
 
+	// MARK: - 点击(2026-07-24 用户定的分工)
+	//
+	// | 点哪 | 开什么 | 为什么 |
+	// |---|---|---|
+	// | 大标题 / 冻结小标题 / 「源名·作者」 | **文章原文** | 源名那行字太小,冻结态又和标题挨得近,分成两种行为必点错 → 统一开原文 |
+	// | 图标(带进度环那个) | **源站主页** | 离标题远、目标独立,不会误触 |
+	//
+	// 打开一律走 NNWLinkOpener:跟着设置里「app 内打开链接」的开关走,默认 app 内。
+
+	@objc private func openArticleURL() {
+		guard let articleURL else { return }
+		NNWLinkOpener.open(articleURL, from: host)
+	}
+
 	@objc private func openFeedHomePage() {
 		guard let feedHomePageURL else { return }
-		UIApplication.shared.open(feedHomePageURL)
+		NNWLinkOpener.open(feedHomePageURL, from: host)
 	}
 
 	/// 读到哪了 = 滚动位置 ÷ 可滚动总长。
@@ -581,8 +647,9 @@ import Images
 /// → `hitTest` 里只认那一个子视图,其余返回 nil,点击直接落到下面的网页上。
 @MainActor final class NNWPassThroughView: UIView {
 
-	/// 唯一允许接收点击的子视图(用闭包取,免得循环引用)
-	var passThroughExcept: (() -> UIView?)?
+	/// 允许接收点击的子视图们(用闭包取,免得循环引用)。
+	/// 2026-07-24 从"只有源名一行"扩成一组:标题×2 + 源名(开原文)、图标(开主页)。
+	var passThroughTargets: (() -> [UIView])?
 
 	/// 容器尺寸变了(转屏、分屏、首次布局)时叫一声 —— 头区要按新宽度重量。
 	var onLayout: (() -> Void)?
@@ -606,9 +673,61 @@ import Images
 	}
 
 	override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-		guard let target = passThroughExcept?(), !target.isHidden, target.alpha > 0.01 else { return nil }
-		let inTarget = target.convert(point, from: self)
-		return target.point(inside: inTarget, with: event) ? target : nil
+		for target in passThroughTargets?() ?? [] {
+			guard !target.isHidden, target.alpha > 0.01 else { continue }	// 藏着/淡出的不吃点击(冻结态的大标题已透明,点那里应该落到网页上)
+			let inTarget = target.convert(point, from: self)
+			if target.point(inside: inTarget, with: event) { return target }
+		}
+		return nil		// 其余一律穿透给下面的网页 —— 正文的链接、图片还要能点
+	}
+}
+
+// MARK: - 按下有反馈的小部件(2026-07-24,"能点"的通用信号)
+//
+// 用户想让标题/图标看起来"可能能点"。没用浮雕 —— 那是拟物时代的手法,
+// 压在暖纸+衬线的安静排版上很突兀。改用 iOS 通用的两件套:
+// **按下瞬间变浅/变淡**(下面这两个小类)+ 源名行尾常驻一个小 ↗(见 applyContent)。
+//
+// ⚠️ 反馈刻意不用 alpha/transform 做在标题上 —— 那两个属性被飞行动画每帧驱动着
+// (applyGeometry),再叠一层按下动画必打架。标签用 `isHighlighted`(纯换色,
+// 谁也不碰),图标用 alpha(它的 alpha 没人驱动)。
+
+/// 按下时文字变浅一档的标签(颜色在创建处用 highlightedTextColor 配)
+@MainActor final class NNWTappableLabel: UILabel {
+
+	override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesBegan(touches, with: event)
+		isHighlighted = true
+	}
+
+	override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesEnded(touches, with: event)
+		isHighlighted = false
+	}
+
+	/// 点按手势识别成功时系统会取消触摸 —— 这条也要还原,否则高亮态卡住
+	override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesCancelled(touches, with: event)
+		isHighlighted = false
+	}
+}
+
+/// 按下时变淡的图片(给图标用)
+@MainActor final class NNWTappableImageView: UIImageView {
+
+	override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesBegan(touches, with: event)
+		alpha = 0.55
+	}
+
+	override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesEnded(touches, with: event)
+		UIView.animate(withDuration: 0.15) { self.alpha = 1 }
+	}
+
+	override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+		super.touchesCancelled(touches, with: event)
+		UIView.animate(withDuration: 0.15) { self.alpha = 1 }
 	}
 }
 

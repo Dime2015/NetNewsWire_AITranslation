@@ -153,6 +153,15 @@
 			return true;
 		},
 
+		/// 标题**当前显示**的纯文字(译文或原文,取决于现在是哪个)。
+		/// 给 iOS 的「阅读栏」用:那条栏把网页标题藏掉、由 UIKit 重画,
+		/// 翻译后要把译文文字喂给它,否则用户看到的标题永远是原文(2026-07-24)。
+		/// 只回纯文字不回 HTML —— UIKit 标签只要文字,Swift 也不该去解析 HTML(地基)。
+		titleText: function () {
+			var element = findTitleElement();
+			return element ? normalizeSpace(element.textContent) : null;
+		},
+
 		/// 读取当前正文的完整 HTML。
 		/// 翻译前调用 → 拿到原文(用于算缓存键);
 		/// 翻译完调用 → 拿到译文(用于存缓存)。
@@ -318,6 +327,73 @@
 			}
 
 			return JSON.stringify(result);
+		},
+
+		// ============================================================
+		// 先导块的流式显示(2026-07-24)
+		// ============================================================
+		//
+		// 译文一边生成一边显示:藏掉第 0 组的原文节点,插一个临时容器,
+		// 增量译文渐进写进去;流结束后拆掉临时容器,由 applyGroup(0, 完整HTML) 正式替换。
+		// 全程不碰第 0 组以外的任何节点;失败/取消时 streamLeadEnd 会把原文原样放回来。
+
+		/// 流式显示的临时容器(null = 当前没有流在显示)
+		streamLeadContainer: null,
+
+		/// 开始流式显示:藏掉第 0 组、插入临时容器。找不到第 0 组返回 false(调用方就不流式了)。
+		streamLeadBegin: function () {
+			var element = findBodyElement();
+			if (!element) {
+				return false;
+			}
+			var leadNodes = element.querySelectorAll('[data-nnw-group="0"]');
+			if (leadNodes.length === 0) {
+				return false;
+			}
+			this.streamLeadEnd();	// 上一条流的残留(理论上没有,双保险)
+			var temp = document.createElement("div");
+			temp.id = "nnwTranslationStreamLead";
+			leadNodes[0].parentNode.insertBefore(temp, leadNodes[0]);
+			for (var i = 0; i < leadNodes.length; i++) {
+				leadNodes[i].style.display = "none";
+			}
+			this.streamLeadContainer = temp;
+			return true;
+		},
+
+		/// 更新流式显示(传**累计**的完整文本,幂等,漏一帧不缺字)。
+		streamLeadUpdate: function (accumulatedHTML) {
+			if (!this.streamLeadContainer) {
+				return false;
+			}
+			// 把结尾**没写完的标签**先掐掉再显示(比如流刚好断在 "<str" 中间),
+			// 否则那半截标签会以文字形式闪现一帧。
+			// ⚠️ 这不是在解析文章 HTML(地基禁止的那种):对象是模型正在生成的**译文流**,
+			// 只影响临时容器的显示,流结束后整个容器就拆了,一个字都不会留在文章里。
+			var display = accumulatedHTML.replace(/<[^>]*$/, "");
+			this.streamLeadContainer.innerHTML = display;
+			return true;
+		},
+
+		/// 结束流式显示:拆临时容器、把第 0 组的原文放回来。
+		/// 成功路径:紧接着 applyGroup(0, 完整译文) 正式替换;
+		/// 失败/取消路径:原文就地恢复,页面回到没流式过的样子。
+		streamLeadEnd: function () {
+			if (this.streamLeadContainer) {
+				if (this.streamLeadContainer.parentNode) {
+					this.streamLeadContainer.parentNode.removeChild(this.streamLeadContainer);
+				}
+				this.streamLeadContainer = null;
+			}
+			var element = findBodyElement();
+			if (!element) {
+				return false;
+			}
+			var leadNodes = element.querySelectorAll('[data-nnw-group="0"]');
+			for (var i = 0; i < leadNodes.length; i++) {
+				leadNodes[i].style.display = "";
+			}
+			return true;
 		},
 
 		/// 某一组的译文回来了,替换掉这一组。

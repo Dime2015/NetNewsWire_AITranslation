@@ -441,12 +441,10 @@ extension WebViewController: WKNavigationDelegate {
 				if AppDefaults.shared.useSystemBrowser {
 					UIApplication.shared.open(url, options: [:])
 				} else {
-					UIApplication.shared.open(url, options: [.universalLinksOnly: true]) { didOpen in
-						guard didOpen == false else {
-							return
-						}
-						self.openURLInSafariViewController(url)
-					}
+					// [链接] 不再先试万能链接(2026-07-24 用户拍板「一律 app 内网页」):
+					// 原来这里会先问系统"这个链接有没有对应的 app",有就直接跳进去
+					// (点 YouTube/Reddit 链接被甩出 app 的就是这句)。现在直接开 app 内 Safari 页。
+					self.openURLInSafariViewController(url)
 				}
 
 			} else if components?.scheme == "mailto" {
@@ -1051,13 +1049,26 @@ extension WebViewController {
 	func nnwTranslationApplyTitle(_ translatedHTML: String) async throws -> Bool {
 		try await nnwTranslationEnsureScriptInjected()
 		let literal = try nnwTranslationJavaScriptStringLiteral(translatedHTML)
-		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.applyTitle(\(literal))")
+		let applied = try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.applyTitle(\(literal))")
+		// [翻译] 标题的译文在被阅读栏 CSS 藏掉的 DOM 里,用户看到的是 UIKit 画的那份 ——
+		// 把译文的**纯文字**回读出来喂给阅读栏,标题才真正"被翻译"(2026-07-24 用户报的)。
+		// 集中做在这一处桥接里:所有调 applyTitle 的路径(首翻/缓存/自动恢复/事后重翻)都自动生效。
+		if applied,
+		   let text = try? await nnwTranslationEvaluateReturningString("window.nnwTranslation.titleText()"),
+		   !text.isEmpty {
+			nnwSetReadingBarTitleOverride(text)
+		}
+		return applied
 	}
 
 	/// 把正文换回原文。
 	func nnwTranslationRestore() async throws -> Bool {
 		try await nnwTranslationEnsureScriptInjected()
-		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.restore()")
+		let restored = try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.restore()")
+		if restored {
+			nnwSetReadingBarTitleOverride(nil)	// [翻译] 切回原文,阅读栏标题也还原
+		}
+		return restored
 	}
 
 	/// 当前页面显示的是译文还是原文。
@@ -1070,6 +1081,25 @@ extension WebViewController {
 	func nnwTranslationScrollToTop() async throws -> Bool {
 		try await nnwTranslationEnsureScriptInjected()
 		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.scrollToTop()")
+	}
+
+	// [翻译] 先导块流式显示的三个桥接(2026-07-24,实现在 translation.js)
+
+	/// 开始流式显示(藏掉先导块原文、插临时容器)。false = 页面不具备条件,退回非流式。
+	func nnwTranslationStreamLeadBegin() async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.streamLeadBegin()")
+	}
+
+	/// 更新流式显示(传累计的完整文本)。
+	func nnwTranslationStreamLeadUpdate(_ accumulatedHTML: String) async throws -> Bool {
+		let literal = try nnwTranslationJavaScriptStringLiteral(accumulatedHTML)
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.streamLeadUpdate(\(literal))")
+	}
+
+	/// 结束流式显示(拆临时容器、原文复位)。成功失败都要调,幂等。
+	func nnwTranslationStreamLeadEnd() async throws -> Bool {
+		try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.streamLeadEnd()")
 	}
 }
 

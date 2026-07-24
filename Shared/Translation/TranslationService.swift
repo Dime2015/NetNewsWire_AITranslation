@@ -67,6 +67,23 @@ protocol TranslationService: Sendable {
 	func translate(htmlChunk: String, context: TranslationContext) async throws -> String
 }
 
+/// 额外支持**流式**翻译的服务(2026-07-24,给先导块用)。
+///
+/// 单独一个协议而不是塞进 TranslationService:MockTranslationService 不需要流式,
+/// 调用方用 `as?` 探测能力,探不到就回落到非流式赛跑 —— 两条路都是完整可用的。
+protocol StreamingTranslationService: TranslationService {
+
+	/// 流式翻译:译文一边生成一边通过 `onDelta` 送出来。
+	///
+	/// - Parameter onDelta: 每收到一段增量就带着**累计的完整文本**调一次
+	///   (给累计值而不是增量:调用方好做幂等显示,漏一次也不缺字)。
+	///   返回 false = 调用方不要这条流了(赛跑输了),实现应立刻中止并抛 CancellationError。
+	/// - Returns: 完整译文(已做过和非流式相同的清理)。
+	func translateStreaming(htmlChunk: String,
+							context: TranslationContext,
+							onDelta: @Sendable (String) async -> Bool) async throws -> String
+}
+
 // MARK: - 可能出现的错误
 
 enum TranslationError: Error, LocalizedError {

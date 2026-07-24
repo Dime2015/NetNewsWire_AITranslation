@@ -53,8 +53,10 @@ enum TranslationCache {
 	/// 提示词/缓存格式的"代号"。**大改提示词或指纹算法时把它 +1**,旧缓存全部自动作废 ——
 	/// 否则老译文(按旧规则翻的)会一直从缓存里跳出来,新规则永远轮不到生效。
 	/// 版本史:1=初版;2=专有名词一律保留英文(2026-07-19);
-	/// 3=指纹从 HTML 改为纯文字,旧指纹全部无效(2026-07-19,见 L18)。
-	private nonisolated static let promptGeneration = "3"
+	/// 3=指纹从 HTML 改为纯文字,旧指纹全部无效(2026-07-19,见 L18);
+	/// 4=提示词 v2(重写式翻译 + 反翻译腔指令 + 示范)+ 温度 0.45(2026-07-24);
+	/// 5=先导块 500→750,组边界全部挪动 —— 旧的按组存的未完成缓存套到新边界会丢内容(2026-07-24)。
+	private nonisolated static let promptGeneration = "5"
 
 	/// 磁盘上最多留多少篇。超了删最旧的。
 	private nonisolated static let maxEntries = 50
