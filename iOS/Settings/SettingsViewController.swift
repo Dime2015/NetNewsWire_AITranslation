@@ -551,26 +551,16 @@ private extension SettingsViewController {
 	}
 
 	func importOPMLAccountPicker(sourceView: UIView, sourceRect: CGRect) {
+		// [外观] 系统动作单换成自绘品牌选单(NNWMenu,本 fork 新增);
+		// 选项与文案原样保留,「取消」行不再需要 —— 点选单外面即取消
 		let title = NSLocalizedString("Choose an account to receive the imported feeds and folders", comment: "Import Account")
-		let alert = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
-
-		if let popoverController = alert.popoverPresentationController {
-			popoverController.sourceView = view
-			popoverController.sourceRect = sourceRect
-		}
-
-		for account in AccountManager.shared.sortedActiveAccounts {
-			let action = UIAlertAction(title: account.nameForDisplay, style: .default) { [weak self] _ in
+		let items = AccountManager.shared.sortedActiveAccounts.map { account in
+			NNWMenu.Item(title: account.nameForDisplay, icon: NNWMenu.accountIcon(for: account)) { [weak self] in
 				self?.opmlAccount = account
 				self?.importOPMLDocumentPicker()
 			}
-			alert.addAction(action)
 		}
-
-		let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
-		alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
-
-		self.present(alert, animated: true)
+		NNWMenu.show(in: self, anchor: .rect(sourceRect, within: view), title: title, sections: [items])
 	}
 
 	func importOPMLDocumentPicker() {
@@ -607,26 +597,15 @@ private extension SettingsViewController {
 	}
 
 	func exportOPMLAccountPicker(sourceView: UIView, sourceRect: CGRect) {
+		// [外观] 同上:系统动作单换成自绘品牌选单
 		let title = NSLocalizedString("Choose an account with the subscriptions to export", comment: "Export Account")
-		let alert = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
-
-		if let popoverController = alert.popoverPresentationController {
-			popoverController.sourceView = view
-			popoverController.sourceRect = sourceRect
-		}
-
-		for account in AccountManager.shared.sortedAccounts {
-			let action = UIAlertAction(title: account.nameForDisplay, style: .default) { [weak self] _ in
+		let items = AccountManager.shared.sortedAccounts.map { account in
+			NNWMenu.Item(title: account.nameForDisplay, icon: NNWMenu.accountIcon(for: account)) { [weak self] in
 				self?.opmlAccount = account
 				self?.exportOPMLDocumentPicker()
 			}
-			alert.addAction(action)
 		}
-
-		let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
-		alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
-
-		self.present(alert, animated: true)
+		NNWMenu.show(in: self, anchor: .rect(sourceRect, within: view), title: title, sections: [items])
 	}
 
 	func exportOPMLDocumentPicker() {

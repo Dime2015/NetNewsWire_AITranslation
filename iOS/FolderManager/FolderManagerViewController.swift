@@ -664,23 +664,15 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			return
 		}
 
-		// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单(从右上角「新建文件夹」按钮下方弹出)
+		// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单(从右上角「新建文件夹」按钮下方弹出)。
+		// 账户图标的映射搬去了 NNWMenu.accountIcon(设置页选账户也用同一份,别各养一套)。
 		NNWMenu.show(in: self, anchor: .topTrailing, title: "在哪个账户下新建?", sections: [
 			accounts.map { account in
-				NNWMenu.Item(title: account.nameForDisplay, icon: Self.accountIcon(for: account)) { [weak self] in
+				NNWMenu.Item(title: account.nameForDisplay, icon: NNWMenu.accountIcon(for: account)) { [weak self] in
 					self?.promptNewFolderName(in: account)
 				}
 			}
 		])
-	}
-
-	/// 账户类型 → 图标:iCloud 用云、本机账户用手机、其余同步服务用地球。
-	private static func accountIcon(for account: Account) -> String {
-		switch account.type {
-		case .cloudKit: return "icloud"
-		case .onMyMac: return "iphone"		// 枚举名是历史遗留,在 iPhone 上就是「我的 iPhone」账户
-		default: return "globe"
-		}
 	}
 
 	private func promptNewFolderName(in account: Account) {

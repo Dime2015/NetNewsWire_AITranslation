@@ -827,35 +827,23 @@ extension ArticleViewController {
 		guard let webViewController = currentWebViewController, webViewController.article != nil else { return }
 
 		// 生成要一两秒,给个转圈提示(没有按钮 —— 过程很短,做取消得不偿失)
-		let progress = UIAlertController(title: nil, message: "正在生成长图…", preferredStyle: .alert)
-		let spinner = UIActivityIndicatorView(style: .medium)
-		spinner.translatesAutoresizingMaskIntoConstraints = false
-		spinner.startAnimating()
-		progress.view.addSubview(spinner)
-		NSLayoutConstraint.activate([
-			spinner.centerXAnchor.constraint(equalTo: progress.view.centerXAnchor),
-			spinner.bottomAnchor.constraint(equalTo: progress.view.bottomAnchor, constant: -20),
-			progress.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 90)
-		])
-		present(progress, animated: true)
+		// 🎛 2026-07-25:系统转圈弹窗换成自绘进度卡片(NNWProgressCard),失败提示也走品牌卡片
+		let progress = NNWProgressCard.present(in: self, text: "正在生成长图…")
 
 		Task { [weak self] in
 			guard let self else { return }
 			do {
 				let image = try await ArticleLongImageExporter.export(from: webViewController)
-				progress.dismiss(animated: true) {
+				progress.finish {
 					// 先预览再决定(2026-07-24 用户要求):预览页里有「保存到相册」和「分享」
 					let preview = UINavigationController(rootViewController: LongImagePreviewViewController(image: image))
 					preview.modalPresentationStyle = .fullScreen
 					self.present(preview, animated: true)
 				}
 			} catch {
-				progress.dismiss(animated: true) {
-					let alert = UIAlertController(title: "生成长图失败",
-												  message: error.localizedDescription,
-												  preferredStyle: .alert)
-					alert.addAction(UIAlertAction(title: "好", style: .default))
-					self.present(alert, animated: true)
+				progress.finish {
+					// presentError 已被替换成品牌卡片(见 UIViewController+NNWError.swift)
+					self.presentError(title: "生成长图失败", message: error.localizedDescription)
 				}
 			}
 		}

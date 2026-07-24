@@ -63,14 +63,14 @@ extension UIViewController {
 private extension UIViewController {
 
 	func presentAccountError(_ error: AccountError, dismiss: (() -> Void)? = nil) {
+		// [外观] 系统 alert 换成自绘品牌卡片(NNWMenu,本 fork 新增);选项与行为原样保留
 		let title = NSLocalizedString("Account Error", comment: "Account Error")
-		let alertController = UIAlertController(title: title, message: error.localizedDescription, preferredStyle: .alert)
+		var items: [NNWMenu.Item] = []
 
 		let account = AccountError.account(from: error)
 		if account?.type == .feedbin {
-
 			let credentialsTitle = NSLocalizedString("Update Credentials", comment: "Update Credentials")
-			let credentialsAction = UIAlertAction(title: credentialsTitle, style: .default) { [weak self] _ in
+			items.append(NNWMenu.Item(title: credentialsTitle, icon: "key") { [weak self] in
 				dismiss?()
 
 				let navController = UIStoryboard.account.instantiateViewController(withIdentifier: "FeedbinAccountNavigationViewController") as! UINavigationController
@@ -78,43 +78,30 @@ private extension UIViewController {
 				let addViewController = navController.topViewController as! FeedbinAccountViewController
 				addViewController.account = account
 				self?.present(navController, animated: true)
-			}
-
-			alertController.addAction(credentialsAction)
-			alertController.preferredAction = credentialsAction
-
+			})
 		}
 
 		let dismissTitle = NSLocalizedString("OK", comment: "OK button")
-		let dismissAction = UIAlertAction(title: dismissTitle, style: .default) { _ in
-			dismiss?()
-		}
-		alertController.addAction(dismissAction)
+		items.append(NNWMenu.Item(title: dismissTitle, icon: nil) { dismiss?() })
 
-		self.present(alertController, animated: true, completion: nil)
+		NNWMenu.show(in: self, anchor: .center, title: title, message: error.localizedDescription,
+					 sections: [items], onCancel: dismiss)
 	}
 
 	func presentErrorWithRecovery(error: RecoverableError & LocalizedError, dismiss: (() -> Void)? = nil) {
+		// [外观] 系统 alert 换成自绘品牌卡片;恢复选项逐条变成菜单行,行为原样保留
 		let title = error.errorDescription ?? NSLocalizedString("Error", comment: "Error")
 		let message = [error.failureReason, error.recoverySuggestion].compactMap { $0 }.joined(separator: " ")
 
-		let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-
-		// Add recovery options as buttons
-		for (index, option) in error.recoveryOptions.enumerated() {
-			let action = UIAlertAction(title: option, style: index == 0 ? .default : .cancel) { _ in
+		let items: [NNWMenu.Item] = error.recoveryOptions.enumerated().map { index, option in
+			NNWMenu.Item(title: option, icon: nil) {
 				dismiss?()
 				_ = error.attemptRecovery(optionIndex: index)
 			}
-			alertController.addAction(action)
-
-			// Make the first option the preferred action
-			if index == 0 {
-				alertController.preferredAction = action
-			}
 		}
 
-		self.present(alertController, animated: true, completion: nil)
+		NNWMenu.show(in: self, anchor: .center, title: title, message: message,
+					 sections: [items], onCancel: dismiss)
 	}
 
 }

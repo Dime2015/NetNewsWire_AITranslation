@@ -29,10 +29,12 @@ extension UIBarButtonItem: MarkAsReadAlertControllerSourceType {}
 		}
 
 		if AppDefaults.shared.confirmMarkAllAsRead {
-			let alertController = MarkAsReadAlertController.alert(coordinator: coordinator, confirmTitle: confirmTitle, cancelCompletion: cancelCompletion, sourceType: sourceType) { _ in
-				completion()
-			}
-			controller.present(alertController, animated: true)
+			// [外观] 系统动作单换成自绘品牌选单;文案与三个选项原样保留,
+			// 实现住在 iOS/DesignKit/NNWMenu+Bridges.swift(本 fork 新增)。
+			// 下面上游原有的 alert(...) 不再被调用,原样保留以便与上游合并。
+			NNWMenu.showMarkAsReadConfirm(in: controller, coordinator: coordinator,
+										  confirmTitle: confirmTitle, sourceType: sourceType,
+										  cancelCompletion: cancelCompletion, completion: completion)
 		} else {
 			completion()
 		}

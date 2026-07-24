@@ -795,14 +795,22 @@ cfprefsd 会拿它自己缓存的那份回写覆盖。
 - [x] 文章页「重新翻译整篇」确认 —— 2026-07-24 深夜已换(从翻译按钮头顶弹出)
 - 不动:新建/重命名文件夹(带文本框)、各处纯提示 alert(保存失败/已切换语言等)
 
-**B. 上游文件里的(每处多一块上游 diff,逐个拍板再动)**
-- [ ] 文章列表右滑「更多」动作单(`MainTimelineModernViewController` 739 附近)
-- [ ] 「标记已读」确认(`MarkAsReadAlertController`,多处入口共用,换一处全生效)
-- [ ] 设置页两个 actionSheet(`SettingsViewController` 555/611)
-- [ ] 全局错误弹窗 `presentError`(`UIViewController+Extras` 67)——
-  换这一处 = 全 app 错误弹窗一起换,性价比最高的一处上游改动,但要用户拍板
-- 不动:Inspector / 主题导入等低频 alert
+**B. 上游文件里的 —— 2026-07-25 全部换完(用户拍板「B 全做」),各走最小通道**
+- [x] 文章列表右滑「更多」—— 上游 30 行拼装收敛成 1 行调用;判断与标题**复用上游工厂**,
+  动作体住我们的 `MainTimelineModernViewController+NNWMoreMenu.swift`
+- [x] 「标记已读」确认 —— `confirm` 里换 1 行调用,实现在 `NNWMenu+Bridges.swift`;
+  上游原 alert(...) 私有方法**原样保留不删**(减小合并冲突)
+- [x] 设置页 OPML 导入/导出两个选账户动作单 —— 原地换写法,带账户图标(共用 accountIcon)
+- [x] 全局错误弹窗 —— **同签名遮蔽**:`UIViewController+NNWError.swift` 定义与 RSCore
+  一模一样的 `presentError(title:message:dismiss:)`,app 内 15 个文件的调用点自动改走品牌卡片,
+  **上游零改动**。已核实 RSCore 模块内部无人调它。账户错误/可恢复错误两个弹窗
+  (`UIViewController+Extras`)也换了
+- Inspector / 主题导入的 alert:全是 presentError 系 → **被遮蔽自动覆盖,白拿**
+- **追加(用户点名):长图链路** —— 「正在生成长图…」换自绘进度卡片 `NNWProgressCard`
+  (转圈+文字,不可点外面关);「生成长图失败」「保存失败」走遮蔽后的品牌卡片
 
 **C. 换不了外观的(默认不动,除非用户强烈想要)**
 - 长按菜单(UIMenu):系统渲染,外观不可定制;要换=整个重做长按交互,动上游,代价大
+  ⚠️ **长按分享按钮弹的「分享长图」小气泡也属于这类**(挂在系统工具栏按钮上的 UIMenu)。
+  要换得把上游的分享按钮整个换成自定义视图按钮,还要同步它的启用/禁用状态,不值当,先留系统的
 - 系统分享单、邮件/相册权限弹窗:系统的,不可定制

@@ -123,12 +123,9 @@ import UIKit
 		if let error {
 			saveButton.isEnabled = true
 			// 最常见的失败是没给相册权限 —— 把路径说清楚,别只说"失败"
-			let alert = UIAlertController(
-				title: "保存失败",
-				message: "\(error.localizedDescription)\n\n如果是权限问题:设置 → 应用 → \(NNWBrand.displayName) → 照片,允许「添加照片」。",
-				preferredStyle: .alert)
-			alert.addAction(UIAlertAction(title: "好", style: .default))
-			present(alert, animated: true)
+			// 🎛 2026-07-25:换自绘品牌卡片(presentError 已被 UIViewController+NNWError.swift 接管)
+			presentError(title: "保存失败",
+						 message: "\(error.localizedDescription)\n\n如果是权限问题:设置 → 应用 → \(NNWBrand.displayName) → 照片,允许「添加照片」。")
 			return
 		}
 		// 成功:按钮变成"已保存",不弹窗打断 —— 用户可能接着还要分享

@@ -77,6 +77,9 @@ enum NNWMenu {
 	enum Anchor {
 		/// 从某个具体控件旁弹出(在它上方还是下方、靠左还是靠右,按控件在屏幕的位置自动选)
 		case view(UIView)
+		/// 从某个矩形区域旁弹出(rect 用 within 那个视图的坐标系;设置页这类只有
+		/// 「view + sourceRect」组合的老调用点用它,不用先找到具体的 cell)
+		case rect(CGRect, within: UIView)
 		/// 底部工具栏右侧的上方(订阅列表页右下角 `+`、编辑模式的「删除」这类;
 		/// 系统工具栏按钮拿不到它的视图,所以按"工具栏上缘靠右"定位,视觉上正好在按钮头顶)
 		case bottomTrailing
@@ -84,20 +87,24 @@ enum NNWMenu {
 		case bottomLeading
 		/// 导航栏右侧按钮的下方(文件夹管理页「新建文件夹」这类)
 		case topTrailing
+		/// 屏幕正中(错误提示、和具体位置无关的确认框 —— 传统 alert 的位置)
+		case center
 	}
 
 	/// 弹出选单。host = 当前页面(选单以全屏浮层盖在它上面)。
 	/// title / message 可选:填了就在卡片顶部显示一块钉住的说明区(列表滚动时它不动)。
+	/// onCancel:用户**没选任何项**就关掉选单时(点外面 / VoiceOver 退出 / 转屏)回调 ——
+	/// 有些调用方要在"用户放弃了"时收尾(比如把滑开的行收回去),没有就不传。
 	@MainActor
 	static func show(in host: UIViewController, anchor: Anchor,
 					 title: String? = nil, message: String? = nil,
-					 sections: [[Item]]) {
+					 sections: [[Item]], onCancel: (() -> Void)? = nil) {
 		// 已经有东西弹着(包括另一张选单)就不再弹,防连点
 		guard host.presentedViewController == nil else { return }
 		guard sections.contains(where: { !$0.isEmpty }) else { return }
 		let menu = NNWMenuViewController(sections: sections, anchor: anchor,
 										 headerTitle: title, headerMessage: message,
-										 hostView: host.view)
+										 hostView: host.view, onCancel: onCancel)
 		menu.modalPresentationStyle = .overFullScreen
 		host.present(menu, animated: false)		// 动画自己做(系统的模态动画是"从底部推上来",不是我们要的)
 	}
@@ -119,6 +126,7 @@ private final class NNWMenuViewController: UIViewController {
 	private let headerTitle: String?
 	private let headerMessage: String?
 	private weak var hostView: UIView?					// 用来算工具栏/导航栏锚点位置
+	private let onCancel: (() -> Void)?					// 没选任何项就关掉时的回调
 
 	private let dim = UIView()
 	private let shadowHost = UIView()					// 只负责投影 + 弹出动画(不裁切)
@@ -127,13 +135,21 @@ private final class NNWMenuViewController: UIViewController {
 	private var placed = false							// 位置只算一次(见文件头 L73 那条)
 	private var isClosing = false
 
+	/// 居中弹出(错误提示这类)时动画柔一点:不从角上弹,轻轻放大浮现即可
+	private var isCentered: Bool {
+		if case .center = anchor { return true }
+		return false
+	}
+
 	init(sections: [[NNWMenu.Item]], anchor: NNWMenu.Anchor,
-		 headerTitle: String?, headerMessage: String?, hostView: UIView?) {
+		 headerTitle: String?, headerMessage: String?, hostView: UIView?,
+		 onCancel: (() -> Void)?) {
 		self.sections = sections
 		self.anchor = anchor
 		self.headerTitle = headerTitle
 		self.headerMessage = headerMessage
 		self.hostView = hostView
+		self.onCancel = onCancel
 		super.init(nibName: nil, bundle: nil)
 	}
 
@@ -326,6 +342,17 @@ private final class NNWMenuViewController: UIViewController {
 		let size = CGSize(width: Self.cardWidth,
 						  height: min(natural.height, safe.height - 2 * Self.screenMargin))
 
+		// 居中(错误提示这类):不看触发点,直接摆安全区正中
+		if isCentered {
+			shadowHost.frame = CGRect(x: safe.midX - size.width / 2,
+									  y: safe.midY - size.height / 2,
+									  width: size.width, height: size.height)
+			card.frame = shadowHost.bounds
+			shadowHost.layer.shadowPath = UIBezierPath(roundedRect: shadowHost.bounds,
+													   cornerRadius: Self.cardCornerRadius).cgPath
+			return		// 缩放锚点保持默认的正中,浮现动画从中心轻轻放大
+		}
+
 		// 触发点的位置(换算到本浮层的坐标系;浮层铺满整个窗口)
 		let anchorRect: CGRect
 		let alignTrailing: Bool		// 卡片右边对齐触发点(true)还是左边对齐(false)
@@ -335,6 +362,13 @@ private final class NNWMenuViewController: UIViewController {
 			anchorRect = v.convert(v.bounds, to: view)
 			alignTrailing = anchorRect.midX > view.bounds.midX
 			above = anchorRect.midY > view.bounds.midY
+		case .rect(let r, let container):
+			anchorRect = container.convert(r, to: view)
+			alignTrailing = anchorRect.midX > view.bounds.midX
+			above = anchorRect.midY > view.bounds.midY
+		case .center:
+			// 上面已经 return,走不到这里;补全 switch 而已
+			anchorRect = view.bounds; alignTrailing = false; above = false
 		case .bottomTrailing, .bottomLeading, .topTrailing:
 			// host 页面安全区:底缘 = 工具栏顶,顶缘 = 导航栏底
 			let hostSafe: CGRect
@@ -391,7 +425,9 @@ private final class NNWMenuViewController: UIViewController {
 			// 用户关掉了动态效果:只淡入
 			UIView.animate(withDuration: 0.2) { self.shadowHost.alpha = 1; self.dim.alpha = 1 }
 		} else {
-			shadowHost.transform = CGAffineTransform(scaleX: 0.25, y: 0.25)
+			// 角上弹出的从小弹开;居中的(错误提示)轻轻放大浮现,别太跳
+			let startScale: CGFloat = isCentered ? 0.9 : 0.25
+			shadowHost.transform = CGAffineTransform(scaleX: startScale, y: startScale)
 			UIView.animate(withDuration: 0.32, delay: 0,
 						   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
 				self.shadowHost.transform = .identity
@@ -402,21 +438,26 @@ private final class NNWMenuViewController: UIViewController {
 	}
 
 	/// 收起(动画完了再执行选中项的动作,不让菜单收起和页面跳转互相打架)。
-	private func close(then handler: (() -> Void)? = nil) {
+	/// cancelled = 用户没选任何项就关掉(点外面 / VoiceOver 退出) → 走 onCancel 回调。
+	private func close(cancelled: Bool = false, then handler: (() -> Void)? = nil) {
 		guard !isClosing else { return }
 		isClosing = true
 		UIView.animate(withDuration: 0.16, delay: 0, options: [.curveEaseIn]) {
 			self.shadowHost.alpha = 0
 			self.dim.alpha = 0
 			if !UIAccessibility.isReduceMotionEnabled {
-				self.shadowHost.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+				let endScale: CGFloat = self.isCentered ? 0.95 : 0.5
+				self.shadowHost.transform = CGAffineTransform(scaleX: endScale, y: endScale)
 			}
 		} completion: { _ in
-			self.dismiss(animated: false) { handler?() }
+			self.dismiss(animated: false) {
+				if cancelled { self.onCancel?() }
+				handler?()
+			}
 		}
 	}
 
-	@objc private func dimTapped() { close() }
+	@objc private func dimTapped() { close(cancelled: true) }
 
 	@objc private func rowTapped(_ row: NNWMenuRowControl) {
 		close(then: row.item.handler)
@@ -424,14 +465,17 @@ private final class NNWMenuViewController: UIViewController {
 
 	// VoiceOver 的"两指 Z"退出手势
 	override func accessibilityPerformEscape() -> Bool {
-		close()
+		close(cancelled: true)
 		return true
 	}
 
-	// 转屏/分屏:不追着重算位置,直接收起(位置是按旧尺寸算的,重算容易两套坐标打架 —— L73)
+	// 转屏/分屏:不追着重算位置,直接收起(位置是按旧尺寸算的,重算容易两套坐标打架 —— L73)。
+	// 这也算"没选任何项就关掉",onCancel 要补上,否则等着收尾的调用方会永远等不到。
 	override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
 		super.viewWillTransition(to: size, with: coordinator)
-		dismiss(animated: false)
+		guard !isClosing else { return }
+		isClosing = true
+		dismiss(animated: false) { self.onCancel?() }
 	}
 }
 

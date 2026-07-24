@@ -733,48 +733,9 @@ private extension MainTimelineModernViewController {
 			// Set up the read action
 			let moreTitle = NSLocalizedString("More", comment: "More")
 			let moreAction = UIContextualAction(style: .normal, title: moreTitle) { [weak self] (action, view, completion) in
-
-				if let self = self {
-
-					let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-					if let popoverController = alert.popoverPresentationController {
-						popoverController.sourceView = view
-						popoverController.sourceRect = CGRect(x: view.frame.size.width/2, y: view.frame.size.height/2, width: 1, height: 1)
-					}
-
-					if let action = self.markAboveAsReadAlertAction(article, indexPath: indexPath, completion: completion) {
-						alert.addAction(action)
-					}
-
-					if let action = self.markBelowAsReadAlertAction(article, indexPath: indexPath, completion: completion) {
-						alert.addAction(action)
-					}
-
-					if let action = self.discloseFeedAlertAction(article, completion: completion) {
-						alert.addAction(action)
-					}
-
-					if let action = self.markAllInFeedAsReadAlertAction(article, indexPath: indexPath, completion: completion) {
-						alert.addAction(action)
-					}
-
-					if let action = self.openInBrowserAlertAction(article, completion: completion) {
-						alert.addAction(action)
-					}
-
-					if let action = self.shareAlertAction(article, indexPath: indexPath, completion: completion) {
-						alert.addAction(action)
-					}
-
-					let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
-					alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel) { _ in
-						completion(true)
-					})
-
-					self.present(alert, animated: true)
-
-				}
-
+				// [外观] 系统动作单换成自绘品牌选单;各项的判断仍复用本文件的工厂方法,
+				// 实现住在 MainTimelineModernViewController+NNWMoreMenu.swift(本 fork 新增)
+				self?.nnwShowTimelineMoreMenu(for: article, indexPath: indexPath, completion: completion)
 			}
 
 			moreAction.image = Assets.Images.more
