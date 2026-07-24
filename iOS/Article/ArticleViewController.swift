@@ -260,6 +260,12 @@ final class ArticleViewController: UIViewController {
 
 	func updateUI() {
 
+		// [外观] 底部控件板跟着一起刷。defer = 不管从哪条路退出(包括下面"没有文章"的
+		// 提前 return)都会执行 —— 板子的状态只从这一个口进(L74)。
+		// 下面往老按钮(readBarButtonItem 等)写状态的上游代码故意原样保留:
+		// 那些按钮已不在工具栏上,写了无害,不改=零合并冲突。
+		defer { nnwUpdateControlBoard() }
+
 		guard let article = article else {
 			articleExtractorButton.isEnabled = false
 			nextUnreadBarButtonItem.isEnabled = false
@@ -368,7 +374,9 @@ final class ArticleViewController: UIViewController {
 	}
 
 	@IBAction func showActivityDialog(_ sender: Any) {
-		currentWebViewController?.showActivityDialog(popOverBarButtonItem: actionBarButtonItem)
+		// [外观] 2026-07-25:分享键已搬进控件板。老锚点(actionBarButtonItem)不在工具栏上了,
+		// iPad 气泡锚一个不在界面上的按钮会崩 —— 改锚到板上的分享键(此方法现在只剩快捷键会走)。
+		currentWebViewController?.nnwShowActivityDialog(sourceView: nnwControlBoard?.shareAnchorView ?? view)
 	}
 
 	@objc func toggleReaderView(_ sender: Any?) {
@@ -628,38 +636,57 @@ extension ArticleViewController {
 			articleExtractorButton.heightAnchor.constraint(equalToConstant: 44)
 		])
 
-		let translationItem = translationController.makeBarButtonItem()
-
-		if #available(iOS 26, *) {
-			// iOS 26 的 Liquid Glass 工具栏按 flexibleSpace 把按钮切成若干"玻璃胶囊",
-			// 剩余宽度由这些弹性间隔平分。
-			//
-			// 上游原本是三组:[已读 星标] | [下一篇未读] | [阅读视图 分享]。
-			// 我们加了第 6 个按钮之后,两个间隔各自只剩 40pt 出头,
-			// 相邻胶囊的边缘几乎贴上 —— Liquid Glass 会把靠近的玻璃"融"在一起,
-			// 看起来就是两坨粘成水滴(用户反馈的粘连问题)。
-			//
-			// 改成两组,剩余宽度全部给中间那一个间隔,分隔就清楚了:
-			//   [已读 星标 下一篇未读] ⟷ [阅读视图 分享 翻译]
-			// 左边是"这篇文章的状态和去向",右边是"拿这篇文章做点什么",语义上也说得通。
-			let extractorItem = toolbarItems?.first { $0.customView === articleExtractorButton }
-
-			var newItems: [UIBarButtonItem] = [readBarButtonItem, starBarButtonItem, nextUnreadBarButtonItem]
-			newItems.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-			if let extractorItem {
-				newItems.append(extractorItem)
-			}
-			newItems.append(actionBarButtonItem)
-			newItems.append(translationItem)
-
-			toolbarItems = newItems
-		} else {
-			// 更早的系统上,上游那段代码是用 flexibleSpace 手工均匀撑开的,跟着补一个即可。
-			var items = toolbarItems ?? []
-			items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-			items.append(translationItem)
-			toolbarItems = items
+		// [外观] 2026-07-25(用户拍板):底部工具栏的 6 个系统按钮(iOS 26 上是两坨玻璃胶囊)
+		// 整体换成一块自绘控件板 NNWArticleControlBoard(iOS/DesignKit/NNWControlBoard.swift)。
+		// 布局:已读 星标 下一篇未读 ‖ 阅读视图 翻译 ‖ 长图 分享。
+		//
+		// 「换里子不动壳子」:工具栏这个容器、它的显示/隐藏、全屏机制一概没动,只换内容物 ——
+		// 藏栏那片雷区(L73/L80~L84)完全不受影响。
+		//
+		// 阅读视图和翻译是**原按钮实例整体搬进板子**:它们的状态机(转圈/出错/角标)
+		// 和已有的写入点写的还是同一个对象,零重接。其余 5 键的状态由 updateUI 末尾的
+		// 钩子统一送进 board.apply(单一入口,L74 的病根从结构上锁死)。
+		//
+		// 老的 6 个 UIBarButtonItem 不在工具栏上了,但 updateUI 照旧往它们身上写状态 ——
+		// 无害,而且**故意不改那段上游代码**(最小 diff)。
+		let board = NNWArticleControlBoard(readerButton: articleExtractorButton,
+										   translationButton: translationController.button)
+		board.onToggleRead = { [weak self] in self?.coordinator.toggleReadForCurrentArticle() }
+		board.onToggleStar = { [weak self] in self?.coordinator.toggleStarredForCurrentArticle() }
+		board.onNextUnread = { [weak self] in self?.coordinator.selectNextUnread() }
+		board.onShareLongImage = { [weak self] in self?.nnwShareLongImage() }
+		board.onShare = { [weak self] sourceView in
+			// 镜像上游 showActivityDialog,只是锚点从工具栏按钮换成板上的分享键(iPad 气泡用)
+			self?.currentWebViewController?.nnwShowActivityDialog(sourceView: sourceView)
 		}
+
+		// ⚠️ 换数组之前,先让板子把旧按钮"收养"起来(L85):它们的 IBOutlet 全是 weak,
+		// 一被换出数组就释放,上游 updateUI 往空按钮写状态会当场崩(2026-07-25 启动闪退)。
+		board.legacyItemsKeptAlive = toolbarItems ?? []
+
+		let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
+		toolbarItems = [flex(), UIBarButtonItem(customView: board), flex()]
+	}
+
+	/// [外观] 控件板的查找(扩展里不能存属性,从工具栏里现找,只有一项是它,开销可忽略)。
+	private var nnwControlBoard: NNWArticleControlBoard? {
+		toolbarItems?.lazy.compactMap { $0.customView as? NNWArticleControlBoard }.first
+	}
+
+	/// [外观] 把当前文章状态整包送进控件板。**只允许 updateUI 调用**(单一入口,见 L74)。
+	private func nnwUpdateControlBoard() {
+		guard let board = nnwControlBoard else { return }
+		// ⚠️ coordinator 必须按"可能还不存在"来读(L85 的教训,2026-07-25 启动闪退):
+		// app 一启动,无障碍层会抢在 coordinator 赋值**之前**强制加载本页视图 → updateUI。
+		// 上游代码没事,因为"没有文章"的分支提前 return,碰不到 coordinator;
+		// 我们的钩子是 defer,**两条路都走** —— 执行路径比上游宽,上游没防的这里必须自己防。
+		board.apply(NNWArticleControlBoard.State(
+			hasArticle: article != nil,
+			isRead: article?.status.read ?? false,
+			canMarkUnread: article?.isAvailableToMarkUnread ?? false,
+			isStarred: article?.status.starred ?? false,
+			isNextUnreadAvailable: coordinator?.isNextUnreadAvailable ?? false,
+			hasLink: article?.preferredLink != nil))
 	}
 
 	@objc func toggleTranslation(_ sender: Any) {
@@ -765,9 +792,8 @@ extension ArticleViewController {
 		// 留这行日志是为了将来排查"顶栏又不透了":它能一眼区分**没调用**(路径断了)
 		// 和**调用了但没效果**(得换别的做法),不用靠肉眼猜。
 		Self.logger.info("[外观] 顶栏跟踪已接上,内容偏移 \(scrollView.contentOffset.y, privacy: .public)")
-		// [长图] 顺手给分享按钮装上长按菜单(幂等,只装一次)。挂在这里是老规矩:
-		// 本方法是"页面就绪"的必经之地,不用往上游加新钩子。实现在本文件末尾扩展。
-		nnwInstallLongImageMenuIfNeeded()
+		// [长图] 2026-07-25:这里原来给分享按钮装长按菜单(系统气泡)。控件板上线后
+		// 长图有了自己的键,长按菜单已整体拿掉(用户拍板),什么都不用装了。
 	}
 
 	/// ⚠️ **本方法末尾不许调用 install(或任何会再触发本方法的东西),否则无限递归(L58)。**
@@ -805,24 +831,11 @@ extension ArticleViewController {
 // 原来这里那套"整页共享一层浮层、每翻一页重新绑"的做法翻页时会滞留/错位,已整体废弃。
 // `ArticleHeaderBarController` 那个类本身仍在用,只是宿主从本控制器换成了 WebViewController。
 
-// MARK: - [长图] 长按分享按钮 → 生成文章长图(T22,2026-07-24)
+// MARK: - [长图] 文章长图(T22,2026-07-24;2026-07-25 入口从「长按分享」改为控件板上的独立键)
 
 extension ArticleViewController {
 
-	/// 给分享按钮装长按菜单。**短按行为一点没变**(还是系统分享单)——
-	/// UIBarButtonItem 同时有 action 和 menu 时,点按走 action、长按弹 menu,是系统自带的分工。
-	/// 幂等:装过就不再装。
-	func nnwInstallLongImageMenuIfNeeded() {
-		guard actionBarButtonItem.menu == nil else { return }
-		actionBarButtonItem.menu = UIMenu(children: [
-			UIAction(title: "分享长图",
-					 image: UIImage(systemName: "photo.on.rectangle.angled")) { [weak self] _ in
-				self?.nnwShareLongImage()
-			}
-		])
-	}
-
-	private func nnwShareLongImage() {
+	func nnwShareLongImage() {
 
 		guard let webViewController = currentWebViewController, webViewController.article != nil else { return }
 
