@@ -678,20 +678,17 @@ extension ArticleViewController {
 			// 长按确实触发了,给一下轻微触感反馈(没缓存的情况上面已提前返回,不会震)。
 			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-			let alert = UIAlertController(title: "重新翻译整篇",
-										  message: "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。",
-										  preferredStyle: .actionSheet)
-			alert.addAction(UIAlertAction(title: "重新翻译全文", style: .destructive) { [weak self] _ in
-				self?.translationController.forceRetranslate()
-			})
-			alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-
-			// iPad 上 actionSheet 需要一个来源锚点,否则会崩。
-			if let popover = alert.popoverPresentationController {
-				popover.sourceView = self.translationController.button
-				popover.sourceRect = self.translationController.button.bounds
-			}
-			self.present(alert, animated: true)
+			// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单,从翻译按钮头顶弹出。
+			// 覆盖缓存是破坏性操作 → 红色 + 保留明确的「取消」行(点选单外面也能取消)。
+			NNWMenu.show(in: self, anchor: .view(self.translationController.button),
+						 title: "重新翻译整篇",
+						 message: "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。",
+						 sections: [
+							[NNWMenu.Item(title: "重新翻译全文", icon: "arrow.clockwise", isDestructive: true) { [weak self] in
+								self?.translationController.forceRetranslate()
+							}],
+							[NNWMenu.Item(title: "取消", icon: "xmark") {}]
+						 ])
 		}
 	}
 

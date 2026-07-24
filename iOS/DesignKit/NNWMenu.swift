@@ -20,21 +20,30 @@
 //      ]])
 //
 //  - sections 里每个数组是一组,组与组之间画一条细分隔线(参考截图里 Reeder 的分组)。
-//  - 不需要「取消」项 —— 点卡片外面任意地方就是取消。
+//  - title / message 可选:确认类弹窗(删除、重翻)用它们在卡片顶部说明处境。
+//  - 不需要「取消」项 —— 点卡片外面任意处就是取消。
+//    (破坏性确认可以自己加一行「取消」,给用户一个明确的退路,见删除文件夹那处。)
 //  - 危险操作(删除类)把 isDestructive 设 true,会显示成红色。
+//  - 选项太多一屏放不下时(选文件夹这类),卡片高度封顶、**内部自己滚动**,标题区钉着不动。
 //
 //  ## 设计上的几个定数(想调样式改这里,一处改处处一致)
 //
-//  - 卡片宽度**写死 250**,高度由内容自己长。为什么写死:L78 的教训 ——
+//  - 卡片宽度**写死 250**,高度由内容自己长、封顶到安全区。为什么写死:L78 的教训 ——
 //    放进浮层的东西尺寸要一次算死,"自适应宽度"会把静态问题变成时序问题。
 //  - 颜色全部走 AppAppearance(卡片底 menuCardBackground / 分隔线 menuSeparator /
-//    文字 inkPrimary),深浅色自动跟随,这个文件里不出现任何色号。
+//    文字 inkPrimary / 说明文字 inkSecondary),深浅色自动跟随,这个文件里不出现任何色号。
 //  - 弹出动画:从靠近触发点的那个角弹开(和系统长按菜单同款观感);
 //    系统开了「减弱动态效果」时退化成纯淡入。
 //
+//  ## 结构:为什么卡片外面还套了一层 shadowHost
+//
+//  列表能滚动之后,滚动内容会从卡片的直角裁切框里"穿出"圆角 —— 卡片必须
+//  clipsToBounds 裁圆角;可是裁切的层画不了阴影(阴影在边界外)。
+//  所以拆两层:外层 shadowHost 只负责投影和动画(不裁切),内层 card 负责圆角裁切。
+//
 //  ## 几条前人教训在这里的落点
 //
-//  - L78:宽度写死、不 systemLayoutSizeFitting 反复量 —— 高度只在弹出前量一次。
+//  - L78:宽度写死、高度只在弹出前量一次(量和排用同一套 Auto Layout,不会对不上)。
 //  - L73:卡片位置是我们自己算的,所以**转屏/分屏时不追着重算,直接收起**
 //    (viewWillTransition 里 dismiss),下次再点重新算,永远不存在"两套坐标对不上"。
 //  - L62/L83:动画只用一次性的 UIView.animate,不留活的 animator,销毁无雷。
@@ -68,20 +77,27 @@ enum NNWMenu {
 	enum Anchor {
 		/// 从某个具体控件旁弹出(在它上方还是下方、靠左还是靠右,按控件在屏幕的位置自动选)
 		case view(UIView)
-		/// 底部工具栏右侧的上方(订阅列表页右下角 `+` 这类;系统工具栏按钮拿不到
-		/// 它的视图,所以按"工具栏上缘靠右"定位,视觉上正好在按钮头顶)
+		/// 底部工具栏右侧的上方(订阅列表页右下角 `+`、编辑模式的「删除」这类;
+		/// 系统工具栏按钮拿不到它的视图,所以按"工具栏上缘靠右"定位,视觉上正好在按钮头顶)
 		case bottomTrailing
-		/// 底部工具栏左侧的上方
+		/// 底部工具栏左侧的上方(编辑模式的「移动到…」这类)
 		case bottomLeading
+		/// 导航栏右侧按钮的下方(文件夹管理页「新建文件夹」这类)
+		case topTrailing
 	}
 
 	/// 弹出选单。host = 当前页面(选单以全屏浮层盖在它上面)。
+	/// title / message 可选:填了就在卡片顶部显示一块钉住的说明区(列表滚动时它不动)。
 	@MainActor
-	static func show(in host: UIViewController, anchor: Anchor, sections: [[Item]]) {
+	static func show(in host: UIViewController, anchor: Anchor,
+					 title: String? = nil, message: String? = nil,
+					 sections: [[Item]]) {
 		// 已经有东西弹着(包括另一张选单)就不再弹,防连点
 		guard host.presentedViewController == nil else { return }
 		guard sections.contains(where: { !$0.isEmpty }) else { return }
-		let menu = NNWMenuViewController(sections: sections, anchor: anchor, hostView: host.view)
+		let menu = NNWMenuViewController(sections: sections, anchor: anchor,
+										 headerTitle: title, headerMessage: message,
+										 hostView: host.view)
 		menu.modalPresentationStyle = .overFullScreen
 		host.present(menu, animated: false)		// 动画自己做(系统的模态动画是"从底部推上来",不是我们要的)
 	}
@@ -100,16 +116,23 @@ private final class NNWMenuViewController: UIViewController {
 
 	private let sections: [[NNWMenu.Item]]
 	private let anchor: NNWMenu.Anchor
-	private weak var hostView: UIView?					// 用来算 bottomTrailing/Leading 的工具栏位置
+	private let headerTitle: String?
+	private let headerMessage: String?
+	private weak var hostView: UIView?					// 用来算工具栏/导航栏锚点位置
 
 	private let dim = UIView()
-	private let card = UIView()
+	private let shadowHost = UIView()					// 只负责投影 + 弹出动画(不裁切)
+	private let card = UIView()							// 负责圆角裁切(裁切层画不了阴影,见文件头)
+	private let scrollView = UIScrollView()				// 选项列表;超高时在这里面滚
 	private var placed = false							// 位置只算一次(见文件头 L73 那条)
 	private var isClosing = false
 
-	init(sections: [[NNWMenu.Item]], anchor: NNWMenu.Anchor, hostView: UIView?) {
+	init(sections: [[NNWMenu.Item]], anchor: NNWMenu.Anchor,
+		 headerTitle: String?, headerMessage: String?, hostView: UIView?) {
 		self.sections = sections
 		self.anchor = anchor
+		self.headerTitle = headerTitle
+		self.headerMessage = headerMessage
 		self.hostView = hostView
 		super.init(nibName: nil, bundle: nil)
 	}
@@ -133,30 +156,65 @@ private final class NNWMenuViewController: UIViewController {
 		dim.accessibilityTraits = .button
 		view.addSubview(dim)
 
+		// 投影层(阴影画在这层;圆角裁切在里面的 card 上,两者不能是同一层)
+		shadowHost.layer.shadowColor = UIColor.black.cgColor
+		shadowHost.layer.shadowOpacity = 0.22
+		shadowHost.layer.shadowRadius = 24
+		shadowHost.layer.shadowOffset = CGSize(width: 0, height: 8)
+		view.addSubview(shadowHost)
+
 		// 卡片
 		card.backgroundColor = AppAppearance.menuCardBackground
 		card.layer.cornerRadius = Self.cardCornerRadius
 		card.layer.cornerCurve = .continuous
+		card.clipsToBounds = true		// 列表滚动时内容不能穿出圆角
 		// 极淡描边:浅色下几乎看不见,深色下把卡片从压暗的背景里衬出来(阴影在深色里不管用)
 		card.layer.borderWidth = 1.0 / max(view.traitCollection.displayScale, 1)
 		card.layer.borderColor = AppAppearance.menuSeparator.cgColor
-		card.layer.shadowColor = UIColor.black.cgColor
-		card.layer.shadowOpacity = 0.22
-		card.layer.shadowRadius = 24
-		card.layer.shadowOffset = CGSize(width: 0, height: 8)
-		view.addSubview(card)
+		shadowHost.addSubview(card)
 
-		// 菜单行竖着叠;组与组之间插分隔线
+		// 顶部说明区(可选,钉在卡片顶上,列表滚动时不动)
+		var headerView: UIView?
+		if headerTitle != nil || headerMessage != nil {
+			headerView = makeHeader()
+			card.addSubview(headerView!)
+			NSLayoutConstraint.activate([
+				headerView!.topAnchor.constraint(equalTo: card.topAnchor),
+				headerView!.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+				headerView!.trailingAnchor.constraint(equalTo: card.trailingAnchor)
+			])
+		}
+
+		// 选项列表放进滚动容器:内容不高时它就是静止的,超过封顶高度才滚
+		scrollView.translatesAutoresizingMaskIntoConstraints = false
+		scrollView.alwaysBounceVertical = false
+		scrollView.contentInsetAdjustmentBehavior = .never		// 卡片不贴屏幕边,系统别自作主张加内边距
+		card.addSubview(scrollView)
+		NSLayoutConstraint.activate([
+			scrollView.topAnchor.constraint(equalTo: headerView?.bottomAnchor ?? card.topAnchor),
+			scrollView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+			scrollView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+			scrollView.bottomAnchor.constraint(equalTo: card.bottomAnchor)
+		])
+		// 「滚动区高度 = 内容高度」但优先级只有 750:量尺寸时它成立(算出自然高度),
+		// 卡片被封顶压矮时它让步(内容比框高 → 开始滚动)。这是滚动容器自适应高度的标准写法。
+		let fitContent = scrollView.frameLayoutGuide.heightAnchor
+			.constraint(equalTo: scrollView.contentLayoutGuide.heightAnchor)
+		fitContent.priority = .defaultHigh
+		fitContent.isActive = true
+
 		let stack = UIStackView()
 		stack.axis = .vertical
 		stack.translatesAutoresizingMaskIntoConstraints = false
-		card.addSubview(stack)
+		scrollView.addSubview(stack)
 		NSLayoutConstraint.activate([
-			stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 8),
-			stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -8),
-			stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-			stack.trailingAnchor.constraint(equalTo: card.trailingAnchor)
+			stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 8),
+			stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -8),
+			stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+			stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+			stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
 		])
+
 		let groups = sections.filter { !$0.isEmpty }
 		for (index, group) in groups.enumerated() {
 			if index > 0 { stack.addArrangedSubview(makeSeparator()) }
@@ -166,6 +224,64 @@ private final class NNWMenuViewController: UIViewController {
 				stack.addArrangedSubview(row)
 			}
 		}
+	}
+
+	/// 顶部说明区:标题(粗一点的墨色)+ 可选的说明句(小一号的浅墨),底下一条细线。
+	private func makeHeader() -> UIView {
+		let header = UIView()
+		header.translatesAutoresizingMaskIntoConstraints = false
+
+		var lastBottom = header.topAnchor
+		var lastGap: CGFloat = 14
+
+		if let headerTitle {
+			let title = UILabel()
+			title.text = headerTitle
+			title.font = UIFont.preferredFont(forTextStyle: .subheadline).nnwSemibold()
+			title.adjustsFontForContentSizeCategory = true
+			title.textColor = AppAppearance.inkPrimary
+			title.numberOfLines = 0
+			title.translatesAutoresizingMaskIntoConstraints = false
+			header.addSubview(title)
+			NSLayoutConstraint.activate([
+				title.topAnchor.constraint(equalTo: lastBottom, constant: lastGap),
+				title.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 18),
+				title.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -18)
+			])
+			lastBottom = title.bottomAnchor
+			lastGap = 4
+		}
+
+		if let headerMessage {
+			let message = UILabel()
+			message.text = headerMessage
+			message.font = .preferredFont(forTextStyle: .footnote)
+			message.adjustsFontForContentSizeCategory = true
+			message.textColor = AppAppearance.inkSecondary
+			message.numberOfLines = 0
+			message.translatesAutoresizingMaskIntoConstraints = false
+			header.addSubview(message)
+			NSLayoutConstraint.activate([
+				message.topAnchor.constraint(equalTo: lastBottom, constant: lastGap),
+				message.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 18),
+				message.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -18)
+			])
+			lastBottom = message.bottomAnchor
+		}
+
+		// 说明区和列表之间的细线
+		let line = UIView()
+		line.backgroundColor = AppAppearance.menuSeparator
+		line.translatesAutoresizingMaskIntoConstraints = false
+		header.addSubview(line)
+		NSLayoutConstraint.activate([
+			line.topAnchor.constraint(equalTo: lastBottom, constant: 12),
+			line.heightAnchor.constraint(equalToConstant: 1.0 / max(view.traitCollection.displayScale, 1)),
+			line.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+			line.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+			line.bottomAnchor.constraint(equalTo: header.bottomAnchor)
+		])
+		return header
 	}
 
 	/// 组间分隔线:一条细线,上下各留 6pt 呼吸(参考截图里 Reeder 的分组线)。
@@ -194,18 +310,21 @@ private final class NNWMenuViewController: UIViewController {
 		placed = true
 		placeCard()
 		// 摆好后先藏起来,等 viewDidAppear 里做弹出动画
-		card.alpha = 0
+		shadowHost.alpha = 0
 		dim.alpha = 0
 	}
 
 	private func placeCard() {
 		let safe = view.safeAreaLayoutGuide.layoutFrame
 
-		// 高度按内容量一次(宽度写死,理由见文件头 L78 那条)
-		let size = card.systemLayoutSizeFitting(
+		// 高度按内容量一次(量和排用的是同一套 Auto Layout —— L73:别用两套各算各的)
+		let natural = card.systemLayoutSizeFitting(
 			CGSize(width: Self.cardWidth, height: UIView.layoutFittingCompressedSize.height),
 			withHorizontalFittingPriority: .required,
 			verticalFittingPriority: .fittingSizeLevel)
+		// 封顶到安全区:超出的部分由 scrollView 内部滚动消化(那条 750 约束此时让步)
+		let size = CGSize(width: Self.cardWidth,
+						  height: min(natural.height, safe.height - 2 * Self.screenMargin))
 
 		// 触发点的位置(换算到本浮层的坐标系;浮层铺满整个窗口)
 		let anchorRect: CGRect
@@ -216,22 +335,25 @@ private final class NNWMenuViewController: UIViewController {
 			anchorRect = v.convert(v.bounds, to: view)
 			alignTrailing = anchorRect.midX > view.bounds.midX
 			above = anchorRect.midY > view.bounds.midY
-		case .bottomTrailing, .bottomLeading:
-			// host 页面底部安全区的上缘 = 工具栏顶。在它上方弹,左右贴着安全区边
+		case .bottomTrailing, .bottomLeading, .topTrailing:
+			// host 页面安全区:底缘 = 工具栏顶,顶缘 = 导航栏底
 			let hostSafe: CGRect
 			if let hostView {
 				hostSafe = hostView.convert(hostView.safeAreaLayoutGuide.layoutFrame, to: view)
 			} else {
 				hostSafe = safe
 			}
-			if case .bottomTrailing = anchor {
+			switch anchor {
+			case .bottomTrailing:
 				anchorRect = CGRect(x: hostSafe.maxX - 44, y: hostSafe.maxY, width: 44, height: 0)
-				alignTrailing = true
-			} else {
+				alignTrailing = true; above = true
+			case .bottomLeading:
 				anchorRect = CGRect(x: hostSafe.minX, y: hostSafe.maxY, width: 44, height: 0)
-				alignTrailing = false
+				alignTrailing = false; above = true
+			default: // .topTrailing
+				anchorRect = CGRect(x: hostSafe.maxX - 44, y: hostSafe.minY, width: 44, height: 0)
+				alignTrailing = true; above = false
 			}
-			above = true
 		}
 
 		// 先按对齐规则摆,再整体夹回安全区内(不管触发点多贴边,卡片都不出屏)
@@ -243,9 +365,10 @@ private final class NNWMenuViewController: UIViewController {
 							   : (anchorRect.maxY + Self.anchorGap)
 		frame.origin.y = max(safe.minY + Self.screenMargin,
 							 min(frame.origin.y, safe.maxY - Self.screenMargin - size.height))
-		card.frame = frame
-		card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
-											 cornerRadius: Self.cardCornerRadius).cgPath
+		shadowHost.frame = frame
+		card.frame = shadowHost.bounds
+		shadowHost.layer.shadowPath = UIBezierPath(roundedRect: shadowHost.bounds,
+												   cornerRadius: Self.cardCornerRadius).cgPath
 
 		// 缩放动画的锚点 = 靠近触发点的那个角(观感和系统长按菜单一致)
 		setScaleAnchor(CGPoint(x: alignTrailing ? 1 : 0, y: above ? 1 : 0))
@@ -253,10 +376,10 @@ private final class NNWMenuViewController: UIViewController {
 
 	/// 改 layer.anchorPoint 而不让视图跑位(标准补偿写法)。
 	private func setScaleAnchor(_ p: CGPoint) {
-		let old = card.layer.anchorPoint
-		card.layer.anchorPoint = p
-		card.layer.position.x += (p.x - old.x) * card.bounds.width
-		card.layer.position.y += (p.y - old.y) * card.bounds.height
+		let old = shadowHost.layer.anchorPoint
+		shadowHost.layer.anchorPoint = p
+		shadowHost.layer.position.x += (p.x - old.x) * shadowHost.bounds.width
+		shadowHost.layer.position.y += (p.y - old.y) * shadowHost.bounds.height
 	}
 
 	// MARK: 弹出 / 收起动画
@@ -266,13 +389,13 @@ private final class NNWMenuViewController: UIViewController {
 		UIImpactFeedbackGenerator(style: .light).impactOccurred()
 		if UIAccessibility.isReduceMotionEnabled {
 			// 用户关掉了动态效果:只淡入
-			UIView.animate(withDuration: 0.2) { self.card.alpha = 1; self.dim.alpha = 1 }
+			UIView.animate(withDuration: 0.2) { self.shadowHost.alpha = 1; self.dim.alpha = 1 }
 		} else {
-			card.transform = CGAffineTransform(scaleX: 0.25, y: 0.25)
+			shadowHost.transform = CGAffineTransform(scaleX: 0.25, y: 0.25)
 			UIView.animate(withDuration: 0.32, delay: 0,
 						   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
-				self.card.transform = .identity
-				self.card.alpha = 1
+				self.shadowHost.transform = .identity
+				self.shadowHost.alpha = 1
 				self.dim.alpha = 1
 			}
 		}
@@ -283,10 +406,10 @@ private final class NNWMenuViewController: UIViewController {
 		guard !isClosing else { return }
 		isClosing = true
 		UIView.animate(withDuration: 0.16, delay: 0, options: [.curveEaseIn]) {
-			self.card.alpha = 0
+			self.shadowHost.alpha = 0
 			self.dim.alpha = 0
 			if !UIAccessibility.isReduceMotionEnabled {
-				self.card.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+				self.shadowHost.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
 			}
 		} completion: { _ in
 			self.dismiss(animated: false) { handler?() }
@@ -384,6 +507,16 @@ private final class NNWMenuRowControl: UIControl {
 	// 手指按上去 → 显示药丸;抬起/划出 → 收掉。isHighlighted 是 UIControl 自己维护的
 	override var isHighlighted: Bool {
 		didSet { pill.isHidden = !isHighlighted }
+	}
+}
+
+// MARK: - 小工具
+
+private extension UIFont {
+	/// 同字号的半粗版(给说明区标题用;动态字号照常生效)。
+	func nnwSemibold() -> UIFont {
+		guard let descriptor = fontDescriptor.withSymbolicTraits(.traitBold) else { return self }
+		return UIFont(descriptor: descriptor, size: 0)		// size 0 = 沿用原字号
 	}
 }
 

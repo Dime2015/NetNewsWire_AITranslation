@@ -308,23 +308,20 @@ import os
 	/// 🔧 2026-07-24 重写:原来复用上游的 AddFeedFolderViewController(卡片弹出),
 	/// 用户实测**列表里只有账户、选不了任何文件夹**。那套界面是给上游自己的添加页
 	/// 设计的,被我们改成推入式页面后用 `.currentContext` 弹出,行为不可靠。
-	/// 改用和文件夹管理页「移动到…」**同款的动作单**(用户验收过的模式):
-	/// 数据只走 Account 公开接口(sortedActiveAccounts / sortedFolders),行为完全归我们管。
+	/// 改为自己列数据:只走 Account 公开接口(sortedActiveAccounts / sortedFolders),行为完全归我们管。
+	/// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单 NNWMenu(文件夹多时卡片内部滚动)。
+	/// 每个账户一组:顶层一行 + 它的各个文件夹;多账户时组间有分隔线。点选单外面 = 取消。
 	private func showFolderPicker() {
 
-		let picker = UIAlertController(title: "订阅到", message: nil, preferredStyle: .actionSheet)
-		if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: 0)) {
-			picker.popoverPresentationController?.sourceView = cell
-			picker.popoverPresentationController?.sourceRect = cell.bounds
-		}
-
+		var sections: [[NNWMenu.Item]] = []
 		let accounts = AccountManager.shared.sortedActiveAccounts
 		for account in accounts {
+			var group: [NNWMenu.Item] = []
 			// 顶层(不放进文件夹)。个别同步服务不允许订阅放根层,那就不给这一项
 			if !account.behaviors.contains(.disallowFeedInRootFolder) {
 				let rootTitle = accounts.count > 1
 					? "\(account.nameForDisplay)(不放进文件夹)" : "不放进文件夹"
-				picker.addAction(UIAlertAction(title: rootTitle, style: .default) { [weak self] _ in
+				group.append(NNWMenu.Item(title: rootTitle, icon: "tray") { [weak self] in
 					self?.container = account
 					self?.tableView.reloadData()
 				})
@@ -332,14 +329,22 @@ import os
 			for folder in account.sortedFolders ?? [] {
 				let title = accounts.count > 1
 					? "\(account.nameForDisplay) / \(folder.nameForDisplay)" : folder.nameForDisplay
-				picker.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+				group.append(NNWMenu.Item(title: title, icon: "folder") { [weak self] in
 					self?.container = folder
 					self?.tableView.reloadData()
 				})
 			}
+			if !group.isEmpty { sections.append(group) }
 		}
-		picker.addAction(UIAlertAction(title: "取消", style: .cancel))
-		present(picker, animated: true)
+
+		// 从「订阅到」那一行旁边弹出;万一拿不到那个 cell(理论上不会),就从左下角弹
+		let anchor: NNWMenu.Anchor
+		if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: 0)) {
+			anchor = .view(cell)
+		} else {
+			anchor = .bottomLeading
+		}
+		NNWMenu.show(in: self, anchor: anchor, title: "订阅到", sections: sections)
 	}
 
 	private var folderLabel: String {

@@ -664,15 +664,23 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 			return
 		}
 
-		let picker = UIAlertController(title: "在哪个账户下新建?", message: nil, preferredStyle: .actionSheet)
-		picker.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
-		for account in accounts {
-			picker.addAction(UIAlertAction(title: account.nameForDisplay, style: .default) { [weak self] _ in
-				self?.promptNewFolderName(in: account)
-			})
+		// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单(从右上角「新建文件夹」按钮下方弹出)
+		NNWMenu.show(in: self, anchor: .topTrailing, title: "在哪个账户下新建?", sections: [
+			accounts.map { account in
+				NNWMenu.Item(title: account.nameForDisplay, icon: Self.accountIcon(for: account)) { [weak self] in
+					self?.promptNewFolderName(in: account)
+				}
+			}
+		])
+	}
+
+	/// 账户类型 → 图标:iCloud 用云、本机账户用手机、其余同步服务用地球。
+	private static func accountIcon(for account: Account) -> String {
+		switch account.type {
+		case .cloudKit: return "icloud"
+		case .onMyMac: return "iphone"		// 枚举名是历史遗留,在 iPhone 上就是「我的 iPhone」账户
+		default: return "globe"
 		}
-		picker.addAction(UIAlertAction(title: "取消", style: .cancel))
-		present(picker, animated: true)
 	}
 
 	private func promptNewFolderName(in account: Account) {
@@ -850,20 +858,20 @@ extension FolderManagerViewController {
 			return
 		}
 
-		let picker = UIAlertController(title: "移动 \(items.count) 项到", message: nil, preferredStyle: .actionSheet)
-		picker.popoverPresentationController?.barButtonItem = toolbarItems?.first { $0.isEnabled && $0.title != nil }
-
-		for folder in account.sortedFolders ?? [] {
-			picker.addAction(UIAlertAction(title: folder.nameForDisplay, style: .default) { [weak self] _ in
+		// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单(从工具栏左侧「移动到…」按钮头顶弹出;
+		// 文件夹多时卡片内部滚动)。点选单外面 = 取消。
+		let folderItems: [NNWMenu.Item] = (account.sortedFolders ?? []).map { folder in
+			NNWMenu.Item(title: folder.nameForDisplay, icon: "folder") { [weak self] in
 				self?.performMove(items, to: folder, in: account)
-			})
+			}
 		}
 		// 「拿出文件夹」就是移到账户本身(顶层)。上游模型里没有更上面一层了。
-		picker.addAction(UIAlertAction(title: "不放在文件夹里", style: .default) { [weak self] _ in
+		// 单独一组,和文件夹列表隔开 —— 它是"不放哪儿"而不是"放哪个"。
+		let rootItem = NNWMenu.Item(title: "不放在文件夹里", icon: "tray") { [weak self] in
 			self?.performMove(items, to: account, in: account)
-		})
-		picker.addAction(UIAlertAction(title: "取消", style: .cancel))
-		present(picker, animated: true)
+		}
+		NNWMenu.show(in: self, anchor: .bottomLeading, title: "移动 \(items.count) 项到",
+					 sections: [folderItems, [rootItem]])
 	}
 
 	private func itemAccountID(_ item: Item) -> String? {
@@ -994,7 +1002,8 @@ extension FolderManagerViewController {
 				title = "删除 \(feedCount) 个订阅源"
 			}
 			confirmDelete(title: title,
-						  message: "文章和已读状态会一起删掉。删错了可以摇一摇撤销。") { [weak self] in
+						  message: "文章和已读状态会一起删掉。删错了可以摇一摇撤销。",
+						  anchor: anchor) { [weak self] in
 				self?.deleteWithUndo(items)
 			}
 			return
@@ -1010,7 +1019,7 @@ extension FolderManagerViewController {
 			} else {
 				title = "删除 \(folders.count) 个空文件夹"
 			}
-			confirmDelete(title: title, message: "删错了可以摇一摇撤销。") { [weak self] in
+			confirmDelete(title: title, message: "删错了可以摇一摇撤销。", anchor: anchor) { [weak self] in
 				self?.deleteWithUndo(items)
 			}
 			return
@@ -1029,28 +1038,35 @@ extension FolderManagerViewController {
 		let isSingle = items.count == 1
 		let titleText = isSingle ? "删除文件夹「\(folders[0].nameForDisplay)」" : "删除 \(folders.count) 个文件夹"
 		let message = "里面还有 \(feedsInsideCount) 个订阅源,要怎么处理?"
-		let alert = UIAlertController(title: titleText, message: message, preferredStyle: .actionSheet)
-		switch anchor {
-		case .toolbar:
-			alert.popoverPresentationController?.barButtonItem = toolbarItems?.last
-		case .row(let indexPath):
-			if let cell = collectionView.cellForItem(at: indexPath) {
-				alert.popoverPresentationController?.sourceView = cell
-				alert.popoverPresentationController?.sourceRect = cell.bounds
-			}
-		}
 
 		// 文案刻意做短(2026-07-23 用户定的)。两项的区别全在"和订阅源"三个字上,
-		// 上面那句 message(「里面还有 N 个订阅源,要怎么处理?」)已经交代了处境,
+		// 标题区那句 message(「里面还有 N 个订阅源,要怎么处理?」)已经交代了处境,
 		// 选项里不必再复述一遍"移到外面"。
-		alert.addAction(UIAlertAction(title: "删除文件夹", style: .default) { [weak self] _ in
-			self?.releaseFeedsThenDelete(items: items, folders: folders)
-		})
-		alert.addAction(UIAlertAction(title: "删除文件夹和订阅源", style: .destructive) { [weak self] _ in
-			self?.deleteWithUndo(items)
-		})
-		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-		present(alert, animated: true)
+		// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单。破坏性确认保留明确的「取消」行
+		//(点选单外面也能取消,但删除这种事要给一条看得见的退路)。
+		NNWMenu.show(in: self, anchor: menuAnchor(for: anchor), title: titleText, message: message, sections: [
+			[NNWMenu.Item(title: "删除文件夹", icon: "folder.badge.minus") { [weak self] in
+				self?.releaseFeedsThenDelete(items: items, folders: folders)
+			},
+			NNWMenu.Item(title: "删除文件夹和订阅源", icon: "trash", isDestructive: true) { [weak self] in
+				self?.deleteWithUndo(items)
+			}],
+			[NNWMenu.Item(title: "取消", icon: "xmark") {}]
+		])
+	}
+
+	/// 删除入口的位置 → 选单锚点:工具栏入口从右下角弹(「删除 N 项」在工具栏右侧),
+	/// 左滑入口从被滑的那一行旁边弹。
+	private func menuAnchor(for anchor: DeleteAnchor) -> NNWMenu.Anchor {
+		switch anchor {
+		case .toolbar:
+			return .bottomTrailing
+		case .row(let indexPath):
+			if let cell = collectionView.cellForItem(at: indexPath) {
+				return .view(cell)
+			}
+			return .bottomTrailing
+		}
 	}
 
 	/// 先把文件夹里的源搬到顶层,再删空掉的文件夹。
@@ -1168,11 +1184,14 @@ extension FolderManagerViewController {
 	}
 
 	/// 破坏性操作统一走这个确认框。**删除永远要问一次** —— 批量删尤其。
-	private func confirmDelete(title: String, message: String, onConfirm: @escaping () -> Void) {
-		let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-		alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in onConfirm() })
-		present(alert, animated: true)
+	/// 🎛 2026-07-24 深夜:系统弹窗换成自绘品牌选单;和删文件夹的双选项确认长一个样,
+	/// 整条删除流程观感统一。anchor 用来决定从哪儿弹(工具栏按钮头顶 / 被滑的那一行旁)。
+	private func confirmDelete(title: String, message: String, anchor: DeleteAnchor,
+							   onConfirm: @escaping () -> Void) {
+		NNWMenu.show(in: self, anchor: menuAnchor(for: anchor), title: title, message: message, sections: [
+			[NNWMenu.Item(title: "删除", icon: "trash", isDestructive: true) { onConfirm() }],
+			[NNWMenu.Item(title: "取消", icon: "xmark") {}]
+		])
 	}
 }
 // MARK: - 拖拽:按「区域」判定,而不是「压着哪一行」

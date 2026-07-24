@@ -63,6 +63,10 @@ enum AppAppearance {
 		static let inkLight = rgb(0x2C2823)
 		static let inkDark  = rgb(0xE8E3DA)
 
+		/// 次要暖墨(说明文字、注释性小字):比正文墨色淡两档。
+		static let inkSecondaryLight = rgb(0x877F73)
+		static let inkSecondaryDark  = rgb(0x9C958A)
+
 		// ⚠️ 强调色(陶土红)**不在这里** —— 它的真源是
 		// `iOS/Resources/Assets.xcassets/primaryAccentColor.colorset`(+ secondaryAccentColor)。
 		// 原因:5 个 storyboard 按名字直接引这个 colorset,storyboard 读不了代码里的颜色,
@@ -96,6 +100,9 @@ enum AppAppearance {
 
 	/// 暖墨文字色(自绘控件的文字与图标用,别直接用 .label)。
 	static let inkPrimary = dynamic(light: Palette.inkLight, dark: Palette.inkDark)
+
+	/// 次要暖墨(自绘控件里的说明文字用,别直接用 .secondaryLabel)。
+	static let inkSecondary = dynamic(light: Palette.inkSecondaryLight, dark: Palette.inkSecondaryDark)
 
 	// MARK: - 复用:把「分组表格」类页面(设置等)刷成暖纸风
 
