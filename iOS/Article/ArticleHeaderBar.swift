@@ -65,8 +65,11 @@ import UIKit
 import Account
 import Articles
 import Images
+import os
 
 @MainActor final class ArticleHeaderBarController: NSObject {
+
+	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "ReadingBar")
 
 	// MARK: - 可调的数(要调样式改这里)
 
@@ -171,6 +174,9 @@ import Images
 	private var baseTitle: String = ""
 	/// [翻译] 标题的译文覆盖。非 nil 时标签显示它而不是原标题(见 setTitleOverride)
 	private var titleOverride: String?
+
+	/// 安全区自愈请求是否已在路上(T24,防止每帧都发一次)
+	private var pendingSafeAreaNudge = false
 
 	/// 网页装载完了没(false = 还在装)。
 	///
@@ -433,7 +439,29 @@ import Images
 		let width = host.view.bounds.width
 		guard width > 0 else { return }
 
-		let safeTop = host.view.safeAreaInsets.top
+		// ⚠️ 安全区兜底(T24,2026-07-25 真机偶发):快速滑动撞上页面装载时,
+		// 这一页视图的 safeAreaInsets 可能**没被系统灌进来**(读出来是 0),而屏幕上
+		// 状态栏、返回键明明都在 —— 用 0 排版,标题顶进状态栏、压住返回键;
+		// 且每帧都读到同一个错值,滚动永远不会自己好(用户实测:只有换文章才恢复)。
+		// 两道处理:
+		// ① 这一帧先用「窗口的安全区」兜底 —— 那是系统此刻真实的状态栏高度,
+		//    不经过宿主视图传播,不会跟着一起坏(正常时宿主值 ≥ 窗口值,max 不改变任何行为);
+		// ② 差值出现时**另起一拍**请求父级重排(不在滚动回调里同步改布局 —— L63):
+		//    系统把安全区补灌进来后,safeAreaInsetsDidChange 会拉我们重排,
+		//    网页内容的 adjustedContentInset 也随之复位,整体自愈。
+		let hostSafeTop = host.view.safeAreaInsets.top
+		let windowSafeTop = container.window?.safeAreaInsets.top ?? 0
+		let safeTop = max(hostSafeTop, windowSafeTop)
+		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge {
+			pendingSafeAreaNudge = true
+			Self.logger.info("[外观] 阅读栏:宿主安全区疑似未传播(host=\(hostSafeTop, privacy: .public), window=\(windowSafeTop, privacy: .public)),已请求重排自愈(T24)")
+			DispatchQueue.main.async { [weak self] in
+				guard let self else { return }
+				self.pendingSafeAreaNudge = false
+				self.host?.view.superview?.setNeedsLayout()
+				self.host?.view.setNeedsLayout()
+			}
+		}
 		// 停靠区 = **导航栏下面**新起的一条。
 		// 不再用导航栏那一条(它被返回键和上/下一篇占着,见 dockedStripHeight 的说明)。
 		let dockBand = CGRect(x: 0, y: safeTop, width: width, height: Style.dockedStripHeight)
@@ -662,6 +690,13 @@ import Images
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
+		onLayout?()
+	}
+
+	/// 安全区变了也要重排(T24 自愈的接收端):宿主视图的安全区**迟到**时,
+	/// 系统补灌进来的那一刻从这里拉一次排版,标题从状态栏里落回正位。
+	override func safeAreaInsetsDidChange() {
+		super.safeAreaInsetsDidChange()
 		onLayout?()
 	}
 
