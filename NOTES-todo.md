@@ -773,3 +773,35 @@ cfprefsd 会拿它自己缓存的那份回写覆盖。
 4. 视频/播客内嵌截出来是黑块 → 第一版接受现状
 页脚 icon 要把浅色图标复制一份进普通 imageset(app 图标资源不能按名字加载);
 「分享自 X」的品牌名走 NNWBrand.displayName,不写死。
+
+---
+
+## T23 · 把系统弹窗逐步换成自绘品牌选单(NNWMenu)—— 全 app 盘点清单
+
+**状态**:进行中(2026-07-24 深夜盘点并做了第一处,待用户验收后继续勾选)
+
+**组件**:`iOS/DesignKit/NNWMenu.swift`(自绘圆角卡片选单,样式参考 Reeder)。
+**替换原则**:选单类(actionSheet,几行选项)优先换,收益最大;
+「好」一个按钮的纯提示 alert 换了收益低,先放;带文本输入框的 NNWMenu 不适用,不动。
+
+**A. 我们自己文件里的(零 merge 风险,想换就换)**
+- [x] 订阅列表 `+` 选单(文件夹管理/搜索订阅源)—— **2026-07-24 已换,第一个样板**
+- [ ] 订阅发现页「订阅到」文件夹动作单(`FeedDiscoveryViewController` showFolderPicker)
+  ⚠️ 文件夹多时列表长 —— NNWMenu 目前不带滚动,换之前要先给组件加「超高时内部滚动」
+- [ ] 文件夹管理页「在哪个账户下新建?」(`FolderManagerViewController` 667 附近)
+- [ ] 文件夹管理页「移动 N 项到…」(853 附近)⚠️ 同上,列表可能很长,要先加滚动
+- [ ] 文件夹管理页「删除文件夹」双选项确认(1032 附近;危险项红色,NNWMenu 已支持)
+- [ ] 文章页「重新翻译整篇」确认(`ArticleViewController` 681 附近,[翻译] 代码区)
+- 不动:新建/重命名文件夹(带文本框)、各处纯提示 alert(保存失败/已切换语言等)
+
+**B. 上游文件里的(每处多一块上游 diff,逐个拍板再动)**
+- [ ] 文章列表右滑「更多」动作单(`MainTimelineModernViewController` 739 附近)
+- [ ] 「标记已读」确认(`MarkAsReadAlertController`,多处入口共用,换一处全生效)
+- [ ] 设置页两个 actionSheet(`SettingsViewController` 555/611)
+- [ ] 全局错误弹窗 `presentError`(`UIViewController+Extras` 67)——
+  换这一处 = 全 app 错误弹窗一起换,性价比最高的一处上游改动,但要用户拍板
+- 不动:Inspector / 主题导入等低频 alert
+
+**C. 换不了外观的(默认不动,除非用户强烈想要)**
+- 长按菜单(UIMenu):系统渲染,外观不可定制;要换=整个重做长按交互,动上游,代价大
+- 系统分享单、邮件/相册权限弹窗:系统的,不可定制

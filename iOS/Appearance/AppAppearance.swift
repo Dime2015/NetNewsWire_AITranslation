@@ -50,6 +50,19 @@ enum AppAppearance {
 		static let selectionLight = rgb(0xE8E3DB)
 		static let selectionDark  = rgb(0x2E2C28)
 
+		/// 自绘选单(NNWMenu)卡片底:比纸面再亮/浮一档,营造"卡片浮在纸上"的层次。
+		static let menuCardLight = rgb(0xFBF8F3)
+		static let menuCardDark  = rgb(0x2A2825)
+
+		/// 自绘选单的分隔线与卡片描边(极淡;深色下还兼任把卡片从暗背景里衬出来的描边)。
+		static let menuSeparatorLight = rgb(0xE4DFD6)
+		static let menuSeparatorDark  = rgb(0x3A3733)
+
+		/// 暖墨文字色(取代纯黑/纯白的 .label,和暖纸底更搭)。目前选单在用;
+		/// 以后别的自绘控件要文字色也用这条,别再开新色。
+		static let inkLight = rgb(0x2C2823)
+		static let inkDark  = rgb(0xE8E3DA)
+
 		// ⚠️ 强调色(陶土红)**不在这里** —— 它的真源是
 		// `iOS/Resources/Assets.xcassets/primaryAccentColor.colorset`(+ secondaryAccentColor)。
 		// 原因:5 个 storyboard 按名字直接引这个 colorset,storyboard 读不了代码里的颜色,
@@ -74,6 +87,15 @@ enum AppAppearance {
 
 	/// 表格 cell 选中时的淡暖色高亮(取代系统蓝)。
 	static let selectionHighlight = dynamic(light: Palette.selectionLight, dark: Palette.selectionDark)
+
+	/// 自绘选单(NNWMenu)的卡片底色。
+	static let menuCardBackground = dynamic(light: Palette.menuCardLight, dark: Palette.menuCardDark)
+
+	/// 自绘选单的分隔线 / 描边色。
+	static let menuSeparator = dynamic(light: Palette.menuSeparatorLight, dark: Palette.menuSeparatorDark)
+
+	/// 暖墨文字色(自绘控件的文字与图标用,别直接用 .label)。
+	static let inkPrimary = dynamic(light: Palette.inkLight, dark: Palette.inkDark)
 
 	// MARK: - 复用:把「分组表格」类页面(设置等)刷成暖纸风
 

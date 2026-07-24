@@ -42,7 +42,8 @@ import UIKit
 		// 界面文字是 app 启动时加载的,改完必须重启才会全部换掉 —— 只提示,不代为退出。
 		let alert = UIAlertController(
 			title: "已切换语言",
-			message: "请手动退出并重新打开 NetNewsWire,新的界面语言才会完全生效。",
+			// [品牌] 品牌名不写死(2026-07-24 深夜补漏:这里原来写死了老名字)
+			message: "请手动退出并重新打开 \(NNWBrand.displayName),新的界面语言才会完全生效。",
 			preferredStyle: .alert)
 		alert.addAction(UIAlertAction(title: "好", style: .default) { [weak self] _ in
 			self?.navigationController?.popViewController(animated: true)
@@ -64,7 +65,8 @@ import UIKit
 	}
 
 	override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-		"更改语言后需要重新启动 NetNewsWire 才会生效。\n\n未翻译的文字会自动回退到英文。"
+		// [品牌] 品牌名不写死(2026-07-24 深夜补漏)
+		"更改语言后需要重新启动 \(NNWBrand.displayName) 才会生效。\n\n未翻译的文字会自动回退到英文。"
 	}
 
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

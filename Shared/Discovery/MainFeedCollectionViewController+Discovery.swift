@@ -45,21 +45,22 @@ import UIKit
 extension MainFeedCollectionViewController {
 
 	/// [管理] 右下角 `+` 的选单:整理已有的 / 添加新的。
+	///
+	/// 2026-07-24 深夜:系统动作单(UIAlertController,底部大白条)换成自绘的
+	/// 品牌选单 NNWMenu(暖纸圆角卡片,从 `+` 按钮头顶弹出)。
+	/// 「取消」行不再需要 —— 点选单外面任意处就是取消。
+	/// sender 保留在签名里但不再使用:系统工具栏按钮拿不到它的视图,
+	/// NNWMenu 按「工具栏右上角」定位;签名不动,上游文件里那一行调用也就不用动。
 	func nnwShowAddMenu(from sender: UIBarButtonItem) {
-
-		let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-		// iPad 上操作单是气泡,必须告诉它从哪个按钮弹出来,否则会崩
-		alert.popoverPresentationController?.barButtonItem = sender
-
-		alert.addAction(UIAlertAction(title: "文件夹管理", style: .default) { [weak self] _ in
-			self?.nnwShowFolderManager()
-		})
-		alert.addAction(UIAlertAction(title: "搜索订阅源", style: .default) { [weak self] _ in
-			self?.showFeedDiscovery()
-		})
-		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-
-		present(alert, animated: true)
+		_ = sender
+		NNWMenu.show(in: self, anchor: .bottomTrailing, sections: [[
+			NNWMenu.Item(title: "文件夹管理", icon: "folder") { [weak self] in
+				self?.nnwShowFolderManager()
+			},
+			NNWMenu.Item(title: "搜索订阅源", icon: "magnifyingglass") { [weak self] in
+				self?.showFeedDiscovery()
+			}
+		]])
 	}
 
 	/// [管理] 打开文件夹 / 订阅源管理页。
