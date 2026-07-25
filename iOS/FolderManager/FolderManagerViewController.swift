@@ -59,8 +59,13 @@ import UIKit
 import Account
 import RSCore
 import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,见 makeNode(for:)
+import os			// [管理] 拖放诊断日志(2026-07-25 排查"拿不出文件夹"用,便宜,留着)
 
 @MainActor final class FolderManagerViewController: UIViewController {
+
+	/// 拖放诊断日志。看法:`xcrun simctl spawn booted log show --last 5m --predicate
+	/// 'subsystem CONTAINS "NetNewsWire"' --style compact | grep 拖放`
+	static let dragLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "FolderDrag")
 
 	// MARK: - 列表里的一行
 
@@ -113,6 +118,31 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 	/// ⚠️ 不冻结的话:后台抓取随便来一条通知就整棵重画一次,而重画会重置滚动位置 ——
 	/// 用户报的「拖到需要滚屏的地方、手一停,屏幕唰地弹回去,根本没法瞄准」就是这么来的。
 	fileprivate var isDragInProgress = false
+	/// 冻结从什么时候开始的 —— scheduleReload 里的保险丝按它判断"冻过头了"(见 beginDragFreeze)
+	fileprivate var dragFreezeStartedAt: Date?
+	/// 下一次重画要不要动画。放手后的那次补画设为 false(方案甲,2026-07-25):
+	/// 跨容器搬家的重画本来就晚于落下动画,再带动画就是用户看到的"闪烁"——改成瞬时就位。
+	/// 一次性:消费后自动回到 true。
+	fileprivate var nextReloadAnimated = true
+
+	// MARK: - cell「钢印」(2026-07-25,拖放锚行按它认人)
+	//
+	// ⚠️ 为什么不能用行号(index path)查"这行是什么":拖动中 UIKit 的占位缝**占着一个行号**,
+	// 「布局的行号」和「数据快照的行号」从占位那行起全部错开一位;拿行号跨这两个世界查询,
+	// 查到的就是错的行(锚行、落点高亮都中过招)。钢印在 cell 配置时盖上,
+	// cell 被挤到哪、行号怎么错,它代表谁都不变。
+
+	private static var stampedItemKey: UInt8 = 0
+
+	/// 给 cell 盖钢印:这张 cell 此刻代表哪个 Item(两个 cell 注册闭包里调)。
+	private func stamp(_ item: Item, on cell: UICollectionViewCell) {
+		objc_setAssociatedObject(cell, &Self.stampedItemKey, item, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+	}
+
+	/// 读钢印(没盖过 = nil,比如占位、分组头)。
+	private func stampedItem(of cell: UICollectionViewCell) -> Item? {
+		objc_getAssociatedObject(cell, &Self.stampedItemKey) as? Item
+	}
 
 	// ⚠️⚠️ **「悬停自动展开文件夹」(弹簧加载)已于 2026-07-23 整个拿掉,别再加回来。**
 	//
@@ -342,6 +372,7 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		// 文件夹那一行:带一个可展开的小三角
 		let folderRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
 			guard let self else { return }
+			self.stamp(item, on: cell)		// 钢印:拖放锚行按它认人,不走行号(见 stamp 的说明)
 			cell.contentConfiguration = self.rowContent(for: item, base: cell.defaultContentConfiguration())
 			cell.backgroundConfiguration = self.paperCellBackground(highlighted: item == self.dropTargetFolder)
 
@@ -365,6 +396,7 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		// 订阅源那一行
 		let feedRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
 			guard let self else { return }
+			self.stamp(item, on: cell)		// 钢印,同上
 			cell.contentConfiguration = self.rowContent(for: item, base: cell.defaultContentConfiguration())
 			cell.backgroundConfiguration = self.paperCellBackground()
 			// 勾选圈**不加条件**:`displayed: .whenEditing` 已经保证了"只在编辑模式露面",
@@ -799,10 +831,27 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		pendingReloadTask = Task { @MainActor [weak self] in
 			try? await Task.sleep(for: .seconds(Self.reloadDebounceSeconds))
 			guard !Task.isCancelled, let self else { return }
-			// 手指还拖着就别重画 —— 重画会把滚动位置顶回去(见 isDragInProgress)。
-			// 拖动结束时会再调一次这里,攒下的变化那时统一补上。
-			guard !self.isDragInProgress else { return }
-			self.reloadFromAccounts(animated: true)
+
+			// 手指还拖着就别重画 —— 重画会把滚动位置顶回去,还会把放下动画的目标抽走。
+			// 2026-07-25 改成**等而不是丢**:原来直接 return、指望 didEnd 补画;
+			// 但夭折的抬起(itemsForBeginning 之后会话没建成)不会来 didEnd ——
+			// 冻结就永远没人解(L19 那族"一旦发生就再也不恢复")。
+			// 所以这里自己等,并带一根保险丝:冻结超过 15 秒且 UIKit 说没有活跃拖拽,
+			// 就当拖拽已夭折,自行解冻。
+			while self.isDragInProgress {
+				if let started = self.dragFreezeStartedAt,
+				   Date().timeIntervalSince(started) > 15,
+				   !self.collectionView.hasActiveDrag {
+					self.isDragInProgress = false
+					self.dragFreezeStartedAt = nil
+					break
+				}
+				try? await Task.sleep(for: .seconds(0.5))
+				guard !Task.isCancelled else { return }
+			}
+			let animated = self.nextReloadAnimated
+			self.nextReloadAnimated = true		// 一次性,消费即复位
+			self.reloadFromAccounts(animated: animated)
 		}
 	}
 
@@ -932,8 +981,14 @@ extension FolderManagerViewController {
 
 			for item in items {
 				guard let feed = feed(for: item),
-					  let source = sourceContainer(for: item, in: account) else { continue }
-				if source === destination { continue }		// 已经在目标里了,跳过
+					  let source = sourceContainer(for: item, in: account) else {
+					Self.dragLogger.info("拖放·搬家: 查不到源或它的容器,跳过 \(String(describing: item), privacy: .public)")
+					continue
+				}
+				if source === destination {
+					Self.dragLogger.info("拖放·搬家: \(feed.nameForDisplay, privacy: .public) 已在目标容器,跳过")
+					continue
+				}
 
 				do {
 					try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -941,6 +996,7 @@ extension FolderManagerViewController {
 							continuation.resume(with: result)
 						}
 					}
+					Self.dragLogger.info("拖放·搬家: \(feed.nameForDisplay, privacy: .public) 已搬到「\((destination as? Folder)?.nameForDisplay ?? "顶层", privacy: .public)」")
 					movedCount += 1
 				} catch {
 					failedNames.append(feed.nameForDisplay)
@@ -1238,6 +1294,12 @@ extension FolderManagerViewController: UICollectionViewDragDelegate {
 		// **文件夹只能调顺序**(上游不支持子文件夹,它没有别的地方可去)。
 		guard let item = dataSource.itemIdentifier(for: indexPath) else { return [] }
 
+		// ⚠️ 冻结要从**这里**就开始,不能等 dragSessionWillBegin(2026-07-25 抓到的卡死之一):
+		// 长按抬起动画期间(本方法被调 → 会话正式开始)有一小段空窗,后台通知的整棵重画
+		// 若落在这一段,抬起中的 cell 被换掉,拖拽机器当场迷路。
+		// 夭折的抬起(会话没建成)不会来 dragSessionDidEnd —— 解冻靠 scheduleReload 里的保险丝。
+		beginDragFreeze()
+
 		let displayName: String
 		switch item {
 		case .folder:
@@ -1260,13 +1322,31 @@ extension FolderManagerViewController: UICollectionViewDragDelegate {
 	/// 不冻的话,后台抓取随便来一条通知就会把整棵列表重画一次 ——
 	/// 而重画会重置滚动位置,表现就是用户报的
 	/// 「拖到需要滚屏的位置、手一停,屏幕唰地弹回去,根本没法瞄准」。
+	///
+	/// 2026-07-25 扩大冻结范围(采样快照抓到的"长按悬停卡死几十秒"):
+	/// 冻结现在**从 itemsForBeginning 就开始**(抬起动画也在保护圈里),
+	/// **到放下动画飞完才结束**(didEnd 后再等 0.6 秒) —— 采样显示卡死的正是系统的
+	/// "放下归位"动画:它每帧追着目标 cell 瞄准,而重画一来 cell 就被换掉,
+	/// 它就追锚追几十秒。动画飞行期间不许重画,追锚死循环从根上消失。
 	func collectionView(_ collectionView: UICollectionView, dragSessionWillBegin session: UIDragSession) {
-		isDragInProgress = true
+		beginDragFreeze()
 	}
 
 	func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
-		isDragInProgress = false
-		scheduleReload()		// 把冻结期间攒下的变化补画一次
+		// 别立刻解冻:放下动画还要飞 0.3~0.5 秒,现在重画会把它的目标抽走(见上)
+		Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .seconds(0.6))
+			guard let self else { return }
+			self.isDragInProgress = false
+			self.dragFreezeStartedAt = nil
+			self.scheduleReload()		// 把冻结期间攒下的变化补画一次
+		}
+	}
+
+	/// 进入拖动冻结(可重复调,时间戳取最新 —— 保险丝按它计时)。
+	fileprivate func beginDragFreeze() {
+		isDragInProgress = true
+		dragFreezeStartedAt = Date()
 	}
 }
 
@@ -1292,6 +1372,12 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		// **让"松手会进这个文件夹"看得见。**
 		// 高亮的条件和落点意图**出自同一个 decision**,所以看到的和放手的结果必然一致。
 		updateDropTargetHighlight(decision.resolution.target == .anchorFolder ? decision.anchor : nil)
+		// [管理] 诊断日志:判定变化时记一笔,并把 UIKit 自己算的目的地一起记下来对账
+		//(排查"锚行和肉眼看到的行差一行"用;只在变化时记,不刷屏)
+		if lastHoverDropDecision?.anchor != decision.anchor
+			|| lastHoverDropDecision?.resolution != decision.resolution {
+			Self.dragLogger.info("拖放·悬停: 目标=\(String(describing: decision.resolution.target), privacy: .public) 锚=\(String(describing: decision.anchor), privacy: .public) 点=(\(Int(point.x), privacy: .public),\(Int(point.y), privacy: .public)) UIKit目的地=\(String(describing: destinationIndexPath), privacy: .public)")
+		}
 		// 存下这份判定 —— 放手时用的就是它(所见即所得,理由见属性声明处)
 		lastHoverDropDecision = decision
 
@@ -1346,8 +1432,43 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		// 行弹回原位 —— 同一个坐标对上弹回后的行框,结论就翻了(预告"排旁边"、落进文件夹)。
 		// 缓存的这份是用户松手前亲眼看到的判定;重算只留作缓存意外为空时的兜底。
 		let draggingFolder = items.contains { if case .folder = $0 { return true }; return false }
-		guard let target = lastHoverDropDecision
+		guard var target = lastHoverDropDecision
 				?? dropDecision(at: point, draggingFolder: draggingFolder) else { return }
+
+		// ⚠️ **但「拿出文件夹」的横向规则,要用松手瞬间的真实 X 重判**(L87 的补丁又切出的回归,
+		// 2026-07-25 当天用户就抓到了:文件夹里的源没法往左拖出来了):
+		// 往左退过缩进线 = 拿出来,这条规则**只取决于手指自己的横向位置** ——
+		// 它不受"缝合拢行弹回"影响(那是纵向的),缓存反而会把往左拉的最后一段路冻掉。
+		// 而且"拿出来"和"留在里面"两种悬停在屏幕上**本来就长一样**(都是插缝,没有描边),
+		// 用户唯一的表达就是松手时手指在哪 —— 所以行锚用缓存,横向规则用活的。
+		if !draggingFolder, anchorKind(of: target.anchor) == .nestedFeed {
+			let live = DropZoneResolver.resolve(anchor: .nestedFeed, band: .middle,
+												pointX: point.x, draggingFolder: false)
+			if live.target != target.resolution.target {
+				let liveContainer: Container?
+				switch live.target {
+				case .topLevel:
+					liveContainer = target.account
+				case .enclosingFolder:
+					if case .feed(_, _, let folderID) = target.anchor, let folderID,
+					   let folder = target.account.folders?.first(where: { $0.folderID == folderID }) {
+						liveContainer = folder
+					} else {
+						liveContainer = nil
+					}
+				case .anchorFolder:
+					liveContainer = nil		// 嵌套源分支不会产生这个结论,防御性写全
+				}
+				if let liveContainer {
+					target = DropDecision(container: liveContainer, account: target.account,
+										  accountID: target.accountID, resolution: live,
+										  anchor: target.anchor)
+				}
+			}
+		}
+
+		// [管理] 诊断日志:放手那一刻到底执行的是哪份判定(排查"拿不出文件夹"埋的,留着无害)
+		Self.dragLogger.info("拖放·放手: 缓存=\(self.lastHoverDropDecision != nil ? "有" : "无", privacy: .public) 目标=\(String(describing: target.resolution.target), privacy: .public) 容器=\((target.container as? Folder)?.nameForDisplay ?? "顶层", privacy: .public) x=\(point.x, privacy: .public) 锚=\(String(describing: target.anchor), privacy: .public)")
 
 		// 跨账户拖拽不做(理由见 moveTapped)
 		guard items.allSatisfy({ itemAccountID($0) == target.accountID }) else {
@@ -1355,9 +1476,6 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 			return
 		}
 
-		// UIKit 自己算好的插入位置 —— **就是视觉上"让开的那条缝"所在的位置**。
-		// 拿它当准,松手后的落位才和拖动时看到的一致。
-		let dropIndexPath = coordinator.destinationIndexPath
 
 		// 告诉系统"预览就落在手指松开的地方",省得它把预览**缩着飞回原点再消失**
 		// (用户原话:「拖动的目标会往画面深处缩小,很影响判断」)。
@@ -1368,16 +1486,46 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		// 而下面算插入位置时要拿落点去问"那一行是谁"(`itemIdentifier(for:)`),
 		// 问到的就成了错的行:算成原位就表现为"拖了没反应",算偏就表现为"落到第三行"。
 		// **调用顺序在这里就是语义的一部分,别再挪到前面去。**
+		// 跨容器搬家时,预览的落点**不能按身份查**(见 defer 里的说明);
+		// 走到"搬进别的容器"那个分支时会把这个值填上。
+		var previewCenterOverride: CGPoint?
+
 		defer {
+			// 2026-07-25:接住放下动画的「飞完了」回调 —— 那一刻立刻解冻补画。
+			// 冻结的本意只是"别在动画飞行中抽地毯"(L88);原来傻等 didEnd+0.6 秒,
+			// 跨容器搬家时预览已经消失、新行还没画出来,中间那段空窗就是用户报的
+			// 「先消失,然后重新出现」。动画一完就画,新行正好在预览消失的位置接上。
+			// (didEnd 里那个 0.6 秒兜底仍保留,管"取消拖放"这类不走本方法的收场。)
+			//
+			// ⚠️ 跨容器搬家的预览落点用 previewCenterOverride(手指所在的缝),
+			// 不按身份查行:重画还没发生,旧身份还在原文件夹里,按身份查预览会
+			// **飞回文件夹里消失**,新行再在外面冒出来 —— 正是"先消失再出现"的另一半。
+			var pendingAnimations = coordinator.items.count
 			for droppedItem in coordinator.items {
-				coordinator.drop(droppedItem.dragItem, to: previewTarget(for: droppedItem, fallback: point))
+				let previewTo: UIDragPreviewTarget
+				if let center = previewCenterOverride {
+					previewTo = UIDragPreviewTarget(container: collectionView, center: center)
+				} else {
+					previewTo = previewTarget(for: droppedItem, fallback: point)
+				}
+				let animating = coordinator.drop(droppedItem.dragItem, to: previewTo)
+				animating.addCompletion { _ in
+					MainActor.assumeIsolated {
+						pendingAnimations -= 1
+						guard pendingAnimations == 0 else { return }
+						self.isDragInProgress = false
+						self.dragFreezeStartedAt = nil
+						self.nextReloadAnimated = false		// 放手后的补画瞬时就位,别再抖一次(方案甲)
+						self.scheduleReload()
+					}
+				}
 			}
 		}
 
 		// **拖的是文件夹 → 只可能是在顶层调顺序**(上游不支持子文件夹,它没别处可去)。
 		// (落点判定那边也保证了这种情况一定给出"顶层",这里再显式走一次,读代码时不用回头查。)
 		if draggingFolder {
-			reorderWithinLayer(items, at: dropIndexPath, fallbackPoint: point,
+			reorderWithinLayer(items, fallbackPoint: point,
 							   container: target.account, account: target.account)
 			return
 		}
@@ -1386,17 +1534,21 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		// 判据是所在容器一致(顶层 ↔ 顶层,或同一个文件夹内);
 		// 那种情况下走 moveFeed 是空操作(源容器==目标容器会被跳过),只有排序才有意义。
 		if items.allSatisfy({ containerFolderID(of: $0) == targetFolderID(of: target.container) }) {
-			reorderWithinLayer(items, at: dropIndexPath, fallbackPoint: point,
+			Self.dragLogger.info("拖放·执行: 同层调序")
+			reorderWithinLayer(items, fallbackPoint: point,
 							   container: target.container, account: target.account)
 			return
 		}
+		Self.dragLogger.info("拖放·执行: 搬进「\((target.container as? Folder)?.nameForDisplay ?? "顶层", privacy: .public)」")
+		// 跨容器:预览落在手指所在的缝(行是通栏的,横向取行宽中点;理由见 defer 里的说明)
+		previewCenterOverride = CGPoint(x: collectionView.bounds.midX, y: point.y)
 
 		// 搬进别的容器:也要落在**手指指的那个位置**,而不是一律排到末尾
 		// (用户 2026-07-23 报「拖进文件夹后总是跑到最底下」)。
 		// ⚠️ 这里要按**目标那一层**的次序算位置。顶层是"文件夹和散源混排"的一串,
 		// 早先只拿散源来算,于是从文件夹里拖到两个文件夹之间时会排到所有散源的最后。
 		let insertIndex = insertionIndex(in: orderKeys(in: target.container, account: target.account),
-										 at: dropIndexPath, fallbackPoint: point,
+										 fallbackPoint: point,
 										 layerFolderID: targetFolderID(of: target.container))
 		performMove(items, to: target.container, in: target.account, insertingAt: insertIndex)
 	}
@@ -1498,12 +1650,15 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let previous = dropTargetFolder
 		dropTargetFolder = item
 
-		// 旧的取消高亮、新的点亮 —— 两行都要刷
+		// 旧的取消高亮、新的点亮 —— 两行都要刷。
+		// 2026-07-25:找 cell 改走钢印,不走行号 —— 拖动中行号带占位错位,
+		// 按行号找会把描边画到**错的行**上(和锚行错位是同一个病,见 stamp 的说明)。
 		for target in [previous, item].compactMap({ $0 }) {
-			guard let indexPath = dataSource.indexPath(for: target),
-				  let cell = collectionView.cellForItem(at: indexPath) as? UICollectionViewListCell else { continue }
-			cell.backgroundConfiguration = paperCellBackground(highlighted: target == dropTargetFolder)
-			cell.contentConfiguration = rowContent(for: target, base: cell.defaultContentConfiguration())
+			for case let cell as UICollectionViewListCell in collectionView.visibleCells
+			where stampedItem(of: cell) == target {
+				cell.backgroundConfiguration = paperCellBackground(highlighted: target == dropTargetFolder)
+				cell.contentConfiguration = rowContent(for: target, base: cell.defaultContentConfiguration())
+			}
 		}
 	}
 
@@ -1544,7 +1699,7 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 	///
 	/// ⚠️ 顺序是**我们自己存的**(`FeedOrderStore`)—— 上游把源放在 `Set` 里,
 	/// 模型层根本没有顺序可言,列表的排列是显示时现算的。
-	private func reorderWithinLayer(_ items: [Item], at dropIndexPath: IndexPath?, fallbackPoint: CGPoint,
+	private func reorderWithinLayer(_ items: [Item], fallbackPoint: CGPoint,
 									container: Container, account: Account) {
 
 		let layerFolderID = targetFolderID(of: container)
@@ -1554,7 +1709,7 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let movingKeys = items.compactMap { layerKey(of: $0, layerFolderID: layerFolderID) }
 		guard !movingKeys.isEmpty else { return }
 
-		var insertIndex = insertionIndex(in: orderedKeys, at: dropIndexPath,
+		var insertIndex = insertionIndex(in: orderedKeys,
 										 fallbackPoint: fallbackPoint, layerFolderID: layerFolderID)
 
 		// 先把被拖的从原位摘掉,再插到新位置。
@@ -1619,27 +1774,24 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 
 	/// 算出该插到第几个位置。
 	///
-	/// ⚠️ **优先用 UIKit 自己算好的 `destinationIndexPath`** —— 那就是拖动时看到的
-	/// "让开的那条缝",它已经判过手指落在行的上半还是下半。
-	/// 早先一律"插在落点那一行的后面",于是拖到第一行会落到第二位(2026-07-23 用户报过)。
-	/// 只有它给不出来时(手指落在列表末尾的空白),才退回"排在上方最近那一项之后"。
-	private func insertionIndex(in orderedKeys: [String], at dropIndexPath: IndexPath?,
+	/// ⚠️ 2026-07-25 重写:**不再问 UIKit 的 destinationIndexPath**(行号跨界查询,
+	/// L89 的毒剩下的最后一处):往下拖时源行的格子被系统收起,布局行号和快照行号
+	/// 错开一位,拿它查"缝前面是谁"会查错一行 —— 表现正是用户报的
+	/// 「从下往上拖没问题,从上往下拖错位一个」(往上拖时目标在源行之前,不受收起影响)。
+	/// 改与锚行同一套无毒世界:真实视觉位置 + 钢印;
+	/// "手指在锚行上半 = 插它前面(占它的位),下半/下方空白 = 插它后面"由锚行矩形自己判
+	/// (原来正是让 dropIndexPath 代判这半行,判据不变、坐标系换掉)。
+	private func insertionIndex(in orderedKeys: [String],
 								fallbackPoint: CGPoint, layerFolderID: Int?) -> Int {
 
-		if let dropIndexPath,
-		   let item = dataSource.itemIdentifier(for: dropIndexPath),
-		   let anchor = insertionAnchor(for: item, layerFolderID: layerFolderID),
-		   let index = orderedKeys.firstIndex(of: anchor.key) {
-			return anchor.after ? index + 1 : index
+		guard let row = anchorRow(nearestTo: fallbackPoint),
+			  let anchor = insertionAnchor(for: row.item, layerFolderID: layerFolderID),
+			  let index = orderedKeys.firstIndex(of: anchor.key) else {
+			return orderedKeys.count		// 连锚都找不到(理论上到不了):排到末尾
 		}
-
-		if let landed = item(nearestTo: fallbackPoint),
-		   let anchor = insertionAnchor(for: landed, layerFolderID: layerFolderID),
-		   let index = orderedKeys.firstIndex(of: anchor.key) {
-			return index + 1		// 落在空白:排在上方最近那一项之后
-		}
-
-		return orderedKeys.count
+		if anchor.after { return index + 1 }	// 锚被翻译成"整个文件夹块" → 插到块后面
+		// 锚就在目标层里:上半插前(拖到第一行头顶=落到首位,2026-07-23 那条要求仍成立)
+		return fallbackPoint.y < row.frame.midY ? index : index + 1
 	}
 
 	/// 找这个位置对应的那一行;**落在空白处也不算失败** —— 取它上方最近的一行。
@@ -1655,27 +1807,39 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 	///
 	/// ⚠️ 落在空白处时,返回的是**上方最近**那一行,此时 `point` 其实在 `frame` 的**下方**。
 	/// 这是有意的:那种位置本来就该算成"排在那一行后面"(`DropZoneResolver.band` 会算成下带)。
+	/// ⚠️ 2026-07-25 重写:**全程不碰行号(index path)**,改为"翻可见 cell、按真实视觉位置找、
+	/// 读钢印认人"。原实现拿手指坐标问布局要行号、再拿行号问数据快照要 Item ——
+	/// 拖动中 UIKit 的**占位缝占着一个行号**,两套行号从占位处起全部错开一位,
+	/// 且占位随悬停意图(插缝↔进文件夹)插入/撤销,错位还在闪变。诊断日志实锤过:
+	/// 手指挪 2pt 锚行跳进文件夹、在文件夹 4 下方查出文件夹 3 的孩子。
+	/// cell 的 frame 是真实视觉位置(占位把行挤到哪就是哪),钢印是配置时盖的身份 ——
+	/// 两者都不经过行号,占位怎么折腾都错不了。(L73/L87 同款药方:消灭第二套坐标。)
 	private func anchorRow(nearestTo point: CGPoint) -> (item: Item, frame: CGRect)? {
-
-		if let indexPath = collectionView.indexPathForItem(at: point),
-		   let item = dataSource.itemIdentifier(for: indexPath),
-		   let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame {
-			return (item, frame)
-		}
 
 		var best: (item: Item, frame: CGRect)?
 		var bestBottom = -CGFloat.greatestFiniteMagnitude
-		for indexPath in collectionView.indexPathsForVisibleItems {
-			guard let attributes = collectionView.layoutAttributesForItem(at: indexPath),
-				  let item = dataSource.itemIdentifier(for: indexPath) else { continue }
-			let bottom = attributes.frame.maxY
-			if bottom <= point.y, bottom > bestBottom {
-				bestBottom = bottom
-				best = (item, attributes.frame)
+		var below: (item: Item, frame: CGRect)?
+		var belowTop = CGFloat.greatestFiniteMagnitude
+		for cell in collectionView.visibleCells {
+			// 拖动中的源 cell 被 UIKit 藏着 —— 别拿它当锚
+			guard !cell.isHidden, let item = stampedItem(of: cell) else { continue }
+			let frame = cell.frame
+			if frame.contains(point) { return (item, frame) }		// 正压着这一行
+			if frame.maxY <= point.y, frame.maxY > bestBottom {		// 否则取上方最近的一行
+				bestBottom = frame.maxY
+				best = (item, frame)
+			}
+			if frame.minY >= point.y, frame.minY < belowTop {		// 顺手记下方最近的一行(见下)
+				belowTop = frame.minY
+				below = (item, frame)
 			}
 		}
-		// 落在所有内容**上方**(列表最顶端的空白)时返回 nil —— 那里没有明确归属,不猜。
-		return best
+		if let best { return best }
+		// 落在所有内容**上方**(第一行的头顶、分组头那片):取**下方最近**的一行当锚 ——
+		// point 在它的 frame 之上,band 会算成 .top,意思正好是「插到这一行前面」。
+		// (2026-07-25 补:原来这里直接返回 nil"不猜",结果**没法把东西放到列表首位**。
+		// "插到第一行前面"语义是明确的,不算猜。)
+		return below
 	}
 }
 #endif
