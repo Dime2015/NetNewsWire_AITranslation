@@ -3112,7 +3112,7 @@
       }
     },
     "Share" : {
-      "comment" : "Share button",
+      "comment" : "Share\nShare button",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

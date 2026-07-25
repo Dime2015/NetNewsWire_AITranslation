@@ -4,7 +4,12 @@ CODE_SIGN_IDENTITY[sdk=macosx*] = Mac Developer
 CODE_SIGN_IDENTITY[sdk=iphoneos*] = iPhone Developer
 CODE_SIGN_IDENTITY[sdk=iphonesimulator*] = iPhone Developer
 CODE_SIGN_STYLE = Automatic
-ORGANIZATION_IDENTIFIER = com.ranchero
+// [品牌] 兜底值从上游的 com.ranchero 改成本 fork 的真实前缀(2026-07-25)。
+// 为什么必须改:真值靠下面那个 #include? 的仓库外文件提供,而 Xcode 的"启动"工人
+// 进程读不到它(Downloads 目录的隐私保护),会静默回落到这里的兜底 —— 兜底≠真值时,
+// Xcode 每次真机运行都拿旧 id 去找 app,报「not installed」(装是成功的,启动步骤失败)。
+// 模拟器"装出两个 Babel 分身"也是同一道裂缝。兜底=真值后,读不读得到都一致。
+ORGANIZATION_IDENTIFIER = com.wenbopan
 DEVELOPMENT_TEAM = M8L2WTLA8W
 PROVISIONING_PROFILE_SPECIFIER =
 DEVELOPER_ENTITLEMENTS =

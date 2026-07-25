@@ -842,3 +842,23 @@ cfprefsd 会拿它自己缓存的那份回写覆盖。
 
 **顺带记录(不是 bug,固有限制)**:该源图表是 JS 现画的,RSS 版和阅读模式版都只剩
 图表的文字标签 —— 源头就没给静态图,救不回来。看图表的正路:点阅读栏标题开原网页。
+
+---
+
+## T25 · Xcode 真机运行每次报「not installed」(装成功、启动步骤失败)—— ✅ 已修(2026-07-25)
+
+**现象**:⌘R 到真机,装上了、能手动打开,但 Xcode 报
+`The requested application com.ranchero.NetNewsWire.iOS-DEBUG is not installed`。
+
+**根**:bundle id 有两套来源 —— 真值 com.wenbopan 来自仓库外 `Downloads/SharedXcodeSettings/
+DeveloperSettings.xcconfig`(#include? 可选包含),兜底 com.ranchero 写在
+`xcconfig/common/NetNewsWire_codesigning_common.xcconfig`。编译读得到真值(装的是 wenbopan),
+Xcode 的启动工人进程读不到那个 Downloads 里的文件(隐私保护),静默回落 ranchero →
+拿旧 id 找 app → not installed。**模拟器双 Babel 分身、install 脚本的"跳过 install 改覆盖"
+补丁,都是同一道裂缝。**
+
+**修**:把兜底值改成 com.wenbopan(一行,[品牌] 标记)——读不读得到可选文件,身份都一致。
+iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报错,说明诊断不全,回来找我。
+
+**遗留可选项**:把仓库挪出 ~/Downloads(隐私保护常年埋雷的根;挪了要同步改 CLAUDE.md
+里的路径),用户想做再做。上游合并时这一行会冲突,按 [品牌] 标记保留我们的值即可。
