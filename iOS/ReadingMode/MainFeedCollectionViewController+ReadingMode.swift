@@ -134,16 +134,30 @@ extension MainFeedCollectionViewController {
 	private func nnwInstallGlobalSearchButton() {
 
 		// 已经装过就别重造(viewWillAppear 会调很多次)
-		if navigationItem.rightBarButtonItem?.action == #selector(nnwGlobalSearchTapped) { return }
+		if navigationItem.rightBarButtonItems?.first?.action == #selector(nnwGlobalSearchTapped) { return }
 
-		let item = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
-								   style: .plain, target: self, action: #selector(nnwGlobalSearchTapped))
-		item.accessibilityLabel = "搜索全部订阅源"
-		navigationItem.rightBarButtonItem = item
+		let search = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
+									 style: .plain, target: self, action: #selector(nnwGlobalSearchTapped))
+		search.accessibilityLabel = "搜索全部订阅源"
+
+		// [管理] 「编辑订阅」入口(2026-07-25 用户拍板的方案乙):
+		// 原来藏在右下角 + 的第二层选单里,不直觉 —— 提到导航栏,和放大镜并排。
+		// 点开的就是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
+		// 页面标题已改叫「编辑订阅」,心智上 = 本列表的编辑模式。
+		let edit = UIBarButtonItem(image: UIImage(systemName: "pencil"),
+								   style: .plain, target: self, action: #selector(nnwEditSubscriptionsTapped))
+		edit.accessibilityLabel = "编辑订阅"
+
+		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
+		navigationItem.rightBarButtonItems = [search, edit]
 	}
 
 	@objc private func nnwGlobalSearchTapped() {
 		coordinator.nnwShowGlobalSearch()
+	}
+
+	@objc private func nnwEditSubscriptionsTapped() {
+		nnwShowFolderManager()
 	}
 
 	// MARK: - 星标数到货了要重画

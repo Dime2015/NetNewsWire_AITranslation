@@ -6,8 +6,9 @@
 //
 //  ## 这个页面是干什么的
 //
-//  订阅列表页右下角 `+` →「文件夹管理」。集中整理**已有的**文件夹和订阅源
-//  (与之并列的「搜索订阅源」负责**添加新的**)。
+//  入口(2026-07-25 方案乙后):订阅列表页**导航栏的铅笔按钮「编辑订阅」**。
+//  集中整理**已有的**文件夹和订阅源;添加新的归右下角 `+`(直达搜索订阅源页)。
+//  (历史:最初藏在 `+` 的二层选单里叫「文件夹管理」,用户觉得不直觉,提为一级入口并改名。)
 //
 //  ## 为什么要单独做一个页面(上游明明有左滑删除/重命名)
 //
@@ -141,6 +142,15 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 	/// 但那层系统高亮压在我们自铺的暖纸底色上**几乎看不见**,所以自己画一层。
 	private var dropTargetFolder: Item?
 
+	/// 悬停中**最后一次**的落点判定 —— 放手时直接用它,不重算(2026-07-25,L86 之后又一课)。
+	///
+	/// ⚠️ 为什么放手不能重算(用户实测抓到的鬼:预告"排旁边",松手却进了文件夹):
+	/// 悬停中 UIKit 为"插缝"把下方的行往下让了一行;**松手瞬间缝合拢、行弹回原位**。
+	/// 这时拿同一个手指坐标去对"弹回后"的行框,坐标正好落进跳上来的文件夹行中间 ——
+	/// 同一个判定函数、同一个坐标,行框却已换了一个世界(L73 家族)。
+	/// 缓存的这份是用户松手前**亲眼看到**的判定:所见即所得,几何怎么弹都不再影响结论。
+	private var lastHoverDropDecision: DropDecision?
+
 	/// 编辑模式下已勾选的行(源和文件夹都可能在里面)。
 	///
 	/// ⚠️ 为什么不直接问 `collectionView.indexPathsForSelectedItems`:
@@ -153,7 +163,9 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 	override func viewDidLoad() {
 		super.viewDidLoad()
 
-		title = "文件夹管理"
+		// 2026-07-25 方案乙:入口从「+ 选单里的文件夹管理」提为导航栏铅笔按钮,
+		// 标题跟着改成「编辑订阅」—— 用户的心智是"给订阅列表进入编辑模式",不是"进另一个管理页"
+		title = "编辑订阅"
 		// 用小标题:推入式页面会继承上一页的大标题模式,而本页内容多、还有两层分组标题,
 		// 再顶一个大标题会把可视区域压掉一大截。
 		navigationItem.largeTitleDisplayMode = .never
@@ -505,6 +517,17 @@ import RSTree		// 上游那条可撤销的删除命令认的是 RSTree 的 Node,
 		background.backgroundColor = highlighted
 			? Assets.Colors.primaryAccent.withAlphaComponent(Self.dropTargetTintAlpha)
 			: AppAppearance.paperBackground
+		if highlighted {
+			// 2026-07-25 加强(用户反馈拖到文件夹附近时分不清"进去"还是"排旁边"):
+			// 光铺底色不够 —— 手指正好挡在行中央,平面变色余光里看不出来。
+			// 加一圈强调色描边药丸:边框在行的四周,手指挡不住;
+			// 「描边圈住 = 张嘴要收」和「行间开缝 = 插进缝里」两种预告一眼可辨。
+			background.strokeColor = Assets.Colors.primaryAccent
+			background.strokeWidth = 2
+			background.cornerRadius = 10		// 和全 app 的药丸选中态同一个圆角
+			// 描边稍微内缩,别顶着屏幕边缘画(和药丸高亮同款的呼吸感)
+			background.backgroundInsets = NSDirectionalEdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6)
+		}
 		return background
 	}
 
@@ -1262,12 +1285,15 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 
 		guard let decision = dropDecision(at: point, draggingFolder: draggingFolder) else {
 			updateDropTargetHighlight(nil)
+			lastHoverDropDecision = nil
 			return UICollectionViewDropProposal(operation: .forbidden)
 		}
 
 		// **让"松手会进这个文件夹"看得见。**
 		// 高亮的条件和落点意图**出自同一个 decision**,所以看到的和放手的结果必然一致。
 		updateDropTargetHighlight(decision.resolution.target == .anchorFolder ? decision.anchor : nil)
+		// 存下这份判定 —— 放手时用的就是它(所见即所得,理由见属性声明处)
+		lastHoverDropDecision = decision
 
 		// 两种落点意图,给的是**两种不同的视觉反馈**:
 		// · `.insertAtDestinationIndexPath` —— 周围的行让开一条缝,意思是"插到这个位置"
@@ -1291,14 +1317,17 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		} ?? false
 	}
 
-	/// 手指拖出列表范围了 —— 把落点高亮撤掉,不然它会留在屏幕上。
+	/// 手指拖出列表范围了 —— 把落点高亮撤掉,不然它会留在屏幕上。判定缓存也一起作废
+	/// (出了列表再回来,didUpdate 会立刻给一份新的;不清的话万一在外面松手就用了旧账)。
 	func collectionView(_ collectionView: UICollectionView, dropSessionDidExit session: UIDropSession) {
 		updateDropTargetHighlight(nil)
+		lastHoverDropDecision = nil
 	}
 
 	/// 拖放结束(放成了、取消了都算)—— 同上。
 	func collectionView(_ collectionView: UICollectionView, dropSessionDidEnd session: UIDropSession) {
 		updateDropTargetHighlight(nil)
+		lastHoverDropDecision = nil
 	}
 
 	func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
@@ -1312,9 +1341,13 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let items = coordinator.items.compactMap { $0.dragItem.localObject as? Item }
 		guard !items.isEmpty else { return }
 
-		// ⚠️ 和悬停时**调用的是同一个函数**,所以"看着能放"和"真的能放"必然一致。
+		// ⚠️ **优先用悬停时最后一次的判定,不在放手瞬间重算**(2026-07-25 修的鬼):
+		// "共用同一个判定函数"曾被认为足以保证一致,但松手瞬间 UIKit 会把"插缝"合拢、
+		// 行弹回原位 —— 同一个坐标对上弹回后的行框,结论就翻了(预告"排旁边"、落进文件夹)。
+		// 缓存的这份是用户松手前亲眼看到的判定;重算只留作缓存意外为空时的兜底。
 		let draggingFolder = items.contains { if case .folder = $0 { return true }; return false }
-		guard let target = dropDecision(at: point, draggingFolder: draggingFolder) else { return }
+		guard let target = lastHoverDropDecision
+				?? dropDecision(at: point, draggingFolder: draggingFolder) else { return }
 
 		// 跨账户拖拽不做(理由见 moveTapped)
 		guard items.allSatisfy({ itemAccountID($0) == target.accountID }) else {

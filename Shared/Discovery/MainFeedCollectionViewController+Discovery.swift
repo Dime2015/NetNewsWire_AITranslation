@@ -44,23 +44,16 @@ import UIKit
 
 extension MainFeedCollectionViewController {
 
-	/// [管理] 右下角 `+` 的选单:整理已有的 / 添加新的。
+	/// [管理] 右下角 `+`:**直达搜索订阅源页**(2026-07-25 用户拍板的方案乙)。
 	///
-	/// 2026-07-24 深夜:系统动作单(UIAlertController,底部大白条)换成自绘的
-	/// 品牌选单 NNWMenu(暖纸圆角卡片,从 `+` 按钮头顶弹出)。
-	/// 「取消」行不再需要 —— 点选单外面任意处就是取消。
-	/// sender 保留在签名里但不再使用:系统工具栏按钮拿不到它的视图,
-	/// NNWMenu 按「工具栏右上角」定位;签名不动,上游文件里那一行调用也就不用动。
+	/// 演化史:最初是系统动作单(文件夹管理/搜索订阅源二选一)→ 2026-07-24 换成
+	/// 自绘品牌选单 → 2026-07-25 选单整个退役:「文件夹管理」提为导航栏的「编辑订阅」
+	/// 铅笔按钮(装在 MainFeedCollectionViewController+ReadingMode.swift),
+	/// `+` 恢复单一职责 —— 就是"添加订阅"。中间不再有任何选单。
+	/// sender 保留在签名里但不使用:签名不动,上游文件里那一行调用也就不用动。
 	func nnwShowAddMenu(from sender: UIBarButtonItem) {
 		_ = sender
-		NNWMenu.show(in: self, anchor: .bottomTrailing, sections: [[
-			NNWMenu.Item(title: "文件夹管理", icon: "folder") { [weak self] in
-				self?.nnwShowFolderManager()
-			},
-			NNWMenu.Item(title: "搜索订阅源", icon: "magnifyingglass") { [weak self] in
-				self?.showFeedDiscovery()
-			}
-		]])
+		showFeedDiscovery()
 	}
 
 	/// [管理] 打开文件夹 / 订阅源管理页。
