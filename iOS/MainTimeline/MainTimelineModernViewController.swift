@@ -1081,17 +1081,7 @@ extension MainTimelineModernViewController: UISearchControllerDelegate {
 			self.updateToolbar()
 			// [阅读档] 搜索期间用的是经典的「标题下面一条」摆法,退出了就换回"右上角一个放大镜"
 			self.nnwRestoreSearchPlacement()
-			// [阅读档] 兜底:万一 didDismiss 那条回调没来(不同 iOS 版本的收起流程不完全一样),
-			// 也要保证点了 X 能离开这个空页面。已经退过就不会再退一次(那个标记只生效一次)。
-			self.nnwSchedulePopFallbackAfterSearch()
 		}
-	}
-
-	// [阅读档] 搜索**关闭动画结束**之后:如果这次是从首页的放大镜进来的,直接回首页。
-	// 放在 didDismiss(不是 willDismiss)是因为它要做的是"退出这一页",
-	// 必须等搜索自己的收起动画放完 —— 两件事挤在同一拍里做会打架(这一轮反复吃过的亏)。
-	func didDismissSearchController(_ searchController: UISearchController) {
-		nnwPopIfCameFromGlobalSearch()
 	}
 
 }

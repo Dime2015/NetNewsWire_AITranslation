@@ -2511,8 +2511,28 @@ extension SceneCoordinator {
 	///
 	/// 所以这里换成:推完页面之后**等它真的进了窗口、转场也结束了**,再激活搜索。
 	/// 这是 **L73** 那条的又一次应验:我算的时机和系统算的时机不一致。
+	/// 首页放大镜 → 全局搜索。
+	///
+	/// ## ⚠️ 方案 B(2026-07-28 重做)——**进搜索前选中「全部未读」,不要清空选中**
+	///
+	/// 老做法是 `selectSidebarItem(indexPath: nil)`(清空选中)再推出文章列表页。
+	/// 那样推出来的是一个**空白页**,于是必须再配一整套"退出搜索后自动逃回首页"的机制。
+	/// 那套机制前后修了 **6 版全部失败**(willDismiss → didDismiss → 轮询状态 →
+	/// popViewController → compact 栈 → selectFeed(nil) → 延后一拍),
+	/// 最后日志实锤了死因:
+	///
+	/// > `selectFeed(nil)` 完整跑完、它内部的 `rootSplitViewController.show(.primary)`
+	/// > 也确实执行了 —— **界面纹丝不动**。在 iPhone 的 collapsed 分栏里,
+	/// > `show(.primary)` 这个调用就是无效的,不管谁调、什么时机调。
+	///
+	/// 所以不再跟它斗:**消除问题的前提** —— 让背后那一页本来就有内容,
+	/// 空白页不存在了,"从空白页逃出来"这件事自然也就不需要了(L66:
+	/// 一个需要不断打补丁才能不崩的机制,通常说明它本来就不该存在)。
+	///
+	/// 代价(有意接受):退出搜索后停在「全部未读」的文章列表,而不是回首页。
+	/// 那是一页**有内容的正常页面**,想回首页点左上角返回即可。
 	func nnwShowGlobalSearch() {
-		selectSidebarItem(indexPath: nil) { [weak self] in
+		selectFeed(SmartFeedsController.shared.unreadFeed) { [weak self] in
 			guard let self else { return }
 			self.rootSplitViewController.show(.supplementary)
 			self.mainTimelineViewController?.nnwRequestGlobalSearch()
@@ -2520,20 +2540,13 @@ extension SceneCoordinator {
 	}
 }
 
-// MARK: - [阅读档] 从全局搜索退回订阅源列表
+// MARK: - [阅读档] 全局搜索的退出路径
 
-extension SceneCoordinator {
+// ⚠️ 这里原本有一个 `nnwReturnToFeedList()`,负责"退出搜索后自动逃回首页"。
+// **2026-07-28 整个删除** —— 方案 B 之后,全局搜索背后是「全部未读」那一页(有内容),
+// 不再有空白页,也就不需要从空白页逃出来。详见 `nnwShowGlobalSearch()` 的注释。
+//
+// 别再把它加回来:`rootSplitViewController.show(.primary)` 在 iPhone 的 collapsed
+// 分栏里**实测无效**(日志实锤:调用执行了、完成回调也跑了,界面纹丝不动),
+// 6 个版本全部失败。要回首页请用系统的返回按钮。
 
-	/// 回到订阅源列表那一栏。
-	///
-	/// ⚠️ **为什么不能用 `popViewController`**(2026-07-23,用户报"点 X 还是留在空白页"):
-	/// iPhone 上这些页面是**分栏控制器**在管(collapsed 状态),
-	/// 时间线那一页未必和订阅列表在同一个导航栈里 —— 那样 `pop` 就是个空操作,
-	/// 不报错、不崩溃,**静默什么都没发生**(又一个 L19 形状的坑)。
-	///
-	/// `show(.primary)` 是分栏控制器自己的接口:不管当前是合并还是并排,
-	/// 它都知道"回到第一栏"该怎么走。
-	func nnwReturnToFeedList() {
-		rootSplitViewController.show(.primary)
-	}
-}
