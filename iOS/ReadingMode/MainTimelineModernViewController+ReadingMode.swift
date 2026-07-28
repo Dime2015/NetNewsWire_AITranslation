@@ -51,12 +51,29 @@ extension MainTimelineModernViewController {
 	/// 我们把那一项换掉之后,系统会按默认摆法处理 —— 多半是**压在标题下面那一条**,
 	/// 而这一页的标题区被我们的头图和自绘标题占着,挤进去会打架。
 	@objc func nnwUseCompactSearchPlacement() {
-		if #available(iOS 26, *) {
-			navigationItem.preferredSearchBarPlacement = .integratedButton
-		}
+		guard #available(iOS 26, *) else { return }
+
+		// ⚠️ **搜索期间不许改回来**(2026-07-28,用户报"范围条不见了")。
+		//
+		// 这个方法由上游的 `configureToolbar()` 调用,而 `configureToolbar()`
+		// 会在选中源、刷新列表等好几个时机被触发。全局搜索改成方案 B(进搜索前先选中
+		// 「全部未读」)之后,它就会**在搜索激活前后多跑一次**,把我们设好的 `.stacked`
+		// 冲回 `.integratedButton` —— 而范围条(该列表/全部文章)**只在 .stacked 下显示**,
+		// 于是范围条整个消失。
+		//
+		// 日志实锤:didPresent 时读到摆法=4(.integratedButton),而我们想要的 .stacked 是 2。
+		//
+		// (L71:往别人的方法里插一行,要问"我这行跑完之后还有谁会改同一个东西";
+		//  L74:同一个值有几个写入点,得数清楚。)
+		if navigationItem.searchController?.isActive == true { return }
+		if objc_getAssociatedObject(self, &Self.nnwPendingSearchKey) as? Bool == true { return }
+
+		navigationItem.preferredSearchBarPlacement = .integratedButton
 	}
 
 	private static var nnwPendingSearchKey: UInt8 = 0
+
+	// MARK: - [阅读档] 全局搜索的"来处"
 
 	/// 首页点了放大镜,记一笔"待打开搜索"。**真正打开在 `viewDidAppear`。**
 	///
@@ -126,9 +143,7 @@ extension MainTimelineModernViewController {
 	@objc func nnwUseStackedSearchPlacementIfNeeded() {
 		guard #available(iOS 26, *) else { return }
 
-		// ⚠️ 临时诊断(2026-07-28,用户报"范围条不见了"),定案后删。
 		let sb = navigationItem.searchController?.searchBar
-		NSLog("[范围条诊断] didPresent:摆法=\(navigationItem.preferredSearchBarPlacement.rawValue)(stacked=\(UINavigationItem.SearchBarPlacement.stacked.rawValue)) showsScopeBar=\(String(describing: sb?.showsScopeBar)) 选项数=\(sb?.scopeButtonTitles?.count ?? -1)")
 
 		// 原来这里有一句 `guard 已经是 stacked 就跳过`。**去掉了** ——
 		// 摆法即使已经是 stacked,范围条也可能没跟着装上(它由搜索栏自己管,不是摆法的附属品),
