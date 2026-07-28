@@ -595,30 +595,7 @@ import os			// [管理] 拖放诊断日志(2026-07-25 排查"拿不出文件夹"
 
 		for account in accounts {
 
-			let entries = FeedOrderStore.shared.sortedTopLevel(
-				folders: account.sortedFolders ?? [],
-				looseFeeds: Array(account.topLevelFeeds))
-			guard !entries.isEmpty else { continue }
-
-			// **文件夹和没归档的源混在同一串里**,按用户排的顺序 ——
-			// 主列表也用同一套排序(`nnwSortedForDisplay`),两边看到的先后必然一致。
-			var section = NSDiffableDataSourceSectionSnapshot<Item>()
-			for entry in entries {
-				switch entry {
-				case .folder(let folder):
-					let folderItem = Item.folder(accountID: account.accountID, folderID: folder.folderID)
-					section.append([folderItem])
-					let feedItems = sortedForDisplay(folder.topLevelFeeds).map {
-						Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: folder.folderID)
-					}
-					section.append(feedItems, to: folderItem)
-					if expandedFolders.contains(folderItem) {
-						section.expand([folderItem])
-					}
-				case .feed(let feed):
-					section.append([Item.feed(accountID: account.accountID, feedID: feed.feedID, folderID: nil)])
-				}
-			}
+			guard let section = sectionSnapshot(for: account) else { continue }
 
 			// ⚠️ apply **完事之后**要把可见行的文字重算一遍,见 `refreshVisibleRowContents`。
 			// 放在完成回调里,是为了等动画和布局都落定 —— 那时"第几行是谁"才是准的。
@@ -629,6 +606,58 @@ import os			// [管理] 拖放诊断日志(2026-07-25 排查"拿不出文件夹"
 		}
 
 		restoreSelection()
+	}
+
+	/// [T26] 一次"搬家预演"的描述:把 feed 当作已经从 fromFolderID 搬到 toFolderID(nil=顶层)。
+	private struct MovePreview {
+		let feed: Feed
+		let fromFolderID: Int?
+		let toFolderID: Int?
+	}
+
+	/// 一个账户的 section 快照。**reloadFromAccounts 和拖放的乐观预演共用这一段** ——
+	/// 预演(previewing 非空)只是把成员关系按"搬完之后"算,排序、展开、身份全走同一套代码,
+	/// 所以预演画面和模型到位后的重画**必然逐行一致**,不会出现"预演一版、终局又跳一版"。
+	/// (T26 的地基:与其手工做快照手术再祈祷和重画对得上,不如根本只有一套构建逻辑 —— L78/L89 的老药方。)
+	private func sectionSnapshot(for account: Account, previewing move: MovePreview? = nil) -> NSDiffableDataSourceSectionSnapshot<Item>? {
+
+		// 顶层散源:预演"搬到顶层"就把它加进来、"从顶层搬走"就把它拿掉
+		var looseFeeds = Array(account.topLevelFeeds)
+		if let move {
+			if move.fromFolderID == nil { looseFeeds.removeAll { $0.feedID == move.feed.feedID } }
+			if move.toFolderID == nil { looseFeeds.append(move.feed) }
+		}
+
+		let entries = FeedOrderStore.shared.sortedTopLevel(
+			folders: account.sortedFolders ?? [],
+			looseFeeds: looseFeeds)
+		guard !entries.isEmpty else { return nil }
+
+		// **文件夹和没归档的源混在同一串里**,按用户排的顺序 ——
+		// 主列表也用同一套排序(`nnwSortedForDisplay`),两边看到的先后必然一致。
+		var section = NSDiffableDataSourceSectionSnapshot<Item>()
+		for entry in entries {
+			switch entry {
+			case .folder(let folder):
+				let folderItem = Item.folder(accountID: account.accountID, folderID: folder.folderID)
+				section.append([folderItem])
+				var childFeeds = Array(folder.topLevelFeeds)
+				if let move {
+					if move.fromFolderID == folder.folderID { childFeeds.removeAll { $0.feedID == move.feed.feedID } }
+					if move.toFolderID == folder.folderID { childFeeds.append(move.feed) }
+				}
+				let feedItems = FeedOrderStore.shared.sortedFeeds(childFeeds).map {
+					Item.feed(accountID: account.accountID, feedID: $0.feedID, folderID: folder.folderID)
+				}
+				section.append(feedItems, to: folderItem)
+				if expandedFolders.contains(folderItem) {
+					section.expand([folderItem])
+				}
+			case .feed(let feed):
+				section.append([Item.feed(accountID: account.accountID, feedID: feed.feedID, folderID: nil)])
+			}
+		}
+		return section
 	}
 
 	/// 重画之后把勾选恢复上 —— UIKit 那边的选中会随着重画丢掉,而用户勾了半天不该白勾。
@@ -1489,6 +1518,9 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		// 跨容器搬家时,预览的落点**不能按身份查**(见 defer 里的说明);
 		// 走到"搬进别的容器"那个分支时会把这个值填上。
 		var previewCenterOverride: CGPoint?
+		// [T26] 乐观预演:成功时落下动画直接飞进这个行(预演的新行;收进收起的文件夹时=文件夹行)
+		var optimisticApplied = false
+		var optimisticDropTargetItem: Item?
 
 		defer {
 			// 2026-07-25:接住放下动画的「飞完了」回调 —— 那一刻立刻解冻补画。
@@ -1502,17 +1534,27 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 			// **飞回文件夹里消失**,新行再在外面冒出来 —— 正是"先消失再出现"的另一半。
 			var pendingAnimations = coordinator.items.count
 			for droppedItem in coordinator.items {
-				let previewTo: UIDragPreviewTarget
-				if let center = previewCenterOverride {
-					previewTo = UIDragPreviewTarget(container: collectionView, center: center)
+				let animating: UIDragAnimating
+				if optimisticApplied, let targetItem = optimisticDropTargetItem,
+				   let targetIndexPath = dataSource.indexPath(for: targetItem) {
+					// [T26] 预演行已经站在终局位置:让系统的落下动画直接飞进它 —— 原生动线,
+					// 缝不合拢、行不回归,预览落地即定稿。
+					animating = coordinator.drop(droppedItem.dragItem, toItemAt: targetIndexPath)
+				} else if let center = previewCenterOverride {
+					animating = coordinator.drop(droppedItem.dragItem,
+												 to: UIDragPreviewTarget(container: collectionView, center: center))
 				} else {
-					previewTo = previewTarget(for: droppedItem, fallback: point)
+					animating = coordinator.drop(droppedItem.dragItem,
+												 to: previewTarget(for: droppedItem, fallback: point))
 				}
-				let animating = coordinator.drop(droppedItem.dragItem, to: previewTo)
 				animating.addCompletion { _ in
 					MainActor.assumeIsolated {
 						pendingAnimations -= 1
 						guard pendingAnimations == 0 else { return }
+						// [T26] 乐观预演已把界面画成终局:此刻**不要**解冻补画 ——
+						// 模型搬家还在路上,现在按模型重画会把预演行打回原形(闪一下)。
+						// 解冻交给 didEnd+0.6 秒的兜底;那时模型早已到位,重画与预演无差异。
+						guard !optimisticApplied else { return }
 						self.isDragInProgress = false
 						self.dragFreezeStartedAt = nil
 						self.nextReloadAnimated = false		// 放手后的补画瞬时就位,别再抖一次(方案甲)
@@ -1540,8 +1582,6 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 			return
 		}
 		Self.dragLogger.info("拖放·执行: 搬进「\((target.container as? Folder)?.nameForDisplay ?? "顶层", privacy: .public)」")
-		// 跨容器:预览落在手指所在的缝(行是通栏的,横向取行宽中点;理由见 defer 里的说明)
-		previewCenterOverride = CGPoint(x: collectionView.bounds.midX, y: point.y)
 
 		// 搬进别的容器:也要落在**手指指的那个位置**,而不是一律排到末尾
 		// (用户 2026-07-23 报「拖进文件夹后总是跑到最底下」)。
@@ -1550,6 +1590,43 @@ extension FolderManagerViewController: UICollectionViewDropDelegate {
 		let insertIndex = insertionIndex(in: orderKeys(in: target.container, account: target.account),
 										 fallbackPoint: point,
 										 layerFolderID: targetFolderID(of: target.container))
+
+		// —— [T26] 乐观预演:放手瞬间先把界面画成"搬完之后的样子" ——
+		// 排序此刻就落库(和 performMove 稍后的 plannedOrder 一字不差,它的重算是幂等的);
+		// 成员关系用 MovePreview 参数喂给**同一个** section 构建器。
+		// 于是落下动画有真实的行可飞(defer 里 drop(toItemAt:)),模型到位后的重画与预演无差异。
+		// 只做单项拖拽(本页 itemsForBeginning 只产单项);同步账户搬家慢时,didEnd+0.6s 的
+		// 兜底重画可能读到旧模型闪一下 —— 已知取舍,本地账户(用户日常)不受影响。
+		if items.count == 1, case .feed(let movingAccountID, let movingFeedID, let fromFolderID) = items[0],
+		   let movingFeed = feed(for: items[0]) {
+
+			let toFolderID = targetFolderID(of: target.container)
+			var plannedOrder = orderKeys(in: target.container, account: target.account)
+			plannedOrder.removeAll { $0 == movingFeedID }
+			plannedOrder.insert(movingFeedID, at: max(0, min(insertIndex, plannedOrder.count)))
+			FeedOrderStore.shared.setOrder(plannedOrder)
+
+			if let section = sectionSnapshot(for: target.account,
+											 previewing: MovePreview(feed: movingFeed,
+																	 fromFolderID: fromFolderID,
+																	 toFolderID: toFolderID)) {
+				dataSource.apply(section, to: .account(accountID: target.accountID), animatingDifferences: false)
+				optimisticApplied = true
+				let newItem = Item.feed(accountID: movingAccountID, feedID: movingFeedID, folderID: toFolderID)
+				if dataSource.indexPath(for: newItem) != nil {
+					optimisticDropTargetItem = newItem		// 预演行可见(顶层/展开的文件夹)
+				} else if let toFolderID {
+					// 收进**收起的**文件夹:没有可见新行,落下动画飞进文件夹那一行
+					optimisticDropTargetItem = Item.folder(accountID: movingAccountID, folderID: toFolderID)
+				}
+				Self.dragLogger.info("拖放·预演: 已应用,落点行=\(String(describing: optimisticDropTargetItem), privacy: .public)")
+			}
+		}
+		if !optimisticApplied {
+			// 预演没做成(多项拖拽等):退回老路 —— 预览落手指缝位,补画走方案甲
+			previewCenterOverride = CGPoint(x: collectionView.bounds.midX, y: point.y)
+		}
+
 		performMove(items, to: target.container, in: target.account, insertingAt: insertIndex)
 	}
 
