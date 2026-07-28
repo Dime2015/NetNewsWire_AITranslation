@@ -97,6 +97,18 @@ final class NNWGlobalSearchViewController: UITableViewController {
 	/// 有没有"当前列表"可搜 —— 决定顶部那条切换控件显不显示。
 	private var canSwitchScope: Bool { timelineArticleIDs != nil }
 
+	/// 至少输入几个字才开始搜。
+	///
+	/// ⚠️ **是 2,不是上游那个 3**(2026-07-28 用户要求):
+	/// 上游 `searchArticles` 里写死 `< 3 不搜`,那条门槛是**按英文单词定的** ——
+	/// 三个字母才勉强算个词。但中文两个字就是一个完整的词,「苹果」「日本」「地震」
+	/// 全都卡在门外,用户原话:"我想搜索苹果,好像就搜索不了"。
+	///
+	/// 实测确认过两字中文确实搜得到(直接查库:3088 篇文章里 `苹果*` 命中 17 篇) ——
+	/// 上游拼查询用的是 Foundation 的按词枚举(`.byWords`,ICU 分词,**认识中文词边界**),
+	/// 每个词后面加 `*` 变成前缀查询。所以挡住用户的只有这个门槛,不是检索能力。
+	private static let minimumQueryLength = 2
+
 	private let searchController = UISearchController(searchResultsController: nil)
 
 	/// 当前显示的结果(已按时间倒序排好)。
@@ -166,7 +178,7 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		hintLabel.textColor = .secondaryLabel
 		hintLabel.textAlignment = .center
 		hintLabel.numberOfLines = 0
-		showHint("输入至少 3 个字开始搜索")
+		showHint("输入至少 \(Self.minimumQueryLength) 个字开始搜索")
 	}
 
 	/// 换了搜索范围 → 用同一个词立刻重搜一遍。
@@ -240,14 +252,14 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		// 不管这次输入最终搜不搜,都先把上一次还在路上的搜索取消掉
 		searchTask?.cancel()
 
-		// 门槛:少于 3 个字不搜(照抄上游 searchArticles 的规矩,免得一两个字母搜出整库)
-		guard query.count >= 3 else {
+		// 门槛:少于 `minimumQueryLength` 个字不搜。
+		guard query.count >= Self.minimumQueryLength else {
 			lastQuery = ""
 			if !results.isEmpty {
 				results = []
 				tableView.reloadData()
 			}
-			showHint("输入至少 3 个字开始搜索")
+			showHint("输入至少 \(Self.minimumQueryLength) 个字开始搜索")
 			return
 		}
 
