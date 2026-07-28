@@ -103,3 +103,4 @@ fastlane/test_output
 # API key 现在存在 Keychain 里(设置 → Articles → 翻译 API Key),
 # 项目里本来就不该出现这个文件;留着这条是防止将来有人手工造一个出来。
 /Shared/Translation/TranslationConfig.local.json
+Reference/
