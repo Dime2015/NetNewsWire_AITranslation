@@ -453,8 +453,16 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
     // MARK: UICollectionViewDelegate
 
 	override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+		// [编辑] 加一行:原地编辑模式下点一行 = 勾选,不进入那个源。返回 true 表示已处理完。
+		if nnwHandleSelectionWhileEditing(at: indexPath) { return }
+
 		becomeFirstResponder()
 		coordinator.selectSidebarItem(indexPath: indexPath, animations: [.navigation, .select, .scroll])
+	}
+
+	// [编辑] 上游没有这个方法,本 fork 新增:编辑模式下取消勾选也要刷新装饰和底部按钮。
+	override func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
+		nnwHandleDeselectionWhileEditing(at: indexPath)
 	}
 
     // MARK: UICollectionViewDelegate
@@ -718,6 +726,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			cell.indentationLevel = indentationLevel
 			configureIcon(cell, sidebarItem: sidebarItem)
 		}
+
+		// [编辑] 加一行:滚动中新出现的行也要带上编辑装饰(勾选圈/抖动/内容右移),
+		// 否则一滚就"掉出"编辑模式的样子。不在编辑模式时它什么都不做。
+		if let indexPath = dataSource?.indexPath(for: sidebarItemNode) {
+			nnwDecorateCellForEditing(cell, at: indexPath)
+		}
 	}
 
 	/// Configure folder cell.
@@ -733,6 +747,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		if let containerID = (node.representedObject as? Container)?.containerID {
 			cell.setDisclosure(isExpanded: coordinator.isExpanded(containerID), animated: false)
+		}
+
+		// [编辑] 加一行,理由同上面那个 configure
+		if let indexPath = dataSource?.indexPath(for: sidebarItemNode) {
+			nnwDecorateCellForEditing(cell, at: indexPath)
 		}
 	}
 
@@ -921,12 +940,22 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 extension MainFeedCollectionViewController: MainFeedCollectionHeaderReusableViewDelegate {
 	func mainFeedCollectionHeaderReusableViewDidTapDisclosureIndicator(_ view: MainFeedCollectionHeaderReusableView) {
+		// [编辑] 加一行:原地编辑模式下不许折叠账户 —— 那会在编辑途中大批增删行
+		// (和 L65 那类"中途改数据源"同一族风险)。守在这里比逐个禁用可见的分区头可靠:
+		// 滚动中新出现的分区头一样拦得住。
+		if nnwIsEditingFeeds { return }
 		toggle(view)
 	}
 }
 
 extension MainFeedCollectionViewController: MainFeedCollectionViewFolderCellDelegate {
 	func mainFeedCollectionFolderViewCellDisclosureDidToggle(_ sender: MainFeedCollectionViewFolderCell, expanding: Bool) {
+		// [编辑] 加一行:编辑模式下不许折叠/展开文件夹 —— 那会成批增删行,
+		// 里面已勾选的源会被静默取消勾选(用户以为还勾着,一点删除就少删了)。
+		if nnwIsEditingFeeds {
+			sender.setDisclosure(isExpanded: !expanding, animated: true)	// 把三角掰回去,别让它转了却没事发生
+			return
+		}
 		if expanding {
 			expand(sender)
 		} else {

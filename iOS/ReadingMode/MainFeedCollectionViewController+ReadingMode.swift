@@ -39,10 +39,18 @@ extension MainFeedCollectionViewController {
 	private static var nnwRenderedModeKey: UInt8 = 0
 	private static var nnwStarredObserverKey: UInt8 = 0
 
-	private var nnwGesturesInstalled: Bool {
-		get { (objc_getAssociatedObject(self, &Self.nnwGesturesKey) as? Bool) ?? false }
+	/// 装好的两个切档手势。
+	///
+	/// ⚠️ 原来这里只存一个 `Bool` 标记(装没装过)。**2026-07-28 改成存手势对象本身** ——
+	/// 因为原地编辑模式期间必须把它们**禁掉**(编辑态下横向手势到底是"切档"还是"拖行"
+	/// 没法预期;而且切档会重建整棵树,将来加了拖放就是必崩路径,见 L65)。
+	/// 只留一个 Bool 的话,拿不到手势对象,就没法开关。
+	private var nnwModeSwipeGestures: [UISwipeGestureRecognizer]? {
+		get { objc_getAssociatedObject(self, &Self.nnwGesturesKey) as? [UISwipeGestureRecognizer] }
 		set { objc_setAssociatedObject(self, &Self.nnwGesturesKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 	}
+
+	private var nnwGesturesInstalled: Bool { nnwModeSwipeGestures != nil }
 
 	private var nnwStarredObserverInstalled: Bool {
 		get { (objc_getAssociatedObject(self, &Self.nnwStarredObserverKey) as? Bool) ?? false }
@@ -95,6 +103,10 @@ extension MainFeedCollectionViewController {
 
 	private func nnwInstallModeBarIfNeeded() {
 
+		// [编辑] 编辑模式期间工具栏是 [移动到…][删除],**别往里插阅读档控件** ——
+		// 退出编辑时会把原来那套整个还原回去(见 nnwSavedToolbarItems),这里插了反而会打乱。
+		if nnwIsEditingFeeds { return }
+
 		var items = toolbarItems ?? []
 		guard items.count >= 2 else { return }		// 故事板里至少有 [设置][空白][+]
 
@@ -133,6 +145,9 @@ extension MainFeedCollectionViewController {
 	///(因为首页没有"当前列表")—— 上游 ⌘F 进来也是这个样子,不是我们弄出来的。
 	private func nnwInstallGlobalSearchButton() {
 
+		// [编辑] 编辑模式期间右上角是「完成」,这里别去动它(否则一进编辑就被 viewWillAppear 冲掉)
+		if nnwIsEditingFeeds { return }
+
 		// 已经装过就别重造(viewWillAppear 会调很多次)
 		if navigationItem.rightBarButtonItems?.first?.action == #selector(nnwGlobalSearchTapped) { return }
 
@@ -152,12 +167,25 @@ extension MainFeedCollectionViewController {
 		navigationItem.rightBarButtonItems = [search, edit]
 	}
 
+	/// [编辑] 退出编辑模式时**显式**把右上角装回去。
+	///
+	/// ⚠️ 不能指望 `nnwInstallGlobalSearchButton()` 的幂等判断自己恢复 ——
+	/// 那个判断看的是"第一个按钮是不是放大镜",而编辑模式把它换成了「完成」,
+	/// 判断会误以为"没装过"→ 装回去;但顺序和时机都不由我们控制。显式重装最稳。
+	func nnwReinstallDefaultRightBarButtons() {
+		navigationItem.rightBarButtonItems = nil		// 先清掉「完成」,让下面的幂等判断必然放行
+		nnwInstallGlobalSearchButton()
+	}
+
 	@objc private func nnwGlobalSearchTapped() {
 		coordinator.nnwShowGlobalSearch()
 	}
 
+	/// [编辑] 铅笔的新行为:**原地**进入编辑模式(2026-07-28 用户要求),
+	/// 不再推出「编辑订阅」页。那一页仍然在(文件夹的新建/改名、拖放排序还在那边),
+	/// 只是不再由这个按钮进入 —— 入口暂时挪到编辑模式的工具栏之外,见 T29。
 	@objc private func nnwEditSubscriptionsTapped() {
-		nnwShowFolderManager()
+		nnwToggleFeedEditing()
 	}
 
 	// MARK: - 星标数到货了要重画
@@ -184,18 +212,26 @@ extension MainFeedCollectionViewController {
 	private func nnwInstallSwipeGesturesIfNeeded() {
 
 		guard !nnwGesturesInstalled, let collectionView else { return }
-		nnwGesturesInstalled = true
 
 		// ⚠️ 这两个手势能成立的前提是**行上的左滑已经拿掉**(见 configureCollectionView 里那行)。
 		// 两者共存的话,手指往左一划到底是"划出行操作"还是"切档"没法区分 —— 用户 2026-07-23 也是这么要求的。
+		var installed = [UISwipeGestureRecognizer]()
 		for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
 			let gesture = UISwipeGestureRecognizer(target: self, action: #selector(nnwHandleModeSwipe(_:)))
 			gesture.direction = direction
 			// 竖直滚动不受影响:UISwipeGestureRecognizer 只认单一方向的快速划动,
 			// 列表自己的 pan 该滚照滚(两者天生共存,不需要设 require-to-fail)。
 			collectionView.addGestureRecognizer(gesture)
+			installed.append(gesture)
 		}
+		nnwModeSwipeGestures = installed
 	}
+
+	/// [编辑] 进出原地编辑模式时开关切档手势。理由见 `nnwModeSwipeGestures` 的注释。
+	func nnwSetModeSwipeGesturesEnabled(_ enabled: Bool) {
+		nnwModeSwipeGestures?.forEach { $0.isEnabled = enabled }
+	}
+
 
 	@objc private func nnwHandleModeSwipe(_ gesture: UISwipeGestureRecognizer) {
 		let store = NNWReadingModeStore.shared
