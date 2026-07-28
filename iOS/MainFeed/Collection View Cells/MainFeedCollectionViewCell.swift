@@ -81,6 +81,12 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 			faviconView.isAccessibilityElement = false
 			faviconLeadingConstraint = faviconView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor)
 			faviconLeadingConstraint?.isActive = true
+
+			// [外观] 收紧行高(50→44)+ 放大图标(24→28),值见 FeedListMetrics。
+			// 这一页的未读数原本就顶到右边缘(trailing+16),不用动。
+			let padded = FeedListMetrics.tightenVerticalPadding(in: contentView)
+			let sized = FeedListMetrics.enlargeIcon(faviconView)
+			NSLog("[外观] 订阅源行:收紧内边距 \(padded) 条、图标放大 \(sized) 条")
 		}
     }
 

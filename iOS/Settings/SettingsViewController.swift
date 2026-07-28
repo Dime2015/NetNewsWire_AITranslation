@@ -415,7 +415,21 @@ final class SettingsViewController: UITableViewController {
 	}
 
 	override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-		return UITableView.automaticDimension
+		// [外观] 行高收紧 50 → 44。原来走 automaticDimension,由 storyboard 里
+		// cell 的上下内边距撑出 50pt(实测),比 Reeder 的 45.3pt 松 10%。
+		//
+		// ⚠️ **不写死 44**,而是"字体行高 + 22":默认档算出来正好 44pt,
+		// 而用户在系统里把字号调大时它会跟着长高 —— **动态字体不能破坏**
+		// (这一页 30 处字体声明全是 UICTFontTextStyleBody,没有一处写死字号)。
+		let line = ceil(UIFont.preferredFont(forTextStyle: .body).lineHeight)
+		return max(FeedListMetrics.rowHeight, line + 22)
+	}
+
+	override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+		// [外观] 分区间距收紧 66 → 34。实测我们是 66pt,而 Reeder 只有约 30pt ——
+		// **两倍多**,是这一页显得"空"的最大来源。
+		// 第 0 个分区上面不需要那么多留白,但也不能贴着导航栏,给它留厚一点。
+		return section == 0 ? 40 : 34
 	}
 
 	override func tableView(_ tableView: UITableView, indentationLevelForRowAt indexPath: IndexPath) -> Int {

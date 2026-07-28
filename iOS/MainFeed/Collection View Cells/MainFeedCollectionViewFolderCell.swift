@@ -64,6 +64,19 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			faviconView.isAccessibilityElement = false
 			disclosureButton.isAccessibilityElement = false
 			disclosureButton.addInteraction(UIPointerInteraction())
+
+			// [外观] 收紧行高、放大图标,并把展开三角从最右挪到最左
+			//(让未读数顶到右边缘,和智能组那几个数字对齐)。实现见 FeedListMetrics。
+			let padded = FeedListMetrics.tightenVerticalPadding(in: contentView)
+			let sized = FeedListMetrics.enlargeIcon(faviconView)
+			let moved = FeedListMetrics.moveDisclosureToLeading(contentView: contentView,
+															   disclosure: disclosureButton,
+															   icon: faviconView,
+															   title: folderTitle,
+															   unreadCount: unreadCountLabel)
+			// 认约束靠的是"特征"而不是 id,上游改了 storyboard 这里会静默失效 ——
+			// 所以把条数打出来,合并上游后一眼能看出还灵不灵(见文件头的警告)。
+			NSLog("[外观] 文件夹行:收紧内边距 \(padded) 条、图标放大 \(sized) 条、横向约束重排 \(moved) 条")
 		}
 	}
 
