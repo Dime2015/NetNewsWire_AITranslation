@@ -43,8 +43,20 @@ enum AppAppearance {
 
 	private enum Palette {
 		/// 暖纸背景。取色为命令行从用户提供的 Reeder / 深色截图取样(不是肉眼)。
+		///
+		/// ⚠️ **深色值 2026-07-28 修正过,原因值得记下来**:
+		/// 原本是 `0x1E1E1E` —— 色相 0°、饱和度 **0.000**,是一块**纯中性灰**。
+		/// 而本调色板深色一族的其它四个颜色(selectionDark / menuCardDark /
+		/// menuSeparatorDark / inkDark)色相都在 **34~40°**、饱和度 0.06~0.13,
+		/// 全是暖的 —— **只有这一个掉了队**。
+		/// 后果:浅色模式下 app 是暖纸调,一切到深色模式,整片底色就变成通用的黑白,
+		/// 「纸」的身份没了,而顶上的浮世绘头图仍是暖褐调,上下割裂。
+		///
+		/// 新值 `0x1E1C19`:色相 36°(与 menuCardDark 一致)、
+		/// **明度 0.118 与旧值分毫不差** —— 只变暖,不变亮也不变暗。
+		/// (调深浅要锁色相走明度轴,别在 RGB 里朝黑白混合,见 L54。)
 		static let paperLight = rgb(0xF3F0EB)
-		static let paperDark  = rgb(0x1E1E1E)
+		static let paperDark  = rgb(0x1E1C19)
 
 		/// 选中高亮(淡暖色):比纸略深/浅一档,给点按反馈又不抢眼。
 		static let selectionLight = rgb(0xE8E3DB)

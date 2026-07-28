@@ -40,7 +40,10 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 
 	var iconImage: IconImage? {
 		didSet {
-			faviconView.iconImage = iconImage
+			// [外观] 与订阅源 cell 保持同一条处理链路(见 NNWFeedIconStyle)。
+			// 文件夹目前用的是 SF Symbol 图标,会被那边直接原样放行 ——
+			// 这里加上是为了两个 cell 的写法一致,免得以后有人以为只处理了一半。
+			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
 			faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
 		}
 	}

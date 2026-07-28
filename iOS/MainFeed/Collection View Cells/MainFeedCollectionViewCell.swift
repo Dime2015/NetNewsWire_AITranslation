@@ -20,7 +20,9 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 
 	var iconImage: IconImage? {
 		didSet {
-			faviconView.iconImage = iconImage
+			// [外观] 订阅源图标统一风格(彩色 → 灰度;透明背景的图形补一层方块底),
+			// 实现全在本 fork 新增的 NNWFeedIconStyle 里,这里只加一层包装。
+			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
 			faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
 		}
 	}

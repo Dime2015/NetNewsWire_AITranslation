@@ -137,7 +137,12 @@ import UIKit
 			var title = AttributedString(mode.title)
 			title.font = .systemFont(ofSize: 13, weight: .semibold)
 			config.attributedTitle = title
-			config.baseForegroundColor = Assets.Colors.primaryAccent
+			// [外观] 2026-07-28:当前档从「强调色字 + 强调色药丸」改成「暖墨字 + 中性药丸」。
+			// 原因:改之前这颗药丸的文字是饱和度 0.49 的橙、底是 0.26 的暖褐,
+			// **是整屏饱和度最高的东西** —— 视觉重心被拽到了底部的导航控件上,
+			// 而那里并不是内容。参考物 Reeder 的当前档也是「浅灰底 + 深色字」,
+			// 高饱和的红只留给「开关」这类真正表达状态的控件。
+			config.baseForegroundColor = AppAppearance.inkPrimary
 			config.background.backgroundColor = pillBackground
 			config.background.cornerRadius = barHeight / 2
 		} else {
@@ -149,11 +154,15 @@ import UIKit
 		return config
 	}
 
-	/// 当前档那颗药丸的底色:用强调色化开一点点。
+	/// 当前档那颗药丸的底色:统一的「选中高亮」暖中性色。
 	///
 	/// ⚠️ iOS 26 上整个控件外面**还有一层系统自己的玻璃胶囊**(工具栏给自定义视图套的),
 	/// 所以这一层只要"看得出被选中"就够,不能太重 —— 两层药丸叠起来会很脏。
-	private static let pillBackground = Assets.Colors.primaryAccent.withAlphaComponent(0.14)
+	///
+	/// [外观] 2026-07-28 从 `primaryAccent.withAlphaComponent(0.14)` 换成这里 ——
+	/// 复用全 app 统一的选中高亮色(语义完全对口:当前档就是"选中"),
+	/// 顺带让这颗药丸退出「全屏最跳的颜色」这个位置。
+	private static let pillBackground = AppAppearance.selectionHighlight
 
 	override var intrinsicContentSize: CGSize {
 		CGSize(width: Self.totalWidth, height: Self.barHeight)
