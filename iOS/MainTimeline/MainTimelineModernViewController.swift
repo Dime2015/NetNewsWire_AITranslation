@@ -1070,9 +1070,19 @@ extension MainTimelineModernViewController: UISearchControllerDelegate {
 		// Async to avoid an iOS 26 UINavigationBar crash during the search-bar dismissal transition.
 		DispatchQueue.main.async {
 			self.updateToolbar()
-			// [阅读档] 搜索期间用的是经典的「标题下面一条」摆法,退出了就换回"右上角一个放大镜"
-			self.nnwRestoreSearchPlacement()
 		}
+	}
+
+	// [阅读档] 搜索**彻底收完之后**才把摆法换回"右上角一个放大镜"。
+	//
+	// ⚠️ 为什么必须是 didDismiss(2026-07-28,用户真机 iOS 27 beta 报「顶栏没拆干净」):
+	// 原来这一步跟在 willDismiss 的 `DispatchQueue.main.async` 里,那是在**猜**
+	// "一个 runloop 应该够转场跑完了" —— 真机上不够,于是摆法在消失动画进行到一半时被改,
+	// 导航栏留下一个中间态:搜索框和放大镜同时在。
+	// didDismiss 是系统给的"已经收完了"的承诺,不用猜(L79 的老教训:
+	// 与其算"什么时候好了",不如挂到系统告诉你"好了"的那个回调上)。
+	func didDismissSearchController(_ searchController: UISearchController) {
+		nnwRestoreSearchPlacement()
 	}
 
 }

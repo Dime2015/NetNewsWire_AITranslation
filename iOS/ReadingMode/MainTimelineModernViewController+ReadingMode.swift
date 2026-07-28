@@ -141,9 +141,19 @@ extension MainTimelineModernViewController {
 	/// 退出搜索后把摆法换回"右上角一个放大镜"。
 	/// 由上游 `willDismissSearchController` 里加的一行调用。
 	@objc func nnwRestoreSearchPlacement() {
-		if #available(iOS 26, *) {
-			navigationItem.preferredSearchBarPlacement = .integratedButton
-		}
+		guard #available(iOS 26, *) else { return }
+
+		// 搜索还活着就别动摆法 —— 和 `nnwUseCompactSearchPlacement()` 里那条守卫同款。
+		// (进入方向一直有这条守卫,恢复方向以前没有,是不对称的;
+		//  2026-07-28 真机上「顶栏没拆干净」就出在恢复这一路。)
+		if navigationItem.searchController?.isActive == true { return }
+
+		navigationItem.preferredSearchBarPlacement = .integratedButton
+
+		// 摆法改完导航栏会变矮 —— 当场走一遍布局,让头图/标题跟着安全区的变化重排,
+		// 别把它拖到下一次不知道什么时候的排版回合(接收端是那两个
+		// `safeAreaInsetsDidChange`,见 TimelineFeedHeader.swift)。
+		view.layoutIfNeeded()
 	}
 
 	private func nnwSelectReadingMode(_ mode: NNWReadingMode) {

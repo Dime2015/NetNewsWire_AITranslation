@@ -219,6 +219,13 @@ extension MainTimelineModernViewController {
 		headerView.onLayout = { [weak self] in
 			self?.syncInset()
 		}
+		// 安全区变化(导航栏变高/变矮,比如搜索展开/收起改摆法)→ 内边距和标题位置都要重算。
+		// ⚠️ 两件事都要做,而且**顺序不能反**:标题的位置基准就是 `adjustedContentInset.top`,
+		// 先把内边距对齐,再算标题,否则标题会照着旧基准算(2026-07-28 真机 bug 的病根之一)。
+		overlay.onSafeAreaChange = { [weak self] in
+			self?.syncInset()
+			self?.applyScrollLinkage()
+		}
 	}
 
 	/// [阅读档] 下一次渲染请用**交叉淡入**,别硬切。
@@ -824,6 +831,22 @@ extension MainTimelineModernViewController {
 		backgroundImageView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
 		onLayout?()
 	}
+
+	/// 安全区变了也要重排 —— **导航栏变高/变矮时,这是唯一会到的通知**。
+	///
+	/// 为什么非补不可(2026-07-28,用户真机 iOS 27 beta 报「退出搜索后顶栏乱掉」):
+	/// 搜索展开时我们把摆法从 `.integratedButton` 换成 `.stacked`,导航栏因此**变高一行**;
+	/// 退出时再换回去、变矮。而列表的顶部内边距是按 `safeAreaInsets.top` 算出来的差额
+	///(见 `syncInset()`),这个差额**只在 `layoutSubviews` 时才会重算** ——
+	/// 而导航栏高度变化不一定会触发本视图的 layoutSubviews,于是内边距停在旧值上,
+	/// 头图和标题的坐标基准整个错位。
+	///
+	/// 文章页的同类组件(`ArticleHeaderBar.safeAreaInsetsDidChange`)早就补了这一手,
+	/// 时间线这套一直缺着,直到导航栏高度会变了才暴露出来。
+	override func safeAreaInsetsDidChange() {
+		super.safeAreaInsetsDidChange()
+		onLayout?()
+	}
 }
 
 // MARK: - 标题浮层(会飞的那个标题 + 停靠时的纸色底)
@@ -838,6 +861,22 @@ extension MainTimelineModernViewController {
 /// 层级关系(从下往上):文章列表 → 本浮层 → 导航栏(返回/筛选两个圆钮)。
 /// 所以两个圆钮永远盖在标题上面,这是对的;而标题永远盖在正文上面,也是对的。
 @MainActor final class TimelineHeaderOverlayView: UIView {
+
+	/// 安全区变了(= 导航栏变高/变矮)时回调,由管理器接上"重算标题位置"。
+	///
+	/// 为什么需要它(2026-07-28,用户真机 iOS 27 beta 报「退出搜索后标题跑到右上角压住头图」):
+	/// 标题的位置由一个 0→1 的进度值决定,而那个进度是
+	/// `(contentOffset.y - (-adjustedContentInset.top)) / 淡出距离` 算出来的。
+	/// 它**只在 `contentOffset` 变化时才会重算**(KVO)。
+	/// 而搜索进出会改导航栏高度 → `adjustedContentInset.top` 变了、`contentOffset` 没变
+	/// → **KVO 不响,进度停在旧值上** → 标题就卡在"飞到一半"的位置。
+	/// 补这个回调,让安全区变化也能把它拉回来。
+	var onSafeAreaChange: (() -> Void)?
+
+	override func safeAreaInsetsDidChange() {
+		super.safeAreaInsetsDidChange()
+		onSafeAreaChange?()
+	}
 
 	/// 停靠时铺在导航栏那条上的底。没有它,正文会直接从标题背后穿过去。
 	///
