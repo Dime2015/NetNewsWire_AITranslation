@@ -852,9 +852,10 @@ private extension MainTimelineModernViewController {
 	func configureToolbar() {
 		if traitCollection.userInterfaceIdiom == .phone {
 			if #available(iOS 26, *) {
-				// [阅读档] 搜索框让位给三档控件(2026-07-23 用户要求),搜索改到右上角当放大镜按钮。
+				// [阅读档] 搜索框让位给三档控件(2026-07-23 用户要求);本页不再挂系统搜索控制器,
+				// 搜索改由右上角放大镜打开我们自己的 modal 搜索页(见 resetUI 里那行)。
 				// 实现在 iOS/ReadingMode/MainTimelineModernViewController+ReadingMode.swift
-				nnwUseCompactSearchPlacement()
+				nnwDetachSystemSearchController()
 				if let markAllAsRead = toolbarItems?.first {
 					toolbarItems = [
 						markAllAsRead,
@@ -876,9 +877,11 @@ private extension MainTimelineModernViewController {
 
 	func resetUI(resetScroll: Bool) {
 		let shouldShowFilterButton = coordinator?.shouldShowFilterButton() ?? false
-		// [阅读档] 一行换一行:每个源各自的「只看未读」漏斗已由底部三档统一接管,按用户要求拿掉。
+		// [阅读档] 一行换一行:每个源各自的「只看未读」漏斗已由底部三档统一接管,按用户要求拿掉,
+		// 空出来的位置放**搜索**的放大镜(点它开我们自己的 modal 搜索页)。
+		// ⚠️ 必须装在这一行:本方法会把 rightBarButtonItem 反复重置,装在别处会被擦掉(L74)。
 		// 想还原成上游行为,把 NNWReadingModeStore.showsPerFeedFilterButton 改回 true 即可。
-		navigationItem.rightBarButtonItem = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? filterButton : nil
+		navigationItem.rightBarButtonItem = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? filterButton : nnwSearchBarButtonItem()
 
 		if isReadArticlesFiltered {
 			filterButton.tintColor = Assets.Colors.primaryAccent
@@ -1056,33 +1059,16 @@ extension MainTimelineModernViewController: UISearchControllerDelegate {
 
 	func willPresentSearchController(_ searchController: UISearchController) {
 		coordinator?.beginSearching()
-		// [阅读档] 一行换一行:原来这里是 `searchController.searchBar.showsScopeBar = true`,
-		// 而那句恰恰是范围条不显示的原因 —— 手动设它会把系统的自动档关掉(SDK 头文件实证)。
-		// 换成把范围条交还给系统自动管。详见那个方法的注释。
-		nnwPrepareSearchBarForPresentation()
+		searchController.searchBar.showsScopeBar = true
 	}
 
 	func willDismissSearchController(_ searchController: UISearchController) {
 		coordinator?.endSearching()
-		// [阅读档] 一行换一行:原来这里是 `searchController.searchBar.showsScopeBar = false`。
-		// 范围条的收起现在由系统自己管(见 nnwPrepareSearchBarForPresentation);
-		// 这里再设一次只会把它重新拨回"手动档",下次展开就又不显示了。
+		searchController.searchBar.showsScopeBar = false
 		// Async to avoid an iOS 26 UINavigationBar crash during the search-bar dismissal transition.
 		DispatchQueue.main.async {
 			self.updateToolbar()
 		}
-	}
-
-	// [阅读档] 搜索**彻底收完之后**才把摆法换回"右上角一个放大镜"。
-	//
-	// ⚠️ 为什么必须是 didDismiss(2026-07-28,用户真机 iOS 27 beta 报「顶栏没拆干净」):
-	// 原来这一步跟在 willDismiss 的 `DispatchQueue.main.async` 里,那是在**猜**
-	// "一个 runloop 应该够转场跑完了" —— 真机上不够,于是摆法在消失动画进行到一半时被改,
-	// 导航栏留下一个中间态:搜索框和放大镜同时在。
-	// didDismiss 是系统给的"已经收完了"的承诺,不用猜(L79 的老教训:
-	// 与其算"什么时候好了",不如挂到系统告诉你"好了"的那个回调上)。
-	func didDismissSearchController(_ searchController: UISearchController) {
-		nnwRestoreSearchPlacement()
 	}
 
 }

@@ -111,8 +111,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ### 📍 接手须知:2026-07-28 晚 · 全局搜索改成 modal(方案 D)(**最新,先读这段**)
 
-**git**:代码已改完、已编译、已装机,**尚未 commit**(等用户验收后一起提交);
-更早的 3 个本地 commit 仍领先 origin(用户说了才 push)。
+**git**:主体两个 commit(modal 搜索页 + 真机顶栏修复)已提交,其中第一个已 push;
+本轮收尾(范围条挪进 modal)是第三个 commit。
 
 **这一轮做了什么(T28)**:全局搜索从「借文章列表页激活系统搜索框」改成**独立的 modal 搜索页**,
 一次解决用户诉求的两半:进搜索不再先跳「全部未读」;退出搜索(下拉或点取消)后
@@ -123,7 +123,7 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 |---|---|
 | `iOS/ReadingMode/NNWGlobalSearchViewController.swift` | **新增**:modal 搜索页(搜索框 + 结果列表 + 点结果跳文章),数据链路直连 `SearchFeedDelegate`(FTS 全库检索),**完全不碰主时间线** |
 | `iOS/SceneCoordinator.swift`(fork 扩展区) | `nnwShowGlobalSearch()` 改为弹出 modal;新增 `nnwOpenSearchResult(_:)`(照抄上游 handleReadArticle 的"跳任意文章"配方) |
-| `iOS/ReadingMode/MainTimelineModernViewController+ReadingMode.swift` | 删掉方案 B 的挂起机制(nnwRequestGlobalSearch 那套,-70 行);**保留**本页放大镜的摆法三件套 |
+| `iOS/ReadingMode/MainTimelineModernViewController+ReadingMode.swift` | 删掉方案 B 的挂起机制(-70 行);收尾时又把**整套摆法机制**也删了(见下面那段) |
 | `iOS/MainTimeline/MainTimelineModernViewController.swift`(上游) | 撤掉 viewDidAppear 里的钩子行,**向上游原样还原 5 行** |
 
 **验收状态**:✅ **用户已实测确认修好**(主流程:弹出 → 搜索 → 点结果跳文章 → 点取消回首页)。
@@ -142,11 +142,32 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 四轮定案(**L94**),两条硬事实:**① 手动设 `showsScopeBar` 会把系统的自动档关掉**
 (那句"打开范围条"正是它不显示的原因);**② iOS 26 的 `.integratedButton` 摆法不渲染范围条**,
 摆法必须在 `willPresent`(排版之前)切成 `.stacked` —— 以前一直在 `didPresent` 切,来不及。
-用户已验收显示正常。
+用户当时在模拟器上验收显示正常 —— **但真机上翻车了,见下段**。
 
-**这一轮的净收益(上游文件反而更接近原样了)**:
-| 上游文件 | 现在的改动 |
+**⚠️ 收尾时又翻了一轮(真机 iOS 27 beta 暴露)**:范围条要显示就得切搜索栏摆法,
+而切摆法 = **让导航栏变高变矮** —— 用户真机上退出搜索后顶栏没拆干净、自绘标题卡在半空。
+修了两处(挂 `didDismiss` 收尾、给自绘视图补 `safeAreaInsetsDidChange`)仍然乱,
+**而我的 SDK 与模拟器都是 iOS 26,测不到用户那个系统**。
+
+于是按 L92 的老规矩消掉前提 —— **文章列表页不再挂系统的 UISearchController**:
+右上角放大镜改成我们自己的按钮,点它打开 modal 搜索页;范围切换在那一页里用
+**普通的分段控件**(该列表/全部文章)实现,完全自己掌控。导航栏高度从此恒定。
+⌘⌥F / 桌面快捷方式也一并接到同一个 modal(顺手解决了它原来清空选中导致的空白页)。
+完整五轮试错与反省见 **L96**,结论记在 T28。
+
+**净收益(反直觉但真实)**:上游 `MainTimelineModernViewController.swift` **净减 14 行**,
+三个搜索代理回调全部还原成上游原样 —— **比这件事开始之前更接近上游**。
+
+| 上游文件 | 现在还剩什么 |
 |---|---|
+| `MainTimelineModernViewController.swift` | 只剩 2 处带标记的改动(一处换调用名、一处一行换一行)+ 工具栏那两行 |
+| `SceneCoordinator.swift` | `showSearch()` 整个方法体换成一行,其余全在文件末尾我们自己的 `[阅读档]` 扩展里 |
+| `TimelineFeedHeader.swift`(fork 自己的文件) | 补了两个 `safeAreaInsetsDidChange`(照文章页 `ArticleHeaderBar` 的先例,保留) |
+
+**待用户真机复验**:① 列表页右上角放大镜 → 搜索页顶部有「该列表/全部文章」两档,默认该列表;
+② 切到「全部文章」结果变多;③ 退出搜索后顶栏干净、标题回到头图底边;④ 首页放大镜进来时不显示切换条。
+
+---|---|
 | `MainTimelineModernViewController.swift` | viewDidAppear 钩子**撤回原样**;`didPresentSearchController` 整个方法**撤回原样**;
 只剩 `willPresent`/`willDismiss` 各一处「一行换一行」+ 工具栏那两行 |
 | `SceneCoordinator.swift` | 改动全在文件末尾我们自己的 `[阅读档]` 扩展里 |

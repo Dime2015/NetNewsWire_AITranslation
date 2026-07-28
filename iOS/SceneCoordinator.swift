@@ -470,12 +470,13 @@ struct SidebarItemNode: Hashable, Sendable {
 	}
 
 	func showSearch() {
-		selectSidebarItem(indexPath: nil) {
-			self.rootSplitViewController.show(.supplementary)
-			DispatchQueue.main.asyncAfter(deadline: .now()) {
-				self.mainTimelineViewController!.showSearchAll()
-			}
-		}
+		// [阅读档] 整个方法体换成一行:外接键盘 ⌘⌥F 和长按桌面图标的「搜索」都走这里。
+		//
+		// 原来的写法是 `selectSidebarItem(nil)` 清空选中 → 推出文章列表页 → 激活它的搜索框。
+		// 现在这两点都不成立了:① 文章列表页**不再挂系统搜索控制器**,那句激活会静默落空;
+		// ② 清空选中恰恰是当年那个"退出搜索后停在空白页"的病根。
+		// 统一走 modal 搜索页,和两个放大镜按钮同一个去处。
+		nnwShowGlobalSearch()
 	}
 
 	// MARK: Notifications
@@ -2522,10 +2523,19 @@ extension SceneCoordinator {
 	///  可用的替代原语是 `mainFeedCollectionViewController.navigationController?
 	///  .popToViewController(mainFeedCollectionViewController, animated:)`,
 	///  即 `nnwPopSettingsIfPushed()` 在用的那句 —— 但 modal 方案根本用不着它。)
-	func nnwShowGlobalSearch() {
+	/// - Parameter restrictedToCurrentTimeline: 从**文章列表页**的放大镜进来时传 true ——
+	///   搜索页顶部会多一条「该列表 / 全部文章」切换,默认搜当前这个列表。
+	///   从首页进来时用默认值 false(那时没有"当前列表"这回事,只搜全部)。
+	func nnwShowGlobalSearch(restrictedToCurrentTimeline: Bool = false) {
 
 		let searchViewController = NNWGlobalSearchViewController()
 		searchViewController.coordinator = self
+
+		// 「该列表」那一档要搜的范围 = 当前列表里这些文章。
+		// 用的是上游系统范围条「Here」档同一套数据(SearchTimelineFeedDelegate 收 articleIDs)。
+		if restrictedToCurrentTimeline, !articles.isEmpty {
+			searchViewController.timelineArticleIDs = Set(articles.map { $0.articleID })
+		}
 
 		let navController = UINavigationController(rootViewController: searchViewController)
 		if let sheet = navController.sheetPresentationController {

@@ -43,6 +43,60 @@ final class NNWGlobalSearchViewController: UITableViewController {
 	/// 点结果跳文章要靠它。由 SceneCoordinator.nnwShowGlobalSearch() 在弹出本页时注入。
 	weak var coordinator: SceneCoordinator?
 
+	/// 「该列表」这一档能搜的范围(当前文章列表里那些文章的 ID)。
+	///
+	/// - 从**文章列表页**的放大镜进来:有值 → 顶部出现「该列表 / 全部文章」两档,默认「该列表」
+	/// - 从**首页**的放大镜进来:nil(没有"当前列表"这回事)→ 不显示切换条,只搜全部
+	///
+	/// 由 `SceneCoordinator.nnwShowGlobalSearch(restrictedToCurrentTimeline:)` 注入。
+	var timelineArticleIDs: Set<String>?
+
+	/// 搜索范围。两档的语义和上游那条系统范围条一致(Here / All Articles)。
+	private enum Scope: Int {
+		case timeline = 0	// 该列表
+		case global = 1		// 全部文章
+	}
+
+	private var scope: Scope = .global
+
+	/// 顶部那条范围切换控件。
+	///
+	/// ## ⚠️ 为什么是我们自己的分段控件,而不是系统搜索栏自带的范围条
+	///
+	/// 系统那条范围条**只在 `.stacked` 摆法下渲染**(日志实证:`.integratedButton` 下
+	/// 状态全对也不画)。而要用 `.stacked` 就得在搜索进出时切摆法 ——
+	/// **切摆法 = 让导航栏变高变矮**,下游一连串按安全区算坐标的自绘元素全得跟着重排,
+	/// 用户真机(iOS 27 beta)上表现为"退出搜索后顶栏没拆干净、标题卡在半空"。
+	/// 修了两轮仍未干净,而且开发机测不到那个系统版本。
+	///
+	/// 于是换成这条普通的 `UISegmentedControl`:**完全由我们自己摆放和绘制**,
+	/// 不牵动导航栏高度,和 UIKit 的搜索栏排版机制彻底脱钩。
+	/// (L92 的老规矩:修到第三版还不好,就该消掉这个机制的前提。)
+	private lazy var scopeControl: UISegmentedControl = {
+		let control = UISegmentedControl(items: ["该列表", "全部文章"])
+		control.selectedSegmentIndex = Scope.timeline.rawValue
+		control.addTarget(self, action: #selector(scopeChanged), for: .valueChanged)
+		return control
+	}()
+
+	/// 装着切换控件的分区头。**只造一次** —— 表格每次要头视图都还这一个,
+	/// 不然每次 reloadData 都新建一个容器、把控件搬来搬去,白费事还容易出岔子。
+	private lazy var scopeHeaderView: UIView = {
+		let container = UIView()
+		container.backgroundColor = AppAppearance.paperBackground
+		scopeControl.translatesAutoresizingMaskIntoConstraints = false
+		container.addSubview(scopeControl)
+		NSLayoutConstraint.activate([
+			scopeControl.leadingAnchor.constraint(equalTo: container.layoutMarginsGuide.leadingAnchor),
+			scopeControl.trailingAnchor.constraint(equalTo: container.layoutMarginsGuide.trailingAnchor),
+			scopeControl.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+		])
+		return container
+	}()
+
+	/// 有没有"当前列表"可搜 —— 决定顶部那条切换控件显不显示。
+	private var canSwitchScope: Bool { timelineArticleIDs != nil }
+
 	private let searchController = UISearchController(searchResultsController: nil)
 
 	/// 当前显示的结果(已按时间倒序排好)。
@@ -74,7 +128,10 @@ final class NNWGlobalSearchViewController: UITableViewController {
 	override func viewDidLoad() {
 		super.viewDidLoad()
 
-		title = "搜索全部文章"
+		// 从列表页进来时默认搜「该列表」,从首页进来时只有「全部文章」可搜
+		scope = canSwitchScope ? .timeline : .global
+		title = canSwitchScope ? "搜索文章" : "搜索全部文章"
+
 		view.backgroundColor = AppAppearance.paperBackground
 		AppAppearance.applyPaperStyle(to: tableView)
 
@@ -88,7 +145,7 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		// 搜索框自己的「取消」不要 —— 右上角已经有一个,两个取消会让人不知道点哪个
 		searchController.automaticallyShowsCancelButton = false
 		searchController.searchResultsUpdater = self
-		searchController.searchBar.placeholder = "搜索全部订阅源的文章"
+		searchController.searchBar.placeholder = canSwitchScope ? "搜索文章" : "搜索全部订阅源的文章"
 		searchController.searchBar.autocapitalizationType = .none
 		navigationItem.searchController = searchController
 		navigationItem.hidesSearchBarWhenScrolling = false
@@ -110,6 +167,13 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		hintLabel.textAlignment = .center
 		hintLabel.numberOfLines = 0
 		showHint("输入至少 3 个字开始搜索")
+	}
+
+	/// 换了搜索范围 → 用同一个词立刻重搜一遍。
+	@objc private func scopeChanged() {
+		scope = Scope(rawValue: scopeControl.selectedSegmentIndex) ?? .global
+		lastQuery = ""		// 清掉去重记录,否则同一个词换了范围也不会重搜
+		scheduleSearch(searchController.searchBar.text ?? "")
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -195,10 +259,17 @@ final class NNWGlobalSearchViewController: UITableViewController {
 			try? await Task.sleep(nanoseconds: 250_000_000)
 			guard !Task.isCancelled, let self else { return }
 
-			// SearchFeedDelegate 是上游搜索用的那个全文检索委托(FTS),
-			// 直接问它要结果,不经过 coordinator,也就不会动主时间线。
+			// 用上游那两个全文检索委托(FTS)直接取数,不经过 coordinator,也就不会动主时间线:
+			// - 「全部文章」= SearchFeedDelegate:搜全部账户的全部文章
+			// - 「该列表」  = SearchTimelineFeedDelegate:把范围限定在给定的文章 ID 集合里,
+			//                正是上游那条系统范围条「Here」档用的同一个东西
 			// (本类是 UIViewController,Task 继承主线程上下文,满足取数接口的主线程要求。)
-			let found = await SearchFeedDelegate(searchString: query).fetchArticlesAsync()
+			let found: Set<Article>
+			if self.scope == .timeline, let ids = self.timelineArticleIDs {
+				found = await SearchTimelineFeedDelegate(searchString: query, articleIDs: ids).fetchArticlesAsync()
+			} else {
+				found = await SearchFeedDelegate(searchString: query).fetchArticlesAsync()
+			}
 			guard !Task.isCancelled else { return }
 
 			self.lastQuery = query
@@ -207,7 +278,8 @@ final class NNWGlobalSearchViewController: UITableViewController {
 			self.tableView.reloadData()
 
 			if self.results.isEmpty {
-				self.showHint("没有找到「\(query)」")
+				let where_ = (self.scope == .timeline && self.canSwitchScope) ? "该列表里" : ""
+				self.showHint("\(where_)没有找到「\(query)」")
 			} else {
 				self.hideHint()
 			}
@@ -227,6 +299,16 @@ final class NNWGlobalSearchViewController: UITableViewController {
 
 	override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
 		return results.count
+	}
+
+	/// 范围切换条做成**分区头**而不是表头 —— plain 风格下分区头会自动吸顶,
+	/// 滚结果的时候它一直在,不会滑走。没有"当前列表"可搜时(从首页进来)整条不出现。
+	override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+		return canSwitchScope ? scopeHeaderView : nil
+	}
+
+	override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+		return canSwitchScope ? 48 : 0
 	}
 
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
