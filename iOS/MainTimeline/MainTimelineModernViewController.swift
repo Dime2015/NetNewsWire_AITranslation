@@ -243,11 +243,6 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			didPushArticleViewController = false
 			self.deselectIfNecessary()
 		}
-
-		// [阅读档] 首页点了「全局搜索」的放大镜 → 在这里打开搜索框。
-		// **必须是 viewDidAppear** —— 这是系统唯一保证"页面已经在屏幕上、导航栏也排好了"的时刻。
-		// 早于它打开,搜索框会排在没有安全区的地方,或者干脆不出现(前后错了两版,见 L79)。
-		nnwConsumePendingGlobalSearch()
 	}
 
 	func deselectIfNecessary() {
@@ -1061,21 +1056,17 @@ extension MainTimelineModernViewController: UISearchControllerDelegate {
 
 	func willPresentSearchController(_ searchController: UISearchController) {
 		coordinator?.beginSearching()
-		searchController.searchBar.showsScopeBar = true
-	}
-
-	// [阅读档] 搜索**已经展开之后**,把摆法换成经典的「标题下面一条」。
-	// 为什么必须这么做:范围切换条(本列表 / 全部文章)只在那种摆法下才会显示 ——
-	// 从某个源里点右上角放大镜进来时走的是系统的"内嵌按钮"摆法,范围条就没了(用户实测)。
-	// ⚠️ 放在 didPresent 而不是 willPresent:改摆法和展开搜索**必须分处两个排版回合**,
-	// 挤在一起只会生效一半(这一轮已经吃过两次亏了)。
-	func didPresentSearchController(_ searchController: UISearchController) {
-		nnwUseStackedSearchPlacementIfNeeded()
+		// [阅读档] 一行换一行:原来这里是 `searchController.searchBar.showsScopeBar = true`,
+		// 而那句恰恰是范围条不显示的原因 —— 手动设它会把系统的自动档关掉(SDK 头文件实证)。
+		// 换成把范围条交还给系统自动管。详见那个方法的注释。
+		nnwPrepareSearchBarForPresentation()
 	}
 
 	func willDismissSearchController(_ searchController: UISearchController) {
 		coordinator?.endSearching()
-		searchController.searchBar.showsScopeBar = false
+		// [阅读档] 一行换一行:原来这里是 `searchController.searchBar.showsScopeBar = false`。
+		// 范围条的收起现在由系统自己管(见 nnwPrepareSearchBarForPresentation);
+		// 这里再设一次只会把它重新拨回"手动档",下次展开就又不显示了。
 		// Async to avoid an iOS 26 UINavigationBar crash during the search-bar dismissal transition.
 		DispatchQueue.main.async {
 			self.updateToolbar()

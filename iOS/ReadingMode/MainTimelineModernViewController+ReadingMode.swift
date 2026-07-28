@@ -54,117 +54,89 @@ extension MainTimelineModernViewController {
 		guard #available(iOS 26, *) else { return }
 
 		// ⚠️ **搜索期间不许改回来**(2026-07-28,用户报"范围条不见了")。
+		// 搜索激活着的时候摆法必须停在 `.stacked`(范围条只在这个摆法下显示),
+		// 这里若把它冲回 `.integratedButton`,范围条会当场消失。
+		// (L71:往别人的方法里插一行,要问"我这行跑完之后还有谁会改同一个东西"。)
 		//
-		// 这个方法由上游的 `configureToolbar()` 调用,而 `configureToolbar()`
-		// 会在选中源、刷新列表等好几个时机被触发。全局搜索改成方案 B(进搜索前先选中
-		// 「全部未读」)之后,它就会**在搜索激活前后多跑一次**,把我们设好的 `.stacked`
-		// 冲回 `.integratedButton` —— 而范围条(该列表/全部文章)**只在 .stacked 下显示**,
-		// 于是范围条整个消失。
-		//
-		// 日志实锤:didPresent 时读到摆法=4(.integratedButton),而我们想要的 .stacked 是 2。
-		//
-		// (L71:往别人的方法里插一行,要问"我这行跑完之后还有谁会改同一个东西";
-		//  L74:同一个值有几个写入点,得数清楚。)
+		// 📌 2026-07-28 全局搜索改成 modal(方案 D)后,这里原来还有一条
+		// "待打开全局搜索期间也不许改"的守卫,已随那套挂起机制一起删除 ——
+		// 全局搜索不再经过这一页,剩下的唯一风险就是上面这条 isActive。
 		if navigationItem.searchController?.isActive == true { return }
-		if objc_getAssociatedObject(self, &Self.nnwPendingSearchKey) as? Bool == true { return }
 
 		navigationItem.preferredSearchBarPlacement = .integratedButton
+
+		// 顺手把范围条交还给系统(见 `nnwHandScopeBarBackToSystem`)。
+		// ⚠️ 这里**只能调那个小方法,不能调 `nnwPrepareSearchBarForPresentation()`** ——
+		// 后者会把摆法改成 `.stacked`,而这一趟是页面初始化,摆法必须停在 `.integratedButton`,
+		// 否则搜索框会常驻在标题下面,和头图、自绘标题打架(2026-07-28 自己踩的,L71 的形状)。
+		nnwHandScopeBarBackToSystem()
 	}
 
-	private static var nnwPendingSearchKey: UInt8 = 0
-
-	// MARK: - [阅读档] 全局搜索的"来处"
-
-	/// 首页点了放大镜,记一笔"待打开搜索"。**真正打开在 `viewDidAppear`。**
+	/// 把范围条的显示/收起交还给系统(`.onSearchActivation` = 搜索一激活就显示)。
 	///
-	/// ## 为什么最后落到 viewDidAppear(前后错了两版,见 L79)
+	/// ## ⚠️ 为什么"手动打开范围条"反而是范围条不显示的原因(SDK 头文件实证)
 	///
-	/// 首页点放大镜时,这一页正**在被推进来的路上**,而搜索框必须等页面上了屏、
-	/// 导航栏排好了才能装 —— 早了要么排在没有安全区的地方,要么干脆不出现。
+	/// 上游原来在 `willPresentSearchController` 里写 `searchBar.showsScopeBar = true`。
+	/// 而 `UISearchController.h` 写着:
 	///
-	/// - **第一版**:照上游 `showSearch()` 的老办法,推完页面等一个 runloop 就打开
-	///   → 搜索框整块**上移一个状态栏的高度**,和时间叠在一起。
-	/// - **第二版**:改成"每轮 runloop 看一眼是否就绪,最多 30 轮"
-	///   → 30 轮 runloop 只有几毫秒,而推入动画要 0.35 秒,**根本没等到就放弃了**;
-	///   再改成盯转场协调器,第一次进来时那个协调器又拿不到(推入还没开始)
-	///   → 表现成"第一次点没反应、退出再点才出来"。
-	/// - **这一版**:不猜时机了。挂到 **`viewDidAppear`** ——
-	///   那是系统唯一保证"页面已经在屏幕上、导航栏也排好了"的时刻。
-	///   不管推入走的是哪条路、动画多长,它一定在合适的时候到。
+	/// > 默认情况下 UISearchController **本来就会**在搜索激活时自动显示范围条
+	/// > (只要 `scopeButtonTitles` 至少两项),关闭时自动收起。
+	/// > **只要你去设 `showsScopeBar`,就等于告诉系统"这事我自己管"**
+	/// > (`scopeBarActivation` 变成 `.manual`)—— 从此系统撒手,时机和 `sizeToFit` 全得自己伺候。
 	///
-	/// **教训:与其算"什么时候好了",不如挂到系统告诉你"好了"的那个回调上。**
-	func nnwRequestGlobalSearch() {
-
-		objc_setAssociatedObject(self, &Self.nnwPendingSearchKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-		// ⚠️⚠️ **摆法必须现在就改,不能等到激活的那一刻**(2026-07-23,第四版才对)。
-		//
-		// 证据来自用户自己的观察:上一版"第一次点空白、退出再点就正常" ——
-		// 第二次之所以正常,正是因为**摆法在第一次点的时候就已经改成 `.stacked` 了**,
-		// 到第二次激活时它早就落定。也就是说:
-		// **改摆法和激活搜索必须分处两个排版回合**,挤在一起就只生效一半
-		// (范围条出来了、搜索框没装上 —— 用户最后那张截图正是这个样子)。
-		//
-		// 现在:点按钮的这一刻改摆法 → 推入页面(整个动画过程)→ viewDidAppear 里才激活。
-		// 中间隔着一整段时间,绝无可能还没落定。
-		nnwUseStackedSearchPlacement()
-
-		// 兜底:万一这一页**本来就在屏幕上**(不会推入,也就不会有 viewDidAppear),
-		// 等一小会儿还没被消费掉就自己动手。
-		DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-			self?.nnwConsumePendingGlobalSearch()
+	/// 也就是说那句"打开范围条"的代码把系统的自动档关掉了,我们再用一套更脆的手动逻辑去顶,
+	/// 换个摆法、重排一次就丢。现在改成显式声明自动档,之后**一行都不碰 `showsScopeBar`**。
+	///
+	/// (L70 的又一次应验:别凭印象用系统能力,先去读头文件。)
+	private func nnwHandScopeBarBackToSystem() {
+		if #available(iOS 16, *) {
+			navigationItem.searchController?.scopeBarActivation = .onSearchActivation
 		}
 	}
 
-	/// 由上游 `viewDidAppear` 里加的一行调用(以及上面那个兜底)。**只会生效一次。**
-	@objc func nnwConsumePendingGlobalSearch() {
-		guard objc_getAssociatedObject(self, &Self.nnwPendingSearchKey) as? Bool == true else { return }
-		objc_setAssociatedObject(self, &Self.nnwPendingSearchKey, false, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-		nnwActivateSearchNow()
-	}
+	// ⚠️ 这里原本有一套「首页点放大镜 → 记一笔待办 → 本页 viewDidAppear 时再激活搜索」的
+	// 挂起机制(nnwRequestGlobalSearch / nnwConsumePendingGlobalSearch / nnwActivateSearchNow,
+	// 时序试错史见 NOTES-lessons L79)。**2026-07-28 整套删除** ——
+	// 全局搜索改成了独立的 modal 页面(方案 D,见 NNWGlobalSearchViewController.swift),
+	// 不再借这一页激活搜索框,上游 viewDidAppear 里的那行钩子也一并撤了。
+	// 本页保留的搜索钩子只剩「摆法」三件套(下面这几个),服务的是**本页自己的放大镜**。
 
-	/// 搜索期间换成**经典的「标题下面一条」摆法**(`.stacked`):
-	/// 导航栏在上、搜索框在下、范围条再下面 —— 十年来最稳的那条路。
+	/// 搜索**即将展开**时调:把摆法切成 `.stacked`,并把范围条交还给系统。
+	/// 由上游 `willPresentSearchController` 里「一行换一行」调用
+	///(原来那行是 `searchController.searchBar.showsScopeBar = true`)。
 	///
-	/// 平时用 `.integratedButton`(只占一个放大镜,把工具栏正中让给三档控件),
-	/// 但那个摆法是**给用户点按钮触发**设计的,由代码激活时排版一直不对。
-	/// 退出搜索时换回去(见 `nnwRestoreSearchPlacement`)。
-	private func nnwUseStackedSearchPlacement() {
+	/// ## ⚠️ 摆法为什么必须在**这里**切,不能在 `didPresent`(2026-07-28,四轮才定案)
+	///
+	/// 范围条(该列表/全部文章)一度整个不显示。日志实录钉死了原因:
+	///
+	/// > `实际摆法=4(integratedButton),激活策略=3(正确),选项数=2(够),showsScopeBar=true`
+	/// > —— **状态全对,范围条就是不画。**
+	///
+	/// 结论:**iOS 26 的 `.integratedButton` 摆法根本不渲染范围条**,
+	/// 不管开关拨得多正确。范围条只在 `.stacked` 下才有安身之处。
+	///
+	/// 而摆法之前一直是在 `didPresent`(搜索已经展开之后)才切的 ——
+	/// **那时搜索栏早排完版了,来不及**。挪到 `willPresent`(排版之前)当场就好了。
+	///
+	/// L79 第四版写着「改摆法和激活搜索必须分处两个排版回合」,看着矛盾,其实不冲突:
+	/// **那条针对的是「由代码激活」的全局搜索** —— 方案 D 之后全局搜索走独立 modal,
+	/// 不再经过这一页;这一页的搜索永远是用户自己点出来的,是系统在推流程,不是我们抢拍。
+	@objc func nnwPrepareSearchBarForPresentation() {
+
+		nnwHandScopeBarBackToSystem()
+
+		// 摆法换成 `.stacked`(标题在上、搜索框在下、范围条再下面)。
+		// 平时是 `.integratedButton`(把工具栏正中让给三档控件),
+		// 退出搜索时由 `nnwRestoreSearchPlacement()` 换回去。
 		if #available(iOS 26, *) {
 			navigationItem.preferredSearchBarPlacement = .stacked
 		}
-		// 立刻走一遍布局,别把这件事拖到下一次不知道什么时候的排版回合
-		view.layoutIfNeeded()
+		view.layoutIfNeeded()	// 逼它当场生效,别拖到下一个不知道什么时候的排版回合
 	}
 
-	/// 搜索已经展开了,但摆法还是"内嵌按钮"(从某个源里点放大镜进来的情形)→ 换成 stacked。
-	/// **只有这样范围切换条(本列表 / 全部文章)才会显示出来。**
-	/// 由上游 `didPresentSearchController` 里加的一行调用。
-	@objc func nnwUseStackedSearchPlacementIfNeeded() {
-		guard #available(iOS 26, *) else { return }
-
-		let sb = navigationItem.searchController?.searchBar
-
-		// 原来这里有一句 `guard 已经是 stacked 就跳过`。**去掉了** ——
-		// 摆法即使已经是 stacked,范围条也可能没跟着装上(它由搜索栏自己管,不是摆法的附属品),
-		// 于是这个"省一次调用"的守卫反而把补救的机会也一起省掉了(L77 家族:搭便车,车没开)。
-		nnwUseStackedSearchPlacement()
-
-		// 范围条要显式打开:`willPresentSearchController` 里虽然设过一次,
-		// 但换摆法会重排搜索栏,那一次设置可能在重排中丢失。这里补一次,幂等无害。
-		sb?.showsScopeBar = true
-	}
-
-	/// 只负责**激活**。摆法早在点按钮那一刻就改好了(见 `nnwRequestGlobalSearch` 里的说明)。
-	private func nnwActivateSearchNow() {
-		showSearchAll()
-	}
-
-	// ⚠️ 这里原本有约 90 行"退出搜索后自动逃回首页"的机制
-	//(轮询 searchController.isActive + 一堆守卫 + nnwPopIfCameFromGlobalSearch)。
-	// **2026-07-28 整个删除** —— 方案 B 之后全局搜索背后是「全部未读」那一页(有内容),
-	// 空白页不存在了,也就不需要从空白页逃出来。
-	// 完整的死因与 6 次试错记录见 `SceneCoordinator.nnwShowGlobalSearch()` 的注释与 L92。
+	// ⚠️ 这里原本还有一个 `nnwUseStackedSearchPlacementIfNeeded()`(挂在上游 didPresent 上)。
+	// **2026-07-28 删除** —— 切摆法已经提到 `willPresent` 了,didPresent 那一趟无事可做,
+	// 上游的 `didPresentSearchController` 方法也一并撤回了原样。
 
 	/// 退出搜索后把摆法换回"右上角一个放大镜"。
 	/// 由上游 `willDismissSearchController` 里加的一行调用。

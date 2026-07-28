@@ -990,7 +990,71 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 
 ---
 
-## T28 · 全局搜索:退出后回到"点搜索前所在的位置" —— ❌ **未解决,已交接**
+## T28 · 全局搜索:退出后回到"点搜索前所在的位置" —— ✅ **已解决(方案 D),用户已验收主流程**
+
+**状态(2026-07-28 晚)**:按用户首选的 modal 方向重做完成(方案 D),用户实测确认修好。
+日志实证:「点取消」「点结果」两条路径关页后,导航栈都稳定停在 `1 页:首页`;
+点结果那条还确认了"目标文章在当前列表里=true",跳转没有静默失败。
+
+⚠️ **中途撞过一个坑,修法已钉死在代码注释里,别去"简化"它**:
+`closePage()` 里必须**先**把 `presentingViewController` 取到局部变量,**再** `isActive = false`,
+最后用局部变量发 dismiss。顺序反了会停在一张文章空白页上(完整分析见 **L93** 第二段)。
+
+**顺带解决的老账:范围条(该列表/全部文章)**——用户验收时报"从上一次验收开始就没了"。
+考古发现 `a92a012cc` 那次只修好了**全局搜索**那条路,「进到源里点放大镜」这条路一直是坏的。
+四轮定案(完整过程见 **L94**),两条硬事实:
+1. **手动设 `showsScopeBar` 会把系统的自动档关掉** —— 那句"打开范围条"的代码正是它不显示的原因。
+   现在改成 `scopeBarActivation = .onSearchActivation`,一行都不碰 `showsScopeBar`。
+2. **iOS 26 的 `.integratedButton` 摆法根本不渲染范围条**(日志实证:状态全对就是不画),
+   而摆法**必须在 `willPresent`(排版之前)切成 `.stacked`** —— 之前一直在 `didPresent` 切,来不及。
+
+用户已验收:范围条正常显示。
+
+**方案 D 做了什么**:
+- 新增 `iOS/ReadingMode/NNWGlobalSearchViewController.swift`:独立的 modal 搜索页
+  (pageSheet,下拉可关)。搜索框挂导航条(`.stacked` 摆法显式钉死),边打字边搜、
+  ≥3 字门槛、250ms 防抖、任务取消防竞态(订阅发现页同套路)。
+  数据直连上游 `SearchFeedDelegate`(FTS 全库检索),**主时间线从头到尾不知道有搜索这回事**
+  ——上游 `searchArticles` 是"把主时间线换成搜索结果"的模式,绝不能复用(会走回老路)。
+- `SceneCoordinator` fork 扩展区:`nnwShowGlobalSearch()` 改为弹 modal;
+  新增 `nnwOpenSearchResult(_:)` —— 照抄 `handleReadArticle`(点通知跳任意文章)的配方:
+  `exceptionArticleFetcher` + `discloseFeed` + 0.5s 后 `selectArticleInCurrentFeed`。
+  两处延时是上游原样的节奏,别调小。
+- 删掉方案 B 的挂起机制(`nnwRequestGlobalSearch` 那套约 70 行)和上游 viewDidAppear 的钩子行
+  (上游文件净还原 5 行)。**保留**了文章列表页自己的放大镜三件套
+  (`nnwUseCompactSearchPlacement` / `nnwUseStackedSearchPlacementIfNeeded` /
+  `nnwRestoreSearchPlacement`)——那是本页搜索(含范围条)在用的,和全局搜索无关。
+
+**为什么 modal 能同时解决两半诉求**:它盖在当前页面之上,关掉自然露出原页面,
+"原来在哪就回哪"是 dismiss 自带的;进搜索也不再需要先垫一页「全部未读」。
+
+**⚠️ 拦路的硬事实(留档,防止后人再撞,7 次试错的完整记录见 L92)**:
+
+> 在 iPhone 的 collapsed 分栏里,`rootSplitViewController.show(.primary)` **调用无效** ——
+> 日志实锤:调用执行了、`selectFeed(nil)` 的完成回调也执行了,**界面纹丝不动**。
+
+**2026-07-28 晚补:静态尸检结论(只读代码分析,未重新做实验)**:
+- 守卫排除:`RootSplitViewController.show()` 的 iPhone 分支无条件走 `super.show()`;
+  `isNavigationDisabled` 全仓库只在 selectPrev/NextUnread 的同步执行期内短暂为 true,
+  搜索退出路径碰不到它。
+- 代理排除:`UISplitViewControllerDelegate` 只实现了 collapse 瞬间的栈顶选择和
+  displayMode 记忆,没有任何能拦截 show() 的方法。
+- **最可能根因**:collapsed 下整个界面就是 primary 列的导航栈,UIKit 实现了
+  `show(.supplementary/.secondary)→push` 的映射,但**没实现 `show(.primary)→pop` 的逆映射**,
+  于是判定"无事可做"。(对 UIKit 内部行为的推断,标不确定,但"原因不在本仓库代码里"是确定的。)
+- **真需要"代码回首页"时的替代原语**:
+  `mainFeedCollectionViewController.navigationController?.popToViewController(mainFeedCollectionViewController, animated:)`
+  —— collapsed 下活跃栈就是 primary 列的导航栈(设置页的推入/收场就在这个栈上,实测可用)。
+  当年失败清单里的 "popViewController" 试的是**时间线页自己的导航栈**(深度=1,当然 pop 不动),
+  不是这个。⚠️ 未实测,若用需在搜索收起转场结束后再调。modal 方案用不着它。
+
+**留一个已知边界(有意不做)**:外接键盘 ⌘⌥F 和长按桌面图标的搜索走的仍是上游
+`showSearch()` 老路(清空选中 → 空白页背景),没有改 —— 用户不用外接键盘,
+改它要动上游文件,不值得。哪天要改,把 `showSearch()` 的身体换成调 `nnwShowGlobalSearch()` 即可。
+
+---
+
+**以下为历史记录(方案 D 之前的状态,保留存档)**:
 
 **状态**:2026-07-28 尝试后**回滚**,当前停在方案 B 的行为上。用户已知,准备换更强的模型另开一轮。
 

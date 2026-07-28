@@ -109,7 +109,60 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ## 四、当前悬而未决(接手者先看这里)
 
-### 📍 接手须知:2026-07-28 收尾状态(**最新,先读这段**)
+### 📍 接手须知:2026-07-28 晚 · 全局搜索改成 modal(方案 D)(**最新,先读这段**)
+
+**git**:代码已改完、已编译、已装机,**尚未 commit**(等用户验收后一起提交);
+更早的 3 个本地 commit 仍领先 origin(用户说了才 push)。
+
+**这一轮做了什么(T28)**:全局搜索从「借文章列表页激活系统搜索框」改成**独立的 modal 搜索页**,
+一次解决用户诉求的两半:进搜索不再先跳「全部未读」;退出搜索(下拉或点取消)后
+**原来在哪就回哪** —— 这是 dismiss 自带的,零导航代码,整个绕开 collapsed 分栏那堵墙。
+
+改动清单(新增 1 文件 / 改 3 文件,上游文件净还原 5 行):
+| 文件 | 改了什么 |
+|---|---|
+| `iOS/ReadingMode/NNWGlobalSearchViewController.swift` | **新增**:modal 搜索页(搜索框 + 结果列表 + 点结果跳文章),数据链路直连 `SearchFeedDelegate`(FTS 全库检索),**完全不碰主时间线** |
+| `iOS/SceneCoordinator.swift`(fork 扩展区) | `nnwShowGlobalSearch()` 改为弹出 modal;新增 `nnwOpenSearchResult(_:)`(照抄上游 handleReadArticle 的"跳任意文章"配方) |
+| `iOS/ReadingMode/MainTimelineModernViewController+ReadingMode.swift` | 删掉方案 B 的挂起机制(nnwRequestGlobalSearch 那套,-70 行);**保留**本页放大镜的摆法三件套 |
+| `iOS/MainTimeline/MainTimelineModernViewController.swift`(上游) | 撤掉 viewDidAppear 里的钩子行,**向上游原样还原 5 行** |
+
+**验收状态**:✅ **用户已实测确认修好**(主流程:弹出 → 搜索 → 点结果跳文章 → 点取消回首页)。
+日志实证:两条关页路径之后导航栈都稳定停在 `1 页:首页`;点结果那条确认
+"目标文章在当前列表里=true",没有静默失败。已编译、已装机、进程存活、今日无崩溃。
+
+**这一轮踩的坑(两层,都记在 L93)**:
+1. 交付前静态审查抓到第一层:`self.dismiss` 会被激活中的搜索控制器劫持
+   (「取消」要点两次、点结果不关页)→ 改为从弹出者那头 dismiss。
+2. 用户实测撞出第二层(**更值钱**):`presentingViewController` 是**顺着呈现关系现算的快照**,
+   在 `isActive = false` 之后再读就已经不对了 → 必须**先取到局部变量再退搜索态**。
+   这一层是靠**埋日志**定案的(先猜了两轮全是死路)。修法已钉死在 `closePage()` 的注释里。
+
+**顺带清掉的老账:范围条**。上面那条回归检查一做,用户报"从上一次验收开始就没了"。
+考古发现 `a92a012cc` 只修好了全局搜索那条路,「进到源里点放大镜」一直是坏的。
+四轮定案(**L94**),两条硬事实:**① 手动设 `showsScopeBar` 会把系统的自动档关掉**
+(那句"打开范围条"正是它不显示的原因);**② iOS 26 的 `.integratedButton` 摆法不渲染范围条**,
+摆法必须在 `willPresent`(排版之前)切成 `.stacked` —— 以前一直在 `didPresent` 切,来不及。
+用户已验收显示正常。
+
+**这一轮的净收益(上游文件反而更接近原样了)**:
+| 上游文件 | 现在的改动 |
+|---|---|
+| `MainTimelineModernViewController.swift` | viewDidAppear 钩子**撤回原样**;`didPresentSearchController` 整个方法**撤回原样**;
+只剩 `willPresent`/`willDismiss` 各一处「一行换一行」+ 工具栏那两行 |
+| `SceneCoordinator.swift` | 改动全在文件末尾我们自己的 `[阅读档]` 扩展里 |
+验收点:① 首页点放大镜 → 从下往上弹出搜索页、键盘自动出现;② 输入 ≥3 字出结果、
+样式和时间线接近;③ 点结果 → 页面关闭 → 跳到那篇文章;④ 下拉或点「取消」→ 回到弹出前的位置
+(在首页弹就回首页,理论上从哪弹都回哪);⑤ 回归:随便进一个源,点它右上角放大镜,
+范围条(该列表/全部文章)还在、搜索正常。
+
+**T28 的静态尸检结论也记档了**(见 T28):`show(.primary)` 无效的根因最可能是
+UIKit 在 collapsed 下没实现 show(.primary)→pop 的逆映射(守卫、代理已逐一排除);
+真需要"代码回首页"时的替代原语是 `mainFeedCollectionViewController.navigationController?
+.popToViewController(mainFeedCollectionViewController, animated:)`(设置页收场在用,实测可用)。
+
+---
+
+### 📍 接手须知:2026-07-28 收尾状态(历史,已被上面那段接替)
 
 **git**:全部已提交,**本地领先 origin 3 个 commit**(用户说了才 push):
 ```

@@ -2493,60 +2493,80 @@ extension SceneCoordinator {
 	}
 }
 
-// MARK: - [阅读档] 首页右上角的「全局搜索」
+// MARK: - [阅读档] 首页右上角的「全局搜索」(方案 D:独立 modal 页面,2026-07-28)
 
 extension SceneCoordinator {
 
-	/// 从**订阅源列表页**发起搜全部订阅源。
+	/// 首页放大镜 → 从下往上弹出独立的搜索页(`NNWGlobalSearchViewController`)。
 	///
-	/// ## 为什么不直接用上游的 `showSearch()`
+	/// ## 为什么是 modal(前面两版方案的死因,别走回头路)
 	///
-	/// 上游那条路本身是对的(取消当前源 → 推出文章列表页 → 打开搜索框、范围设成「全部」),
-	/// 但它原来**只有外接键盘 ⌘F 和长按桌面图标**两个入口 —— 那两种情形下页面往往已经在屏幕上了。
-	/// 现在首页多了个放大镜,于是第一次出现「**一边推页面、一边打开搜索框**」的时序:
+	/// - **方案 A(原始设计)**:进搜索前清空选中 → 推出一页空白的文章列表 → 在它上面搜索,
+	///   退出后靠"自动逃回首页"的机制收场。那套机制修了 7 版全部失败,日志实锤了死因:
 	///
-	/// 上游是 `asyncAfter(.now())` 之后就激活搜索,那时被推的页面**还没进窗口**,
-	/// 搜索框会按"没有安全区"排版 —— 表现为整块内容**正好上移一个状态栏的高度**,
-	/// 搜索框和时间叠在一起(2026-07-23 用户截图 2)。
+	///   > 在 iPhone 的 collapsed 分栏里,`rootSplitViewController.show(.primary)`
+	///   > **这个调用就是无效的** —— 不管谁调、什么时机调。调用执行了、
+	///   > `selectFeed(nil)` 的完成回调也执行了,界面纹丝不动。(完整试错史见 NOTES-lessons L92)
 	///
-	/// 所以这里换成:推完页面之后**等它真的进了窗口、转场也结束了**,再激活搜索。
-	/// 这是 **L73** 那条的又一次应验:我算的时机和系统算的时机不一致。
-	/// 首页放大镜 → 全局搜索。
+	/// - **方案 B(2026-07-28 上午)**:进搜索前先选中「全部未读」,让背后那页有内容。
+	///   空白页是消掉了,但用户明确不满意代价:进搜索先跳一下「全部未读」,
+	///   退出后也**停在「全部未读」**,回不到点搜索时所在的位置。
 	///
-	/// ## ⚠️ 方案 B(2026-07-28 重做)——**进搜索前选中「全部未读」,不要清空选中**
+	/// - **方案 D(现在)**:搜索页做成 modal,盖在当前页面上。
+	///   关掉就露出原页面 ——「原来在哪就回哪」是 dismiss 自带的,零导航代码,
+	///   整个绕开 collapsed 分栏那堵墙。进搜索也不再跳「全部未读」。
 	///
-	/// 老做法是 `selectSidebarItem(indexPath: nil)`(清空选中)再推出文章列表页。
-	/// 那样推出来的是一个**空白页**,于是必须再配一整套"退出搜索后自动逃回首页"的机制。
-	/// 那套机制前后修了 **6 版全部失败**(willDismiss → didDismiss → 轮询状态 →
-	/// popViewController → compact 栈 → selectFeed(nil) → 延后一拍),
-	/// 最后日志实锤了死因:
-	///
-	/// > `selectFeed(nil)` 完整跑完、它内部的 `rootSplitViewController.show(.primary)`
-	/// > 也确实执行了 —— **界面纹丝不动**。在 iPhone 的 collapsed 分栏里,
-	/// > `show(.primary)` 这个调用就是无效的,不管谁调、什么时机调。
-	///
-	/// 所以不再跟它斗:**消除问题的前提** —— 让背后那一页本来就有内容,
-	/// 空白页不存在了,"从空白页逃出来"这件事自然也就不需要了(L66:
-	/// 一个需要不断打补丁才能不崩的机制,通常说明它本来就不该存在)。
-	///
-	/// 代价(有意接受):退出搜索后停在「全部未读」的文章列表,而不是回首页。
-	/// 那是一页**有内容的正常页面**,想回首页点左上角返回即可。
+	/// (静态尸检补记:`show(.primary)` 无效的最可能根因是 UIKit 在 collapsed 下
+	///  只实现了 show(.supplementary/.secondary)→push 的映射,没有实现 show(.primary)→pop
+	///  的逆映射 —— 守卫和代理都已逐一排除,见 NOTES-todo T28。若将来真需要"代码回首页",
+	///  可用的替代原语是 `mainFeedCollectionViewController.navigationController?
+	///  .popToViewController(mainFeedCollectionViewController, animated:)`,
+	///  即 `nnwPopSettingsIfPushed()` 在用的那句 —— 但 modal 方案根本用不着它。)
 	func nnwShowGlobalSearch() {
-		selectFeed(SmartFeedsController.shared.unreadFeed) { [weak self] in
-			guard let self else { return }
-			self.rootSplitViewController.show(.supplementary)
-			self.mainTimelineViewController?.nnwRequestGlobalSearch()
+
+		let searchViewController = NNWGlobalSearchViewController()
+		searchViewController.coordinator = self
+
+		let navController = UINavigationController(rootViewController: searchViewController)
+		if let sheet = navController.sheetPresentationController {
+			sheet.detents = [.large()]
+			sheet.prefersGrabberVisible = true	// 顶部小把手,提示可以下拉关闭
+		}
+		rootSplitViewController.present(navController, animated: true)
+	}
+
+	/// 搜索页里点了一条结果 → 跳到那篇文章(搜索页自己先 dismiss,再调这里)。
+	///
+	/// 复用上游"点系统通知打开任意一篇文章"的现成配方(`handleReadArticle`,本文件 2329 行):
+	/// - `exceptionArticleFetcher` 保证目标文章一定被抓进时间线
+	///   (否则已读文章在「隐藏已读」过滤下不进列表,`selectArticleInCurrentFeed` 会静默失败);
+	/// - `discloseFeed` 展开侧栏、选中该源(compact 下它内部自带 1 秒等待,等分栏转场);
+	/// - 再等 0.5 秒选中文章。两处延时都是上游原样的节奏,别调小 —— 那是人家踩过坑定下的。
+	///
+	/// 为什么必须写在本文件里(CLAUDE.md 第 2 节要求说明):
+	/// `exceptionArticleFetcher` 是 private,只有同文件的扩展够得着(和 `nnwRebuildFeedList` 同理)。
+	func nnwOpenSearchResult(_ article: Article) {
+		guard let feed = article.feed, let account = article.account else {
+			// 源已被删但文章还留在库里的极端情形:没地方可跳,什么都不做
+			return
+		}
+
+		exceptionArticleFetcher = SingleArticleFetcher(account: account, articleID: article.articleID)
+
+		discloseFeed(feed) {
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				self.selectArticleInCurrentFeed(article.articleID)
+			}
 		}
 	}
 }
 
 // MARK: - [阅读档] 全局搜索的退出路径
 
-// ⚠️ 这里原本有一个 `nnwReturnToFeedList()`,负责"退出搜索后自动逃回首页"。
-// **2026-07-28 整个删除** —— 方案 B 之后,全局搜索背后是「全部未读」那一页(有内容),
-// 不再有空白页,也就不需要从空白页逃出来。详见 `nnwShowGlobalSearch()` 的注释。
+// ⚠️ 这里原本有一个 `nnwReturnToFeedList()`,负责"退出搜索后自动逃回首页"(方案 A 的遗物,
+// 2026-07-28 删除);方案 D(modal)之后,退出搜索 = dismiss,不存在"逃回"这件事了。
 //
-// 别再把它加回来:`rootSplitViewController.show(.primary)` 在 iPhone 的 collapsed
-// 分栏里**实测无效**(日志实锤:调用执行了、完成回调也跑了,界面纹丝不动),
-// 6 个版本全部失败。要回首页请用系统的返回按钮。
+// 别再把任何"回首页"机制加回来:`rootSplitViewController.show(.primary)` 在 iPhone 的
+// collapsed 分栏里**实测无效**(日志实锤:调用执行了、完成回调也跑了,界面纹丝不动),
+// 7 个版本全部失败。真需要代码回首页,用 `nnwShowGlobalSearch()` 注释里写的 pop 原语。
 

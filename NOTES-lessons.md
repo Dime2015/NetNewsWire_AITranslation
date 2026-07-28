@@ -2477,8 +2477,132 @@ Reeder 的外观设置里有 `Grayscale favicons`,我据此提议**并默认打�
 真要满足"回到来处",得换成不依赖分栏导航的呈现方式(比如把搜索做成 modal),
 那是重做,不是修补。详见 NOTES-todo T28。
 
+**(2026-07-28 晚续)** 按 modal 方向重做完成(方案 D,`NNWGlobalSearchViewController`),
+挂起机制那套也一并删干净了;`show(.primary)` 无效的静态尸检结论
+(根因指向 UIKit 没实现 collapsed 下 show(.primary)→pop 的逆映射,
+以及备用的 popToViewController 原语)记在 T28 里,别再对着这堵墙做实验。
+
 **顺带记一个自己挖的坑**:这几轮我一直用
 `xcodebuild ... | grep ... && ./tools/install-to-simulator.sh` 一条命令跑,
 而 **`&&` 判断的是 `grep` 的退出码,不是 xcodebuild 的** ——
 于是有一次编译失败了,脚本照样把**上一次的旧产物**装进了模拟器(L41 的翻版)。
 以后编译和装机分两步跑,别串在一条命令里。
+
+## L93 · definesPresentationContext 的页面里,`self.dismiss` 的第一目标是它自己弹出的东西
+
+**现象**(2026-07-28,做 modal 全局搜索页,交付前的静态审查抓到,没上真机就修了):
+modal 页面里挂了 UISearchController 且进页就激活(`definesPresentationContext = true`)。
+「取消」按钮和"点结果关页"都写的 `self.dismiss(animated:)` —— 静态审查指出:
+**这个 dismiss 关的不是 modal,是激活着的搜索控制器**。表现会是:
+「取消」要点两次才关页;点结果时页面根本不关,文章跳转发生在它背后。
+
+**原理**:UISearchController 激活是一次**真实的 presentation**,呈现上下文正是
+设了 `definesPresentationContext` 的那个 VC —— 于是 `self.presentedViewController`
+就是搜索控制器。而 UIKit 的 `dismiss` 规则:**自己名下有 presented VC 时,优先收它**。
+我们的页面从 viewDidAppear 起搜索就常年激活,所以是必现路径。
+
+**修法**(`NNWGlobalSearchViewController.closePage`):
+关页统一走一个出口 —— 先 `searchController.isActive = false` 显式退掉搜索态
+(顺便避免"搜索控制器在激活状态下被连根拆掉"的运行时警告),
+再从**弹出者**发起 `presentingViewController?.dismiss(animated:completion:)`,一次收干净。
+用户下拉关页不走这个出口,所以另挂 `presentationControllerWillDismiss` 补同一手。
+
+**⚠️ 但第一版修复只对了一半 —— 用户实测又撞出第二层(同一天,更值钱的那半)**:
+
+改成"从弹出者那头 dismiss"之后,用户测出来还是不对:**点取消后停在一张文章空白页上**
+(截图是 ArticleViewController 的 "No selection" 空状态)。
+
+病根在**一行之内的取值顺序**:
+
+```swift
+// ❌ 第一版:先退搜索态,再去"问"弹出者是谁
+searchController.isActive = false
+presentingViewController?.dismiss(animated: true)   // 这时问到的已经不对了
+
+// ✅ 现在:先把弹出者捞在手里,再退搜索态,最后用手里那个发 dismiss
+let presenter = presentingViewController
+searchController.isActive = false
+presenter?.dismiss(animated: true)
+```
+
+`isActive = false` 会**当场开始拆除搜索控制器的那层 presentation**,
+而 `presentingViewController` 是顺着呈现关系现算出来的 —— 拆到一半时这条链正处在中间态,
+算出来的就不是分栏控制器了,dismiss 于是发给了错的对象。
+
+**定案靠的是日志,不是猜**(前面已经猜过一轮"是不是状态恢复""是不是有人 push 了文章页",
+全是死路)。埋了三处:弹出时记导航栈、关页时记走的哪条路、关页后再记一次导航栈。
+一轮测试就钉死了:两条路径关页后栈都稳定停在 `1 页:MainFeedCollectionViewController`,
+点结果那条还额外确认了"目标文章在当前列表里=true"(没有静默失败)。
+
+**教训**:
+- **在设了 `definesPresentationContext` 的页面里写 `dismiss`,先问一句:
+  此刻我自己名下有没有 presented VC?** 激活中的 UISearchController、alert、
+  分享面板都算。有,`self.dismiss` 关的就是它,不是你以为的那层 modal。
+  要关整摞,从 `presentingViewController` 那头发起。
+- ⚠️ **最值钱的一条**:`presentingViewController` / `presentedViewController` /
+  `navigationController` 这类**顺着关系链现算出来的属性,不是稳定的值,是"此刻的快照"**。
+  只要中间夹了一个会改动这条链的调用(`isActive = false`、`dismiss`、`pop`),
+  **就必须在改动之前把它取出来存到局部变量里**。
+  判据和 **L66** 是同一条:「这个调用会不会改动我接下来还要读的东西?」——
+  L66 是"读的是数据",这次是"读的是关系链",形状一模一样。
+- **同一个坑连摔两次,说明第一次只修到了表层。**
+  第一次修对了"该向谁发 dismiss",却没想到"向谁"这件事本身会被下一行改掉。
+  → 修完一个时序 bug,再回头看一眼:**我这个修法自己有没有引入新的时序假设?**
+- **"本仓库没有先例的 UIKit 组合,交付前值得单独跑一轮挑错。**
+  这次的组合(modal 内挂 UISearchController)在仓库里是头一回,
+  审查一轮就抓住了第一层必现 bug;第二层则是靠**埋日志**抓的 ——
+  两种手段各抓一层,谁也替代不了谁。
+
+## L94 · 「状态全对但东西不画」= 你调的那个开关根本不管这件事 —— 范围条四轮定案
+
+**现象**(2026-07-28,全局搜索改 modal 之后的收尾):
+文章列表页自己的搜索,范围条(该列表 / 全部文章)不显示。
+这事当天已经修过一轮(commit `a92a012cc`,用户当时验收通过)——
+但那轮只修好了**全局搜索**那条路,「进到某个源里点放大镜」这条路一直是坏的,没人发现。
+
+**四轮走了两个完全不同的错误方向,值得都记下来**:
+
+**方向一(错):以为是"没打开它"**,于是到处补 `showsScopeBar = true`。
+翻 `UISearchController.h` 才发现方向从一开始就反了:
+
+> 默认情况下 UISearchController **本来就会**在搜索激活时自动显示范围条
+> (只要 `scopeButtonTitles` 至少两项),关闭时自动收起。
+> **而只要你去设 `showsScopeBar`,就等于告诉系统"这事我自己管"**
+> (`scopeBarActivation` 被改成 `.manual`)—— 从此系统撒手。
+
+也就是说:**那句"打开范围条"的代码,正是范围条不出现的原因**。
+我们一边把系统的自动档关掉,一边用一套比系统脆得多的手动逻辑去顶,换个摆法、重排一次就丢。
+→ 改成显式声明 `.onSearchActivation`,之后一行都不碰 `showsScopeBar`。
+
+**方向二(也错):以为是"有人把它抖掉了"**。改完还是不显示,于是怀疑
+`didPresent` 里那句切 `.stacked` 摆法重排了搜索栏、把范围条抖没了,就把它撤了。**还是不显示。**
+
+**定案靠日志**(埋了一行,把所有相关状态一次打全):
+
+> `实际摆法=4(integratedButton),激活策略=3(正确),选项数=2(够),showsScopeBar=true`
+> —— **状态全对,范围条就是不画。**
+
+这一行同时否掉了前面两个方向:开关全拨对了,也没人抖它。
+真正的原因是 **iOS 26 的 `.integratedButton` 摆法根本不渲染范围条** ——
+范围条只在 `.stacked` 下才有安身之处(那条老结论其实一直是对的,是我中途怀疑错了)。
+
+而摆法**四轮里一直是在 `didPresent`(搜索已经展开之后)才切的,那时搜索栏早排完版了,来不及**。
+挪到 `willPresent`(排版之前)当场就好了。
+
+**教训**:
+- ⚠️ **最值钱的一条:"我要的状态全都设对了,东西还是不出现" —— 这不是没设对,
+  是你调的那个开关跟这件事无关。** 别再加大力气去调同一组开关(我加了两轮),
+  要去问:**这个东西的渲染,到底由谁决定?** 这次答案是"由摆法决定",
+  而摆法这个变量在前三轮里根本不在我的怀疑名单上。
+- **判据是"把所有相关状态一次打全",而不是逐个猜。**
+  那一行日志同时否掉了两个方向、指出了第三个,一次顶三轮。
+  埋日志时**别只打你怀疑的那一个值** —— 把这件事牵涉的状态全打出来,
+  信息量最大的往往是"你以为不用看的那个"。
+- **自己中途推翻的老结论,要留意是不是推翻错了。**
+  「范围条只在 `.stacked` 下显示」是前人实测出来的,我因为"那是手动管理年代的结论"
+  就把它降级成了可疑项 —— 结果它是对的,只是**当时没人发现它对时机也有要求**。
+  → 推翻一条实测结论前,先分清它是**结论错了**还是**结论不完整**。
+- **收尾时再复查一遍自己的改动**:这轮定案后我顺手把"设范围条"塞进了页面初始化那趟,
+  而那个方法紧接着会把摆法改成 `.stacked` —— 等于页面平时就停在 `.stacked`,
+  搜索框会常驻在标题下面,和头图打架。**是 L71 的形状,只不过这次"后面改我东西的人"是我自己。**
+  → 一个方法既管 A 又管 B 时,别让只需要 A 的调用方去调它;拆出小方法。
