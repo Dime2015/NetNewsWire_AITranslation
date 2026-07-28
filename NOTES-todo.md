@@ -987,3 +987,46 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 **📌 这一整条的元结论**:第一梯队之后就是边际递减 —— 后面每一条要么收益极小,
 要么要拿系统兼容性 / merge 安全去换。**外观对标到此为止。**
 若还想提升观感,方向应换成**动效与手感**(截图看不出来,须真机对比),而不是继续抠静态外观。
+
+---
+
+## T28 · 全局搜索:退出后回到"点搜索前所在的位置" —— ❌ **未解决,已交接**
+
+**状态**:2026-07-28 尝试后**回滚**,当前停在方案 B 的行为上。用户已知,准备换更强的模型另开一轮。
+
+**用户的诉求(原话)**:
+> 每次点击搜索按钮,都会先跳到全部未读,然后再进入搜索,并且退出搜索后,会留在全部未读,
+> 而不是最一开始点击搜索按钮时所在的位置。这不是一个大问题,但我觉得设计上很反直觉,
+> 我想能不能改成退出的时候,原来在哪里,就返回哪里。
+
+**当前行为(方案 B,已提交 `e34d26aea`)**:
+点首页放大镜 → 先切到「全部未读」→ 在它上面激活搜索 → 退出搜索后**停在「全部未读」**。
+好处是背后一直有内容(不再是空白页);代价就是用户说的这条反直觉。
+
+**⚠️ 拦路的硬事实(别再重新验证一遍,7 次试错的完整记录见 L92)**:
+
+> 在 iPhone 的 collapsed 分栏里,`rootSplitViewController.show(.primary)` **调用无效** ——
+> 日志实锤:调用执行了、`selectFeed(nil)` 的完成回调也执行了,**界面纹丝不动**。
+> 而且这一页**独占一个导航栈**(实测深度=1),`popViewController` 无从下手;
+> `viewController(for: .compact)` 拿不到导航控制器。
+
+所以:**只要"回到首页"依赖 `show(.primary)`,这条路就是死的。**
+方案 C(记下来处 + 退出时 `selectFeed(来处)`)已试过并回滚 ——
+来处是首页时 `selectFeed(nil)` 真的清空了列表,空白页又回来了,**绕一圈踩回同一堵墙**。
+
+**还没试过的方向**:
+1. **把全局搜索做成 modal(从下往上弹出的独立页面)** —— 我评估的首选。
+   modal 覆盖在当前页上,关掉自然露出原页面,**天然"原来在哪就回哪"**,
+   完全绕开分栏导航。代价:要自己搭搜索页(搜索框 + 结果列表 + 点结果进文章),
+   几百行,且要复用上游的 `coordinator.searchArticles(_:_:)`。
+2. 搞清楚 `show(.primary)` 为什么无效 —— 也许是 `rootSplitViewController` 的
+   `preferredDisplayMode` / 某个自定义行为导致。没深挖过。
+3. 让搜索直接发生在首页上(首页自己挂 searchController),结果推到文章列表。
+   没评估过可行性。
+
+**相关代码**:
+- 入口:`SceneCoordinator.nnwShowGlobalSearch()`(注释里有完整的死因记录)
+- 激活时序:`MainTimelineModernViewController+ReadingMode.swift` 的
+  `nnwRequestGlobalSearch` / `nnwConsumePendingGlobalSearch`(L79 的四版试错都在这)
+- 摆法与范围条:`nnwUseCompactSearchPlacement` / `nnwUseStackedSearchPlacementIfNeeded`
+  ⚠️ 范围条**只在 `.stacked` 摆法下显示**,改动这块时别再把它弄丢(已修,见 `a92a012cc`)
