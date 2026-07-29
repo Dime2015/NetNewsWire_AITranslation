@@ -434,6 +434,13 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func applySnapshot(_ snapshot: NSDiffableDataSourceSnapshot<String, SidebarItemNode>, animatingDifferences: Bool, completion: (() -> Void)? = nil) {
+		// [编辑] 加一段:**拖动途中绝不能改数据源** —— UIKit 的占位缝不在快照里,
+		// 这时 apply 会撞批量更新校验、直接崩(L65 为此崩过一次)。
+		// 冻结期间把这次重画记下来,拖完再补画一次。
+		if nnwDeferSnapshotWhileDragging({ [weak self] in
+			self?.applySnapshot(snapshot, animatingDifferences: animatingDifferences, completion: completion)
+		}) { return }
+
 		let feeds = snapshot.itemIdentifiers.compactMap { $0.node.representedObject as? Feed }
 		IconImageCache.shared.prefetchImagesForFeeds(feeds)
 
@@ -460,10 +467,6 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		coordinator.selectSidebarItem(indexPath: indexPath, animations: [.navigation, .select, .scroll])
 	}
 
-	// [编辑] 上游没有这个方法,本 fork 新增:编辑模式下取消勾选也要刷新装饰和底部按钮。
-	override func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
-		nnwHandleDeselectionWhileEditing(at: indexPath)
-	}
 
     // MARK: UICollectionViewDelegate
 
@@ -493,6 +496,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
     }
 
 	override func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+		// [编辑] 加一段:编辑模式下关掉右键菜单。
+		// 这不只是为了清爽 —— **长按此时是用来起拖的**,菜单和拖动抢同一个手势,
+		// 表现会变成"想拖却弹出菜单"。行内的操作改由行尾那支铅笔提供。
+		if nnwIsEditingFeeds { return nil }
+
 		guard let sidebarItem = dataSource.itemIdentifier(for: indexPath)?.node.representedObject as? SidebarItem else {
 			return nil
 		}
@@ -940,19 +948,23 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 extension MainFeedCollectionViewController: MainFeedCollectionHeaderReusableViewDelegate {
 	func mainFeedCollectionHeaderReusableViewDidTapDisclosureIndicator(_ view: MainFeedCollectionHeaderReusableView) {
-		// [编辑] 加一行:原地编辑模式下不许折叠账户 —— 那会在编辑途中大批增删行
-		// (和 L65 那类"中途改数据源"同一族风险)。守在这里比逐个禁用可见的分区头可靠:
-		// 滚动中新出现的分区头一样拦得住。
-		if nnwIsEditingFeeds { return }
+		// [编辑] 加一行:**拖动进行中**不许折叠账户(理由同文件夹三角那处;
+		// 守在这里比逐个禁用可见的分区头可靠 —— 滚动中新出现的分区头一样拦得住)。
+		if nnwIsDragInProgress { return }
 		toggle(view)
 	}
 }
 
 extension MainFeedCollectionViewController: MainFeedCollectionViewFolderCellDelegate {
 	func mainFeedCollectionFolderViewCellDisclosureDidToggle(_ sender: MainFeedCollectionViewFolderCell, expanding: Bool) {
-		// [编辑] 加一行:编辑模式下不许折叠/展开文件夹 —— 那会成批增删行,
-		// 里面已勾选的源会被静默取消勾选(用户以为还勾着,一点删除就少删了)。
-		if nnwIsEditingFeeds {
+		// [编辑] 加一段:**拖动进行中**不许折叠/展开 —— 那会成批增删行,
+		// 而 UIKit 的占位缝还在列表里,改数据源会撞批量更新校验、直接崩(L65)。
+		//
+		// ⚠️ 守卫的范围是「拖动中」,**不是「编辑模式中」**(2026-07-28 收窄):
+		// 第一版把两者混为一谈,结果编辑模式下文件夹整个展不开 ——
+		// 而"把源拖进收起的文件夹""在文件夹内部调顺序"都得先展开,等于把拖放的一半也封了。
+		// 仅仅处于编辑模式、手指没在拖时没有占位缝,展开折叠是安全的。
+		if nnwIsDragInProgress {
 			sender.setDisclosure(isExpanded: !expanding, animated: true)	// 把三角掰回去,别让它转了却没事发生
 			return
 		}
@@ -982,6 +994,9 @@ extension MainFeedCollectionViewController: MainFeedCollectionViewFolderCellDele
 
 extension MainFeedCollectionViewController: UIContextMenuInteractionDelegate {
 	func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+		// [编辑] 加一行:编辑模式下账户分区头的菜单也关掉(理由同行的菜单)
+		if nnwIsEditingFeeds { return nil }
+
 
 		guard let headerView = interaction.view as? MainFeedCollectionHeaderReusableView,
 			  case .account(let accountID) = headerView.sectionHeaderType,

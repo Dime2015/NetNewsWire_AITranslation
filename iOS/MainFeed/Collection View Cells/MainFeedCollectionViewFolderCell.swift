@@ -94,6 +94,10 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 	}
 
 	func updateUnreadCountVisibility() {
+		// [编辑] 加一行:编辑模式下这个数字是藏着的(内容右移后它会和行尾的铅笔叠在一起)。
+		// 这个方法在**折叠文件夹**时会被调到,不挡的话数字会自己动画回来(2026-07-28 审查抓到)。
+		if nnwIsHiddenForEditing { return }
+
 		if !disclosureExpanded && unreadCount > 0 {
 			UIView.animate {
 				self.unreadCountLabel.alpha = 1

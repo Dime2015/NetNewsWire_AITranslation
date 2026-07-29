@@ -280,6 +280,9 @@ final class SettingsViewController: UITableViewController {
 
 		}
 
+		// [外观] 收紧上下内边距(替代原来写死行高的做法,见 heightForRowAt 的注释)
+		nnwTightenRowPadding(cell)
+
 		return cell
 	}
 
@@ -415,15 +418,40 @@ final class SettingsViewController: UITableViewController {
 	}
 
 	override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-		// [外观] 行高收紧 50 → 44。原来走 automaticDimension,由 storyboard 里
-		// cell 的上下内边距撑出 50pt(实测),比 Reeder 的 45.3pt 松 10%。
+		// [外观] 行高收紧 50 → 44,**但不再由这里写死**(2026-07-28 用户报"文字显示不完整")。
 		//
-		// ⚠️ **不写死 44**,而是"字体行高 + 22":默认档算出来正好 44pt,
-		// 而用户在系统里把字号调大时它会跟着长高 —— **动态字体不能破坏**
-		// (这一页 30 处字体声明全是 UICTFontTextStyleBody,没有一处写死字号)。
-		let line = ceil(UIFont.preferredFont(forTextStyle: .body).lineHeight)
-		return max(FeedListMetrics.rowHeight, line + 22)
+		// ## 原来错在哪
+		//
+		// 之前这里返回一个**算出来的定值**(字体行高 + 22)。定值的问题是:
+		// 只要某一行的内容实际需要更多空间,多出来的部分就被**直接裁掉** ——
+		// 用户看到的就是"启用 JavaScript""滚动时隐藏工具栏"这几行文字上下被切了一截。
+		//
+		// 而这几行为什么会需要更多空间:它们的标签在**上游的 storyboard 里就被标了
+		// `ambiguous="YES"`**(约束有歧义),算出来的高度本来就不可预期;
+		// 再加上标签是 `numberOfLines="0"`(可折行),中文一折行就超出 44pt。
+		//
+		// ## 现在的做法
+		//
+		// 高度**交还给内容自己算**(automaticDimension),所以永远不会被裁;
+		// "收紧"这个目的改用**压缩 cell 的上下内边距**达成 —— 那些标签正是钉在
+		// 内边距上的(storyboard 里是 `top→topMargin` / `bottom→bottomMargin`),
+		// 压内边距等于压行高,而内容需要多少仍然给多少。见 `nnwTightenRowPadding`。
+		return UITableView.automaticDimension
 	}
+
+	/// [外观] 把一行的上下内边距压紧一点(替代原来"写死行高"的做法)。
+	///
+	/// 只压到 `nnwRowVerticalPadding`,不改任何约束 —— 内容需要更高时它照样长得起来。
+	func nnwTightenRowPadding(_ cell: UITableViewCell) {
+		var margins = cell.contentView.layoutMargins
+		margins.top = min(margins.top, Self.nnwRowVerticalPadding)
+		margins.bottom = min(margins.bottom, Self.nnwRowVerticalPadding)
+		cell.contentView.layoutMargins = margins
+	}
+
+	/// 行的上下内边距。默认档下 = 单行文字(约 21pt)+ 上下各 11pt ≈ 43pt,
+	/// 和收紧前定的 44pt 目标一致;字号调大时整行会自己长高,不会再裁字。
+	private static let nnwRowVerticalPadding: CGFloat = 11
 
 	override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
 		// [外观] 分区间距收紧 66 → 34。实测我们是 66pt,而 Reeder 只有约 30pt ——

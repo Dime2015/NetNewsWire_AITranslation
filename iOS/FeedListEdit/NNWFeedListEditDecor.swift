@@ -41,15 +41,19 @@ import UIKit
 @MainActor protocol NNWEditableFeedCell: UICollectionViewCell {
 	/// 行右侧的未读数标签(没有就返回 nil)。
 	var nnwTrailingBadge: UIView? { get }
+	/// 这一行的标题标签 —— 编辑模式下要让它**早一点换行**,别顶到行尾那支铅笔上。
+	var nnwTitleLabel: UILabel? { get }
 }
 
 // 两个 cell 的实现写在这里,**上游那两个文件一行都不用改**。
 extension MainFeedCollectionViewCell: NNWEditableFeedCell {
 	var nnwTrailingBadge: UIView? { unreadCountLabel }
+	var nnwTitleLabel: UILabel? { feedTitle }
 }
 
 extension MainFeedCollectionViewFolderCell: NNWEditableFeedCell {
 	var nnwTrailingBadge: UIView? { unreadCountLabel }
+	var nnwTitleLabel: UILabel? { folderTitle }
 }
 
 // MARK: - 装饰
@@ -57,6 +61,9 @@ extension MainFeedCollectionViewFolderCell: NNWEditableFeedCell {
 extension UICollectionViewCell {
 
 	private static var nnwSelectionCircleKey: UInt8 = 0
+	private static var nnwRowPencilKey: UInt8 = 0
+	private static var nnwTitleClampKey: UInt8 = 0
+	private static var nnwHiddenForEditingKey: UInt8 = 0
 
 	/// 编辑模式下内容往右让出多少 —— 正好够放一个勾选圈。
 	private static let nnwEditContentShift: CGFloat = 36
@@ -66,6 +73,31 @@ extension UICollectionViewCell {
 		set { objc_setAssociatedObject(self, &Self.nnwSelectionCircleKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 	}
 
+	private var nnwRowPencil: UIButton? {
+		get { objc_getAssociatedObject(self, &Self.nnwRowPencilKey) as? UIButton }
+		set { objc_setAssociatedObject(self, &Self.nnwRowPencilKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 编辑期间限制标题右边界的那根约束(只在编辑时启用)。
+	private var nnwTitleClamp: NSLayoutConstraint? {
+		get { objc_getAssociatedObject(self, &Self.nnwTitleClampKey) as? NSLayoutConstraint }
+		set { objc_setAssociatedObject(self, &Self.nnwTitleClampKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 「这一行的未读数此刻因为编辑模式而藏着」。
+	/// 文件夹 cell 在折叠时会自己把未读数的 alpha 动画回 1 —— 它靠这个标记知道该不该动。
+	var nnwIsHiddenForEditing: Bool {
+		get { (objc_getAssociatedObject(self, &Self.nnwHiddenForEditingKey) as? Bool) ?? false }
+		set { objc_setAssociatedObject(self, &Self.nnwHiddenForEditingKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 编辑模式下标题要给行尾让出多少。
+	///
+	/// 算法:内容整体右移了 `nnwEditContentShift`(36),所以标题的右边界在**屏幕上**
+	/// 也跟着右移了 36;行尾的铅笔占掉 12(边距)+ 34(按钮)= 46;再留 8 的呼吸缝。
+	/// 合计 36 + 46 + 8 = 90。
+	private static let nnwEditTitleTrailingReserve: CGFloat = 90
+
 	/// 给这一行套上 / 摘掉编辑模式的装饰。
 	///
 	/// **幂等**:cell 会被反复复用,这个方法每次配置行时都会被调一遍,重复调用无害。
@@ -74,15 +106,45 @@ extension UICollectionViewCell {
 	///   - editing: 是否处于编辑模式
 	///   - selected: 是否已被勾选
 	///   - animated: 进出编辑模式那一下要动画;滚动中复用出来的新行不要(否则会看到它"滑进来")
-	func nnwApplyEditDecor(editing: Bool, selected: Bool, animated: Bool) {
+	func nnwApplyEditDecor(editing: Bool, selected: Bool, animated: Bool,
+						   pencilTarget: Any? = nil, pencilAction: Selector? = nil) {
 
 		let circle = nnwEnsureSelectionCircle()
+
+		// ⓪ 行尾那支铅笔:点它拿到这一行自己的操作(重命名 / 删除 / 设置)。
+		//
+		// 为什么放**行尾**而不是行首:行首已经被勾选圈占着,再挤一个按钮进去,
+		// 两个小圆点紧挨着、动作却完全不同(一个选中、一个开菜单),最容易误触。
+		// 而编辑模式下未读数是隐藏的,**行尾本来就空着**;
+		// 这也是 iOS 的老位置(设置里 Wi-Fi 那个 ⓘ 就在行尾),手上有肌肉记忆。
+		if let pencilTarget, let pencilAction {
+			let pencil = nnwEnsureRowPencil(target: pencilTarget, action: pencilAction)
+			pencil.isHidden = !editing
+		} else {
+			nnwRowPencil?.isHidden = true
+		}
 
 		// ① 勾选圈:编辑时才有
 		circle.isHidden = !editing
 		if editing {
 			circle.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
 			circle.tintColor = selected ? Assets.Colors.primaryAccent : .tertiaryLabel
+		}
+
+		// ①b 标题早一点换行,别顶到行尾那支铅笔上(2026-07-28 用户反馈)。
+		//
+		// ⚠️ 这里**新加一根自己的约束**,不去改任何现有约束 ——
+		// 这一页的横向约束是最脆的地方(见文件头)。新加的是一条 `<=`,
+		// 只会把标题的可用宽度**further 收窄**,不和既有约束抢;不编辑时停用即可复原。
+		if let title = (self as? NNWEditableFeedCell)?.nnwTitleLabel {
+			if nnwTitleClamp == nil {
+				let clamp = title.trailingAnchor.constraint(
+					lessThanOrEqualTo: contentView.trailingAnchor,
+					constant: -Self.nnwEditTitleTrailingReserve)
+				clamp.priority = UILayoutPriority(999)		// 别用 required,免得和既有约束冲突时整条崩掉
+				nnwTitleClamp = clamp
+			}
+			nnwTitleClamp?.isActive = editing
 		}
 
 		// ② 右侧未读数:编辑时让它淡出(内容右移后它会被挤出可视区,只露半个很难看)。
@@ -95,7 +157,12 @@ extension UICollectionViewCell {
 		// 「全部」档下整页每行右边都挂一个 "0"。
 		// 换成 alpha 之后这里是**幂等**的:只表达"编辑时不显示",
 		// 该不该藏仍然完全由上游的 isHidden 决定,两者互不干扰。
+		nnwIsHiddenForEditing = editing
 		(self as? NNWEditableFeedCell)?.nnwTrailingBadge?.alpha = editing ? 0 : 1
+
+		// ②b 落点高亮不属于常态外观 —— 每次配置行都撤掉,
+		// 否则拖动时被高亮的行一旦滚出屏幕就没人给它复位,复用到别的行会带着蓝底(审查抓到)。
+		if !editing { nnwSetDropTargetHighlighted(false) }
 
 		// ③ 内容右移让位
 		let target: CGAffineTransform = editing
@@ -144,6 +211,28 @@ extension UICollectionViewCell {
 	}
 
 	private static let jiggleKey = "nnwJiggle"
+
+	private func nnwEnsureRowPencil(target: Any, action: Selector) -> UIButton {
+		if let existing = nnwRowPencil { return existing }
+
+		let pencil = UIButton(type: .system)
+		pencil.translatesAutoresizingMaskIntoConstraints = false
+		pencil.setImage(UIImage(systemName: "ellipsis.circle"), for: .normal)
+		pencil.tintColor = .secondaryLabel
+		pencil.accessibilityLabel = "更多操作"
+		pencil.addTarget(target, action: action, for: .touchUpInside)
+		// 和勾选圈一样挂在 **cell 上**,不进 contentView —— 不参与那套约束,
+		// 也不会跟着"内容右移"一起走。
+		addSubview(pencil)
+		NSLayoutConstraint.activate([
+			pencil.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+			pencil.centerYAnchor.constraint(equalTo: centerYAnchor),
+			pencil.widthAnchor.constraint(equalToConstant: 34),		// 比图标大一圈,好点
+			pencil.heightAnchor.constraint(equalToConstant: 34),
+		])
+		nnwRowPencil = pencil
+		return pencil
+	}
 
 	private func nnwEnsureSelectionCircle() -> UIImageView {
 		if let existing = nnwSelectionCircle { return existing }

@@ -51,6 +51,29 @@ extension MainFeedCollectionViewController {
 
 	private static var nnwIsEditingKey: UInt8 = 0
 	private static var nnwSavedToolbarKey: UInt8 = 0
+	private static var nnwSelectionKey: UInt8 = 0
+
+	/// 编辑模式下勾选了哪几行。
+	///
+	/// ## ⚠️ 为什么**按节点记**,而不用系统的"选中了第几行"(2026-07-28 重写)
+	///
+	/// 第一版直接用 `collectionView.indexPathsForSelectedItems` 当账本 —— 那是**按行号记的**,
+	/// 而这一页的行号随时会变:
+	/// · 折叠一个文件夹 → 里面的行整批消失,**勾选静默丢掉**(你以为还勾着,一点删除就少删)
+	/// · 后台同步刷新列表、切换字号重画 → 同样会丢
+	/// · 底部「删除(N)」的 N 也跟着变陈旧
+	///
+	/// 改成记**节点本身**之后,这些全都不成立了:行号怎么变、行在不在屏幕上、
+	/// 甚至被折叠起来看不见,勾选都还在。节点对象在列表重建时是复用的(不会换新对象),
+	/// 所以拿它当身份是稳的。
+	private var nnwSelectionBox: NNWNodeSelectionBox {
+		if let existing = objc_getAssociatedObject(self, &Self.nnwSelectionKey) as? NNWNodeSelectionBox {
+			return existing
+		}
+		let created = NNWNodeSelectionBox()
+		objc_setAssociatedObject(self, &Self.nnwSelectionKey, created, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		return created
+	}
 
 	/// 现在是不是处于原地编辑模式。
 	var nnwIsEditingFeeds: Bool {
@@ -83,19 +106,31 @@ extension MainFeedCollectionViewController {
 
 		nnwIsEditingFeeds = editing
 
-		// ① 多选开关。**进出都要把选中清空**。
+		// ① 清空勾选账本。
 		//
-		// ⚠️ 进入时也必须清(2026-07-28 审查抓到的严重 bug):
-		// 打开某个源之后,那一行本来就是**选中**状态(上游用它高亮"正在看的源")。
-		// 一进编辑模式,那一行会被直接算成"已勾选" —— 底部立刻显示「删除(1)」,
-		// 而屏幕上没有任何一行看着被勾上。用户按下删除,删掉的是正在读的那个源。
-		collectionView.allowsMultipleSelection = editing
-		collectionView.indexPathsForSelectedItems?.forEach {
-			collectionView.deselectItem(at: $0, animated: false)
+		// ⚠️ **不再借用系统的"选中了第几行"**(见 nnwSelectionBox 的注释):
+		// 那样一来"打开某个源"的高亮会被当成"已勾选"(底部立刻显示「删除(1)」
+		// 而屏幕上没有一行看着被勾),折叠文件夹还会把勾选静默丢掉。
+		// 现在勾选完全由我们自己记,系统的选中状态只用来做"正在看哪个源"的高亮。
+		nnwSelectionBox.nodes.removeAll()
+
+		// 进编辑时把系统那个高亮也撤掉,免得和我们的勾选圈看起来混在一起
+		if editing {
+			collectionView.indexPathsForSelectedItems?.forEach {
+				collectionView.deselectItem(at: $0, animated: false)
+			}
 		}
 
-		// ② 地雷 1:编辑期间不许左右滑切档
+		// ② 地雷 1:编辑期间不许左右滑切档。
+		// 现在有了拖放,这一条更要紧了:切档会**重建整棵树**,而拖动途中改数据源必崩(L65)。
 		nnwSetModeSwipeGesturesEnabled(!editing)
+
+		// ②b 拖放只在编辑模式下开
+		nnwSetDragDropEnabled(editing)
+
+		// 退出编辑时**强制解冻**:万一某次长按抬起后用户没动就松手、
+		// UIKit 没来收尾回调,冻结会卡在开着(整个首页不再刷新)。这里兜一道底。
+		if !editing { nnwEndDragFreeze(generation: nil) }
 
 		// ③ 地雷 2:编辑期间不许点分区头折叠账户。
 		//
@@ -119,15 +154,22 @@ extension MainFeedCollectionViewController {
 	/// 列表被重建 / 重新配置之后也要调一次,否则会出现"行被选中、圈却是空的"。
 	func nnwRefreshAllVisibleDecor(animated: Bool) {
 		guard let collectionView else { return }
-		let selected = Set(collectionView.indexPathsForSelectedItems ?? [])
 		for indexPath in collectionView.indexPathsForVisibleItems {
 			guard let cell = collectionView.cellForItem(at: indexPath) else { continue }
 			let editable = nnwIsEditingFeeds && nnwIsEditableRow(indexPath)
 			cell.nnwApplyEditDecor(editing: editable,
-								   selected: selected.contains(indexPath),
-								   animated: animated)
+								   selected: nnwIsChecked(cell.nnwStampedNode),
+								   animated: animated,
+								   pencilTarget: self,
+								   pencilAction: #selector(nnwRowPencilTapped(_:)))
 			if editable { cell.nnwStartJiggle() } else { cell.nnwStopJiggle() }
 		}
+	}
+
+	/// 这个节点勾上了没有。
+	func nnwIsChecked(_ node: Node?) -> Bool {
+		guard let node else { return false }
+		return nnwSelectionBox.nodes.contains { $0 === node }
 	}
 
 	private func nnwObserveForegroundForJiggle(_ editing: Bool) {
@@ -147,9 +189,17 @@ extension MainFeedCollectionViewController {
 	///
 	/// 这里不加动画:新行是滑进来的,再来一段动画会看到它自己抖一下。
 	@objc func nnwDecorateCellForEditing(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
+
+		// 顺手盖钢印:拖放时靠它认"这一行是谁"(不能用行号,理由见 NNWFeedListDragDrop 规矩 3)。
+		// 放在这里是因为它对**每一行**都会跑一遍,而且是在配置行的那一刻(行号此时是准的)。
+		cell.nnwStampedNode = dataSource?.itemIdentifier(for: indexPath)?.node
+
 		let editable = nnwIsEditingFeeds && nnwIsEditableRow(indexPath)
-		let selected = collectionView?.indexPathsForSelectedItems?.contains(indexPath) ?? false
-		cell.nnwApplyEditDecor(editing: editable, selected: selected, animated: false)
+		cell.nnwApplyEditDecor(editing: editable,
+							   selected: nnwIsChecked(cell.nnwStampedNode),
+							   animated: false,
+							   pencilTarget: self,
+							   pencilAction: #selector(nnwRowPencilTapped(_:)))
 		if editable { cell.nnwStartJiggle() } else { cell.nnwStopJiggle() }
 	}
 
@@ -166,10 +216,17 @@ extension MainFeedCollectionViewController {
 
 		guard nnwIsEditingFeeds else { return false }
 
-		guard nnwIsEditableRow(indexPath) else {
-			// 智能组那几行:编辑态下点了不该有反应,顺手把选中取消掉
-			collectionView?.deselectItem(at: indexPath, animated: false)
-			return true
+		// 系统的选中我们不用(账本自己记),点完立刻撤掉,免得留下高亮
+		collectionView?.deselectItem(at: indexPath, animated: false)
+
+		// 智能组那几行不参与编辑,点了不该有反应
+		guard nnwIsEditableRow(indexPath),
+			  let node = dataSource?.itemIdentifier(for: indexPath)?.node else { return true }
+
+		if let existing = nnwSelectionBox.nodes.firstIndex(where: { $0 === node }) {
+			nnwSelectionBox.nodes.remove(at: existing)
+		} else {
+			nnwSelectionBox.nodes.append(node)
 		}
 
 		nnwRefreshDecor(at: indexPath)
@@ -177,16 +234,13 @@ extension MainFeedCollectionViewController {
 		return true
 	}
 
-	@objc func nnwHandleDeselectionWhileEditing(at indexPath: IndexPath) {
-		guard nnwIsEditingFeeds else { return }
-		nnwRefreshDecor(at: indexPath)
-		nnwUpdateEditingChrome()
-	}
-
 	private func nnwRefreshDecor(at indexPath: IndexPath) {
 		guard let cell = collectionView?.cellForItem(at: indexPath) else { return }
-		let selected = collectionView?.indexPathsForSelectedItems?.contains(indexPath) ?? false
-		cell.nnwApplyEditDecor(editing: true, selected: selected, animated: false)
+		cell.nnwApplyEditDecor(editing: true,
+							   selected: nnwIsChecked(cell.nnwStampedNode),
+							   animated: false,
+							   pencilTarget: self,
+							   pencilAction: #selector(nnwRowPencilTapped(_:)))
 	}
 
 	// MARK: - 导航栏与工具栏
@@ -233,12 +287,32 @@ extension MainFeedCollectionViewController {
 	/// 首页的 item 本来就是**真的树节点**(带 parent),所以这里比「编辑订阅」页省事得多 ——
 	/// 那边要先把自己的值类型 Item 还原成 Node,这里直接拿。
 	func nnwSelectedNodes() -> [Node] {
-		guard let collectionView, let dataSource else { return [] }
-		let paths = collectionView.indexPathsForSelectedItems ?? []
-		let nodes = paths
-			.filter { nnwIsEditableRow($0) }
-			.compactMap { dataSource.itemIdentifier(for: $0)?.node }
-		return nnwNormalized(nodes)
+		// 剔掉已经不在树上的(比如被后台同步删掉了)—— 账本按节点记,
+		// 它不会自己知道某个源没了,所以取用时校验一次。
+		let alive = nnwSelectionBox.nodes.filter { nnwNodeIsAlive($0) }
+		if alive.count != nnwSelectionBox.nodes.count {
+			nnwSelectionBox.nodes = alive
+		}
+		return nnwNormalized(alive)
+	}
+
+	/// 这个节点还挂在树上吗。
+	///
+	/// ⚠️ **必须逐级验"父亲认不认这个儿子",不能只顺 `parent` 往上走**
+	/// (2026-07-28 审查抓到):`Node.parent` 是弱引用,而"把节点从树上摘下"的动作
+	/// 只是父节点**重新赋值了自己的 childNodes** —— **没有任何地方把 parent 置 nil**。
+	/// 所以一个已经被摘掉的节点,只要它父亲还活着,顺父链照样能走到根,
+	/// 光看父链等于永远判活。表现:后台同步删掉一个源之后,
+	/// 底部「删除(N)」的 N 还把它算在内。
+	private func nnwNodeIsAlive(_ node: Node) -> Bool {
+		guard let root = coordinator?.rootNode else { return false }
+		var current: Node = node
+		while current !== root {
+			guard let parent = current.parent,
+				  parent.childNodes.contains(where: { $0 === current }) else { return false }
+			current = parent
+		}
+		return true
 	}
 
 	/// 父子同时被勾中时,**只留父**(把已经被祖先覆盖掉的节点剔掉)。
@@ -285,6 +359,8 @@ extension MainFeedCollectionViewController {
 
 	/// 删单个文件夹时给两条路:把里面的源放到顶层,或者连里面的源一起删。
 	/// (这是用户 2026-07-23 拍板的设计,「编辑订阅」页里也是这么做的。)
+	func nnwAskHowToDeleteFolderPublic(_ folder: Folder, node: Node) { nnwAskHowToDeleteFolder(folder, node: node) }
+
 	private func nnwAskHowToDeleteFolder(_ folder: Folder, node: Node) {
 
 		let inside = folder.topLevelFeeds.count
@@ -350,10 +426,14 @@ extension MainFeedCollectionViewController {
 		}
 	}
 
-	private func nnwConfirmDelete(message: String, nodes: [Node]) {
+	func nnwConfirmDeletePublic(message: String, nodes: [Node]) {
+		nnwConfirmDelete(message: message, nodes: nodes, exitEditingAfterwards: false)
+	}
+
+	private func nnwConfirmDelete(message: String, nodes: [Node], exitEditingAfterwards: Bool = true) {
 		let alert = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
 		alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
-			self?.nnwPerformDelete(nodes: nodes)
+			self?.nnwPerformDelete(nodes: nodes, exitEditingAfterwards: exitEditingAfterwards)
 		})
 		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
 		nnwPresentSheet(alert)
@@ -361,7 +441,7 @@ extension MainFeedCollectionViewController {
 
 	/// 真正下删除命令。**用上游的 `DeleteCommand`** —— 它本来就支持一次传多个节点,
 	/// 而且自带 UndoManager,于是"摇一摇撤销"是白拿的(用户 2026-07-23 拍板的第 3 条)。
-	private func nnwPerformDelete(nodes: [Node]) {
+	private func nnwPerformDelete(nodes: [Node], exitEditingAfterwards: Bool = true) {
 
 		guard let undoManager,
 			  let command = DeleteCommand(nodesToDelete: nodes,
@@ -386,7 +466,17 @@ extension MainFeedCollectionViewController {
 		pushUndoableCommand(command)
 		command.perform()
 
-		nnwSetFeedEditing(false)		// 删完直接退出编辑模式,和 iOS 主屏一致
+		// 把删掉的这几项从账本里摘掉(它们的节点已经不在树上了)
+		nnwSelectionBox.nodes.removeAll { deleted in nodes.contains { $0 === deleted } }
+
+		// 底部那个「删除(N)」是批量操作,删完退出编辑模式(和 iOS 主屏一致);
+		// 但**从行尾铅笔删单行时不退** —— 那会顺手把用户已经勾好的一批也清掉(审查抓到)。
+		if exitEditingAfterwards {
+			nnwSetFeedEditing(false)
+		} else {
+			nnwRefreshAllVisibleDecor(animated: false)
+			nnwUpdateEditingChrome()
+		}
 	}
 
 	// MARK: - 移动到…
@@ -472,6 +562,308 @@ extension MainFeedCollectionViewController {
 			popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY - 60, width: 1, height: 1)
 			popover.permittedArrowDirections = []
 		}
+		present(alert, animated: true)
+	}
+}
+
+// MARK: - [编辑] 拖放整理(需求 1 第二步)
+
+extension MainFeedCollectionViewController {
+
+	private static var nnwDragDropKey: UInt8 = 0
+	private static var nnwDragFreezeKey: UInt8 = 0
+	private static var nnwPendingSnapshotKey: UInt8 = 0
+	private static var nnwDragGenKey: UInt8 = 0
+
+	/// 接管两个拖放代理的对象(懒建一次)。
+	/// 不用 self 当代理:上游的 `+Drag.swift` / `+Drop.swift` 已经占着那两个协议了,
+	/// 而它们的落点逻辑不写我们的顺序 —— 换个对象接管,上游那两个文件保持原样。
+	private var nnwDragDrop: NNWFeedListDragDrop {
+		if let existing = objc_getAssociatedObject(self, &Self.nnwDragDropKey) as? NNWFeedListDragDrop {
+			return existing
+		}
+		let created = NNWFeedListDragDrop(host: self)
+		objc_setAssociatedObject(self, &Self.nnwDragDropKey, created, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		return created
+	}
+
+	/// 拖动进行中 —— 期间**冻结列表重画**(规矩 1、2,见 NNWFeedListDragDrop 文件头)。
+	var nnwIsDragInProgress: Bool {
+		get { (objc_getAssociatedObject(self, &Self.nnwDragFreezeKey) as? Bool) ?? false }
+		set { objc_setAssociatedObject(self, &Self.nnwDragFreezeKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 冻结期间被挡下来的那次重画(只留最后一次,补画一次就够)。
+	private var nnwPendingSnapshotWork: (() -> Void)? {
+		get { (objc_getAssociatedObject(self, &Self.nnwPendingSnapshotKey) as? NNWBlockBox)?.block }
+		set { objc_setAssociatedObject(self, &Self.nnwPendingSnapshotKey,
+									   newValue.map(NNWBlockBox.init), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 进出编辑模式时开关拖放。
+	func nnwSetDragDropEnabled(_ enabled: Bool) {
+		guard let collectionView else { return }
+		if enabled {
+			collectionView.dragDelegate = nnwDragDrop
+			collectionView.dropDelegate = nnwDragDrop
+			collectionView.dragInteractionEnabled = true
+		} else {
+			collectionView.dragInteractionEnabled = false
+			// 代理换回上游那两个(它们在 dragInteractionEnabled=false 时不会被调到)
+			collectionView.dragDelegate = self
+			collectionView.dropDelegate = self
+		}
+	}
+
+	/// 清空勾选账本并刷新界面。
+	func nnwClearSelection() {
+		nnwSelectionBox.nodes.removeAll()
+		nnwRefreshAllVisibleDecor(animated: false)
+		nnwUpdateEditingChrome()
+	}
+
+	/// 冻结的"代次"。每次开始拖动 +1;延迟解冻只在代次没变时才生效。
+	///
+	/// ⚠️ 为什么需要它(2026-07-28 审查抓到的严重 bug):
+	/// 解冻是"拖动结束后等 0.6 秒"做的(要等放下动画飞完)。若用户在这 0.6 秒内
+	/// **又起了一次拖动**,旧的那个定时器照样会开火 —— 把冻结解掉、
+	/// 并把攒下的快照补画出去,而此刻新拖动的占位缝正在列表里 → **必崩**(L65)。
+	/// 记一个代次,开火时对不上就什么都不做。
+	private var nnwDragGeneration: Int {
+		get { (objc_getAssociatedObject(self, &Self.nnwDragGenKey) as? Int) ?? 0 }
+		set { objc_setAssociatedObject(self, &Self.nnwDragGenKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	func nnwBeginDragFreeze() -> Int {
+		nnwIsDragInProgress = true
+		nnwDragGeneration += 1
+		return nnwDragGeneration
+	}
+
+	/// - Parameter generation: `nnwBeginDragFreeze()` 当时返回的代次。
+	///   传 nil = 强制解冻(退出编辑模式时的兜底)。
+	func nnwEndDragFreeze(generation: Int?) {
+		if let generation, generation != nnwDragGeneration { return }		// 已经有新一轮拖动了,别插手
+		nnwIsDragInProgress = false
+		// 把冻结期间攒下的那次重画补上
+		let pending = nnwPendingSnapshotWork
+		nnwPendingSnapshotWork = nil
+		pending?()
+	}
+
+	/// 由上游 `applySnapshot` 里加的一行调用。
+	/// 返回 true = "现在别画,我先替你记着",拖完再补(规矩 1:拖动途中改数据源会崩)。
+	@objc func nnwDeferSnapshotWhileDragging(_ work: @escaping () -> Void) -> Bool {
+		guard nnwIsDragInProgress else { return false }
+		nnwPendingSnapshotWork = work		// 只留最后一次
+		return true
+	}
+
+	// MARK: 放手之后
+
+	/// 把拖动的结果落地:该换容器的换容器,然后写新顺序。
+	func nnwApplyDrop(movingNodes: [Node], to destination: Container, in account: Account,
+					  anchorNode: Node, dropPoint: CGPoint) {
+
+		// 父子同时拖时只留父(同 nnwSelectedNodes 的理由:避免撤销时长出重复文件夹)
+		let nodes = nnwNormalizedPublic(movingNodes)
+		guard !nodes.isEmpty else { return }
+
+		// 拖文件夹只可能是在最外层换位置 —— 目标容器必须是账户本身
+		let draggingFolder = nodes.contains { $0.representedObject is Folder }
+		if draggingFolder, !(destination is Account) { return }
+
+		// ① 先算好"搬过去之后这一层该是什么顺序"。
+		// ⚠️ **必须在搬之前算**:搬完之后目标层的内容就变了,再算就把自己也算进去了。
+		let movingKeys = nodes.compactMap { FeedOrderStore.orderKey(for: $0) }
+		let layerKeys = nnwOrderKeys(inContainer: destination, account: account)
+		let anchorIndex = FeedOrderStore.orderKey(for: anchorNode).flatMap { layerKeys.firstIndex(of: $0) }
+		let insertAfter = nnwShouldInsertAfterAnchor(anchorNode: anchorNode, dropPoint: dropPoint)
+		let insertIndex = NNWFeedOrderMath.insertionIndex(anchorIndex: anchorIndex,
+														 insertAfter: insertAfter,
+														 layerCount: layerKeys.count)
+		let plannedOrder = NNWFeedOrderMath.reordered(layerKeys, moving: movingKeys, toIndex: insertIndex)
+
+		// ② 需要换容器的先搬(串行 —— 并发搬会互相踩,同步账户还会被限流)
+		let needMove: [(Feed, Container)] = nodes.compactMap { node in
+			guard let feed = node.representedObject as? Feed,
+				  let source = node.parent?.representedObject as? Container,
+				  source !== destination else { return nil }
+			return (feed, source)
+		}
+
+		Task { @MainActor [weak self] in
+			for (feed, source) in needMove {
+				try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+					account.moveFeed(feed, from: source, to: destination) { result in
+						continuation.resume(with: result)
+					}
+				}
+			}
+			// ③ 搬完再写顺序
+			FeedOrderStore.shared.setOrder(plannedOrder)
+			self?.coordinator?.nnwRebuildFeedList()
+
+			// ④ ⚠️ **把勾选账本清掉**(2026-07-28 审查抓到的严重 bug)。
+			// 源换了容器之后,树会给它**新建一个节点** —— 账本里存的旧节点从此是"僵尸":
+			// 那一行的勾选圈没了(比的是新节点),底部「删除(N)」却还算着它,
+			// 点删除会拿旧节点的父容器去删,而那个容器里已经没有它 → **静默什么都没删**。
+			// 菜单式「移动到…」结尾本来就会退出编辑模式(顺带清账本),拖放这条路漏了。
+			self?.nnwClearSelection()
+		}
+	}
+
+	/// 这一层现在的顺序(键)。
+	/// 首页的树**已经是按 FeedOrderStore 排好的**,所以直接读子节点即可 ——
+	/// 不用像「编辑订阅」页那样再排一次。
+	private func nnwOrderKeys(inContainer container: Container, account: Account) -> [String] {
+		guard let containerNode = nnwNode(for: container, account: account) else { return [] }
+		return containerNode.childNodes.compactMap { FeedOrderStore.orderKey(for: $0) }
+	}
+
+	private func nnwNode(for container: Container, account: Account) -> Node? {
+		guard let root = coordinator?.rootNode else { return nil }
+		guard let accountNode = root.childNodes.first(where: { ($0.representedObject as? Account) === account }) else { return nil }
+		if container is Account { return accountNode }
+		return accountNode.childNodes.first { ($0.representedObject as? Folder) === (container as? Folder) }
+	}
+
+	/// 手指落在锚行的上半还是下半 —— 决定插到它前面还是后面。
+	private func nnwShouldInsertAfterAnchor(anchorNode: Node, dropPoint: CGPoint) -> Bool {
+		guard let collectionView else { return true }
+		for cell in collectionView.visibleCells where cell.nnwStampedNode === anchorNode {
+			return dropPoint.y >= cell.frame.midY
+		}
+		return true
+	}
+
+	/// `nnwNormalized` 的对外版本(拖放那边要用)。
+	func nnwNormalizedPublic(_ nodes: [Node]) -> [Node] {
+		let all = Set(nodes.map { ObjectIdentifier($0) })
+		return nodes.filter { node in
+			var parent = node.parent
+			while let current = parent {
+				if all.contains(ObjectIdentifier(current)) { return false }
+				parent = current.parent
+			}
+			return true
+		}
+	}
+}
+
+/// 勾选账本(按节点记,不按行号记 —— 理由见 nnwSelectionBox 的注释)。
+private final class NNWNodeSelectionBox {
+	var nodes: [Node] = []
+}
+
+/// 关联对象存不了裸闭包,包一层。
+private final class NNWBlockBox {
+	let block: () -> Void
+	init(_ block: @escaping () -> Void) { self.block = block }
+}
+
+// MARK: - [编辑] 行尾那支铅笔:这一行自己的操作
+
+extension MainFeedCollectionViewController {
+
+	/// 点了某一行行尾的铅笔。
+	///
+	/// **按 cell 上的钢印找出是哪一行**,不用行号 —— 和拖放同一个理由(行号会错位)。
+	@objc func nnwRowPencilTapped(_ sender: UIButton) {
+
+		var view: UIView? = sender
+		while let current = view, !(current is UICollectionViewCell) { view = current.superview }
+		guard let cell = view as? UICollectionViewCell, let node = cell.nnwStampedNode else { return }
+
+		nnwShowRowActions(for: node, from: sender)
+	}
+
+	/// 这一行的操作单。
+	///
+	/// ## 为什么只留这三项
+	///
+	/// 原来的长按菜单有七项,但其中「全部标为已读」「打开主页」「拷贝订阅地址」
+	/// 「拷贝主页地址」都是**读文章时**才用得上的动作,和"整理订阅"没关系。
+	/// 编辑模式下只留和整理相关的,菜单短一眼就能选中。
+	/// (那四项在**退出编辑模式后**长按仍然全都在,一个都没丢。)
+	private func nnwShowRowActions(for node: Node, from anchor: UIView) {
+
+		let item = node.representedObject as? SidebarItem
+		let name = item?.nameForDisplay ?? ""
+		let alert = UIAlertController(title: name, message: nil, preferredStyle: .actionSheet)
+
+		alert.addAction(UIAlertAction(title: "重命名…", style: .default) { [weak self] _ in
+			self?.nnwPromptRename(node)
+		})
+
+		// 源信息(顺带就是「每个源的设置」的入口 —— 里面有"始终使用阅读视图"那个开关)
+		if let feed = node.representedObject as? Feed {
+			alert.addAction(UIAlertAction(title: "源信息与设置…", style: .default) { [weak self] _ in
+				self?.coordinator?.showFeedInspector(for: feed)
+			})
+		}
+
+		alert.addAction(UIAlertAction(title: "删除…", style: .destructive) { [weak self] _ in
+			guard let self else { return }
+			if let folder = node.representedObject as? Folder {
+				self.nnwAskHowToDeleteFolderPublic(folder, node: node)
+			} else {
+				self.nnwConfirmDeletePublic(message: "确定删除「\(name)」吗?", nodes: [node])
+			}
+		})
+
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+		// iPad 上 actionSheet 必须锚在触发它的那个按钮上
+		if let popover = alert.popoverPresentationController {
+			popover.sourceView = anchor
+			popover.sourceRect = anchor.bounds
+		}
+		present(alert, animated: true)
+	}
+
+	/// 改名。
+	///
+	/// ⚠️ **不能直接用上游的 `rename(indexPath:)`**:文件夹在我们的排序表里
+	/// **是用名字当键的**(上游的 folderID 每次启动都会变,当不了持久化的键)。
+	/// 上游那个改名不知道有这回事,改完文件夹就会**丢掉自己的位置**、退回末尾。
+	/// 所以这里改完名要顺手把排序位置也搬到新名字上。
+	private func nnwPromptRename(_ node: Node) {
+
+		guard let item = node.representedObject as? SidebarItem else { return }
+		let oldName = item.nameForDisplay
+
+		let alert = UIAlertController(title: "重命名「\(oldName)」", message: nil, preferredStyle: .alert)
+		alert.addTextField { field in
+			field.text = oldName
+			field.clearButtonMode = .whileEditing
+		}
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+		let confirm = UIAlertAction(title: "改名", style: .default) { [weak self, weak alert] _ in
+			guard let newName = alert?.textFields?.first?.text?
+				.trimmingCharacters(in: .whitespacesAndNewlines), !newName.isEmpty,
+				  newName != oldName else { return }
+
+			if let feed = item as? Feed {
+				feed.rename(to: newName) { result in
+					if case .failure(let error) = result { self?.presentError(error) }
+				}
+			} else if let folder = item as? Folder {
+				folder.rename(to: newName) { result in
+					switch result {
+					case .success:
+						// 排序键就是名字 —— 不搬过去等于把这个文件夹的位置丢了
+						FeedOrderStore.shared.renameFolderKey(from: oldName, to: newName)
+						self?.coordinator?.nnwRebuildFeedList()
+					case .failure(let error):
+						self?.presentError(error)
+					}
+				}
+			}
+		}
+		alert.addAction(confirm)
+		alert.preferredAction = confirm
 		present(alert, animated: true)
 	}
 }
