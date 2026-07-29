@@ -19,7 +19,10 @@ import os
 ///   搜索框(导航栏下面)
 ///   分段控件:播客 / Reddit        ← 决定用哪个后端去搜
 ///   ┌ 第 0 组:放进哪个文件夹        ← 点一下弹动作单选(默认顶层)
-///   └ 第 1 组:搜索结果,点一条就订阅
+///   └ 第 1 组:搜索结果,点一条就订阅;已订阅的显示绿勾,**再点绿勾 = 取消订阅**
+///
+/// 订阅成功后**留在本页**(2026-07-29 用户要求):刻意不发 .UserDidAddFeed,
+/// 不让协调器把用户带进新源的文章列表 —— 订阅完通常还要继续挑下一个。
 ///
 /// **订阅走上游公开接口,禁区一行没改**:
 ///   - 订阅        Account.createFeed(...)                 公开接口
@@ -97,6 +100,10 @@ import os
 	/// 正在订阅中的那几条。订阅要联网(上游会去验证 feed),慢的时候要几秒,
 	/// 期间必须有反馈,否则用户会以为没点上、反复点。
 	private var subscribingURLs = Set<String>()
+
+	/// 正在取消订阅中的那几条(2026-07-29 新增:点绿勾可取消订阅)。
+	/// 和订阅同理:同步账户的删除要联网,期间行尾显示转圈。
+	private var unsubscribingURLs = Set<String>()
 
 	private var isSearching = false
 
@@ -306,13 +313,13 @@ import os
 			self.subscribingURLs.remove(result.feedURL)
 
 			switch createResult {
-			case .success(let feed):
+			case .success:
 				self.subscribedURLs.insert(result.feedURL)
 				self.tableView.reloadData()
-				// 发这个通知,订阅列表才会刷新并跳到新订阅上(和上游添加页一致)
-				NotificationCenter.default.post(name: .UserDidAddFeed,
-												object: self,
-												userInfo: [UserInfoKey.feed: feed])
+				// ⚠️ 这里刻意**不发** .UserDidAddFeed(2026-07-29 用户要求):
+				// 那个通知会被 SceneCoordinator 接住,带着导航跳进新源的文章列表 ——
+				// 而用户订阅完想留在本页继续挑。首页列表的刷新不靠它:
+				// 账户加完源自己会发 .ChildrenDidChange,协调器听到就重建首页列表。
 				Self.logger.info("[发现] 订阅成功:\(result.feedURL)")
 			case .failure(let error):
 				// 失败时也必须刷新,把转圈换回加号 —— 否则那一行会永远转下去
@@ -325,6 +332,63 @@ import os
 					self.presentError(RedditFeedBuilder.friendlyError(for: error, subreddit: name))
 				} else {
 					self.presentError(error)
+				}
+			}
+		}
+	}
+
+	// MARK: - 取消订阅(2026-07-29 新增:再点一下绿勾 = 直接取消订阅,不弹确认)
+
+	/// 执行取消订阅:跨账户找到这个源的所有落点,逐个调上游公开接口删掉。
+	/// 只用 `removeFeed`(文件夹管理页同款),禁区一行没碰。
+	private func unsubscribe(_ result: FeedSearchResult) {
+
+		// 一个源理论上只在一个账户的一个容器里,但"多账户都订了/一源进了多个文件夹"
+		// 也都处理掉 —— 全删干净,绿勾才能变回加号
+		var targets: [(Account, Feed, [Container])] = []
+		for account in AccountManager.shared.activeAccounts {
+			if let feed = account.existingFeed(withURL: result.feedURL) {
+				targets.append((account, feed, account.existingContainers(withFeed: feed)))
+			}
+		}
+
+		var pending = targets.reduce(0) { $0 + $1.2.count }
+		guard pending > 0 else {
+			// 源已经不在了(可能刚在别处删过):刷新一下,让绿勾自己消失
+			subscribedURLs.remove(result.feedURL)
+			tableView.reloadData()
+			return
+		}
+
+		// 行尾换成转圈,让用户知道点上了
+		unsubscribingURLs.insert(result.feedURL)
+		tableView.reloadData()
+
+		BatchUpdate.shared.start()
+		var firstError: Error?
+
+		for (account, feed, containers) in targets {
+			for container in containers {
+				// 回调在主线程(Account.removeFeed 内部走 @MainActor),
+				// 所以这个计数器不会有并发问题
+				account.removeFeed(feed, from: container) { [weak self] removeResult in
+					if case .failure(let error) = removeResult, firstError == nil {
+						firstError = error
+					}
+					pending -= 1
+					guard pending == 0, let self else { return }
+
+					BatchUpdate.shared.end()
+					self.unsubscribingURLs.remove(result.feedURL)
+					self.subscribedURLs.remove(result.feedURL)
+					// 不管成败都要刷新:成功了绿勾变回加号;失败了转圈也不能永远转下去
+					self.tableView.reloadData()
+					if let error = firstError {
+						self.presentError(error)
+						Self.logger.error("[发现] 取消订阅失败:\(result.feedURL) — \(error.localizedDescription)")
+					} else {
+						Self.logger.info("[发现] 已取消订阅:\(result.feedURL)")
+					}
 				}
 			}
 		}
@@ -496,26 +560,35 @@ import os
 	/// 结果行右侧那个东西。三种状态,同一个位置,一眼看得出下一步能干什么:
 	///
 	///   ⊕ 加号   —— 还没订阅,点它(或点整行)就订阅
-	///   转圈     —— 正在订阅
-	///   ✓ 对勾   —— 已经订阅好了,不再是按钮
+	///   转圈     —— 正在订阅 / 正在取消订阅
+	///   ✓ 对勾   —— 已经订阅好了;**再点它一下 = 直接取消订阅**(2026-07-29 加,用户要求不弹确认)
 	///
 	/// 之所以把状态全部收在这一个地方,是因为改造前「订阅到没到」被
 	/// 导航栏的「完成」和行尾的对勾两处同时表达,用户不知道该信哪个。
 	/// 现在:**一个地方说一件事。**
 	private func accessoryView(for result: FeedSearchResult, row: Int) -> UIView {
 
-		if isAlreadySubscribed(result) {
-			let check = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
-			check.tintColor = .systemGreen
-			check.sizeToFit()
-			return check
-		}
-
-		if subscribingURLs.contains(result.feedURL) {
+		// 转圈要放在最前面判断:取消订阅进行中时,账户里可能还查得到这个源,
+		// 先判断"已订阅"的话就会显示成绿勾,转圈就永远轮不到了
+		if subscribingURLs.contains(result.feedURL) || unsubscribingURLs.contains(result.feedURL) {
 			let spinner = UIActivityIndicatorView(style: .medium)
 			spinner.startAnimating()
 			spinner.sizeToFit()
 			return spinner
+		}
+
+		if isAlreadySubscribed(result) {
+			var configuration = UIButton.Configuration.plain()
+			configuration.image = UIImage(systemName: "checkmark.circle.fill")
+			configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 6)
+
+			let button = UIButton(configuration: configuration)
+			button.tintColor = .systemGreen
+			button.accessibilityLabel = "取消订阅"
+			button.tag = row
+			button.addTarget(self, action: #selector(unsubscribeButtonTapped(_:)), for: .touchUpInside)
+			button.sizeToFit()
+			return button
 		}
 
 		var configuration = UIButton.Configuration.plain()
@@ -543,6 +616,21 @@ import os
 			return
 		}
 		subscribe(to: result)
+	}
+
+	/// 点绿勾 = 直接取消订阅。2026-07-29 新增;
+	/// 初版有二次确认,用户验收后要求去掉 —— 误触的挽回成本很低:
+	/// 行还在原地,绿勾变回加号,再点一下就订回来了。
+	@objc private func unsubscribeButtonTapped(_ sender: UIButton) {
+		guard sender.tag >= 0, sender.tag < results.count else {
+			return
+		}
+		let result = results[sender.tag]
+		guard !subscribingURLs.contains(result.feedURL),
+			  !unsubscribingURLs.contains(result.feedURL) else {
+			return
+		}
+		unsubscribe(result)
 	}
 
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

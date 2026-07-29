@@ -1004,7 +1004,55 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 
 ---
 
-## T30 · 发现页(搜索订阅源)的两个问题 —— 🟡 **已修,待用户验收**
+## T31 · 发现页交互 Phase A:订阅不跳走 + 绿勾取消订阅 —— ✅ **已验收**(2026-07-29)
+
+**验收后追加一改(用户要求)**:点绿勾**直接**取消订阅,去掉了初版的 NNWMenu 二次确认。
+理由:误触的挽回成本很低 —— 行还在原地,绿勾变回加号,再点一下就订回来了。
+
+**背景**:用户提了「发现页试读」大需求(不订阅先看文章,阅读模式/翻译/长图都能用),
+拆成三个 Phase。**Phase A 就是本条**;B/C 见下面 T32 的规划部分。
+
+**改了什么(只动 fork 自己的 `FeedDiscoveryViewController.swift`,上游零改动)**:
+1. **订阅成功后留在本页**:刻意不再发 `.UserDidAddFeed`。
+   考古结论:那个通知被 `SceneCoordinator.userDidAddFeed`(SceneCoordinator.swift:584)接住后
+   `discloseFeed(feed, animations: [.scroll, .navigation])` —— `.navigation` 就是"自动跳进新源"的元凶。
+   首页列表的刷新**不靠它**:账户加/删源自己发 `.ChildrenDidChange`,
+   协调器听到就 `rebuildBackingStores`(先例:文件夹管理页增删源从不发 UserDidAddFeed,首页照样刷新)。
+2. **点绿勾 = 取消订阅**:绿勾从 UIImageView 换成 UIButton;点了直接跨账户找到源的所有落点
+   (`existingFeed(withURL:)` + `existingContainers(withFeed:)`,Account.swift:595),
+   逐个调公开接口 `removeFeed`。期间行尾转圈(新增 `unsubscribingURLs` 集合)。
+   (初版点绿勾会先弹 NNWMenu 红色确认,验收后按用户要求去掉了。)
+3. 转圈判断挪到"已订阅"之前 —— 取消订阅进行中账户里还查得到源,顺序反了转圈永远不显示。
+
+**验收点**:① 订阅一个新源 → 转圈变绿勾,**页面不跳走**;返回首页能看到新源。
+② 点绿勾 → 弹红色确认 → 确认后绿勾变回加号;首页里该源消失。
+③ 点选单外面 → 什么都不发生。
+
+---
+
+## T32 · 两个已评估未动手的需求(2026-07-29 方案已谈妥,留档)
+
+**① 列表标题批量翻译(优先级高于②)**:
+- 展示通路:列表行统一在 `MainTimelineModernViewController.swift:835` 组装 cellData;
+  `Article` 是纯内存对象、公开构造器 → 造"标题换成中文"的副本喂列表,**上游只改一行**。
+- 批量:标题编号打包、一次请求翻几十条(省的是每条重复付的系统提示词),
+  编号校验对不上就单条补翻;缓存按「文章 ID+标题哈希+模型」存磁盘(照抄 TranslationCache 思路)。
+- 策略三层:默认**进列表现翻**(先显示原文,翻完原地刷新);
+  按源开关**预翻译**(放进将做的「源设置页」,刷新后后台翻新文章);总开关。
+- 用户未拍板:标题用哪个模型;中文标题下要不要保留原文小字;预翻默认关。
+
+**② 发现页试读 Phase B/C**:
+- B(中):点行=预览文章列表(抓 feed → 上游解析器 → 纯内存,不落库),页顶「订阅」按钮;
+  文章页先给基础版(ArticleRenderer 是独立静态函数,可凭空喂内存 Article)。
+- C(大):预览文章页补齐翻译/阅读模式/长图。难点:翻译控制器和长图导出**焊死在 WebViewController**
+  (TranslationController 的 init 入参就是它;JS 桥写在 WebViewController.swift:982 起;
+  `ArticleLongImageExporter.export(from: WebViewController)`),要抽成两页共用 ——
+  全是 fork 自己的文件,允许重构,但工作量实打实。ReaderViewExtractor 本来就独立(好消息)。
+- 已否决的省力路:「点预览先真订阅、退出再删」—— 首页闪源、未读数变、iCloud 会同步出去。
+
+---
+
+## T30 · 发现页(搜索订阅源)的两个问题 —— ✅ **已验收**(2026-07-29 用户实测确认)
 
 **问题**:① 搜出结果之后,「订阅到」的文件夹选不了;② 那个源"订阅不了"。
 
