@@ -52,9 +52,13 @@
 #if os(iOS)
 
 import UIKit
+import os
 
 /// [外观] 自绘品牌选单的对外入口(菜单项、锚点、show 方法都在这个命名空间下)。
 enum NNWMenu {
+
+	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "NNW选单")
+
 
 	/// 一行菜单项:图标 + 文字 + 点了做什么。
 	struct Item {
@@ -99,14 +103,39 @@ enum NNWMenu {
 	static func show(in host: UIViewController, anchor: Anchor,
 					 title: String? = nil, message: String? = nil,
 					 sections: [[Item]], onCancel: (() -> Void)? = nil) {
-		// 已经有东西弹着(包括另一张选单)就不再弹,防连点
-		guard host.presentedViewController == nil else { return }
 		guard sections.contains(where: { !$0.isEmpty }) else { return }
+
+		// ⚠️ **从最顶上那一层弹,不能直接用 host**(2026-07-28 用户报"发现页选不了文件夹")。
+		//
+		// 这里原来的写法是 `guard host.presentedViewController == nil else { return }`,
+		// 本意是"已经有东西弹着就别再弹,防连点"。但那个判断太宽了 ——
+		// **激活着的搜索框本身就是一次真实的 presentation**:
+		// 页面只要设了 `definesPresentationContext`(发现页正是如此),
+		// 用户一在搜索框里搜过东西,`host.presentedViewController` 就是那个搜索控制器,
+		// 于是这条守卫直接 return,点「文件夹」**静默什么都不发生**。
+		//
+		// 而且 UIKit 也不允许对一个"已经在弹别人"的控制器再 present ——
+		// 所以正确做法是顺着 presented 链走到最顶上那一层,从那儿弹。
+		//(同一族的坑今天已经在 modal 搜索页踩过一次,见 NOTES-lessons L93。)
+		var presenter: UIViewController = host
+		var depth = 0
+		while let presented = presenter.presentedViewController {
+			// 防连点:顶上已经是一张选单了就不再弹(这才是那条守卫本来的意思)
+			if presented is NNWMenuViewController { return }
+			presenter = presented
+			depth += 1
+		}
+
+		// 📋 排查用(2026-07-29):用户报过"搜索出结果后选单弹不出来"。
+		// 这一行记下"从第几层弹的、那一层是谁" —— 万一还弹不出来,看这行就知道
+		// 是被挡在了哪儿,不用再靠猜。(问题定性之后可以删。)
+		Self.logger.notice("NNW选单 · 从第\(depth, privacy: .public)层弹出,弹出者=\(String(describing: type(of: presenter)), privacy: .public)")
+
 		let menu = NNWMenuViewController(sections: sections, anchor: anchor,
 										 headerTitle: title, headerMessage: message,
 										 hostView: host.view, onCancel: onCancel)
 		menu.modalPresentationStyle = .overFullScreen
-		host.present(menu, animated: false)		// 动画自己做(系统的模态动画是"从底部推上来",不是我们要的)
+		presenter.present(menu, animated: false)	// 动画自己做(系统的模态动画是"从底部推上来",不是我们要的)
 	}
 }
 

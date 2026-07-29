@@ -159,7 +159,10 @@ extension MainFeedCollectionViewController {
 		// 原来藏在右下角 + 的第二层选单里,不直觉 —— 提到导航栏,和放大镜并排。
 		// 点开的就是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
 		// 页面标题已改叫「编辑订阅」,心智上 = 本列表的编辑模式。
-		let edit = UIBarButtonItem(image: UIImage(systemName: "pencil"),
+		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
+		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
+		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
+		let edit = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"),
 								   style: .plain, target: self, action: #selector(nnwEditSubscriptionsTapped))
 		edit.accessibilityLabel = "编辑订阅"
 

@@ -65,6 +65,18 @@ import os
 		}
 	}
 
+	/// 搜索栏。
+	///
+	/// ## ⚠️ 用的是 `UISearchController`,因为**底部那个位置是它自带的**
+	///
+	/// iOS 26 给导航栏搜索框的新摆法会把它落在**屏幕底部**(和文章列表页那个同一套)。
+	/// 2026-07-29 曾经换成普通 `UISearchBar` 放表头,为的是消掉它激活时那"多余的一层" ——
+	/// 但用户要那个底部位置,而**位置和那一层是同一个东西的两面**,只能二选一。
+	/// 用户拍板:要位置。
+	///
+	/// 那一层带来的问题(搜索激活期间弹不出选文件夹的卡片、弹不出"已经订阅过了"的提示)
+	/// 改在 `NNWMenu.show` 里解决 —— 它现在会顺着 presented 链走到**最顶上那一层**再弹,
+	/// 而不是发现"自己名下已经在弹东西"就放弃。详见那个方法的注释。
 	private let searchController = UISearchController(searchResultsController: nil)
 	private lazy var sourceControl: UISegmentedControl = {
 		let control = UISegmentedControl(items: Source.allCases.map { $0.title })
@@ -87,6 +99,19 @@ import os
 	private var subscribingURLs = Set<String>()
 
 	private var isSearching = false
+
+	/// 这条结果是不是**已经订阅过了**。
+	///
+	/// ⚠️ **当场问账户,不维护第二份缓存**(2026-07-29 用户要求"已订阅的直接显示绿勾"):
+	/// `subscribedURLs` 原本只记"本次会话里刚订阅成功的",所以**早就订阅过的源
+	/// 看起来和没订阅的一模一样** —— 只能点下去才知道,而那句提示还可能弹不出来。
+	/// 试过在拿到结果时预先算一遍填进缓存,但缓存总会有过期的时候(别处删了源、
+	/// 换了账户);直接问账户既简单又永远准,而且**和订阅按钮用的是同一个判断**,
+	/// 不可能出现"看着能订阅、点下去说已订阅"的矛盾。
+	private func isAlreadySubscribed(_ result: FeedSearchResult) -> Bool {
+		if subscribedURLs.contains(result.feedURL) { return true }		// 本次刚订阅成功的
+		return AccountManager.shared.activeAccounts.contains { $0.hasFeed(withURL: result.feedURL) }
+	}
 
 	/// 订阅到哪里。**默认是账户顶层(不放进文件夹)**,不再沿用"上次选的文件夹"
 	/// (2026-07-24 用户拍板:每次打开都从最外层开始,想进文件夹再手动选)。
@@ -130,7 +155,7 @@ import os
 		navigationItem.hidesSearchBarWhenScrolling = false
 		definesPresentationContext = true
 
-		// 分段控件放在表头,始终可见
+		// 分段控件放在表头,始终可见(搜索框由系统摆在底部,不占这里)
 		let header = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
 		header.addSubview(sourceControl)
 		sourceControl.translatesAutoresizingMaskIntoConstraints = false
@@ -407,6 +432,18 @@ import os
 		cell.detailTextLabel?.textColor = .secondaryLabel
 		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
 		configureIcon(on: cell, for: result)
+
+		// 已经订阅过的:**看上去就点不动**(不给点按高亮、文字调淡)。
+		// 用户 2026-07-29 的原话:"已订阅的右边直接显示绿勾、并且不可点击,
+		// 而不是点了订阅再提示已经订阅"。
+		if isAlreadySubscribed(result) {
+			cell.selectionStyle = .none
+			cell.textLabel?.textColor = .secondaryLabel
+		} else {
+			cell.selectionStyle = .default
+			cell.textLabel?.textColor = .label
+		}
+
 		return cell
 	}
 
@@ -467,7 +504,7 @@ import os
 	/// 现在:**一个地方说一件事。**
 	private func accessoryView(for result: FeedSearchResult, row: Int) -> UIView {
 
-		if subscribedURLs.contains(result.feedURL) {
+		if isAlreadySubscribed(result) {
 			let check = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
 			check.tintColor = .systemGreen
 			check.sizeToFit()
@@ -519,7 +556,7 @@ import os
 		// 点整行和点行尾的加号是同一件事 —— 加号是给「看得出能点」用的,
 		// 但整行可点仍然保留,因为那是列表的常规预期。
 		let result = results[indexPath.row]
-		guard !subscribedURLs.contains(result.feedURL),
+		guard !isAlreadySubscribed(result),
 			  !subscribingURLs.contains(result.feedURL) else {
 			return
 		}
