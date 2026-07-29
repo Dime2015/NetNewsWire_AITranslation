@@ -111,7 +111,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ### 📍 接手须知:2026-07-29 晚 · T30 已验收;发现页 Phase A 待验(**最新,先读这段**)
 
-**git**:Phase A(含验收后去掉二次确认的追加改动)已 commit,**未 push**(push 要用户发话)。
+**git**:Phase A 已 commit + push(20b8ba19f)。**试读 Phase B 已实现、已 staged、未 commit**
+(等用户验收,详见 T33 —— 含独立审查抓到并修掉的 2 必修 + 3 建议)。
 
 **今天做的**:
 1. **T30 三条验证全部通过**(用户实测):文件夹选单弹得出、已订阅显示绿勾灰字点不动、新源订阅正常。
@@ -122,10 +123,13 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
    **点绿勾 = 直接取消订阅**(跨账户 removeFeed → 绿勾变回加号;
    初版有二次确认,用户验收后要求去掉)。
 
-**⚠️ 下一个窗口最该先做的事**:按排队顺序开工(见下一行)。
-之后的排队顺序(用户已确认):**源设置页(考古结论在 `NEXT-PROMPT.md` 的「需求 2」一节:
-上游 `Feed.readerViewAlwaysEnabled` + `FeedInspectorViewController` 已有大半,先让用户试现成开关)→
-标题批量翻译(T32①,顺手把"预翻译"开关放进源设置页)→ 试读 Phase B/C(T32②)**。
+**⚠️ 下一个窗口最该先做的事**:让用户验 **T33(试读 Phase B)**的五条验收点,过了就 commit+push。
+之后的排队顺序(用户已确认,试读 Phase B 被用户提前插了队):
+**源设置页(考古结论在 `NEXT-PROMPT.md` 的「需求 2」一节:上游 `Feed.readerViewAlwaysEnabled`
++ `FeedInspectorViewController` 已有大半,先让用户试现成开关)→
+标题批量翻译(T32①,顺手把"预翻译"开关放进源设置页)→ 试读 Phase C(T32②)**。
+
+**T31(Phase A)已验收**:订阅后留在结果页、点绿勾直接取消订阅(确认弹窗按用户要求去掉)。
 
 ---
 

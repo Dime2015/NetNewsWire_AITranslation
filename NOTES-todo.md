@@ -1042,13 +1042,51 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 - 用户未拍板:标题用哪个模型;中文标题下要不要保留原文小字;预翻默认关。
 
 **② 发现页试读 Phase B/C**:
-- B(中):点行=预览文章列表(抓 feed → 上游解析器 → 纯内存,不落库),页顶「订阅」按钮;
-  文章页先给基础版(ArticleRenderer 是独立静态函数,可凭空喂内存 Article)。
+- B(中):✅ **已实现,待验收(2026-07-29 晚),详见 T33**。
 - C(大):预览文章页补齐翻译/阅读模式/长图。难点:翻译控制器和长图导出**焊死在 WebViewController**
   (TranslationController 的 init 入参就是它;JS 桥写在 WebViewController.swift:982 起;
   `ArticleLongImageExporter.export(from: WebViewController)`),要抽成两页共用 ——
   全是 fork 自己的文件,允许重构,但工作量实打实。ReaderViewExtractor 本来就独立(好消息)。
 - 已否决的省力路:「点预览先真订阅、退出再删」—— 首页闪源、未读数变、iCloud 会同步出去。
+
+---
+
+## T33 · 发现页试读 Phase B —— 🟡 **已实现,待用户验收**(2026-07-29 晚)
+
+**做了什么**:点结果行不再是订阅,而是 push 进「试读」页 —— 当场抓 feed →
+上游解析器(RSParser)→ **凭空构造内存 Article(不落库、不碰账户,accountID="nnw-preview")**
+→ 列表展示(标题/日期/摘要走上游 ArticleStringFormatter,和正式时间线同一套截断规则);
+右上角「订阅」按钮(订到发现页选中的文件夹);点行进基础版文章页
+(上游 ArticleRenderer 渲染 + 主阅读页同款 WKWebView 配置,链接点击一律外开)。
+
+**新增 2 文件**:`Shared/Discovery/FeedPreviewViewController.swift`(试读列表 +
+FeedPreviewSubscriptionHandling 协议)、`FeedPreviewArticleViewController.swift`(基础文章页 +
+源头像 scheme handler)。发现页改动:点行行为、subscribe 加 completion(带 Error?)、
+viewWillAppear 刷新、已订阅行恢复可点(点行=试读了,"已订阅"只由绿勾和淡字表达)。
+
+**交付前独立审查抓到 2 必修 + 5 建议,已修 5 条**:
+1. 【必修】completion 在 subscribingURLs 清理**之前**调 → 试读页订阅按钮永远转圈。
+   修法:清理挪到 completion 前面。回调时序假设,L66/L93 同形状。
+2. 【必修】注入的 nnw_appearance.js 无条件给 <html> 打 `nnw-reading-bar` 类,
+   把模板的大标题/日期/源头衔全 display:none(主阅读页有原生阅读栏画回来,试读页没有)。
+   修法:试读页追加一个 user script,在它的**两个打类点之后**各摘一次类
+   (document start 靠注入顺序、DOMContentLoaded 靠监听器注册顺序,都有保证)。
+3. 【建议→已修】试读页发起的订阅失败时,错误改由试读页自己弹(发现页被盖着,弹了看不见)。
+4. 【建议→已修】试读列表 cell 走复用(上限 100 行)。
+5. 【建议→已修】下拉刷新失败且已有内容时,不再往表格背景垫提示字。
+
+**2 条已知限制(接受)**:发现页在飞的订阅完成时,已打开的试读页按钮要等 viewWillAppear 才刷新;
+源头像若内存缓存被清(退后台/低内存)后进文章页,那一次会缺头像(不重取)。
+
+**验收中的一个插曲(已结案,非代码问题)**:用户首测报"试读页里订阅全部失败(-1005)",
+日志钉死是 **Mac 本机代理对新建连接回 503**(模拟器继承系统代理),同一时段全量刷新也在全灭;
+用户关掉代理后一切正常。完整教训见 **L99**。
+
+**验收点**:① 搜到源 → 点行 → 进试读列表(标题/日期/摘要),下拉可刷新;
+② 点一篇 → 文章页**有大标题/日期/源名**、正文正常、点链接外开、右上角 safari 按钮好使;
+③ 试读页右上角「订阅」→ 转圈 → 变「已订阅」;返回结果页该行是绿勾;首页出现新源;
+④ 结果页点行尾 ⊕ 订阅、点绿勾取消订阅 —— 行为和 Phase A 验收时一致(回归);
+⑤ 搜索框激活状态下点行进试读、退回来,搜索词和结果还在(L97 家族的回归检查)。
 
 ---
 

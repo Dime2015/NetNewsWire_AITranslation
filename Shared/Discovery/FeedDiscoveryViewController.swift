@@ -19,7 +19,8 @@ import os
 ///   搜索框(导航栏下面)
 ///   分段控件:播客 / Reddit        ← 决定用哪个后端去搜
 ///   ┌ 第 0 组:放进哪个文件夹        ← 点一下弹动作单选(默认顶层)
-///   └ 第 1 组:搜索结果,点一条就订阅;已订阅的显示绿勾,**再点绿勾 = 取消订阅**
+///   └ 第 1 组:搜索结果。**点行 = 试读**(Phase B);行尾 ⊕ = 订阅;
+///     已订阅的显示绿勾,**再点绿勾 = 取消订阅**
 ///
 /// 订阅成功后**留在本页**(2026-07-29 用户要求):刻意不发 .UserDidAddFeed,
 /// 不让协调器把用户带进新源的文章列表 —— 订阅完通常还要继续挑下一个。
@@ -179,6 +180,13 @@ import os
 											   object: nil)
 	}
 
+	/// 从试读页返回时,订阅状态可能已经变了(在那边点了订阅)—— 回来刷一遍,
+	/// 让行尾的 ⊕/绿勾立刻对上真实状态。
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		tableView.reloadData()
+	}
+
 	/// 离开页面时把在飞的搜索请求掐掉,别让它回来往已经不在的界面上写东西。
 	override func viewWillDisappear(_ animated: Bool) {
 		super.viewWillDisappear(animated)
@@ -272,11 +280,16 @@ import os
 
 	// MARK: - 订阅
 
-	private func subscribe(to result: FeedSearchResult) {
+	/// completion:订阅流程走完后调一次(成败都调),失败时带上适合给用户看的错误。
+	/// 试读页(Phase B)靠它刷新右上角按钮、并**由它自己弹错误** ——
+	/// 试读页开着的时候本页被盖在下面,从这里 presentError 可能静默失败(独立审查建议 4)。
+	/// 发现页自己调的时候不传 completion,错误照旧从本页弹。
+	private func subscribe(to result: FeedSearchResult, completion: ((Error?) -> Void)? = nil) {
 
 		guard let container else {
 			presentError(NSError(domain: "FeedDiscovery", code: 0, userInfo: [
 				NSLocalizedDescriptionKey: "还没有可用的账户,无法订阅。"]))
+			completion?(nil)
 			return
 		}
 
@@ -288,11 +301,13 @@ import os
 			account = containerAccount
 		}
 		guard let account else {
+			completion?(nil)
 			return
 		}
 
 		if account.hasFeed(withURL: result.feedURL) {
 			presentError(AccountError.createErrorAlreadySubscribed)
+			completion?(nil)
 			return
 		}
 
@@ -308,8 +323,15 @@ import os
 						   validateFeed: true) { [weak self] createResult in
 
 			BatchUpdate.shared.end()
-			guard let self else { return }
+			guard let self else {
+				// 本页已被销毁也要把"流程走完了"告诉调用方(试读页可能还活着)
+				completion?(nil)
+				return
+			}
 
+			// ⚠️ 状态清理必须在调 completion **之前**(独立审查必修 1):
+			// 试读页的 completion 会来查 subscribingURLs 刷新按钮,
+			// 先调 completion 它就会读到"还在订阅中",转圈永远停不下来。
 			self.subscribingURLs.remove(result.feedURL)
 
 			switch createResult {
@@ -321,17 +343,25 @@ import os
 				// 而用户订阅完想留在本页继续挑。首页列表的刷新不靠它:
 				// 账户加完源自己会发 .ChildrenDidChange,协调器听到就重建首页列表。
 				Self.logger.info("[发现] 订阅成功:\(result.feedURL)")
+				completion?(nil)
 			case .failure(let error):
 				// 失败时也必须刷新,把转圈换回加号 —— 否则那一行会永远转下去
 				self.tableView.reloadData()
 				Self.logger.error("[发现] 订阅失败:\(result.feedURL) — \(error.localizedDescription)")
 				// Reddit 的失败要换成说实话的提示:上游把 429(限流)也报成
 				// 「找不到这个 feed」,会让人去反复检查根本没错的版块名。
+				let displayError: Error
 				if result.kind == .reddit {
 					let name = RedditFeedBuilder.subredditName(from: result.feedURL) ?? "该版块"
-					self.presentError(RedditFeedBuilder.friendlyError(for: error, subreddit: name))
+					displayError = RedditFeedBuilder.friendlyError(for: error, subreddit: name)
 				} else {
-					self.presentError(error)
+					displayError = error
+				}
+				if let completion {
+					// 试读页发起的:错误交给它自己弹(本页被盖着,弹了也看不见)
+					completion(displayError)
+				} else {
+					self.presentError(displayError)
 				}
 			}
 		}
@@ -465,9 +495,9 @@ import os
 			return "粘一个网址,或者输入名称搜播客 —— 不用先选类型,会自动判断。\n\n"
 				+ "YouTube 频道、Reddit 版块、播客、普通网站都从这里加。\n"
 				+ "上面几个分类只是用来缩小范围的,平时不用管。\n\n"
-				+ "找到后点一下那条结果就订阅,不需要再按别的按钮。"
+				+ "点一条结果可以先进去试读;行尾的 ⊕ 才是订阅,绿勾表示已订阅(再点一下取消)。"
 		case .podcast:
-			return "输入播客名称搜索。找到后点一下就能订阅。"
+			return "输入播客名称搜索。点结果可以先试读,点行尾 ⊕ 订阅。"
 		case .reddit:
 			return "Reddit 没有公开的版块搜索接口,所以需要你直接输入版块名(例如 apple、r/apple,或粘一个 Reddit 链接)。会列出「每日 / 每周 / 每月 / 实时热门」四种,挑一个订阅。\n\n版块名对不对要到订阅时才知道 —— 这是有意的,Reddit 限流很严,把请求留给订阅那一步更划算。如果订阅失败,先等一两分钟再试,多半是限流而不是名字错了。"
 		case .youtube:
@@ -497,16 +527,11 @@ import os
 		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
 		configureIcon(on: cell, for: result)
 
-		// 已经订阅过的:**看上去就点不动**(不给点按高亮、文字调淡)。
-		// 用户 2026-07-29 的原话:"已订阅的右边直接显示绿勾、并且不可点击,
-		// 而不是点了订阅再提示已经订阅"。
-		if isAlreadySubscribed(result) {
-			cell.selectionStyle = .none
-			cell.textLabel?.textColor = .secondaryLabel
-		} else {
-			cell.selectionStyle = .default
-			cell.textLabel?.textColor = .label
-		}
+		// 已经订阅过的:文字调淡 + 绿勾,一眼认出"这个已经有了"。
+		// (T30 时代"点不动"是因为点行=订阅;Phase B 起点行=试读,
+		//  已订阅的源也可以进去看,所以行恢复可点,"已订阅"只由绿勾和淡字表达。)
+		cell.selectionStyle = .default
+		cell.textLabel?.textColor = isAlreadySubscribed(result) ? .secondaryLabel : .label
 
 		return cell
 	}
@@ -641,14 +666,33 @@ import os
 			return
 		}
 
-		// 点整行和点行尾的加号是同一件事 —— 加号是给「看得出能点」用的,
-		// 但整行可点仍然保留,因为那是列表的常规预期。
+		// 点整行 = **试读**(Phase B,2026-07-29 起):不订阅,先进去看这个源的文章。
+		// 订阅收敛到两个地方:行尾的 ⊕,和试读页右上角的「订阅」按钮。
+		// (Phase A 以前"点行=订阅",行为已按用户需求重新分配。)
 		let result = results[indexPath.row]
-		guard !isAlreadySubscribed(result),
-			  !subscribingURLs.contains(result.feedURL) else {
+		let preview = FeedPreviewViewController(result: result, subscriptionHandler: self)
+		navigationController?.pushViewController(preview, animated: true)
+	}
+}
+
+// MARK: - 试读页的订阅回调(Phase B)
+
+extension FeedDiscoveryViewController: FeedPreviewSubscriptionHandling {
+
+	func previewIsSubscribed(_ result: FeedSearchResult) -> Bool {
+		isAlreadySubscribed(result)
+	}
+
+	func previewIsBusy(_ result: FeedSearchResult) -> Bool {
+		subscribingURLs.contains(result.feedURL) || unsubscribingURLs.contains(result.feedURL)
+	}
+
+	func previewSubscribe(_ result: FeedSearchResult, completion: @escaping (Error?) -> Void) {
+		guard !isAlreadySubscribed(result), !subscribingURLs.contains(result.feedURL) else {
+			completion(nil)
 			return
 		}
-		subscribe(to: result)
+		subscribe(to: result, completion: completion)
 	}
 }
 
