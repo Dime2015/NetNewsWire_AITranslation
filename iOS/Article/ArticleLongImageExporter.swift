@@ -46,9 +46,10 @@ import WebKit
 	private static let targetScale: CGFloat = 2
 
 	/// 生成长图。**成功失败都会把网页复位**(finish 在 defer 里)。
-	static func export(from webViewController: WebViewController) async throws -> UIImage {
+	// [翻译] 试读 Phase C(2026-07-30):入参从 WebViewController 放宽成 NNWArticlePageHost 协议
+	static func export(from webViewController: any NNWArticlePageHost) async throws -> UIImage {
 
-		guard let webView = webViewController.nnwWebViewForSnapshot else {
+		guard let webView = webViewController.nnwHostWebView else {
 			throw ExportError.pageNotReady
 		}
 

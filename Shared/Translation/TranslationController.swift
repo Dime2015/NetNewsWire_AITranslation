@@ -191,7 +191,9 @@ enum TranslationScript {
 /// 这样将来换界面、加 macOS 版,这个类都不用改。
 @MainActor final class TranslationController {
 
-	private let currentWebViewController: @MainActor () -> WebViewController?
+	// [翻译] 试读 Phase C(2026-07-30):类型从 WebViewController 放宽成 NNWArticlePageHost
+	// 协议 —— 主阅读页和试读文章页都实现它,本控制器对两页一视同仁。
+	private let currentWebViewController: @MainActor () -> (any NNWArticlePageHost)?
 
 	/// 同时最多发几个请求。太多会被服务商限流。
 	private static let maxConcurrentRequests = 4
@@ -308,7 +310,7 @@ enum TranslationScript {
 	var presentError: (@MainActor (String) -> Void)?
 
 	/// - Parameter currentWebViewController: 怎么拿到"当前正在看的那篇文章的网页"。
-	init(currentWebViewController: @escaping @MainActor () -> WebViewController?) {
+	init(currentWebViewController: @escaping @MainActor () -> (any NNWArticlePageHost)?) {
 		self.currentWebViewController = currentWebViewController
 	}
 
@@ -368,7 +370,7 @@ enum TranslationScript {
 	/// 长按翻译键前用它判断要不要弹「重新翻译全文」。纯本地检查,不发请求。
 	/// 语义与按钮上的实心角标一致(只看有没有完整缓存条目,不校验指纹)。
 	func hasFullCache() async -> Bool {
-		guard let article = currentWebViewController()?.article else {
+		guard let article = currentWebViewController()?.nnwHostArticle else {
 			return false
 		}
 		let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
@@ -381,7 +383,7 @@ enum TranslationScript {
 
 	/// [状态记忆] item③:记住这篇「是否显示译文」。换文章时不要调这个。
 	private func recordTranslatedState(_ translated: Bool) {
-		guard let article = currentWebViewController()?.article else { return }
+		guard let article = currentWebViewController()?.nnwHostArticle else { return }
 		ArticleReadingStateStore.setTranslated(translated, for: article.accountID + "|" + article.articleID)
 	}
 
@@ -396,7 +398,7 @@ enum TranslationScript {
 		// 正在翻译时别插手
 		guard state != .working else { return }
 		guard let webViewController = currentWebViewController(),
-			  let article = webViewController.article else { return }
+			  let article = webViewController.nnwHostArticle else { return }
 
 		let articleID = article.accountID + "|" + article.articleID
 		guard ArticleReadingStateStore.state(for: articleID).translated else { return }
@@ -426,7 +428,7 @@ enum TranslationScript {
 			guard self.state != .working,
 				  let current = self.currentWebViewController(),
 				  current === webViewController,
-				  current.article?.articleID == article.articleID else {
+				  current.nnwHostArticle?.articleID == article.articleID else {
 				return
 			}
 
@@ -458,7 +460,7 @@ enum TranslationScript {
 	/// 查一下当前文章有没有译文缓存,有就把按钮换成"灰底"外观提示用户。
 	/// 纯本地检查,不发请求。
 	private func refreshCacheHint() {
-		guard let article = currentWebViewController()?.article else {
+		guard let article = currentWebViewController()?.nnwHostArticle else {
 			return
 		}
 		let articleID = article.accountID + "|" + article.articleID
@@ -469,7 +471,7 @@ enum TranslationScript {
 			guard let entry = await TranslationCache.lookup(key: key) else { return }
 			// 异步回来后要复核:用户可能已经切走文章、或已经点了翻译
 			guard self.state == .original,
-				  let current = self.currentWebViewController()?.article,
+				  let current = self.currentWebViewController()?.nnwHostArticle,
 				  current.accountID + "|" + current.articleID == articleID else {
 				return
 			}
@@ -537,7 +539,7 @@ enum TranslationScript {
 			//    完整缓存 → 整篇秒开,零请求;
 			//    未完成缓存(上次翻到一半被打断) → 记下来,已翻过的组直接复用,只翻剩下的。
 			var partialEntry: CachedTranslation?
-			if let article = webViewController.article {
+			if let article = webViewController.nnwHostArticle {
 				let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
 													  model: model)
 				cacheKey = key
@@ -587,8 +589,8 @@ enum TranslationScript {
 			Self.logger.debug("[翻译] 切分完成:\(sizeSummary, privacy: .public)")
 
 			var context = TranslationContext.initial(
-				articleTitle: webViewController.article?.title,
-				articleURL: webViewController.article?.preferredLink
+				articleTitle: webViewController.nnwHostArticle?.title,
+				articleURL: webViewController.nnwHostArticle?.preferredLink
 			)
 
 			// 2. 标题和先导块**同时**发出。
@@ -599,7 +601,7 @@ enum TranslationScript {
 				// 标题上次已经翻过了,直接用,零请求
 				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 				runTitleTranslation = cachedTitle
-			} else if let article = webViewController.article,
+			} else if let article = webViewController.nnwHostArticle,
 					  let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
 				// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
 				// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
@@ -798,7 +800,7 @@ enum TranslationScript {
 	/// 只查一轮。查两轮的收益很小,却可能在模型持续不听话时反复烧钱。
 	private func recheckAndRetranslate(service: TranslationService,
 									   context: TranslationContext,
-									   webViewController: WebViewController) async -> Int {
+									   webViewController: any NNWArticlePageHost) async -> Int {
 
 		guard let json = try? await webViewController.nnwTranslationFindGroupsNeedingRetranslation(),
 			  let bad = try? JSONDecoder().decode([TranslationChunk].self, from: Data(json.utf8)),
@@ -964,7 +966,7 @@ enum TranslationScript {
 	private func translateInParallel(_ items: [TranslationWorkItem],
 									 service: TranslationService,
 									 context: TranslationContext,
-									 webViewController: WebViewController) async -> Int {
+									 webViewController: any NNWArticlePageHost) async -> Int {
 
 		var failureCount = 0
 		var pending = items

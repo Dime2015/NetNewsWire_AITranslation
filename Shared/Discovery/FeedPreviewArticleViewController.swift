@@ -4,21 +4,30 @@
 //
 //  [发现] 本 fork 新增,上游没有这个文件。试读 Phase B(2026-07-29)。
 //
-//  试读的文章页(基础版):把一篇**内存文章**用上游渲染层原样画出来 + 点链接外开。
+//  试读的文章页:把一篇**内存文章**用上游渲染层原样画出来,
+//  底部工具栏带**翻译 / 阅读模式 / 长图**(Phase C,2026-07-30),点链接外开。
 //
-//  ## 刻意不做的两件事
-//  1. **不复用主阅读页 WebViewController** —— 它和 SceneCoordinator 深度耦合
-//     (上一篇/下一篇、已读/星标、webViewProvider 全走协调器),拿来当预览页
-//     要伺候一堆对"库里根本不存在的文章"毫无意义的机制。
-//  2. **暂不带翻译/阅读模式/长图** —— 这三个功能现在焊在主阅读页上
-//     (JS 桥在 WebViewController.swift 尾部、长图导出的入参就是它),
-//     Phase C 再抽成两页共用,方案记录在 NOTES-todo 的 T32。
+//  ## 为什么不复用主阅读页 WebViewController
+//  它和 SceneCoordinator 深度耦合(上一篇/下一篇、已读/星标、webViewProvider
+//  全走协调器),拿来当预览页要伺候一堆对"库里根本不存在的文章"毫无意义的机制。
+//
+//  ## 三件功能是怎么共用的(Phase C 的核心)
+//  翻译和长图对页面的全部依赖被抽成了 NNWArticlePageHost 协议
+//  (Shared/Translation/NNWArticlePageHost.swift,桥接原样搬自主阅读页):
+//  本页 conform 它,TranslationController / ArticleLongImageExporter 对两页一视同仁。
+//  阅读模式用的 ReaderViewExtractor 本来就是独立组件,照主阅读页的状态机接一遍即可。
 //
 //  ## 复用了上游/fork 的哪些现成件(它们本身一行没改)
 //  - ArticleRenderer.articleHTML —— 独立静态函数,喂内存 Article 就能出整页 HTML
+//    (阅读模式 = 多喂一个 extractedArticle,渲染器自己会用提取出的正文)
 //  - WebViewConfiguration.configuration(with:) —— 主阅读页同款的 WKWebView 配置
-//    (含注入脚本、内容拦截规则),所以字体/主题/样式和正式阅读页一致
+//  - TranslationController(含按钮与整套流程)、ArticleLongImageExporter、
+//    NNWProgressCard、LongImagePreviewViewController、ArticleExtractorButton
 //  - NNWLinkOpener —— 点正文里的链接,走 app 统一的外开逻辑
+//
+//  ## 和主阅读页的已知差异(有意为之,记在 T35)
+//  - 不做「长按翻译键强制重翻」(试读场景用不上)
+//  - 不做「按源自动进阅读视图」(试读的源多半还没订阅,没有 Feed 对象)
 //
 
 #if os(iOS)
@@ -40,6 +49,19 @@ import RSCore
 
 	/// scheme 处理器自己持有一份,保证生命周期覆盖整个页面
 	private var iconSchemeHandler: FeedPreviewIconSchemeHandler?
+
+	// MARK: Phase C 的三件功能的状态
+
+	/// 翻译流程编排(和主阅读页同一个类;它通过 NNWArticlePageHost 协议使唤本页)
+	private lazy var translationController = TranslationController { [weak self] in self }
+
+	/// 阅读模式:提取器 + 提取结果 + 当前显示哪个。状态机照抄主阅读页。
+	private var articleExtractor: ReaderViewExtractor?
+	private var extractedArticle: ExtractedArticle?
+	private var isShowingExtractedArticle = false
+
+	/// 阅读模式按钮(主阅读页同款,自带 关/开/转圈/出错 四态图标)
+	private let extractorButton = ArticleExtractorButton()
 
 	init(article: Article, iconURL: String?) {
 		self.article = article
@@ -112,7 +134,68 @@ import RSCore
 		])
 		self.webView = webView
 
+		configureToolbar()
 		render()
+	}
+
+	/// 底部工具栏:翻译 ‖ 阅读模式 ‖ 长图。
+	/// 主阅读页的这三个键都是现成组件,原样搬来 —— 状态机(转圈/角标/出错)零重接。
+	private func configureToolbar() {
+
+		translationController.button.addTarget(self, action: #selector(translateTapped), for: .touchUpInside)
+		translationController.presentError = { [weak self] message in
+			self?.presentError(title: "翻译", message: message)
+		}
+		// 按当前文章的缓存状态摆好按钮初始图标(有完整缓存会带实心角标)
+		translationController.resetForNewArticle()
+
+		// 阅读模式按钮:和主阅读页一样要钉死尺寸(转圈态 setImage(nil) 会让固有尺寸
+		// 变 0,iOS 26 工具栏会把它算成 0 宽塌掉 —— L19 的坑,别省这两条约束)
+		extractorButton.translatesAutoresizingMaskIntoConstraints = false
+		NSLayoutConstraint.activate([
+			extractorButton.widthAnchor.constraint(equalToConstant: 44),
+			extractorButton.heightAnchor.constraint(equalToConstant: 44)
+		])
+		// ⚠️ 初始图标必须显式设(独立审查必修 1):buttonState 默认就是 .off,
+		// didSet 有"值没变就不动"的守卫,不设的话是一个 44×44 的空白可点区。
+		// 主阅读页是在创建按钮时设的(ArticleViewController.swift),这里补同一句。
+		extractorButton.setImage(Assets.Images.articleExtractorOff, for: .normal)
+		extractorButton.tintColor = .label	// 和主阅读页控件板同色
+		extractorButton.addTarget(self, action: #selector(readerTapped), for: .touchUpInside)
+
+		let longImageItem = UIBarButtonItem(image: UIImage(systemName: "photo.on.rectangle.angled"),
+											style: .plain, target: self, action: #selector(longImageTapped))
+		longImageItem.accessibilityLabel = "生成长图"
+
+		toolbarItems = [
+			UIBarButtonItem(customView: translationController.button),
+			UIBarButtonItem.flexibleSpace(),
+			UIBarButtonItem(customView: extractorButton),
+			UIBarButtonItem.flexibleSpace(),
+			longImageItem
+		]
+	}
+
+	/// 工具栏跟着本页走:进来亮出,离开收起(试读列表页和发现页都没有工具栏)
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		navigationController?.setToolbarHidden(false, animated: animated)
+	}
+
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		navigationController?.setToolbarHidden(true, animated: animated)
+	}
+
+	/// 退出页面(pop)时把在飞的翻译掐掉(独立审查建议 3):
+	/// 主阅读页的 WebViewController 由协调器长期持有,"翻完留给下次"说得通;
+	/// 试读页一退就没了,继续跑只是烧钱给看不见的页面。
+	/// resetForNewArticle 的取消路径会把已翻的组存成断点缓存,重进同一篇能接着用。
+	override func willMove(toParent parent: UIViewController?) {
+		super.willMove(toParent: parent)
+		if parent == nil {
+			translationController.resetForNewArticle()
+		}
 	}
 
 	/// 渲染配方照抄主阅读页 renderPage(WebViewController.swift):
@@ -121,7 +204,18 @@ import RSCore
 		guard let webView else { return }
 
 		let theme = ArticleThemesManager.shared.currentTheme
-		let rendering = ArticleRenderer.articleHTML(article: article, theme: theme)
+		// [翻译] 标题若有「标题翻译」的译文缓存就用中文标题。
+		// ⚠️ 诚实说明(独立审查建议 4):目前**基本不会命中** —— 试读文章的 accountID
+		// 固定是 "nnw-preview",而开关和缓存都记在真实账户的键下。留着这一步是
+		// 因为它无副作用,将来打通"试读 ↔ 已订阅"的身份映射后自然生效。
+		let displayArticle = NNWTitleTranslationController.shared.cachedDisplayArticle(for: article)
+		// 阅读模式开着就多喂一个提取结果,渲染器会用提取出的正文(主阅读页同款分支)
+		let rendering: ArticleRenderer.Rendering
+		if isShowingExtractedArticle, let extractedArticle {
+			rendering = ArticleRenderer.articleHTML(article: displayArticle, extractedArticle: extractedArticle, theme: theme)
+		} else {
+			rendering = ArticleRenderer.articleHTML(article: displayArticle, theme: theme)
+		}
 
 		let substitutions = [
 			"title": rendering.title,
@@ -145,6 +239,117 @@ import RSCore
 	}
 }
 
+// MARK: - Phase C:三个按钮的动作
+
+extension FeedPreviewArticleViewController {
+
+	@objc private func translateTapped() {
+		translationController.toggle()
+	}
+
+	/// 阅读模式:关 →(提取中,可点取消)→ 开 → 关。状态机语义照抄主阅读页。
+	@objc private func readerTapped() {
+
+		if let articleExtractor {
+			// 正在提取:再点一下 = 取消
+			articleExtractor.cancel()
+			self.articleExtractor = nil
+			extractorButton.buttonState = .off	// 状态真的变了,didSet 会把图标换回 off
+			return
+		}
+
+		if isShowingExtractedArticle {
+			isShowingExtractedArticle = false
+			extractorButton.buttonState = .off
+			rerender()
+			return
+		}
+
+		if extractedArticle != nil {
+			// 这一页已经提取过了:直接切过去,不重新抓
+			isShowingExtractedArticle = true
+			extractorButton.buttonState = .on
+			rerender()
+			return
+		}
+
+		guard let link = article.preferredLink,
+			  let extractor = ReaderViewExtractor(link, delegate: self, hostView: view) else {
+			presentError(title: "阅读模式", message: "这篇文章没有可用的原文链接,无法提取。")
+			return
+		}
+		articleExtractor = extractor
+		extractorButton.buttonState = .animated
+		// ⚠️ .animated 的 didSet 会把按钮禁点(主阅读页靠上下文菜单取消,试读页没有那个入口)。
+		// 重新打开交互,让"转圈中再点一下 = 取消"这条路真的走得到(独立审查建议 2)。
+		extractorButton.isUserInteractionEnabled = true
+		extractor.process()
+	}
+
+	/// 换显示内容(原文 ↔ 提取版)= 整页重载。先把在飞的翻译掐掉(独立审查项 7):
+	/// 新 DOM 没有旧的分组标记,译文贴不上会白白重试;掐掉的同时把已翻的组存成断点缓存。
+	/// 顺带把翻译按钮恢复成和缓存状态相符的样子。
+	private func rerender() {
+		translationController.resetForNewArticle()
+		render()
+	}
+
+	@objc private func longImageTapped() {
+		// 生成要一两秒,给个转圈提示 —— 流程照抄主阅读页的 nnwShareLongImage
+		let progress = NNWProgressCard.present(in: self, text: "正在生成长图…")
+		Task { [weak self] in
+			guard let self else { return }
+			do {
+				let image = try await ArticleLongImageExporter.export(from: self)
+				progress.finish {
+					// 先预览再决定(主阅读页同款):预览页里有「保存到相册」和「分享」
+					let preview = UINavigationController(rootViewController: LongImagePreviewViewController(image: image))
+					preview.modalPresentationStyle = .fullScreen
+					self.present(preview, animated: true)
+				}
+			} catch {
+				progress.finish {
+					self.presentError(title: "生成长图失败", message: error.localizedDescription)
+				}
+			}
+		}
+	}
+}
+
+// MARK: - 阅读模式的提取回调
+
+extension FeedPreviewArticleViewController: ArticleExtractorDelegate {
+
+	func articleExtractionDidFail(with error: Error) {
+		articleExtractor = nil
+		extractorButton.buttonState = .error
+		presentError(title: "阅读模式", message: error.localizedDescription)
+	}
+
+	func articleExtractionDidComplete(extractedArticle: ExtractedArticle) {
+		let wasCancelled = (articleExtractor?.state == .cancelled)
+		articleExtractor = nil
+		guard !wasCancelled else { return }
+		self.extractedArticle = extractedArticle
+		isShowingExtractedArticle = true
+		extractorButton.buttonState = .on
+		render()
+	}
+}
+
+// MARK: - 文章页宿主(翻译 / 长图通过这个协议使唤本页)
+
+extension FeedPreviewArticleViewController: NNWArticlePageHost {
+
+	var nnwHostArticle: Article? { article }
+
+	var nnwHostWebView: WKWebView? { webView }
+
+	/// 试读页的网页表头本来就可见(没有阅读栏),标题译文直接改在 DOM 里,这里无事可做
+	func nnwTranslationTitleDidChange(_ text: String?) {
+	}
+}
+
 // MARK: - 链接点击一律外开
 
 extension FeedPreviewArticleViewController: WKNavigationDelegate {
@@ -161,6 +366,12 @@ extension FeedPreviewArticleViewController: WKNavigationDelegate {
 			return
 		}
 		decisionHandler(.allow)
+	}
+
+	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+		// [翻译] 页面就绪后:这篇要是记着「上次显示译文」且本地有完整缓存,
+		// 自动秒显译文(零请求)—— 主阅读页同款行为
+		translationController.autoApplyTranslationFromCacheIfNeeded()
 	}
 }
 

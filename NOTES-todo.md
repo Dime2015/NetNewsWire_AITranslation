@@ -1042,12 +1042,47 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 - 用户未拍板:标题用哪个模型;中文标题下要不要保留原文小字;预翻默认关。
 
 **② 发现页试读 Phase B/C**:
-- B(中):✅ **已实现,待验收(2026-07-29 晚),详见 T33**。
-- C(大):预览文章页补齐翻译/阅读模式/长图。难点:翻译控制器和长图导出**焊死在 WebViewController**
-  (TranslationController 的 init 入参就是它;JS 桥写在 WebViewController.swift:982 起;
-  `ArticleLongImageExporter.export(from: WebViewController)`),要抽成两页共用 ——
-  全是 fork 自己的文件,允许重构,但工作量实打实。ReaderViewExtractor 本来就独立(好消息)。
+- B(中):✅ 已验收(T33)。
+- C(大):✅ **已实现,待验收(2026-07-30),详见 T35**。
 - 已否决的省力路:「点预览先真订阅、退出再删」—— 首页闪源、未读数变、iCloud 会同步出去。
+
+---
+
+## T35 · 试读 Phase C:试读文章页的翻译 / 阅读模式 / 长图 —— 🟡 **已实现,待用户验收**(2026-07-30)
+
+**核心手法:协议抽取,主阅读页零行为变化(独立审查逐行 diff 确认"搬家原样")**
+- 新增 `Shared/Translation/NNWArticlePageHost.swift`:协议(约束 UIViewController,
+  三个要求:nnwHostArticle / nnwHostWebView / nnwTranslationTitleDidChange)。
+  原 WebViewController.swift 尾部 ~200 行翻译 JS 桥接 + 长图快照钩子**原样搬**成协议扩展。
+- WebViewController.swift 删 ~200 行、只剩 6 行 conformance(**比开工前更接近上游**);
+  TranslationController / ArticleLongImageExporter 的入参放宽成协议。
+- 试读文章页 conform 协议后,三件功能全是现成组件:TranslationController(按钮+整套
+  流程原实例)、ArticleExtractorButton + ReaderViewExtractor(状态机照抄主页)、
+  ArticleLongImageExporter + NNWProgressCard + LongImagePreviewViewController。
+  底部工具栏:翻译 ‖ 阅读模式 ‖ 长图(进页亮出、离页收起)。
+
+**独立审查:1 必修 + 3 建议,均已修**:
+1.【必修】阅读模式按钮初始无图标(buttonState 默认 .off,didSet 有"没变不动"守卫)
+   → 显式 setImage + tintColor(.label,主页同色)。
+2. 转圈中取消不可达(.animated 会禁点)→ 试读页单独恢复交互,"再点=取消"走得通。
+3. pop 页面不掐在飞的翻译 → willMove(toParent: nil) 里 resetForNewArticle
+   (取消并存断点缓存)。
+4. 切阅读模式重载页面时先掐翻译(rerender() 统一入口),别让译文往新 DOM 上白贴。
+
+**已知事实/限制(有意,记档)**:
+- 试读页与主阅读页**互不共享**正文译文缓存(缓存键含 accountID,试读固定 "nnw-preview")
+  —— 同一篇文章订阅前后各翻一次。标题翻译的缓存同理不命中(render 里有诚实注释)。
+- 不做「长按翻译键强制重翻」「按源自动进阅读视图」(试读的源没有 Feed 对象)。
+- 翻译按钮 .working 态禁点导致"翻译中再点=取消"两页都走不到 —— **上游同款既有问题**,
+  不属本次;要修应两页一起(TranslationButton.applyDisplayState 的 .working 分支)。
+
+**验收点**:① 发现页 → 点行试读 → 点一篇文章 → 底部有工具栏(翻译/阅读模式/长图);
+② 点翻译 → 正文分块变中文(和主阅读页同一套观感);退出再进同一篇 → 翻译按钮带角标,
+  点了秒开(断点/完整缓存都认);
+③ 点阅读模式 → 转圈 → 换成提取的全文;再点切回;
+④ 点长图 → 转圈卡片 → 全屏预览,能保存/分享;
+⑤ 回归(重要):**主阅读页**的翻译、长图、阅读模式全部照旧 —— 这轮把它们的地基
+  搬了家,虽然审查确认零回归,还是请把主阅读页三件功能各点一遍。
 
 ---
 
