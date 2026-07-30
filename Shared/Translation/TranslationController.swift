@@ -28,7 +28,7 @@ enum TranslationButtonState {
 	/// 正在显示原文,本地有**未完成**的译文缓存(上次翻到一半被打断) ——
 	/// 点一下接着上次继续翻,已翻过的组不再花钱。空心角标点。
 	case partialCacheAvailable
-	/// 正在翻译中,转圈,不可点(再点一下 = 取消)。
+	/// 正在翻译中,转圈;再点一下 = 取消并回到原文。
 	case working
 	/// 正在显示译文,点一下切回原文。
 	case translated
@@ -117,7 +117,10 @@ final class TranslationButton: UIButton {
 		case .working:
 			setImage(nil, for: .normal)
 			activityIndicator.startAnimating()
-			isUserInteractionEnabled = false
+			// ⚠️ 转圈期间**保持可点**(2026-07-30 修):toggle() 早就支持
+			// "翻译中再点一下 = 取消并回原文",但这里原来禁了交互,那条路一直点不到 ——
+			// 用户翻错文章/翻太慢想停,只能干等。
+			isUserInteractionEnabled = true
 		case .translated:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
@@ -141,7 +144,7 @@ final class TranslationButton: UIButton {
 			case .partialCacheAvailable:
 				return "有未完成的译文,点击接着翻译"
 			case .working:
-				return "正在翻译"
+				return "正在翻译,点一下取消"
 			case .translated:
 				return "显示原文"
 			case .failed:

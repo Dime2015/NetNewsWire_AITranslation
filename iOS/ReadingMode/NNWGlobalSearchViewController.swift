@@ -147,6 +147,10 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		view.backgroundColor = AppAppearance.paperBackground
 		AppAppearance.applyPaperStyle(to: tableView)
 
+		// [翻译] 标题译文入库后刷新结果行(和时间线/试读列表同一套机制)
+		NotificationCenter.default.addObserver(self, selector: #selector(nnwTitleTranslationDidUpdate(_:)),
+											   name: .nnwTitleTranslationDidUpdate, object: nil)
+
 		// 右上角一个明确的「取消」。pageSheet 本身支持下拉关闭,这个按钮是给不知道能下拉的人的。
 		navigationItem.rightBarButtonItem = UIBarButtonItem(
 			title: "取消", style: .plain, target: self, action: #selector(cancelTapped))
@@ -238,6 +242,10 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		presenter?.dismiss(animated: true, completion: completion)
 	}
 
+	@objc private func nnwTitleTranslationDidUpdate(_ note: Notification) {
+		tableView.reloadData()
+	}
+
 	@objc private func cancelTapped() {
 		closePage()
 	}
@@ -327,7 +335,9 @@ final class NNWGlobalSearchViewController: UITableViewController {
 		let cell = tableView.dequeueReusableCell(
 			withIdentifier: NNWGlobalSearchResultCell.reuseIdentifier, for: indexPath) as! NNWGlobalSearchResultCell
 		if indexPath.row < results.count {
-			cell.configure(with: results[indexPath.row])
+			// [翻译] 开了「标题翻译」的源,搜索结果的标题也显示中文(T34 补账,2026-07-30):
+			// 和时间线同一个替换入口;没翻过的顺带入队,翻完靠通知刷新(见 viewDidLoad)
+			cell.configure(with: NNWTitleTranslationController.shared.displayArticle(for: results[indexPath.row]))
 		}
 		return cell
 	}

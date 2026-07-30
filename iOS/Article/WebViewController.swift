@@ -1186,7 +1186,13 @@ extension WebViewController {
 		// 记住当前真实显示的是不是阅读视图。
 		// 提取失败时 isShowingExtractedArticle=false,会记成"不开阅读模式" ——
 		// 这能避免下次对一个"抽不出正文"的源(如 YouTube,见 T11)反复做无用尝试。
-		ArticleReadingStateStore.setReaderMode(isShowingExtractedArticle, for: articleID)
+		// ⚠️ 源已开「始终使用阅读视图」的**不记单篇**(2026-07-30,交接文档点名的现成 bug):
+		// 全局开关本身就决定了每次都进阅读视图,单篇记忆是冗余的 —— 但每篇都占
+		// 一条 500 上限的名额,一个高产源几天就把别的源的记忆全挤掉了。
+		// 不记的代价只有一条:这种源里提取失败的文章,下次打开会再试一次提取,可接受。
+		if article.feed?.readerViewAlwaysEnabled != true {
+			ArticleReadingStateStore.setReaderMode(isShowingExtractedArticle, for: articleID)
+		}
 
 		// 若这篇被记为"上次翻过"且本地有匹配的完整缓存 → 自动秒显译文(交给翻译层判断)。
 		(delegate as? ArticleViewController)?.nnwAutoApplyTranslationFromCacheIfNeeded()
