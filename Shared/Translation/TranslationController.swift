@@ -60,7 +60,20 @@ final class TranslationButton: UIButton {
 	private let badgeView: UIView = {
 		let view = UIView()
 		view.translatesAutoresizingMaskIntoConstraints = false
-		view.layer.cornerRadius = 4.5
+		view.layer.cornerRadius = 4	// = 尺寸 8pt 的一半,保持正圆
+		view.isHidden = true
+		view.isUserInteractionEnabled = false
+		return view
+	}()
+
+	/// [翻译] "正在显示译文"的底衬:图标背后一块淡色圆角(2026-07-30 用户定案:
+	/// 图标本身全程不变 —— 曾试过实心方块+镂空字形,被否;底衬是系统工具栏
+	/// 表达"开关开着"的惯用手法,大小描边都不动)。颜色 = 当前 tint 加透明度。
+	private let selectedBackdrop: UIView = {
+		let view = UIView()
+		view.translatesAutoresizingMaskIntoConstraints = false
+		view.layer.cornerRadius = 8
+		view.layer.cornerCurve = .continuous
 		view.isHidden = true
 		view.isUserInteractionEnabled = false
 		return view
@@ -79,8 +92,24 @@ final class TranslationButton: UIButton {
 	}
 
 	private func setUpSubviews() {
+		insertSubview(selectedBackdrop, at: 0)	// 垫在图标下面
 		addSubview(activityIndicator)
 		addSubview(badgeView)
+
+		// 底衬贴着 14pt 图标收紧(尺寸随字号两轮同步缩过):四周各留约 4pt 呼吸感
+		NSLayoutConstraint.activate([
+			selectedBackdrop.centerXAnchor.constraint(equalTo: centerXAnchor),
+			selectedBackdrop.centerYAnchor.constraint(equalTo: centerYAnchor),
+			selectedBackdrop.widthAnchor.constraint(equalToConstant: 26),
+			selectedBackdrop.heightAnchor.constraint(equalToConstant: 21)
+		])
+
+		// [翻译] 符号字号钉在 14.5pt(2026-07-30 用户三轮微调:17 显大 → 15 略大 → 14 太小 → 14.5 定案):
+		// translate 是"双气泡并排"的宽字形,SF 符号同字号下块头不等宽 ——
+		// 邻居们(星标/圆圈这类)配 17pt,它要压到 14.5pt 视觉上才是一样大。
+		// 这个配置归按钮自己管,控件板那边已声明不再覆盖(NNWControlBoard)。
+		setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 14.5, weight: .medium),
+										forImageIn: .normal)
 
 		// ⚠️ 这两条尺寸约束是必须的,不是装饰(见 NOTES-lessons L19)。
 		// 作为 UIBarButtonItem 的 customView 时,按钮宽度靠"图标撑出的固有尺寸"决定。
@@ -95,26 +124,29 @@ final class TranslationButton: UIButton {
 		NSLayoutConstraint.activate([
 			activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
 			activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor),
-			// 角标点悬在气泡图标的右上方
-			badgeView.widthAnchor.constraint(equalToConstant: 9),
-			badgeView.heightAnchor.constraint(equalToConstant: 9),
-			badgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: 11),
-			badgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -11)
+			// 角标点悬在图标的右上角。位置和大小跟着 15pt 图标收紧
+			// (2026-07-30:原 ±11 是给大图标配的,图标缩小后点悬得远,整体轮廓显大)
+			badgeView.widthAnchor.constraint(equalToConstant: 8),
+			badgeView.heightAnchor.constraint(equalToConstant: 8),
+			badgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: 8),
+			badgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -7)
 		])
 	}
 
 	private func applyDisplayState() {
-		// 角标点只属于两种"有缓存"状态,进入其他任何状态都先藏起来
+		// 角标点只属于两种"有缓存"状态,底衬只属于"正在显示译文" ——
+		// 进入其他任何状态都先藏起来
 		badgeView.isHidden = true
+		selectedBackdrop.isHidden = true
 		switch displayState {
 		case .original:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(UIImage(systemName: "character.bubble"), for: .normal)
+			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
 		case .cachedAvailable:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(UIImage(systemName: "character.bubble"), for: .normal)
+			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
 			// 实心点:有完整缓存,点击秒开
 			badgeView.backgroundColor = tintColor
 			badgeView.layer.borderWidth = 0
@@ -122,7 +154,7 @@ final class TranslationButton: UIButton {
 		case .partialCacheAvailable:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(UIImage(systemName: "character.bubble"), for: .normal)
+			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
 			// 空心点:有未完成的缓存,点击接着上次继续翻
 			badgeView.backgroundColor = .clear
 			badgeView.layer.borderWidth = 1.5
@@ -135,11 +167,21 @@ final class TranslationButton: UIButton {
 		case .translated:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(UIImage(systemName: "character.bubble.fill"), for: .normal)
+			setImage(NNWTranslateIcon.outline, for: .normal)	// 图标不变,亮底衬表达"开着"
+			selectedBackdrop.backgroundColor = tintColor.withAlphaComponent(0.18)
+			selectedBackdrop.isHidden = false
 		case .failed:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
 			setImage(UIImage(systemName: "exclamationmark.bubble"), for: .normal)
+		}
+	}
+
+	/// 深浅色切换时 tint 会变,底衬颜色跟着刷(只在它露着的时候)
+	override func tintColorDidChange() {
+		super.tintColorDidChange()
+		if !selectedBackdrop.isHidden {
+			selectedBackdrop.backgroundColor = tintColor.withAlphaComponent(0.18)
 		}
 	}
 

@@ -99,12 +99,13 @@ final class NNWArticleControlBoard: UIView {
 		tintColor = AppAppearance.inkPrimary
 
 		// [外观] 统一图标尺寸(2026-07-25 用户指出:最后两键看着偏大 —— 不是错觉):
-		// 注入的两个按钮用的是系统默认符号尺寸,比板上其他键的 17pt 大一圈。
-		// 给它们设同一份符号配置;这个配置属于按钮本身,它们内部状态机之后
-		// setImage 换图标(转圈/出错/角标态)也依然生效。
+		// 注入的阅读视图按钮用的是系统默认符号尺寸,比板上其他键的 17pt 大一圈,
+		// 给它设同一份配置;之后状态机 setImage 换图标也依然生效。
+		// ⚠️ 翻译按钮**不在这里配**(2026-07-30):它的字号归 TranslationButton 自己管 ——
+		// translate 是双气泡宽字形,同 17pt 视觉上显大,按钮内部压到 15pt 对齐块头;
+		// 这里再设一遍 17 会把那个校准覆盖掉。
 		let unifiedIcon = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
 		(readerButton as? UIButton)?.setPreferredSymbolConfiguration(unifiedIcon, forImageIn: .normal)
-		(translationButton as? UIButton)?.setPreferredSymbolConfiguration(unifiedIcon, forImageIn: .normal)
 
 		readButton.addTarget(self, action: #selector(readTapped), for: .touchUpInside)
 		starButton.addTarget(self, action: #selector(starTapped), for: .touchUpInside)
