@@ -56,28 +56,9 @@ final class TranslationButton: UIButton {
 		}
 	}
 
-	/// 图标右上角的小圆点:实心 = 有完整缓存;空心 = 有未完成的缓存。
-	private let badgeView: UIView = {
-		let view = UIView()
-		view.translatesAutoresizingMaskIntoConstraints = false
-		view.layer.cornerRadius = 4	// = 尺寸 8pt 的一半,保持正圆
-		view.isHidden = true
-		view.isUserInteractionEnabled = false
-		return view
-	}()
-
-	/// [翻译] "正在显示译文"的底衬:图标背后一块淡色圆角(2026-07-30 用户定案:
-	/// 图标本身全程不变 —— 曾试过实心方块+镂空字形,被否;底衬是系统工具栏
-	/// 表达"开关开着"的惯用手法,大小描边都不动)。颜色 = 当前 tint 加透明度。
-	private let selectedBackdrop: UIView = {
-		let view = UIView()
-		view.translatesAutoresizingMaskIntoConstraints = false
-		view.layer.cornerRadius = 8
-		view.layer.cornerCurve = .continuous
-		view.isHidden = true
-		view.isUserInteractionEnabled = false
-		return view
-	}()
+	// 📌 这里曾有 badgeView(右上角圆点)和 selectedBackdrop(已翻译淡色底衬)两个附件视图。
+	// 2026-07-30 设计稿定案后全部退役:状态角标(勾/实心圆/空心圆)直接合成进图标位图
+	// (NNWTranslateIcon),连晕圈都是图里挖出来的透明 —— 按钮不再需要任何附件视图。
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
@@ -92,24 +73,14 @@ final class TranslationButton: UIButton {
 	}
 
 	private func setUpSubviews() {
-		insertSubview(selectedBackdrop, at: 0)	// 垫在图标下面
 		addSubview(activityIndicator)
-		addSubview(badgeView)
-
-		// 底衬贴着 14pt 图标收紧(尺寸随字号两轮同步缩过):四周各留约 4pt 呼吸感
-		NSLayoutConstraint.activate([
-			selectedBackdrop.centerXAnchor.constraint(equalTo: centerXAnchor),
-			selectedBackdrop.centerYAnchor.constraint(equalTo: centerYAnchor),
-			selectedBackdrop.widthAnchor.constraint(equalToConstant: 26),
-			selectedBackdrop.heightAnchor.constraint(equalToConstant: 21)
-		])
 
 		// [翻译] 符号字号钉在 14.5pt(2026-07-30 用户三轮微调:17 显大 → 15 略大 → 14 太小 → 14.5 定案):
 		// translate 是"双气泡并排"的宽字形,SF 符号同字号下块头不等宽 ——
 		// 邻居们(星标/圆圈这类)配 17pt,它要压到 14.5pt 视觉上才是一样大。
-		// 这个配置归按钮自己管,控件板那边已声明不再覆盖(NNWControlBoard)。
-		setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 14.5, weight: .medium),
-										forImageIn: .normal)
+		// 配置归按钮自己管(控件板已声明不覆盖);和 NNWTranslateIcon 的合成字号是同一份,
+		// 纯符号态与合成角标态的图标才不会互相跳大小。
+		setPreferredSymbolConfiguration(NNWTranslateIcon.symbolConfiguration, forImageIn: .normal)
 
 		// ⚠️ 这两条尺寸约束是必须的,不是装饰(见 NOTES-lessons L19)。
 		// 作为 UIBarButtonItem 的 customView 时,按钮宽度靠"图标撑出的固有尺寸"决定。
@@ -123,43 +94,26 @@ final class TranslationButton: UIButton {
 
 		NSLayoutConstraint.activate([
 			activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
-			activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor),
-			// 角标点悬在图标的右上角。位置和大小跟着 15pt 图标收紧
-			// (2026-07-30:原 ±11 是给大图标配的,图标缩小后点悬得远,整体轮廓显大)
-			badgeView.widthAnchor.constraint(equalToConstant: 8),
-			badgeView.heightAnchor.constraint(equalToConstant: 8),
-			badgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: 8),
-			badgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -7)
+			activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
 		])
 	}
 
 	private func applyDisplayState() {
-		// 角标点只属于两种"有缓存"状态,底衬只属于"正在显示译文" ——
-		// 进入其他任何状态都先藏起来
-		badgeView.isHidden = true
-		selectedBackdrop.isHidden = true
+		// 四态图标(2026-07-30 设计稿定案):图标本体不变,右下角角标表达状态。
+		// 角标是合成在位图里的(NNWTranslateIcon),颜色随模板 tint,无附件视图。
 		switch displayState {
 		case .original:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
+			setImage(NNWTranslateIcon.outline, for: .normal)
 		case .cachedAvailable:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
-			// 实心点:有完整缓存,点击秒开
-			badgeView.backgroundColor = tintColor
-			badgeView.layer.borderWidth = 0
-			badgeView.isHidden = false
+			setImage(NNWTranslateIcon.withSolidDot, for: .normal)	// 实心圆:完整缓存,点击秒开
 		case .partialCacheAvailable:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(NNWTranslateIcon.outline, for: .normal)	// [翻译] 双气泡「文/A」自绘图标(2026-07-30 用户指定)
-			// 空心点:有未完成的缓存,点击接着上次继续翻
-			badgeView.backgroundColor = .clear
-			badgeView.layer.borderWidth = 1.5
-			badgeView.layer.borderColor = tintColor.cgColor
-			badgeView.isHidden = false
+			setImage(NNWTranslateIcon.withHollowDot, for: .normal)	// 空心圆:未完成缓存,点击续翻
 		case .working:
 			setImage(nil, for: .normal)
 			activityIndicator.startAnimating()
@@ -167,21 +121,11 @@ final class TranslationButton: UIButton {
 		case .translated:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
-			setImage(NNWTranslateIcon.outline, for: .normal)	// 图标不变,亮底衬表达"开着"
-			selectedBackdrop.backgroundColor = tintColor.withAlphaComponent(0.18)
-			selectedBackdrop.isHidden = false
+			setImage(NNWTranslateIcon.withCheck, for: .normal)	// 小勾:正在显示译文
 		case .failed:
 			activityIndicator.stopAnimating()
 			isUserInteractionEnabled = true
 			setImage(UIImage(systemName: "exclamationmark.bubble"), for: .normal)
-		}
-	}
-
-	/// 深浅色切换时 tint 会变,底衬颜色跟着刷(只在它露着的时候)
-	override func tintColorDidChange() {
-		super.tintColorDidChange()
-		if !selectedBackdrop.isHidden {
-			selectedBackdrop.backgroundColor = tintColor.withAlphaComponent(0.18)
 		}
 	}
 
