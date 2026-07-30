@@ -205,9 +205,8 @@ import RSCore
 
 		let theme = ArticleThemesManager.shared.currentTheme
 		// [翻译] 标题若有「标题翻译」的译文缓存就用中文标题。
-		// ⚠️ 诚实说明(独立审查建议 4):目前**基本不会命中** —— 试读文章的 accountID
-		// 固定是 "nnw-preview",而开关和缓存都记在真实账户的键下。留着这一步是
-		// 因为它无副作用,将来打通"试读 ↔ 已订阅"的身份映射后自然生效。
+		// 试读**已订阅**的源时会命中 —— 试读文章用的是真实账户身份
+		// (身份映射见 FeedPreviewViewController.makeArticles);没订阅的源没有开关,原样显示。
 		let displayArticle = NNWTitleTranslationController.shared.cachedDisplayArticle(for: article)
 		// 阅读模式开着就多喂一个提取结果,渲染器会用提取出的正文(主阅读页同款分支)
 		let rendering: ArticleRenderer.Rendering

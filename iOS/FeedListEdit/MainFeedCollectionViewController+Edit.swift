@@ -15,9 +15,9 @@
 //
 //  | 做 | 不做(留给以后) |
 //  |---|---|
-//  | 原地进出编辑模式、行抖动、勾选圈 | **拖放排序**(风险最高的一块,见下) |
-//  | 多选 + 批量删除(接上游的撤销) | 文件夹的新建 / 改名(仍在「编辑订阅」页) |
-//  | 多选 + 批量「移动到…」 | |
+//  | 原地进出编辑模式、行抖动、勾选圈 | (2026-07-30 起没有"留给以后"的了: |
+//  | 多选 + 批量删除(接上游的撤销) |  拖放排序、行尾⋯改名、新建文件夹 |
+//  | 多选 + 批量「移动到…」、新建文件夹 |  都已并入本模式,旧「编辑订阅」页已删) |
 //
 //  **拖放排序为什么这一步不做**:首页的拖动是被显式关掉的,而上游自带的拖放路径
 //  **不写我们记的顺序**(`Shared/FeedOrder/`),所以不能靠"把开关打开"白拿;
@@ -259,6 +259,10 @@ extension MainFeedCollectionViewController {
 				nnwSavedToolbarItems = toolbarItems
 			}
 			let count = nnwSelectedNodes().count
+			// [编辑] 新建文件夹(2026-07-30,T29 的尾巴):编辑模式补上这最后一件事,
+			// 旧「编辑订阅」页(FolderManagerViewController)就完全冗余,已整个删除。
+			let newFolder = UIBarButtonItem(title: "新建文件夹", style: .plain,
+											target: self, action: #selector(nnwNewFolderTapped))
 			let move = UIBarButtonItem(title: "移动到…", style: .plain,
 									   target: self, action: #selector(nnwMoveSelectedTapped))
 			let delete = UIBarButtonItem(title: count > 0 ? "删除(\(count))" : "删除",
@@ -266,7 +270,7 @@ extension MainFeedCollectionViewController {
 			delete.tintColor = .systemRed
 			move.isEnabled = count > 0
 			delete.isEnabled = count > 0
-			toolbarItems = [move, .flexibleSpace(), delete]
+			toolbarItems = [newFolder, .flexibleSpace(), move, .flexibleSpace(), delete]
 
 		} else {
 
@@ -277,6 +281,60 @@ extension MainFeedCollectionViewController {
 			}
 			// 地雷 4:右上角显式重装,不依赖那个"第一个是不是放大镜"的幂等判断
 			nnwReinstallDefaultRightBarButtons()
+		}
+	}
+
+	// MARK: - 新建文件夹(2026-07-30,流程照抄已删除的旧「编辑订阅」页)
+
+	@objc private func nnwNewFolderTapped() {
+
+		let accounts = AccountManager.shared.sortedActiveAccounts
+		guard !accounts.isEmpty else { return }
+
+		// 只有一个账户就别多问一步,直接让用户输名字
+		guard accounts.count > 1 else {
+			nnwPromptNewFolderName(in: accounts[0])
+			return
+		}
+
+		// 多账户:先问建在哪个账户下(品牌选单,从按钮所在的左下角弹出)
+		NNWMenu.show(in: self, anchor: .bottomLeading, title: "在哪个账户下新建?", sections: [
+			accounts.map { account in
+				NNWMenu.Item(title: account.nameForDisplay, icon: NNWMenu.accountIcon(for: account)) { [weak self] in
+					self?.nnwPromptNewFolderName(in: account)
+				}
+			}
+		])
+	}
+
+	private func nnwPromptNewFolderName(in account: Account) {
+
+		let alert = UIAlertController(title: "新建文件夹", message: nil, preferredStyle: .alert)
+		alert.addTextField { textField in
+			textField.placeholder = "文件夹名称"
+			textField.autocapitalizationType = .words
+			textField.clearButtonMode = .whileEditing
+		}
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+		let createAction = UIAlertAction(title: "新建", style: .default) { [weak self, weak alert] _ in
+			let name = (alert?.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+			guard !name.isEmpty else { return }
+			self?.nnwCreateFolder(named: name, in: account)
+		}
+		alert.addAction(createAction)
+		alert.preferredAction = createAction
+		present(alert, animated: true)
+	}
+
+	private func nnwCreateFolder(named name: String, in account: Account) {
+		Task { @MainActor in
+			do {
+				_ = try await account.addFolder(name)
+				// 成功后不用手动刷新:上游会发 ChildrenDidChange,列表自己会重建
+			} catch {
+				presentError(title: "新建文件夹失败", message: error.localizedDescription)
+			}
 		}
 	}
 

@@ -27,6 +27,7 @@
 //
 
 import Foundation
+import Account	// 预翻译要听 .AccountDidDownloadArticles(它自带新文章集合)
 import Articles
 import os
 #if os(iOS)
@@ -68,6 +69,53 @@ extension Notification.Name {
 			}
 		}
 		#endif
+
+		// [翻译] 预翻译(T34 尾巴,2026-07-30 用户要求):刷新拉回**新文章**时就地入队翻标题,
+		// 用户进列表时译文多半已经在缓存里 —— "先原文几秒再变中文"那一下也省掉。
+		// 这个通知自带新文章集合,零数据库查询;只挑"开了开关的源"的文章。
+		// ⚠️ 单例是懒加载的,这个观察者要在启动刷新前就位 —— AppDelegate 启动时摸一下本单例。
+		NotificationCenter.default.addObserver(forName: .AccountDidDownloadArticles,
+											   object: nil, queue: .main) { note in
+			let newArticles = note.userInfo?[Account.UserInfoKey.newArticles] as? Set<Article>
+			Task { @MainActor in
+				NNWTitleTranslationController.shared.preTranslate(newArticles)
+			}
+		}
+	}
+
+	/// 一次刷新通知最多预翻多少条。刷新通常只带回几条新文章,远够;
+	/// 首次订阅(或重订老源 —— 开关退订后是保留的)会一口气带回全部历史,
+	/// 那种场景没必要把从来不会被看到的老标题也翻了 —— 超出的留给滚动时按需翻。
+	private static let preTranslateCapPerNotification = 50
+
+	/// 刷新拉回的新文章:属于已开启源、还没有译文的,入队(走同一条攒批管线)。
+	/// ⚠️ 和"进列表现翻"相比,预翻会把**从未被滚到的**标题也翻了 —— 这是花钱换体验,
+	/// 靠上面的单次上限兜底(独立审查建议 2:别写"成本不变"这种不诚实的话)。
+	private func preTranslate(_ newArticles: Set<Article>?) {
+		guard let newArticles, !newArticles.isEmpty,
+			  NNWTitleTranslationStore.shared.hasAnyEnabled else { return }
+
+		let model = TranslationConfigStore.selectedModel
+		var count = 0
+		// 新的优先(上限截断时,被留下的应该是最老、最不会被看的)
+		let sorted = newArticles.sorted { $0.logicalDatePublished > $1.logicalDatePublished }
+		for article in sorted {
+			guard count < Self.preTranslateCapPerNotification else { break }
+			guard let title = article.title, !title.isEmpty,
+				  NNWTitleTranslationStore.shared.isEnabled(accountID: article.accountID,
+															feedID: article.feedID),
+				  !Self.looksChinese(title),
+				  NNWTitleTranslationCache.shared.translation(articleID: article.articleID,
+															  title: title,
+															  model: model) == nil else {
+				continue
+			}
+			enqueue(article)
+			count += 1
+		}
+		if count > 0 {
+			Self.logger.info("[翻译] 预翻译:刷新带来 \(count) 条新标题,已入队")
+		}
 	}
 
 	/// 清空"本次运行别再试"名单。切源/回前台/改配置时调 ——

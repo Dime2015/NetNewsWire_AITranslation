@@ -56,10 +56,9 @@ extension MainFeedCollectionViewController {
 		showFeedDiscovery()
 	}
 
-	/// [管理] 打开文件夹 / 订阅源管理页。
-	func nnwShowFolderManager() {
-		nnwPush(FolderManagerViewController())
-	}
+	// 📌 这里原本有 nnwShowFolderManager()(打开文件夹管理页)。
+	// 那一页 2026-07-28 起就没有入口了(铅笔改为原地编辑),2026-07-30 编辑模式补上
+	// 「新建文件夹」后功能完全重合,页面连同本入口一起删除(T29 收尾)。
 
 	/// 把页面**推进当前的导航栈**(而不是弹一张卡片)。
 	///

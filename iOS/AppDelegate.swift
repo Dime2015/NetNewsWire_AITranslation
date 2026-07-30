@@ -63,6 +63,10 @@ import Images
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 		FaviconGenerator.templateImage = Assets.Images.faviconTemplate
 
+		// [翻译] 摸一下标题翻译的单例,让它的"刷新→预翻译"观察者在**启动刷新之前**就位。
+		// 单例是懒加载的,不摸的话冷启动第一轮刷新拉回的新文章会整段错过预翻译。
+		_ = NNWTitleTranslationController.shared
+
 		Task {
 			await WebViewConfiguration.compileContentBlockingRules()
 		}

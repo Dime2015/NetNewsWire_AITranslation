@@ -184,9 +184,9 @@ extension MainFeedCollectionViewController {
 		coordinator.nnwShowGlobalSearch()
 	}
 
-	/// [编辑] 铅笔的新行为:**原地**进入编辑模式(2026-07-28 用户要求),
-	/// 不再推出「编辑订阅」页。那一页仍然在(文件夹的新建/改名、拖放排序还在那边),
-	/// 只是不再由这个按钮进入 —— 入口暂时挪到编辑模式的工具栏之外,见 T29。
+	/// [编辑] 铅笔的行为:**原地**进入编辑模式(2026-07-28 用户要求)。
+	/// 旧「编辑订阅」页已于 2026-07-30 整个删除 —— 它做的每件事
+	/// (新建/改名文件夹、拖放排序、批量删除/移动、删文件夹释放源)编辑模式都有了。
 	@objc private func nnwEditSubscriptionsTapped() {
 		nnwToggleFeedEditing()
 	}

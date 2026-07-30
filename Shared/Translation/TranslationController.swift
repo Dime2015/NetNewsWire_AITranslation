@@ -14,6 +14,7 @@
 #if os(iOS)
 
 import UIKit
+import Articles	// lookupCache 的签名要写 Article 类型
 import os
 
 // MARK: - 翻译按钮
@@ -373,12 +374,33 @@ enum TranslationScript {
 		guard let article = currentWebViewController()?.nnwHostArticle else {
 			return false
 		}
-		let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
-											  model: TranslationConfigStore.selectedModel)
-		guard let entry = await TranslationCache.lookup(key: key) else {
-			return false
+		let (_, entry) = await Self.lookupCache(for: article, model: TranslationConfigStore.selectedModel)
+		return entry?.bodyHTML != nil
+	}
+
+	// MARK: - [翻译] 译文缓存的键(2026-07-30 起**不带账户前缀**)
+	//
+	// 键曾经是 `accountID|articleID`。去掉前缀的动机(T35 尾巴,用户要求):
+	// 试读页文章的 accountID 固定是 "nnw-preview",和订阅后的真实账户对不上,
+	// 同一篇文章订阅前后要各翻一次。而 articleID 本身由 feedID+文章唯一号哈希而来 ——
+	// **本地和 iCloud 账户**的 feedID 都是 feed 网址(CloudKitAccountDelegate 建 feed
+	// 同样用 URL 当 feedID,审查核实过),和试读时一致,键天然对得上:
+	// **订阅前翻过的,订阅后照样秒开**。真正对不上的是 Feedbin/Feedly 这类
+	// (articleID 用同步服务自己的 ID)—— 对不上时当没缓存、重翻一次,不算坏。
+	// 同一 feed 订在两个账户 → 译文共用,内容相同,共用是对的。
+	//
+	// 老键(带前缀)的存量缓存不做迁移:**读的时候兜底查一次老键**,老译文照样秒开;
+	// 新写入一律用新键,老条目随缓存上限自然淘汰。
+	private static func lookupCache(for article: Article, model: String) async -> (key: String, entry: CachedTranslation?) {
+		let key = TranslationCache.articleKey(articleID: article.articleID, model: model)
+		if let entry = await TranslationCache.lookup(key: key) {
+			return (key, entry)
 		}
-		return entry.bodyHTML != nil
+		let legacyKey = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID, model: model)
+		if let entry = await TranslationCache.lookup(key: legacyKey) {
+			return (key, entry)
+		}
+		return (key, nil)
 	}
 
 	/// [状态记忆] item③:记住这篇「是否显示译文」。换文章时不要调这个。
@@ -400,11 +422,10 @@ enum TranslationScript {
 		guard let webViewController = currentWebViewController(),
 			  let article = webViewController.nnwHostArticle else { return }
 
-		let articleID = article.accountID + "|" + article.articleID
-		guard ArticleReadingStateStore.state(for: articleID).translated else { return }
+		// 「上次翻译过」的记忆仍按账户记(和阅读模式记忆同一个 store,格式不动)
+		guard ArticleReadingStateStore.state(for: article.accountID + "|" + article.articleID).translated else { return }
 
 		let model = TranslationConfigStore.selectedModel
-		let key = TranslationCache.articleKey(articleID: articleID, model: model)
 
 		runningTask?.cancel()
 		runningTask = Task { [weak self] in
@@ -415,7 +436,8 @@ enum TranslationScript {
 			guard let fingerprint = try? await webViewController.nnwTranslationBodyFingerprint() else { return }
 			let bodyHash = TranslationCache.contentHash(fingerprint)
 
-			guard let cached = await TranslationCache.lookup(key: key),
+			let (_, cachedEntry) = await Self.lookupCache(for: article, model: model)
+			guard let cached = cachedEntry,
 				  cached.bodyHash == bodyHash,
 				  let fullBody = cached.bodyHTML else {
 				// 没有可用的完整缓存 → 按用户选择不自动联网重翻;
@@ -463,16 +485,14 @@ enum TranslationScript {
 		guard let article = currentWebViewController()?.nnwHostArticle else {
 			return
 		}
-		let articleID = article.accountID + "|" + article.articleID
-		let key = TranslationCache.articleKey(articleID: articleID,
-											  model: TranslationConfigStore.selectedModel)
 		Task { [weak self] in
 			guard let self else { return }
-			guard let entry = await TranslationCache.lookup(key: key) else { return }
+			let (_, cachedEntry) = await Self.lookupCache(for: article, model: TranslationConfigStore.selectedModel)
+			guard let entry = cachedEntry else { return }
 			// 异步回来后要复核:用户可能已经切走文章、或已经点了翻译
 			guard self.state == .original,
 				  let current = self.currentWebViewController()?.nnwHostArticle,
-				  current.accountID + "|" + current.articleID == articleID else {
+				  current.articleID == article.articleID else {
 				return
 			}
 			// 实心点=完整缓存,空心点=未完成缓存(可断点续翻)
@@ -540,8 +560,8 @@ enum TranslationScript {
 			//    未完成缓存(上次翻到一半被打断) → 记下来,已翻过的组直接复用,只翻剩下的。
 			var partialEntry: CachedTranslation?
 			if let article = webViewController.nnwHostArticle {
-				let key = TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID,
-													  model: model)
+				// 读带老键兜底;cacheKey 一律记**新键**,本次的进度/成品只写新键
+				let (key, legacyAwareEntry) = await Self.lookupCache(for: article, model: model)
 				cacheKey = key
 				// 指纹用**纯文字**而不是 HTML:页面脚本会异步改 HTML(图片装饰等),
 				// HTML 每次不完全一样,拿它当指纹缓存会"时中时不中"(见 L18)。
@@ -549,7 +569,7 @@ enum TranslationScript {
 					let bodyHash = TranslationCache.contentHash(fingerprint)
 					currentBodyHash = bodyHash
 					// [翻译] item②:强制重翻时跳过缓存(照样保留 cacheKey/bodyHash 供翻完后覆盖写)。
-					if !force, let cached = await TranslationCache.lookup(key: key) {
+					if !force, let cached = legacyAwareEntry {
 						if cached.bodyHash != bodyHash {
 							Self.logger.debug("[翻译] 有缓存条目但内容指纹不匹配,按未缓存处理并重新翻译")
 						} else if let fullBody = cached.bodyHTML {

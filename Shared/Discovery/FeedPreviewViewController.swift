@@ -22,6 +22,7 @@
 #if os(iOS)
 
 import UIKit
+import Account	// [翻译] 身份映射要查"这个源是不是已经订阅了"(见 makeArticles)
 import Articles
 import RSParser
 import os
@@ -207,15 +208,29 @@ import os
 	/// 把解析出来的条目变成**凭空的内存文章**(要点见文件头注释)。
 	private static func makeArticles(from parsed: ParsedFeed, feedURL: String) -> [Article] {
 
+		// [翻译] 身份映射(T35 尾巴,2026-07-30):这个源要是**已经订阅了**,就用真实的
+		// 账户ID/源ID 造内存文章 —— 标题翻译的开关与缓存直接命中、article.feed 能解析出
+		// 真源(渲染器显示源名/图标)、正文译文缓存和主阅读页同键(articleID 一致)。
+		// 没订阅的照旧用 "nnw-preview" 假身份,一切行为不变。
+		var accountID = "nnw-preview"
+		var feedID = feedURL
+		for account in AccountManager.shared.activeAccounts {
+			if let feed = account.existingFeed(withURL: feedURL) {
+				accountID = account.accountID
+				feedID = feed.feedID
+				break
+			}
+		}
+
 		let articles = parsed.items.map { item -> Article in
-			let articleID = Article.calculatedArticleID(feedID: feedURL, uniqueID: item.uniqueID)
+			let articleID = Article.calculatedArticleID(feedID: feedID, uniqueID: item.uniqueID)
 			let status = ArticleStatus(articleID: articleID,
 									   read: false,
 									   starred: false,
 									   dateArrived: item.datePublished ?? Date())
-			return Article(accountID: "nnw-preview",
+			return Article(accountID: accountID,
 						   articleID: articleID,
-						   feedID: feedURL,
+						   feedID: feedID,
 						   uniqueID: item.uniqueID,
 						   title: item.title,
 						   contentHTML: item.contentHTML,
