@@ -85,6 +85,9 @@ import UIKit
 	private func save() {
 		TranslationConfigStore.apiKey = apiKeyField.text
 		TranslationConfigStore.baseURL = baseURLField.text ?? ""
+		// [翻译] 配置变了:给标题翻译清失败名单并刷新列表 ——
+		// 刚填好 key 的用户,屏上的标题应该自己变中文,不该等他滚动或重进
+		NNWTitleTranslationController.shared.retryAfterConfigChange()
 	}
 
 	// MARK: - 表格

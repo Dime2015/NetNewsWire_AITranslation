@@ -299,7 +299,11 @@ import os
 
 	/// 把这篇文章的图标和标题装上
 	private func applyContent(for article: Article) {
-		baseTitle = article.title ?? article.rawLink ?? ""
+		// [翻译] 列表那套「标题翻译」已经翻过这条的话,进文章页直接显示中文标题
+		// (2026-07-29 用户要求)。只查缓存不发请求;正文翻译如果稍后给出自己的译文,
+		// 会通过 titleOverride 盖在上面,互不打架。
+		baseTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article)
+			?? article.title ?? article.rawLink ?? ""
 		applyTitleText()
 
 		feedHomePageURL = (article.feed?.homePageURL).flatMap { URL(string: $0) }

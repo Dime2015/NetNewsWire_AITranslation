@@ -599,6 +599,16 @@ enum TranslationScript {
 				// 标题上次已经翻过了,直接用,零请求
 				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 				runTitleTranslation = cachedTitle
+			} else if let article = webViewController.article,
+					  let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
+				// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
+				// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
+				let escaped = listTitle
+					.replacingOccurrences(of: "&", with: "&amp;")
+					.replacingOccurrences(of: "<", with: "&lt;")
+					.replacingOccurrences(of: ">", with: "&gt;")
+				_ = try? await webViewController.nnwTranslationApplyTitle(escaped)
+				runTitleTranslation = escaped
 			} else if let titleHTML = try await webViewController.nnwTranslationReadTitle(),
 			   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 				let titleContext = context

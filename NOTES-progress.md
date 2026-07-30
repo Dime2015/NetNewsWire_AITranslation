@@ -111,7 +111,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
 
 ### 📍 接手须知:2026-07-29 晚 · T30 已验收;发现页 Phase A 待验(**最新,先读这段**)
 
-**git**:Phase A(20b8ba19f)、试读 Phase B(ec28e50c2)均已 commit + push,本地干净。
+**git**:Phase A(20b8ba19f)、试读 Phase B(ec28e50c2)均已 commit + push。
+**T34(标题 AI 翻译 + 简介页修缮 + 头图源信息入口)已实现、已 staged、未 commit,等用户验收。**
 **T33(试读 Phase B)已验收**(2026-07-29 晚;验收中报的"订阅全失败"结案为代理环境问题,见 L99)。
 
 **今天做的**:
@@ -123,7 +124,8 @@ c46d1ce8c  Phase 0 考古笔记 + Phase 1 接口与 mock
    **点绿勾 = 直接取消订阅**(跨账户 removeFeed → 绿勾变回加号;
    初版有二次确认,用户验收后要求去掉)。
 
-**⚠️ 下一个窗口最该先做的事**:按排队顺序开工(用户已确认,试读 Phase B 曾被用户提前插队,已完成):
+**⚠️ 下一个窗口最该先做的事**:让用户验 **T34** 的五条验收点,过了就 commit+push。
+之后的排队(原「源设置页」需求已被 T34 吸收 —— 用户发现上游简介页现成,开关直接放那了):
 **源设置页(考古结论在 `NEXT-PROMPT.md` 的「需求 2」一节:上游 `Feed.readerViewAlwaysEnabled`
 + `FeedInspectorViewController` 已有大半,先让用户试现成开关)→
 标题批量翻译(T32①,顺手把"预翻译"开关放进源设置页)→ 试读 Phase C(T32②)**。

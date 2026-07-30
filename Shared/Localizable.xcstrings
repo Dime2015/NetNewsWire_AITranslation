@@ -2517,6 +2517,30 @@
         }
       }
     },
+    "Notify about new articles" : {
+      "comment" : "notifyNameDisplay / Default",
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新文章通知"
+          }
+        }
+      }
+    },
+    "Notify about new posts" : {
+      "comment" : "notifyNameDisplay / Reddit",
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新帖子通知"
+          }
+        }
+      }
+    },
     "Number of Lines" : {
       "comment" : "Number of Lines",
       "localizations" : {

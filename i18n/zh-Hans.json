@@ -228,6 +228,8 @@
   "Notifications are not enabled": "通知未启用",
   "Notifications Disabled": "通知已关闭",
   "Notifications need to be enabled in the Settings app.": "需要在“设置”App 中启用通知。",
+  "Notify about new articles": "新文章通知",
+  "Notify about new posts": "新帖子通知",
   "Number of Lines": "行数",
   "OK": "好",
   "Open": "打开",

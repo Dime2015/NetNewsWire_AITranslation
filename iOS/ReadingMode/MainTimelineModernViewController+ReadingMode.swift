@@ -38,6 +38,7 @@
 #if os(iOS)
 
 import UIKit
+import Account	// [翻译] 齿轮按钮要判断"当前时间线是不是单一订阅源"(timelineFeed is Feed)
 
 extension MainTimelineModernViewController {
 
@@ -74,11 +75,26 @@ extension MainTimelineModernViewController {
 		navigationItem.searchController = nil
 	}
 
-	/// 本页右上角那个放大镜。**由上游 `resetUI()` 里「一行换一行」装上**。
+	/// 本页右上角的一组按钮:放大镜(常驻)+ 齿轮(只有单一订阅源的页面有)。
+	/// **由上游 `resetUI()` 里「一行换一行」装上**。
 	///
 	/// ⚠️ 为什么必须装在那一行、而不是自己找个地方装一次:
 	/// `resetUI()` 里有一句会把 `rightBarButtonItem` **置空**(漏斗按钮被三档接管后就一直是 nil),
 	/// 而它会被反复调用 —— 装在别处会被它一次次擦掉(L74:先数清楚这个位置有几个写入点)。
+	///
+	/// 数组顺序 = 从右往左:放大镜保持最右(老位置、老习惯),齿轮挨在它左边。
+	/// 齿轮 = 这个源的设置页(2026-07-29 用户要求,取代初版头图上的 info 圆钮)。
+	@objc func nnwNavBarButtonItems() -> [UIBarButtonItem] {
+		var items = [nnwSearchBarButtonItem()]
+		if coordinator?.timelineFeed is Feed {
+			let gear = UIBarButtonItem(image: UIImage(systemName: "gearshape"),
+									   style: .plain, target: self, action: #selector(nnwFeedSettingsTapped))
+			gear.accessibilityLabel = "源信息与设置"
+			items.append(gear)
+		}
+		return items
+	}
+
 	@objc func nnwSearchBarButtonItem() -> UIBarButtonItem {
 		let item = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
 								   style: .plain, target: self, action: #selector(nnwSearchTapped))
@@ -89,6 +105,11 @@ extension MainTimelineModernViewController {
 	@objc private func nnwSearchTapped() {
 		// 带上"当前列表"的范围 —— 搜索页会因此多出「该列表 / 全部文章」两档,默认搜该列表
 		coordinator?.nnwShowGlobalSearch(restrictedToCurrentTimeline: true)
+	}
+
+	@objc private func nnwFeedSettingsTapped() {
+		// 无参版自己从 timelineFeed 取源;智能源/文件夹根本不会有这个按钮
+		coordinator?.showFeedInspector()
 	}
 
 	// ⚠️ 这里原本有一整套「搜索栏摆法」的机制(nnwUseCompactSearchPlacement /

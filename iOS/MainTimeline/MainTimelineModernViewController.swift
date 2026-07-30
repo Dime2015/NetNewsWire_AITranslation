@@ -644,6 +644,9 @@ private extension MainTimelineModernViewController {
 		// [界面] 正文首图下载完成后重刷可见行,让缩略图显示出来。与上面 favicon 同一套机制。
 		NotificationCenter.default.addObserver(self, selector: #selector(faviconDidBecomeAvailable(_:)), name: .imageDidBecomeAvailable, object: nil)
 
+		// [翻译] 标题译文入库/开关变化后重刷可见行(处理方法在 +TitleTranslation 扩展里)
+		NotificationCenter.default.addObserver(self, selector: #selector(nnwTitleTranslationDidUpdate(_:)), name: .nnwTitleTranslationDidUpdate, object: nil)
+
 		NotificationCenter.default.addObserver(self, selector: #selector(timelineIconSizeDidChange(_:)), name: .timelineIconSizeDidChange, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(timelineNumberOfLinesDidChange(_:)), name: .timelineNumberOfLinesDidChange, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(contentSizeCategoryDidChange), name: UIContentSizeCategory.didChangeNotification, object: nil)
@@ -832,7 +835,8 @@ private extension MainTimelineModernViewController {
 		let showIcon = showIcons && iconImage != nil
 		// [界面] 多传一个正文首图的缩略图;取不到就是 nil,列表会把文字铺满。
 		let thumbnail = ArticleThumbnail.shared.thumbnail(for: article)
-		let cellData = MainTimelineCellData(article: article, showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, thumbnail: thumbnail)
+		// [翻译] 标题可能换成中文译文(开了「标题翻译」的源;实现见 NNWTitleTranslationController)
+		let cellData = MainTimelineCellData(article: NNWTitleTranslationController.shared.displayArticle(for: article), showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, thumbnail: thumbnail)
 		return cellData
 	}
 
@@ -881,7 +885,7 @@ private extension MainTimelineModernViewController {
 		// 空出来的位置放**搜索**的放大镜(点它开我们自己的 modal 搜索页)。
 		// ⚠️ 必须装在这一行:本方法会把 rightBarButtonItem 反复重置,装在别处会被擦掉(L74)。
 		// 想还原成上游行为,把 NNWReadingModeStore.showsPerFeedFilterButton 改回 true 即可。
-		navigationItem.rightBarButtonItem = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? filterButton : nnwSearchBarButtonItem()
+		navigationItem.rightBarButtonItems = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? [filterButton] : nnwNavBarButtonItems()
 
 		if isReadArticlesFiltered {
 			filterButton.tintColor = Assets.Colors.primaryAccent

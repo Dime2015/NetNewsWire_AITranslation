@@ -41,6 +41,8 @@ import UIKit
 
 	@objc private func saveTapped() {
 		TranslationConfigStore.selectedModel = pendingModel			// 应用选择
+		// [翻译] 换模型 = 标题缓存键全变:清失败名单并刷新列表,可见行按新模型重翻
+		NNWTitleTranslationController.shared.retryAfterConfigChange()
 		navigationController?.popViewController(animated: true)
 	}
 

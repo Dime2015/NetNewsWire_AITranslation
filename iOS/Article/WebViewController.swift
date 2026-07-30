@@ -633,6 +633,10 @@ private extension WebViewController {
 	func renderPage(_ webView: PreloadedWebView?) {
 		guard let webView = webView else { return }
 
+		// [翻译] 列表那套「标题翻译」翻过的文章,网页里的标题(沉浸模式可见)也用中文;
+		// 只查缓存不发请求。局部遮蔽 self.article,下面所有分支自动生效。
+		let article = article.map { NNWTitleTranslationController.shared.cachedDisplayArticle(for: $0) }
+
 		let theme = ArticleThemesManager.shared.currentTheme
 		let rendering: ArticleRenderer.Rendering
 

@@ -63,6 +63,9 @@ extension MainTimelineModernViewController {
 			objc_setAssociatedObject(self, &Self.nnwHeaderKey, controller, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 		}
 
+		// [翻译] 本方法是"切源/进列表"的必经之地(见 updateNavigationBarTitle 那行的注释)——
+		// 顺路给标题翻译清一次失败名单:失败多是一时的(断网、限流),重进列表就该重试
+		NNWTitleTranslationController.shared.resetFailures()
 		controller.update(subject: Self.nnwHeaderSubject(for: coordinator?.timelineFeed),
 						  host: self, collectionView: collectionView)
 	}

@@ -1051,6 +1051,67 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 
 ---
 
+## T34 · 标题 AI 翻译(按源开关)+ 简介页翻译修缮 + 头图「源信息」入口 —— 🟡 **已实现,待用户验收**(2026-07-29 深夜)
+
+**用户拍板的三条**:模型和正文同款;v1 不保留原文小字;时间线入口=头图小按钮。
+
+**① 简介页的英文修缮**:那页 storyboard 文字其实早翻好了,英文来自上游代码在运行时
+用 `feed.notificationDisplayName`(Account 模块的 NSLocalizedString,键不在任何翻译目录)
+覆盖「新文章通知」那行。修法:把 "Notify about new articles"/"posts" 两个键手工补进
+`Shared/Localizable.xcstrings`(照 inject.py 的字节级格式,已验证 round-trip)+ 登记进
+`i18n/zh-Hans.json`。**代码零改动**。审查确认:SPM 模块里不带 bundle 的 NSLocalizedString
+查的是 Bundle.main,补主目录恰好生效。
+
+**② 标题翻译链路(全部 fork 文件 + 上游 4 处带 [翻译] 标记的小改)**:
+- `NNWTitleTranslationStore.swift`:按源开关(UserDefaults,键=**账户ID|源ID**,吸取
+  FeedOrderStore 没带前缀的教训)+ 译文磁盘缓存(Caches,键=代号|文章ID|模型|标题哈希,上限 4000)
+- `NNWTitleTranslationController.swift`:时间线每行装配时 `displayArticle(for:)` ——
+  缓存命中给换标题的内存副本;没命中记入待翻名单,0.4s 攒批(≤40 条)一次请求;
+  翻完发 `.nnwTitleTranslationDidUpdate`,时间线刷可见行。智能源天然覆盖(按文章所属源判断)。
+  假名判日文不翻;空译文不入库;整批失败→剩余全部记入失败名单并停发(防断网连环超时);
+  失败名单在**切源/回前台/改配置**时清空重试。
+- 简介页开关行:**不动 storyboard**,程序化插在第 0 区末尾(行号写死 3,上游加行会在
+  merge 时撞标记行,不会静默错位)。上游 VC 的 numberOfRows/cellForRow +1 行拦截,
+  **新增 heightForRowAt/indentationLevelForRowAt 两个 override**(静态表拿不存在的行号
+  问 super 会崩,四处必须拦全 —— 审查逐方法核过,didSelect/contextMenu 等都安全)。
+- 时间线上游改动仅 2 处:configure 里一行换 displayArticle;viewDidLoad 加一个观察者
+  (处理方法在 +TitleTranslation 扩展文件里,走上游 queueReloadAvailableCells 同一套刷新)。
+
+**③ 头图「源信息」按钮**:标题浮层(TimelineHeaderOverlayView,fork 文件)加 info.circle
+按钮,守左下角(标题停右下),随滚动淡出,颜色跟标题走;浮层从"完全不可点"改为
+"hitTest 只认按钮、其余全穿透"(审查确认穿透性与原来等价)。只有真订阅源的页面显示;
+点它 → `coordinator.showFeedInspector()`(上游现成无参版,自己从 timelineFeed 取源)。
+
+**独立审查:1 必修 + 5 建议,全部修掉**:失败名单永不清空(必修)、配好 key 后屏上不自动重翻、
+enqueue 热路径同步读 Keychain、断网连环批请求、日文汉字标题误判、空译文入缓存。
+
+**已知限制(接受,记档)**:纯汉字的日文标题(无假名)仍会被当成中文不翻;
+全局搜索页(NNWGlobalSearchViewController)的结果行 v1 不换中文标题;
+「刷新完成后后台预翻」没做(现在是进列表现翻,首次看到原文 2~5 秒后原地变中文)。
+
+**首轮验收(2026-07-29 深夜)已过**,用户追加四条,均已实现(待复验):
+1. **开关行左端对齐**:初版用 textLabel(边距+0),storyboard 的标签是**边距+4pt** ——
+   重写成自建标签逐项照抄 storyboard 度量(边距+4、body 动态字体、开关尾部 20、行高≈51)。
+2. **简介页套暖纸风**:viewDidLoad 一行 applyPaperStyle(to: tableView) + 新增 willDisplay
+   override 逐 cell 刷(设置页同款配方)。开关颜色两页本就都是系统默认绿,统一后无差别。
+3. **入口从头图 info 圆钮改为导航栏齿轮**:头图按钮整套代码已撤干净(浮层还原为
+   isUserInteractionEnabled=false 纯装饰);resetUI 那行改为 rightBarButtonItems =
+   [放大镜, 齿轮](齿轮只在 timelineFeed is Feed 时出现,点它 showFeedInspector())。
+4. **文章内容页显示已翻译的标题 + 正文翻译跳过标题**:
+   - 控制器新增 `cachedTranslatedTitle(for:)` / `cachedDisplayArticle(for:)`(只查缓存不入队);
+   - `ArticleHeaderBar.applyContent` 的 baseTitle 优先用缓存译文(正文翻译的 titleOverride
+     仍然能盖它,互不打架);`WebViewController.renderPage` 开头一行局部遮蔽 article
+     (沉浸模式下网页里的标题也是中文);
+   - `TranslationController` 标题分支插一档:列表已翻过 → 转义后直接 apply,**零请求**
+     (顺序:正文翻译自己的缓存 > 列表标题缓存 > 现翻)。
+
+**复验点**:① 简介页:开关行左端和上面几行对齐、整页暖纸底色(和设置页一个风格);
+② 单源列表右上角 = 放大镜 + 齿轮,齿轮打开简介页;智能组/文件夹只有放大镜;头图上不再有圆钮;
+③ 开了标题翻译的源,从任何列表点进一篇已翻标题的文章 → 顶部阅读栏直接是中文标题;
+④ 在这篇文章里点「翻译」→ 标题瞬间就位(不再发标题请求),正文照常分块翻。
+
+---
+
 ## T33 · 发现页试读 Phase B —— ✅ **已验收**(2026-07-29 晚,commit ec28e50c2)
 
 **做了什么**:点结果行不再是订阅,而是 push 进「试读」页 —— 当场抓 feed →
