@@ -642,7 +642,17 @@ import os
 		NNWLinkOpener.open(articleURL, from: host)
 	}
 
+	/// [翻译] 点头像 → 进"这个源的文章列表"(2026-07-30 用户要求)。
+	/// 由装配方(WebViewController+ReadingBar)接上;没接上时保持老行为(开源主页)。
+	var onIconTapped: (() -> Void)?
+
 	@objc private func openFeedHomePage() {
+		// [翻译] 2026-07-30 起头像的正职是"进这个源的文章列表"(上面的闭包);
+		// 闭包没接上(只有 article.feed 为 nil 的理论边角)才退回老行为:开源主页。
+		if let onIconTapped {
+			onIconTapped()
+			return
+		}
 		guard let feedHomePageURL else { return }
 		NNWLinkOpener.open(feedHomePageURL, from: host)
 	}

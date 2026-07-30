@@ -60,7 +60,9 @@ import os
 		didSet { updateBackground() }
 	}
 
-	init(result: FeedSearchResult, subscriptionHandler: FeedPreviewSubscriptionHandling) {
+	/// - Parameter subscriptionHandler: 订阅动作的处理方(发现页)。
+	///   **从文章页的头像进来时传 nil** —— 那条路的源必然已订阅,右上角只有齿轮,没有订阅按钮。
+	init(result: FeedSearchResult, subscriptionHandler: FeedPreviewSubscriptionHandling?) {
 		self.result = result
 		self.subscriptionHandler = subscriptionHandler
 		super.init(style: .plain)
@@ -87,38 +89,86 @@ import os
 		refreshControl = UIRefreshControl()
 		refreshControl?.addTarget(self, action: #selector(reloadRequested), for: .valueChanged)
 
-		updateSubscribeButton()
+		// [翻译] 标题译文入库时刷新列表 —— 已订阅且开了「标题翻译」的源,
+		// 本页的行标题和主时间线一样显示中文(见 cellForRow)
+		NotificationCenter.default.addObserver(self, selector: #selector(titleTranslationDidUpdate(_:)),
+											   name: .nnwTitleTranslationDidUpdate, object: nil)
+
+		updateNavButtons()
 		load()
 	}
 
 	override func viewWillAppear(_ animated: Bool) {
 		super.viewWillAppear(animated)
-		// 从文章页回来时刷一下右上角 —— 订阅状态理论上不会在那边变,但刷新零成本
-		updateSubscribeButton()
+		// 从文章页的头像进来时,下面盖着的是带工具栏的文章页 —— 本页没有工具栏,收起来。
+		// ⚠️ 如实说明(独立审查纠正过):发现页语境里没人管理工具栏,它的可见性是从
+		// 主列表页继承来的 —— 这一句在那条路上是"主动藏一条空栏"(观感更好),
+		// pop 回发现页后保持隐藏,直到回主列表页被它的 viewWillAppear 恢复。
+		navigationController?.setToolbarHidden(true, animated: animated)
+		// 回到本页时刷一下右上角(订阅状态/齿轮可能变了,刷新零成本)
+		updateNavButtons()
 	}
 
-	// MARK: - 右上角的订阅按钮(三种状态,和结果行行尾同一套语义)
+	@objc private func titleTranslationDidUpdate(_ note: Notification) {
+		tableView.reloadData()
+	}
 
-	private func updateSubscribeButton() {
-		guard let handler = subscriptionHandler else {
-			navigationItem.rightBarButtonItem = nil
+	// MARK: - 右上角:订阅状态(发现页进来才有)+ 齿轮(已订阅的源才有)
+
+	private func updateNavButtons() {
+		var items = [UIBarButtonItem]()
+
+		// 订阅按钮三态,和结果行行尾同一套语义。处理方是发现页;从文章页进来没有它。
+		if let handler = subscriptionHandler {
+			if handler.previewIsBusy(result) {
+				let spinner = UIActivityIndicatorView(style: .medium)
+				spinner.startAnimating()
+				items.append(UIBarButtonItem(customView: spinner))
+			} else if handler.previewIsSubscribed(result) {
+				let item = UIBarButtonItem(title: "已订阅", style: .plain, target: nil, action: nil)
+				item.isEnabled = false
+				items.append(item)
+			} else {
+				items.append(UIBarButtonItem(title: "订阅", style: .done,
+											 target: self, action: #selector(subscribeTapped)))
+			}
+		}
+
+		// 齿轮 = 源的简介/设置页(标题翻译、阅读视图等开关都在那)。
+		// 设置挂在真实 Feed 上,所以只有已订阅的源才有;发现页里刚订阅完它也会出现。
+		if subscribedFeed() != nil {
+			let gear = UIBarButtonItem(image: UIImage(systemName: "gearshape"),
+									   style: .plain, target: self, action: #selector(gearTapped))
+			gear.accessibilityLabel = "源信息与设置"
+			items.append(gear)
+		}
+
+		navigationItem.rightBarButtonItems = items
+	}
+
+	/// 这个源要是已经订阅了,给出真实的 Feed(齿轮和身份映射都靠它)
+	private func subscribedFeed() -> Feed? {
+		for account in AccountManager.shared.activeAccounts {
+			if let feed = account.existingFeed(withURL: result.feedURL) {
+				return feed
+			}
+		}
+		return nil
+	}
+
+	/// 打开源的简介/设置页。装配照抄 SceneCoordinator.showFeedInspector(for:) ——
+	/// 那边绑着协调器,这里独立弹一张同样的 formSheet。
+	@objc private func gearTapped() {
+		guard let feed = subscribedFeed() else { return }
+		guard let nav = UIStoryboard.inspector.instantiateViewController(
+				identifier: "FeedInspectorNavigationViewController") as? UINavigationController,
+			  let inspector = nav.topViewController as? FeedInspectorViewController else {
 			return
 		}
-
-		if handler.previewIsBusy(result) {
-			let spinner = UIActivityIndicatorView(style: .medium)
-			spinner.startAnimating()
-			navigationItem.rightBarButtonItem = UIBarButtonItem(customView: spinner)
-		} else if handler.previewIsSubscribed(result) {
-			let item = UIBarButtonItem(title: "已订阅", style: .plain, target: nil, action: nil)
-			item.isEnabled = false
-			navigationItem.rightBarButtonItem = item
-		} else {
-			navigationItem.rightBarButtonItem = UIBarButtonItem(title: "订阅",
-																style: .done,
-																target: self,
-																action: #selector(subscribeTapped))
-		}
+		nav.modalPresentationStyle = .formSheet
+		nav.preferredContentSize = FeedInspectorViewController.preferredContentSizeForFormSheetDisplay
+		inspector.feed = feed
+		present(nav, animated: true)
 	}
 
 	@objc private func subscribeTapped() {
@@ -129,13 +179,13 @@ import os
 		}
 		handler.previewSubscribe(result) { [weak self] error in
 			guard let self else { return }
-			self.updateSubscribeButton()
+			self.updateNavButtons()
 			if let error {
 				self.presentError(error)
 			}
 		}
 		// 立刻切到转圈,不等回调 —— 订阅要联网,慢的时候要几秒
-		updateSubscribeButton()
+		updateNavButtons()
 	}
 
 	// MARK: - 抓取与解析
@@ -262,7 +312,9 @@ import os
 		// .subtitle 样式没法 register class,只能"取不到再建"这个经典写法。
 		let cell = tableView.dequeueReusableCell(withIdentifier: "PreviewCell")
 			?? UITableViewCell(style: .subtitle, reuseIdentifier: "PreviewCell")
-		let article = articles[indexPath.row]
+		// [翻译] 已订阅且开了「标题翻译」的源(身份映射后判断得出来):行标题显示中文,
+		// 和主时间线一致;没翻的这里顺带入队,翻完靠通知刷新(见 viewDidLoad)
+		let article = NNWTitleTranslationController.shared.displayArticle(for: articles[indexPath.row])
 
 		// 标题/摘要/日期都走上游的格式化器 —— 和正式时间线同一套截断与清洗规则
 		let title = ArticleStringFormatter.shared.truncatedTitle(article)

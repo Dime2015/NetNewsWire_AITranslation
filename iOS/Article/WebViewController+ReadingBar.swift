@@ -106,7 +106,26 @@ extension WebViewController {
 			nnwReadingBar = controller
 		}
 
+		// [翻译] 点阅读栏头像 → 推入这个源的文章列表页(2026-07-30 用户要求)。
+		// 只在文章真有源时接管;没有源(理论边角)不接,头像保持老行为(开源主页)。
+		controller.onIconTapped = (article?.feed != nil) ? { [weak self] in self?.nnwShowChannelPage() } : nil
+
 		controller.update(article: article, host: self, scrollView: scrollView, contentSettled: contentSettled)
+	}
+
+	/// 跳到当前文章所属源的**完整**文章列表页(头图/搜索/底部三档俱全的那个真页面)。
+	///
+	/// 走上游现成的 `discloseFeed`(点通知跳源用的同一条路):首页选中这个源、
+	/// 时间线切过去、文章页收场 —— 是一次**上下文切换**,右划回的是首页。
+	///
+	/// ⚠️ 为什么不是"推一页、右划原路返回"(2026-07-30 用户问过,答案记档):
+	/// 完整列表页全 app 只有一个实例,内容全挂在协调器身上 —— 往导航栈里放两份,
+	/// 两份显示的是同一个全局状态,回退时必然看到错的内容;拆成可多开 = 重写核心页面,
+	/// merge/回归风险不可接受。第一版曾用试读页(独立副本,可无限回退)实现,
+	/// 用户看过后拍板要真页面(2026-07-30):**完整功能 > 无限回退**。
+	private func nnwShowChannelPage() {
+		guard let feed = article?.feed else { return }
+		coordinator?.discloseFeed(feed, animations: [.scroll, .navigation])
 	}
 }
 
