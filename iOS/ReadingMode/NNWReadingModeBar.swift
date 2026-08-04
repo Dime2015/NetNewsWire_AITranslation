@@ -55,9 +55,16 @@ import UIKit
 	}
 
 	private let stack = UIStackView()
+
+	/// [外观] 2026-08-04:整条做成软面板,当前档是一颗浮起的胶囊(参考图里的 Chat|History)
+	private let softPanel = NNWSoftPanel(kind: .panel)
+	private let capsule = UIView()
+	private let capsuleMaterial = NNWSoftPanel(kind: .capsule)
 	private var buttons: [NNWReadingMode: UIButton] = [:]
 	/// 每一格的宽度约束,换档时只改这三条的常数(总和不变)
 	private var widthConstraints: [NNWReadingMode: NSLayoutConstraint] = [:]
+	/// [外观] 当前档 —— 胶囊要对准它(layoutSubviews 用)
+	private var currentMode: NNWReadingMode = NNWReadingModeStore.shared.mode
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
@@ -66,6 +73,12 @@ import UIKit
 		stack.alignment = .center
 		stack.distribution = .fill
 		stack.spacing = Self.buttonSpacing
+		// [外观] 面板 + 胶囊要垫在按钮**下面**,先加它们
+		softPanel.install(in: self)
+		capsule.isUserInteractionEnabled = false
+		addSubview(capsule)
+		capsuleMaterial.install(in: capsule)
+
 		stack.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(stack)
 		NSLayoutConstraint.activate([
@@ -110,6 +123,8 @@ import UIKit
 
 	/// 把外观切到某一档。**三格宽度的总和永远不变**,所以外层不用重新排版。
 	func apply(mode current: NNWReadingMode) {
+		currentMode = current
+		setNeedsLayout()			// [外观] 胶囊要跟着换位置
 		for mode in NNWReadingMode.allCases {
 			guard let button = buttons[mode] else { continue }
 			let isCurrent = mode == current
@@ -142,9 +157,10 @@ import UIKit
 			// **是整屏饱和度最高的东西** —— 视觉重心被拽到了底部的导航控件上,
 			// 而那里并不是内容。参考物 Reeder 的当前档也是「浅灰底 + 深色字」,
 			// 高饱和的红只留给「开关」这类真正表达状态的控件。
-			config.baseForegroundColor = AppAppearance.inkPrimary
-			config.background.backgroundColor = pillBackground
-			config.background.cornerRadius = barHeight / 2
+			// [外观] 2026-08-04:当前档改为「橙字 + 浮起的胶囊」(参考图的做法)。
+			// 胶囊由 capsule 视图画(软材质),这里的 background 一律留空,免得两层叠。
+			config.baseForegroundColor = NNWSoftMaterial.accent
+			config.background.backgroundColor = .clear
 		} else {
 			config.attributedTitle = nil
 			config.background.backgroundColor = .clear
@@ -166,6 +182,21 @@ import UIKit
 
 	override var intrinsicContentSize: CGSize {
 		CGSize(width: Self.totalWidth, height: Self.barHeight)
+	}
+
+	/// [外观] 面板与胶囊按当前档重画。胶囊对准当前那一格。
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+
+		guard let currentButton = buttons[currentMode], currentButton.bounds.width > 0 else {
+			capsule.isHidden = true
+			return
+		}
+		capsule.isHidden = false
+		// 胶囊贴着当前那一格,上下各收 3pt —— 参考图里胶囊比槽矮一圈
+		capsule.frame = convert(currentButton.bounds, from: currentButton).insetBy(dx: 0, dy: 3)
+		capsuleMaterial.layout(in: capsule, cornerRadius: capsule.bounds.height / 2)
 	}
 }
 

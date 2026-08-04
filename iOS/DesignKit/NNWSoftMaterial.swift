@@ -36,22 +36,55 @@ enum NNWSoftMaterial {
 	/// 总开关。false = 完全不生效,控件回到改动前的样子。
 	static let isEnabled = true
 
-	// MARK: - 采样得到的色号
+	// MARK: - 颜色:**相对于 app 自身的底色**推导,不用参考图的绝对色号
+	//
+	// ⚠️ 2026-08-04 第一版就栽在这里:直接把参考图的冷灰 #E5/#E7 搬进来,
+	// 而本 app 的底是暖纸色 —— 米色纸上糊了一块脏灰(用户原话"改的非常差")。
+	//
+	// 参考图真正的规律是**相对关系**,不是那几个 hex:
+	//   画布 #EA(234) → 面板 #E5–#E7(-5 ~ -3) → 胶囊 #E9–#ED(-1 ~ +3)
+	// 所以这里按同样的差值,从 `AppAppearance.paperBackground` 现推 —— 底色是暖是冷都跟得上。
 
-	/// 面板(dock 本体)。实测 #E5E5E5 → #E7E7E7,由上向下变亮。
-	static var panelTop: UIColor { dynamic(light: 0xE5E5E5, dark: 0x1E2021) }
-	static var panelBottom: UIColor { dynamic(light: 0xE7E7E7, dark: 0x212324) }
+	/// 面板(dock 本体):比底色**暗** 3–5 级,由上向下变亮
+	static func panelColors(for traits: UITraitCollection) -> (top: UIColor, bottom: UIColor) {
+		let isDark = traits.userInterfaceStyle == .dark
+		// 深色模式下"更暗"无从谈起(底已经很暗),改为比底色亮一档
+		// 实测参考图是 -5/-3;但那是在中性灰底上。本 app 是暖纸底(明度更高),
+		// 同样的差值几乎看不见 —— 按屏幕上量到的结果加深到 -9/-6。
+		return isDark ? (shift(paper(traits), by: 9), shift(paper(traits), by: 13))
+					  : (shift(paper(traits), by: -9), shift(paper(traits), by: -6))
+	}
 
-	/// 选中胶囊。实测 #E9E9E9 → #EDEDED,比面板亮 4 级。
-	static var capsuleTop: UIColor { dynamic(light: 0xE9E9E9, dark: 0x26292A) }
-	static var capsuleBottom: UIColor { dynamic(light: 0xEDEDED, dark: 0x2A2D2E) }
+	/// 选中胶囊:比面板亮 4 级左右,做出"嵌在槽里的一块"
+	static func capsuleColors(for traits: UITraitCollection) -> (top: UIColor, bottom: UIColor) {
+		let isDark = traits.userInterfaceStyle == .dark
+		return isDark ? (shift(paper(traits), by: 20), shift(paper(traits), by: 26))
+					  : (shift(paper(traits), by: 2), shift(paper(traits), by: 6))
+	}
 
-	/// 图标/文字。实测参考图的文字是 #262626,**不是纯黑**。
-	static var ink: UIColor { dynamic(light: 0x262626, dark: 0xF0F1F1) }
-	static var inkMuted: UIColor { dynamic(light: 0x8A8F91, dark: 0x8E9395) }
+	private static func paper(_ traits: UITraitCollection) -> UIColor {
+		AppAppearance.paperBackground.resolvedColor(with: traits)
+	}
 
-	/// 强调橙。实测精确命中 #FF5A1F。
-	static var accent: UIColor { dynamic(light: 0xFF5A1F, dark: 0xFF6A2F) }
+	/// 在 RGB 上整体加减若干级(0–255)。近中性色上等同于只动明度,色相不会跑。
+	private static func shift(_ color: UIColor, by delta: CGFloat) -> UIColor {
+		var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+		guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return color }
+		let d = delta / 255
+		return UIColor(red: min(max(r + d, 0), 1),
+					   green: min(max(g + d, 0), 1),
+					   blue: min(max(b + d, 0), 1), alpha: a)
+	}
+
+	/// 图标/文字墨色。跟随 app 既有的墨色,别再引第三套。
+	static var ink: UIColor { AppAppearance.inkPrimary }
+
+	/// 强调橙。实测参考图精确命中 #FF5A1F。
+	static var accent: UIColor {
+		UIColor { $0.userInterfaceStyle == .dark
+			? UIColor(red: 1, green: 0x6A/255, blue: 0x2F/255, alpha: 1)
+			: UIColor(red: 1, green: 0x5A/255, blue: 0x1F/255, alpha: 1) }
+	}
 
 	// MARK: - 形状与光影(单位:pt)
 
@@ -62,22 +95,7 @@ enum NNWSoftMaterial {
 	/// 阴影:极淡、极宽。实测贴边仅比背景暗 7 级,扩散约 5pt。
 	static let shadowRadius: CGFloat = 5
 	static let shadowOffsetY: CGFloat = 2
-	static var shadowOpacity: Float { NNWSoftMaterial.isDarkNow ? 0.55 : 0.16 }
 
-	private static var isDarkNow: Bool {
-		UITraitCollection.current.userInterfaceStyle == .dark
-	}
-
-	private static func dynamic(light: UInt32, dark: UInt32) -> UIColor {
-		UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) }
-	}
-
-	private static func rgb(_ v: UInt32) -> UIColor {
-		UIColor(red: CGFloat((v >> 16) & 0xFF) / 255,
-				green: CGFloat((v >> 8) & 0xFF) / 255,
-				blue: CGFloat(v & 0xFF) / 255,
-				alpha: 1)
-	}
 }
 
 // MARK: - 把材质套到一个视图上
@@ -112,6 +130,9 @@ enum NNWSoftMaterial {
 
 		view.backgroundColor = .clear
 
+		// ⚠️ **必须开 masksToBounds**:CAGradientLayer 的 cornerRadius 不开这个不裁切,
+		// 渐变会画成一块**矩形**压在圆角胶囊上(2026-08-04 第一版那"一坨多余的框"就是它)。
+		fill.masksToBounds = true
 		fill.needsDisplayOnBoundsChange = true
 		view.layer.insertSublayer(fill, at: 0)
 
@@ -136,13 +157,13 @@ enum NNWSoftMaterial {
 		let traits = view.traitCollection
 
 		// —— 填充:由上向下变亮 ——
-		let top = kind == .panel ? NNWSoftMaterial.panelTop : NNWSoftMaterial.capsuleTop
-		let bottom = kind == .panel ? NNWSoftMaterial.panelBottom : NNWSoftMaterial.capsuleBottom
+		let colors = kind == .panel ? NNWSoftMaterial.panelColors(for: traits)
+									: NNWSoftMaterial.capsuleColors(for: traits)
+		let top = colors.top, bottom = colors.bottom
 		fill.frame = bounds
 		fill.cornerRadius = cornerRadius
 		fill.cornerCurve = .continuous
-		fill.colors = [top.resolvedColor(with: traits).cgColor,
-					   bottom.resolvedColor(with: traits).cgColor]
+		fill.colors = [top.cgColor, bottom.cgColor]
 
 		// —— 上缘 hairline:最亮在顶,往下迅速衰减 ——
 		let isDark = traits.userInterfaceStyle == .dark

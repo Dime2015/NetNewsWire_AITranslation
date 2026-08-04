@@ -31,7 +31,9 @@ import UIKit
 	static let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 14.5, weight: .medium)
 
 	/// 未翻译:纯 translate 符号(万一系统没有这个名字就退回单气泡,不崩)
-	static let outline: UIImage = baseSymbol
+	/// [外观] 2026-08-04 改为手绘:和 dock 上其余 6 个键同一套笔画(2.1pt 圆头),
+	/// 系统符号混在里面一眼就散。
+	static let outline: UIImage = NNWDockIcons.translate(filled: false)
 
 	/// 已翻译:右下角小勾
 	static let withCheck: UIImage = compose(badge: .check)
@@ -48,10 +50,7 @@ import UIKit
 		case check, solidDot, hollowDot
 	}
 
-	private static var baseSymbol: UIImage {
-		UIImage(systemName: "translate", withConfiguration: symbolConfiguration)
-			?? UIImage(systemName: "character.bubble", withConfiguration: symbolConfiguration)!
-	}
+	private static var baseSymbol: UIImage { NNWDockIcons.translate(filled: false) }
 
 	private static func compose(badge: Badge) -> UIImage {
 
