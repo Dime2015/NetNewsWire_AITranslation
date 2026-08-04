@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="228" fill="#E9E9E7"/>
+  <path d="M146 332V146h186M692 146h186v186M878 692v186H692M332 878H146V692" fill="none" stroke="#747472" stroke-width="26" stroke-linecap="square"/>
+  <text x="405" y="652" text-anchor="middle" fill="#2B2B2A" font-family="Iowan Old Style, Georgia, serif" font-size="438" font-weight="600">B</text>
+  <path d="M540 512h148M654 458l54 54-54 54" fill="none" stroke="#747472" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="735" y="688" text-anchor="middle" fill="#2B2B2A" font-family="Songti SC, Noto Serif CJK SC, serif" font-size="214" font-weight="600">译</text>
+</svg>

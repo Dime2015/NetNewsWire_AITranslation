@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Babel · Reference Concept</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="review">
+      <aside class="review__controls">
+        <p class="review__label">BABEL / REFERENCE STUDY</p>
+        <h1>Soft Shell</h1>
+        <p class="review__intro">保留三张参考图里的内嵌胶囊、粗线图标和高饱和橙色，同时把阅读内容改成连续、克制的平面布局。</p>
+        <label for="screenPicker">页面</label>
+        <select id="screenPicker">
+          <option value="home">主页</option>
+          <option value="list">文章列表</option>
+          <option value="article">文章内容</option>
+          <option value="actions">文章操作菜单</option>
+          <option value="settings">设置主页</option>
+          <option value="language">翻译与语言</option>
+        </select>
+        <div class="review__theme" role="group" aria-label="外观">
+          <button data-theme="light" class="is-active">Light</button>
+          <button data-theme="dark">Dark</button>
+        </div>
+        <div class="review__summary">
+          <span>提炼规则</span>
+          <p>留白与分隔线承担主要层级，只有底部操作区和临时菜单浮起；橙色只标记当前动作。</p>
+        </div>
+      </aside>
+      <section class="review__stage">
+        <div class="phone" id="phone" data-theme="light"></div>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

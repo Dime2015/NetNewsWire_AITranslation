@@ -226,6 +226,7 @@ final class ArticleViewController: UIViewController {
 		// 原来这里按持久的全屏状态,上次退出时藏着的话一进来就藏 —— 那是"点击切全屏"时代的语义;
 		// 现在改成滚动驱动,一进来该看到标题栏和工具栏,往下读才沉浸。
 		currentWebViewController?.showBars()
+		nnwUseFloatingToolbar(true)		// [外观] dock 浮起来:抹掉系统工具栏的底(离开时还原)
 		super.viewWillAppear(animated)
 	}
 
@@ -243,6 +244,7 @@ final class ArticleViewController: UIViewController {
 	}
 
 	override func viewWillDisappear(_ animated: Bool) {
+		nnwUseFloatingToolbar(false)	// [外观] 工具栏是整个导航栈共用的,必须还原
 		super.viewWillDisappear(animated)
 		if searchBar != nil && !searchBar.isHidden {
 			endFind()

@@ -89,14 +89,28 @@ final class NNWArticleControlBoard: UIView {
 	/// 所以换数组**之前**要把旧按钮原样存进来"续命"。删这个属性 = app 秒崩。
 	var legacyItemsKeptAlive: [UIBarButtonItem] = []
 
+	/// [外观] 2026-08-04:dock 的「软面板」材质(渐变 + 上缘 hairline + 极淡阴影)。
+	/// 数值来自对参考图逐像素采样,见 NNWSoftMaterial 的文件头。
+	private let softPanel = NNWSoftPanel(kind: .panel)
+
+	/// [外观] 板子做成一颗完整的胶囊(参考图里的 dock 是全圆角)
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+	}
+
 	/// - Parameters:
 	///   - readerButton: 上游的「阅读视图」按钮实例(状态机自理,整个注入)
 	///   - translationButton: 翻译层的「翻译」按钮实例(同上)
 	init(readerButton: UIView, translationButton: UIView) {
 		super.init(frame: .zero)
 
-		// 图标统一暖墨色(星标点亮时单独换色,在 apply 里)
-		tintColor = AppAppearance.inkPrimary
+		// 图标统一墨色(星标点亮时单独换色,在 apply 里)。
+		// [外观] 软材质档用实测的 #262626 —— 参考图的图标不是纯黑,也不是暖墨。
+		tintColor = NNWSoftMaterial.isEnabled ? NNWSoftMaterial.ink : AppAppearance.inkPrimary
+
+		// [外观] 把 dock 变成一块浮起的软面板。⚠️ 不能开 clipsToBounds,会把阴影裁掉。
+		softPanel.install(in: self)
 
 		// [外观] 统一图标尺寸(2026-07-25 用户指出:最后两键看着偏大 —— 不是错觉):
 		// 注入的阅读视图按钮用的是系统默认符号尺寸,比板上其他键的 17pt 大一圈,
