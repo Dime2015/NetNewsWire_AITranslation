@@ -189,6 +189,12 @@ import UIKit
 		super.layoutSubviews()
 		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
 
+		// ⚠️ **必须先让 stack 排完版再读按钮的 frame**(2026-08-04 用户报"遮罩错位"):
+		// 换档时改的是每格的宽度约束,而 super.layoutSubviews() 只排到 stack 这一层,
+		// stack 内部给三个按钮定位是**之后**才发生的 —— 这时读到的还是上一档的旧宽度,
+		// 胶囊就画到了错的位置。layoutIfNeeded 把内层排版提前逼出来。
+		stack.layoutIfNeeded()
+
 		guard let currentButton = buttons[currentMode], currentButton.bounds.width > 0 else {
 			capsule.isHidden = true
 			return
