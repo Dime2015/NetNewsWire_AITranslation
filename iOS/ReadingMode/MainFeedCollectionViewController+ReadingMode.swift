@@ -151,8 +151,10 @@ extension MainFeedCollectionViewController {
 		// 已经装过就别重造(viewWillAppear 会调很多次)
 		if navigationItem.rightBarButtonItems?.first?.action == #selector(nnwGlobalSearchTapped) { return }
 
-		let search = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
+		// [外观] 2026-08-04:手绘图标 + 橙色(这一页的控件统一重绘)
+		let search = UIBarButtonItem(image: NNWDockIcons.search(),
 									 style: .plain, target: self, action: #selector(nnwGlobalSearchTapped))
+		search.tintColor = NNWSoftMaterial.accent
 		search.accessibilityLabel = "搜索全部订阅源"
 
 		// [管理] 「编辑订阅」入口(2026-07-25 用户拍板的方案乙):
@@ -162,12 +164,39 @@ extension MainFeedCollectionViewController {
 		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
 		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
 		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
-		let edit = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"),
+		let edit = UIBarButtonItem(image: NNWDockIcons.edit(),
 								   style: .plain, target: self, action: #selector(nnwEditSubscriptionsTapped))
+		edit.tintColor = NNWSoftMaterial.accent
 		edit.accessibilityLabel = "编辑订阅"
 
 		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
 		navigationItem.rightBarButtonItems = [search, edit]
+	}
+
+	/// [外观] 2026-08-04:把底部工具栏那两个系统图标(设置齿轮、加号)换成手绘橙图标。
+	///
+	/// ⚠️ **只换 image 和 tintColor,不碰 toolbarItems 的结构** ——
+	/// 那个数组有两个硬约束:① `configureToolbarWithProgressView` 里
+	/// `expectedItemCount == 3` 的守卫(数量一变刷新进度条就永久装不上,L19 那一族);
+	/// ② `addNewItemButton` 是 storyboard 的 IBOutlet,别处还往它身上挂 menu 和 isEnabled。
+	/// 换整个 item 会同时踩这两条。
+	func nnwRestyleToolbarIcons() {
+
+		guard let items = toolbarItems else { return }
+
+		for item in items {
+			guard let action = item.action else { continue }
+			switch action {
+			case #selector(MainFeedCollectionViewController.add(_:)):
+				item.image = NNWDockIcons.plus()
+				item.tintColor = NNWSoftMaterial.accent
+			case #selector(MainFeedCollectionViewController.settings(_:)):
+				item.image = NNWDockIcons.gear()
+				item.tintColor = NNWSoftMaterial.accent
+			default:
+				break
+			}
+		}
 	}
 
 	/// [编辑] 退出编辑模式时**显式**把右上角装回去。

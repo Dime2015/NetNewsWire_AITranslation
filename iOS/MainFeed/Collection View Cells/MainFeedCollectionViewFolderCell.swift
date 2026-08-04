@@ -64,6 +64,7 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			faviconView.isAccessibilityElement = false
 			disclosureButton.isAccessibilityElement = false
 			disclosureButton.addInteraction(UIPointerInteraction())
+			disclosureButton.tintColor = NNWSoftMaterial.accent	// [外观] 2026-08-04:三角跟着这一页的橙色走
 
 			// [外观] 收紧行高、放大图标,并把展开三角从最右挪到最左
 			//(让未读数顶到右边缘,和智能组那几个数字对齐)。实现见 FeedListMetrics。

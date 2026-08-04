@@ -23,7 +23,12 @@ final class MainFeedCollectionHeaderReusableView: UICollectionReusableView {
 	var sectionHeaderType: SectionHeaderType?
 
 	@IBOutlet var headerTitle: UILabel!
-	@IBOutlet var disclosureIndicator: UIImageView!
+	@IBOutlet var disclosureIndicator: UIImageView! {
+		didSet {
+			// [外观] 2026-08-04:展开三角跟着这一页的橙色走
+			disclosureIndicator?.tintColor = NNWSoftMaterial.accent
+		}
+	}
 	@IBOutlet var unreadCountLabel: UILabel!
 
 	private var unreadLabelWidthConstraint: NSLayoutConstraint?

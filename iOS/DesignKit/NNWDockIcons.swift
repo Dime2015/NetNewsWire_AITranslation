@@ -169,6 +169,107 @@ import UIKit
 		}
 		ctx.closePath()
 	}
+
+	// MARK: - 首页那一批(2026-08-04 用户要求:这一页的控件全部重绘 + 橙色)
+
+	/// 搜索:圆 + 手柄
+	static func search() -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX - 1, y: r.midY - 1)
+			ctx.addArc(center: c, radius: 6.8, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+			ctx.strokePath()
+			ctx.move(to: CGPoint(x: c.x + 4.9, y: c.y + 4.9))
+			ctx.addLine(to: CGPoint(x: c.x + 9.4, y: c.y + 9.4))
+			ctx.strokePath()
+		}
+	}
+
+	/// 编辑订阅:方框 + 从右上角伸出的铅笔(沿用用户 2026-07-28 拍板的样子)
+	static func edit() -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX, y: r.midY)
+			// 方框缺右上角一块,给铅笔让位
+			ctx.move(to: CGPoint(x: c.x + 2.5, y: c.y - 8))
+			ctx.addLine(to: CGPoint(x: c.x - 5, y: c.y - 8))
+			ctx.addArc(tangent1End: CGPoint(x: c.x - 8.5, y: c.y - 8),
+					   tangent2End: CGPoint(x: c.x - 8.5, y: c.y - 4.5), radius: 3.5)
+			ctx.addLine(to: CGPoint(x: c.x - 8.5, y: c.y + 5))
+			ctx.addArc(tangent1End: CGPoint(x: c.x - 8.5, y: c.y + 8.5),
+					   tangent2End: CGPoint(x: c.x - 5, y: c.y + 8.5), radius: 3.5)
+			ctx.addLine(to: CGPoint(x: c.x + 5, y: c.y + 8.5))
+			ctx.addArc(tangent1End: CGPoint(x: c.x + 8.5, y: c.y + 8.5),
+					   tangent2End: CGPoint(x: c.x + 8.5, y: c.y + 5), radius: 3.5)
+			ctx.addLine(to: CGPoint(x: c.x + 8.5, y: c.y - 2.5))
+			ctx.strokePath()
+			// 铅笔:一根斜杆 + 笔尖
+			ctx.move(to: CGPoint(x: c.x + 1.5, y: c.y - 1.5))
+			ctx.addLine(to: CGPoint(x: c.x + 8.2, y: c.y - 8.2))
+			ctx.strokePath()
+			ctx.move(to: CGPoint(x: c.x + 4.6, y: c.y - 4.6))
+			ctx.addLine(to: CGPoint(x: c.x + 7.4, y: c.y - 1.8))
+			ctx.strokePath()
+		}
+	}
+
+	/// 设置:齿轮(环 + 8 颗圆头齿)
+	static func gear() -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX, y: r.midY)
+			// 齿轮的关键是**齿要粗且短** —— 细长的齿会读成太阳光芒(第一版就画成了太阳)
+			ctx.addArc(center: c, radius: 5.6, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+			ctx.strokePath()
+			ctx.setLineWidth(3.4)
+			for i in 0..<8 {
+				let a = CGFloat(i) * .pi / 4
+				ctx.move(to: CGPoint(x: c.x + cos(a) * 7.2, y: c.y + sin(a) * 7.2))
+				ctx.addLine(to: CGPoint(x: c.x + cos(a) * 8.9, y: c.y + sin(a) * 8.9))
+			}
+			ctx.strokePath()
+			ctx.setLineWidth(lineWidth)
+		}
+	}
+
+	/// 添加订阅:加号
+	static func plus() -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX, y: r.midY)
+			ctx.move(to: CGPoint(x: c.x - 8, y: c.y)); ctx.addLine(to: CGPoint(x: c.x + 8, y: c.y))
+			ctx.move(to: CGPoint(x: c.x, y: c.y - 8)); ctx.addLine(to: CGPoint(x: c.x, y: c.y + 8))
+			ctx.strokePath()
+		}
+	}
+
+	/// 展开 / 折叠的三角(向下 = 展开)
+	static func chevron(expanded: Bool) -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX, y: r.midY)
+			if expanded {
+				ctx.move(to: CGPoint(x: c.x - 5.5, y: c.y - 2.6))
+				ctx.addLine(to: CGPoint(x: c.x, y: c.y + 2.8))
+				ctx.addLine(to: CGPoint(x: c.x + 5.5, y: c.y - 2.6))
+			} else {
+				ctx.move(to: CGPoint(x: c.x - 2.6, y: c.y - 5.5))
+				ctx.addLine(to: CGPoint(x: c.x + 2.8, y: c.y))
+				ctx.addLine(to: CGPoint(x: c.x - 2.6, y: c.y + 5.5))
+			}
+			ctx.strokePath()
+		}
+	}
+
+	/// 文件夹
+	static func folder() -> UIImage {
+		draw { ctx, r in
+			let c = CGPoint(x: r.midX, y: r.midY)
+			ctx.move(to: CGPoint(x: c.x - 9, y: c.y + 6.5))
+			ctx.addLine(to: CGPoint(x: c.x - 9, y: c.y - 5.5))
+			ctx.addLine(to: CGPoint(x: c.x - 2.5, y: c.y - 5.5))
+			ctx.addLine(to: CGPoint(x: c.x - 0.5, y: c.y - 2.8))
+			ctx.addLine(to: CGPoint(x: c.x + 9, y: c.y - 2.8))
+			ctx.addLine(to: CGPoint(x: c.x + 9, y: c.y + 6.5))
+			ctx.closePath()
+			ctx.strokePath()
+		}
+	}
 }
 
 #endif

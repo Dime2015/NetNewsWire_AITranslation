@@ -93,6 +93,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		// (iPhone 上这个开关本来就默认关着,只有 iPad 默认开 —— 这里把意图写死。)
 		collectionView.dragInteractionEnabled = false
 		becomeFirstResponder()
+		nnwRestyleToolbarIcons()	// [外观] 齿轮 / 加号换手绘橙图标(实现在 +ReadingMode 扩展)
     }
 
 	func configureCurrentActivityButton() {
