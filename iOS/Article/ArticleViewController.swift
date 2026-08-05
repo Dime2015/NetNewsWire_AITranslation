@@ -258,6 +258,8 @@ final class ArticleViewController: UIViewController {
 	override func viewSafeAreaInsetsDidChange() {
 		// This will animate if the show/hide bars animation is happening.
 		view.layoutIfNeeded()
+		nnwUpdateFloatingDockPosition()	// [外观] 浮动 dock 按真安全区重新贴底
+		nnwSyncFloatingDockVisibility()	// [外观] 浮动 dock 跟着栏一起藏/现
 	}
 
 	func updateUI() {
@@ -666,17 +668,20 @@ extension ArticleViewController {
 		// 一被换出数组就释放,上游 updateUI 往空按钮写状态会当场崩(2026-07-25 启动闪退)。
 		board.legacyItemsKeptAlive = toolbarItems ?? []
 
-		let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-		// [外观] 2026-08-04:拆掉 iOS 26 自动套在外面的系统玻璃胶囊 ——
-		// 不拆的话 dock 是"系统胶囊套软面板"两层,中间一道灰缝、阴影也叠两遍。
-		let boardItem = UIBarButtonItem(customView: board)
-		boardItem.nnwHideSystemGlassCapsule()
-		toolbarItems = [flex(), boardItem, flex()]
+		// [外观] 2026-08-05:dock **不再是工具栏里的一个按钮项**,改成浮在正文之上的视图。
+		// 理由(iOS 26/27 的死结:内容穿过栏底 与 单层胶囊 不可兼得)详见
+		// `NNWFloatingDock.swift` 的文件头 + NOTES-todo T40/T42。
+		//
+		// ⚠️ 工具栏这个**壳子留着不动**:它撑起底部安全区,沉浸阅读藏栏/现栏那一整套
+		// (L73/L80~L84 的雷区)因此完全不受影响 —— 我们只是把内容物挪到它上面去画。
+		// 数组清空(老的 6 个按钮已由 board 收养,见上面 legacyItemsKeptAlive)。
+		toolbarItems = []
+		nnwInstallFloatingDock(board)
 	}
 
-	/// [外观] 控件板的查找(扩展里不能存属性,从工具栏里现找,只有一项是它,开销可忽略)。
+	/// [外观] 控件板的查找。dock 搬出工具栏后从关联对象取(见 NNWFloatingDock.swift)。
 	private var nnwControlBoard: NNWArticleControlBoard? {
-		toolbarItems?.lazy.compactMap { $0.customView as? NNWArticleControlBoard }.first
+		nnwFloatingDock
 	}
 
 	/// [外观] 把当前文章状态整包送进控件板。**只允许 updateUI 调用**(单一入口,见 L74)。
