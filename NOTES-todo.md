@@ -1258,7 +1258,15 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 ⚠️ **只验了编译+装机,没验换色**(secondaryAccent 本身就是橙,静态截图看不出差别;
 要验得进设置换个颜色再回首页看文件夹跟不跟着变)。
 
-**②③ 未做**。建议做法:在 `NNWFeedIconStyle`(本 fork 的文件)里加一个
+**②③ 已做**(2026-08-05):新增 `NNWFeedIconStyle.folderTile(for:)` ——
+「软面板圆角方块(28pt / 圆角 7)+ 整圈亮边 + 居中的系统 `folder` 字形(强调色)」,
+装配点一行换一行。材质复用 `NNWSoftMaterial` 的 panelColors / rimWidth / rimAlpha,
+所以玻璃质感和 dock、三档、选单**同源**,不是这里单独调的一套。
+⚠️ **字形用系统 `folder`,没手绘** —— 用户给的参考就是这个形状,而这一轮已经两次
+因为"全套手绘"把定过案的图标换丑(L110/L111);系统字形在这么小的尺寸下描边也更稳。
+⚠️ 返回的是烘焙位图,所以 `isSymbol: false`;方块本身就是底,`isBackgroundSuppressed: true`。
+
+~~建议做法:~~(已实现,以下留档)在 `NNWFeedIconStyle`(本 fork 的文件)里加一个
 `folderTile(for traits:)`,画「软面板圆角方块 + 居中的 `folder` 字形(强调色)」——
 尺寸对齐旁边订阅源的 favicon 方块,材质复用 `NNWSoftPanel`,这样"玻璃质感"和全 app 同源;
 然后把上面那个 didSet 里的 `faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)`
