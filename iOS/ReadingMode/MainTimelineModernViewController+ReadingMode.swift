@@ -121,19 +121,31 @@ extension MainTimelineModernViewController {
 	@objc func nnwRestyleTimelineToolbarIcons() {
 		guard NNWSoftMaterial.isEnabled else { return }
 		nnwObserveStyleChangesForTimelineIcons()
+
+		// ⚠️ **必须从"原图"合成,不能读 `item.image`**(2026-08-05 用户报"底部两个控件变成纯色了")。
+		//
+		// 上一版是 `roundButtonImage(icon: item.image …)` —— 而 `item.image` 正是
+		// **这个函数自己上一次的输出**。第一次跑没事(那时还是上游的原图),
+		// 但补了深浅色/换色观察者之后它会被再次触发,于是**把合成好的圆钮
+		// 又当成图标合成进新的圆钮**,反复几次就糊成一块纯色。
+		//
+		// 判据:**任何"就地改写自己读的那个字段"的函数,都要问一句"跑第二遍会怎样"。**
+		// 这里改成每次都从 `Assets.Images` 的原图现合成 —— 跑一百遍结果都一样。
+		let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+		let markAll = #selector(MainTimelineModernViewController.markAllAsRead(_:)
+								as (MainTimelineModernViewController) -> (Any?) -> Void)
+
 		for item in toolbarItems ?? [] {
 			guard let action = item.action else { continue }
-			// 上游给的原图尺寸不一,先压到 20pt 再合成,免得几颗圆钮里的图标大小不齐
-			let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
-			guard let base = item.image?.applyingSymbolConfiguration(config) ?? item.image else { continue }
-			// ⚠️ `markAllAsRead` 有两个重载(sender 版 / articles 版),`#selector` 会歧义,
-			// 必须把类型标出来指定是哪一个。
-			let markAll = #selector(MainTimelineModernViewController.markAllAsRead(_:)
-									as (MainTimelineModernViewController) -> (Any?) -> Void)
-			if action == markAll || action == #selector(MainTimelineModernViewController.nextUnread(_:)) {
-				item.image = NNWSoftMaterial.roundButtonImage(icon: base, traits: traitCollection)
-				item.nnwHideSystemGlassCapsule()
+			let source: UIImage?
+			switch action {
+			case markAll:	source = Assets.Images.markAllAsRead
+			case #selector(MainTimelineModernViewController.nextUnread(_:)):	source = Assets.Images.nextUnread
+			default:		continue
 			}
+			guard let base = source?.applyingSymbolConfiguration(config) ?? source else { continue }
+			item.image = NNWSoftMaterial.roundButtonImage(icon: base, traits: traitCollection)
+			item.nnwHideSystemGlassCapsule()
 		}
 	}
 
