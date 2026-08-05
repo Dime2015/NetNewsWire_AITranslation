@@ -54,6 +54,17 @@
 import UIKit
 import os
 
+/// [外观] 选单的尺寸定数。**全部来自对参考图 IMG_2442 的逐像素测量**
+/// (比例尺 4.94 px/pt,定法见 NNWSoftMaterial.rimWidth)。
+enum NNWMenuMetrics {
+	/// 文字左边距 / 图标右边距 / 分隔线内缩:实测 167px ÷ 4.94 = **33.8pt**。
+	/// ⚠️ 原来是 18pt —— **不到实测的一半**,卡片因此显得挤。
+	/// 用户 2026-08-05 的原话:「为什么和这个效果看起来还是差了不少」,差的主要就是这个。
+	static let sidePadding: CGFloat = 34
+	/// 顶部图标行两端的内缩:实测三个图标横跨 862…1669,卡片 635…1890 → ≈46pt
+	static let quickRowInset: CGFloat = 46
+}
+
 /// [外观] 自绘品牌选单的对外入口(菜单项、锚点、show 方法都在这个命名空间下)。
 enum NNWMenu {
 
@@ -95,10 +106,10 @@ enum NNWMenu {
 		/// 实测参考图 IMG_2442 的行图标是 85×85px、笔画 10px ——
 		/// 换算成 **17.2pt 见方、笔画 2.0pt**,笔画占比 11.5%。
 		/// SF Symbols 在 `.regular` 下只有约 6%、`.medium` 约 7%,摆在那张卡里明显"太秀气";
-		/// `.semibold` 约 8.5%,是系统符号能给到的最接近值。
+		/// `.semibold` 约 8.5%、`.bold` 约 10.5% —— **用 bold**,是系统符号能给到的最接近值。
 		///(真要 11.5% 得整套手绘,那是另一件事,已记进 NOTES-todo。)
 		@MainActor var resolvedImage: UIImage? {
-			let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+			let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .bold)
 			if let image { return image.applyingSymbolConfiguration(config) ?? image }
 			guard let icon else { return nil }
 			return UIImage(systemName: icon, withConfiguration: config)
@@ -337,7 +348,9 @@ private final class NNWMenuViewController: UIViewController {
 		row.distribution = .fillEqually
 		row.alignment = .fill
 		row.isLayoutMarginsRelativeArrangement = true
-		row.layoutMargins = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+		// 实测参考图:三个图标横跨 862…1669,卡片 635…1890 → 两端各内缩 ≈46pt
+		row.layoutMargins = UIEdgeInsets(top: 6, left: NNWMenuMetrics.quickRowInset,
+										 bottom: 6, right: NNWMenuMetrics.quickRowInset)
 		for item in items {
 			let button = NNWMenuRowControl(item: item, iconOnly: true)
 			button.addTarget(self, action: #selector(rowTapped(_:)), for: .touchUpInside)
@@ -425,8 +438,13 @@ private final class NNWMenuViewController: UIViewController {
 			container.heightAnchor.constraint(equalToConstant: 12),
 			line.heightAnchor.constraint(equalToConstant: hairline),
 			line.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-			line.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-			line.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+			// [外观] 2026-08-05:分隔线**左右内缩**,不通栏。
+			// 实测参考图 IMG_2442:线从 x=799 到 1727,而卡片是 635…1890 ——
+			// 两端各内缩 164px ÷ 4.94 = 33pt,和文字的左边距对齐。
+			line.leadingAnchor.constraint(equalTo: container.leadingAnchor,
+										  constant: NNWMenuMetrics.sidePadding),
+			line.trailingAnchor.constraint(equalTo: container.trailingAnchor,
+										   constant: -NNWMenuMetrics.sidePadding)
 		])
 		return container
 	}
@@ -663,11 +681,11 @@ private final class NNWMenuRowControl: UIControl {
 			iconView.isUserInteractionEnabled = false
 			addSubview(iconView)
 			NSLayoutConstraint.activate([
-				iconView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+				iconView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -NNWMenuMetrics.sidePadding),
 				iconView.widthAnchor.constraint(equalToConstant: 26),
 				iconView.centerYAnchor.constraint(equalTo: centerYAnchor)
 			])
-			labelTrailing = 18 + 26 + 10
+			labelTrailing = NNWMenuMetrics.sidePadding + 26 + 10
 		}
 
 		let label = UILabel()
@@ -685,7 +703,7 @@ private final class NNWMenuRowControl: UIControl {
 		label.isUserInteractionEnabled = false
 		addSubview(label)
 		NSLayoutConstraint.activate([
-			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: NNWMenuMetrics.sidePadding),
 			label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -labelTrailing),
 			// 行高由文字撑:上下各 13pt,系统字号变大行自动变高
 			// [外观] 2026-08-05:上下内边距 13 → 10.5。
