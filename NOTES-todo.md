@@ -1279,6 +1279,15 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 `Assets.Colors.primaryAccent`,xcassets 静态色板、偏陶土色)。
 后者在前者**之后**跑,所以只改 didSet 时颜色纹丝不动。**两处都要改。**
 
+**追加五(2026-08-05):阅读进度环接入调色板**。
+用户:「能否把这个阅读进度条的颜色,也改成受设置里主题色的控制」。
+位置:**文章页头像外面那一圈**(`iOS/Article/ArticleHeaderBar.swift` 的 `applyProgressRing`),
+原来写死 `Assets.Colors.primaryAccent`(xcassets 静态色板)→ 改走 `NNWSoftMaterial.accent`。
+⚠️ `CGColor` 不跟随深浅色,所以要 `resolvedColor(with: iconView.traitCollection)` 再取 —— 
+这个方法每次滚动都跑,所以深浅色变了下一帧就带上新值。
+⚠️ **只验了编译 + 装机,没有肉眼验证**:这圈环只在滚动"飞行"时可见,
+要验得进文章页滚一下、并且换个强调色对比。**下个窗口补验。**
+
 **遗留的不一致(下一步)**:首页与文章列表页那**四颗圆钮**(齿轮/加号/标记已读/下一篇未读)
 仍是**不透明**的 —— 它们的面板是**烘焙进图片**的,而图片里装不下磨砂。
 要它们也透,得改成 customView,但加号身上挂着上游的 `menu`、

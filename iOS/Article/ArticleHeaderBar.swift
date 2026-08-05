@@ -622,7 +622,11 @@ import os
 		CATransaction.setDisableActions(true)
 		ringLayer.path = path.cgPath
 		ringLayer.lineWidth = Style.ringWidth
-		ringLayer.strokeColor = Assets.Colors.primaryAccent.cgColor
+		// [外观] 2026-08-05:一行换一行 —— 走调色板,不走 xcassets 的静态色板。
+		// 原来写死 `Assets.Colors.primaryAccent`,所以在设置里换强调色时**这圈进度环跟不上**。
+		// ⚠️ `CGColor` 不会自己跟随深浅色,所以必须**按当前 traits 解析一次**再取 cgColor
+		// (这个方法每次滚动都跑,深浅色变了下一帧就会带上新值)。
+		ringLayer.strokeColor = NNWSoftMaterial.accent.resolvedColor(with: iconView.traitCollection).cgColor
 		ringLayer.opacity = Float(flight)	// 和冻结同步现身:停在顶部时不需要它
 		ringLayer.strokeEnd = readingProgress(in: scrollView)
 		CATransaction.commit()
