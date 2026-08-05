@@ -44,7 +44,10 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			// 文件夹目前用的是 SF Symbol 图标,会被那边直接原样放行 ——
 			// 这里加上是为了两个 cell 的写法一致,免得以后有人以为只处理了一半。
 			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
-			faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
+			// [外观] 2026-08-05:一行换一行 —— 文件夹图标改用**调色板**的强调色。
+			// 原来走 `Assets.Colors.secondaryAccent`(xcassets 静态色板),
+			// 换强调色时它跟不上,和全 app 脱节。见 NNWAccentPalette。
+			faviconView.tintColor = iconImage?.preferredColor ?? NNWSoftMaterial.accent
 		}
 	}
 

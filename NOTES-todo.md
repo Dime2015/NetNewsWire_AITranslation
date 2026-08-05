@@ -1242,6 +1242,28 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 ⚠️ **判据**:凡是走 `UIBarButtonItem.image` 的自绘图,**画布里的留白会被缩放放大成尺寸误差** ——
 留白越大,实际画出来的东西越小。要精确控制尺寸只能走 customView(但那条路有 menu/isEnabled 的坑)。
 
+**追加四(2026-08-05,用户要求改文件夹图标)—— 只做了 1/3,考古结论先记下,别重查**:
+
+用户要三件事:① 匹配主题色 ② 有一点玻璃质感 ③ 照他给的参考重绘得漂亮简洁
+(参考图是一个粗圆头描边的文件夹轮廓,形状基本就是 SF Symbol `folder`)。
+
+**考古结论(下一个窗口直接用,别再查一遍)**:
+- 这个图标**不是** `NNWDockIcons.folder()` —— 那个 2026-08-04 画了但**全仓没有任何调用**,是死代码。
+- 真正的来路:上游的 `IconImage` → `NNWFeedIconStyle.styled(...)`,
+  装配点在 `iOS/MainFeed/Collection View Cells/MainFeedCollectionViewFolderCell.swift`
+  的 `iconImage` didSet 里(两行:设 `faviconView.iconImage`、设 `faviconView.tintColor`)。
+
+**① 已做**:tint 从 `Assets.Colors.secondaryAccent`(xcassets 静态色板,换强调色跟不上)
+改成 `NNWSoftMaterial.accent`(走调色板)。一行换一行。
+⚠️ **只验了编译+装机,没验换色**(secondaryAccent 本身就是橙,静态截图看不出差别;
+要验得进设置换个颜色再回首页看文件夹跟不跟着变)。
+
+**②③ 未做**。建议做法:在 `NNWFeedIconStyle`(本 fork 的文件)里加一个
+`folderTile(for traits:)`,画「软面板圆角方块 + 居中的 `folder` 字形(强调色)」——
+尺寸对齐旁边订阅源的 favicon 方块,材质复用 `NNWSoftPanel`,这样"玻璃质感"和全 app 同源;
+然后把上面那个 didSet 里的 `faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)`
+**一行换一行**换成它。⚠️ 动手前先确认 `IconImage` 的构造签名(没读过)。
+
 **遗留的不一致(下一步)**:首页与文章列表页那**四颗圆钮**(齿轮/加号/标记已读/下一篇未读)
 仍是**不透明**的 —— 它们的面板是**烘焙进图片**的,而图片里装不下磨砂。
 要它们也透,得改成 customView,但加号身上挂着上游的 `menu`、
