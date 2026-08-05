@@ -257,15 +257,41 @@ import UIKit
 	}
 
 	/// 文件夹
+	/// 文件夹。**2026-08-05 按用户提供的参考图重画**(上一版是折线拼的,转角全是尖的,
+	/// 和这套 dock 图标"粗线 + 圆头"的语言对不上,用户的评价是"和上一次区别不大")。
+	///
+	/// 形状要点(比例取自参考图 512px 原图,已归一到 24pt 画布):
+	/// - 机身几乎占满画布,**宽高比约 1 : 0.83**(不是正方形,矮一点才像文件夹)
+	/// - 左上是**抬高的页签**,占宽度约 1/3;从页签右端**斜下**到机身上缘,
+	///   斜边两端各有一个**小圆角**(参考图那两处是圆的,不是尖角)——这是最像不像的地方
+	/// - 四角大圆角 2.4,斜边两端小圆角 1.2
+	///
+	/// ⚠️ 输出是**模板图**(`draw` 帮手负责),所以颜色由宿主的 tintColor 决定 ——
+	/// 用户要求"能够随主题色变色",靠的就是这一点:装配点设 `NNWSoftMaterial.accent`。
+	/// **别改成烘焙好颜色的位图**,那样就跟不了主题色了。
 	static func folder() -> UIImage {
 		draw { ctx, r in
-			let c = CGPoint(x: r.midX, y: r.midY)
-			ctx.move(to: CGPoint(x: c.x - 9, y: c.y + 6.5))
-			ctx.addLine(to: CGPoint(x: c.x - 9, y: c.y - 5.5))
-			ctx.addLine(to: CGPoint(x: c.x - 2.5, y: c.y - 5.5))
-			ctx.addLine(to: CGPoint(x: c.x - 0.5, y: c.y - 2.8))
-			ctx.addLine(to: CGPoint(x: c.x + 9, y: c.y - 2.8))
-			ctx.addLine(to: CGPoint(x: c.x + 9, y: c.y + 6.5))
+			let left = r.minX + 2.4, right = r.maxX - 2.4
+			let top = r.minY + 4.4					// 页签上缘
+			let shoulder = r.minY + 7.6				// 机身上缘(比页签低)
+			let bottom = r.maxY - 3.6
+			let tabRight = left + (right - left) * 0.34		// 页签右端
+			let notchRight = left + (right - left) * 0.52	// 斜边落到机身上缘的位置
+			let big: CGFloat = 2.4, small: CGFloat = 1.2
+
+			ctx.move(to: CGPoint(x: left, y: (top + bottom) / 2))
+			ctx.addArc(tangent1End: CGPoint(x: left, y: top),
+					   tangent2End: CGPoint(x: tabRight, y: top), radius: big)
+			ctx.addArc(tangent1End: CGPoint(x: tabRight, y: top),
+					   tangent2End: CGPoint(x: notchRight, y: shoulder), radius: small)
+			ctx.addArc(tangent1End: CGPoint(x: notchRight, y: shoulder),
+					   tangent2End: CGPoint(x: right, y: shoulder), radius: small)
+			ctx.addArc(tangent1End: CGPoint(x: right, y: shoulder),
+					   tangent2End: CGPoint(x: right, y: bottom), radius: big)
+			ctx.addArc(tangent1End: CGPoint(x: right, y: bottom),
+					   tangent2End: CGPoint(x: left, y: bottom), radius: big)
+			ctx.addArc(tangent1End: CGPoint(x: left, y: bottom),
+					   tangent2End: CGPoint(x: left, y: top), radius: big)
 			ctx.closePath()
 			ctx.strokePath()
 		}
