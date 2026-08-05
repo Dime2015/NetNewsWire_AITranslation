@@ -33,7 +33,7 @@ import UIKit
 	/// 未翻译:纯 translate 符号(万一系统没有这个名字就退回单气泡,不崩)
 	/// [外观] 2026-08-04 改为手绘:和 dock 上其余 6 个键同一套笔画(2.1pt 圆头),
 	/// 系统符号混在里面一眼就散。
-	static let outline: UIImage = NNWDockIcons.translate(filled: false)
+	static let outline: UIImage = baseSymbol
 
 	/// 已翻译:右下角小勾
 	static let withCheck: UIImage = compose(badge: .check)
@@ -50,7 +50,16 @@ import UIKit
 		case check, solidDot, hollowDot
 	}
 
-	private static var baseSymbol: UIImage { NNWDockIcons.translate(filled: false) }
+	/// [外观] 2026-08-05 **改回系统 SF「translate」符号**(用户:「这三个太丑了」)。
+	///
+	/// ⚠️ 这个图标 2026-07-30 已经**三轮选型定过案**(T38:单气泡「字」→ 自绘双气泡
+	/// (用户嫌丑)→ **系统 translate 符号**),字号 14.5pt 也是三次调出来的
+	/// (17 显大 → 15 略大 → 14 太小)。2026-08-04 那轮"全套手绘"把它换掉了 ——
+	/// 那是把已经定案的东西推翻重来,不该发生。
+	private static var baseSymbol: UIImage {
+		UIImage(systemName: "translate", withConfiguration: symbolConfiguration)
+			?? UIImage(systemName: "character.bubble", withConfiguration: symbolConfiguration)!
+	}
 
 	private static func compose(badge: Badge) -> UIImage {
 

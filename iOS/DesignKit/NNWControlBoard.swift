@@ -132,9 +132,15 @@ final class NNWArticleControlBoard: UIView {
 
 		nextUnreadButton.setImage(NNWDockIcons.nextUnread())	// [外观] 手绘,和整套 dock 同一套笔画
 		nextUnreadButton.accessibilityLabel = NSLocalizedString("Next Unread Article", comment: "Next Unread Article")
-		longImageButton.setImage(NNWDockIcons.longImage())	// [外观] 手绘
+		// [外观] 2026-08-05 **改回上一版**(用户:「分享/长图/翻译这三个太丑了」)。
+		//
+		// ⚠️ 2026-08-04 那轮"7 个图标全部手绘"顺手把这两个也换了 —— 但**长图那个
+		// 用户在 2026-07-25 已经验收过四版**(见 NNWIcons.longImageShare 的注释:
+		// 虚线选取框 + 相机,是截图工具的通用语法)。把签过字的东西换掉是我的错。
+		// 判据:**重绘一整套之前,先查这套里有没有已经单独定过案的** —— 那些要留。
+		longImageButton.setImage(NNWIcons.longImageShare())	// 自绘:虚线选取框 + 相机(2026-07-25 定案)
 		longImageButton.accessibilityLabel = "分享长图"
-		shareButton.setImage(NNWDockIcons.share())			// [外观] 手绘
+		shareButton.setSymbol("square.and.arrow.up")		// 系统符号,和 iOS 各处的"分享"一致
 		shareButton.accessibilityLabel = NSLocalizedString("Share", comment: "Share")
 
 		// 7 键平均间隔,顺序即用户拍板的布局(2026-07-25 二版:去分隔线)
