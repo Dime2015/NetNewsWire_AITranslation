@@ -271,13 +271,17 @@ import UIKit
 	/// **别改成烘焙好颜色的位图**,那样就跟不了主题色了。
 	static func folder() -> UIImage {
 		draw { ctx, r in
-			let left = r.minX + 2.4, right = r.maxX - 2.4
-			let top = r.minY + 4.4					// 页签上缘
-			let shoulder = r.minY + 7.6				// 机身上缘(比页签低)
-			let bottom = r.maxY - 3.6
+			// [外观] 2026-08-05 二版:整体**收小到八成**(用户:「再小一些,显得高级一点」)。
+			// 一起把线宽从整套的 2.1 收到 1.9 —— 图形缩小而线宽不变的话,
+			// 笔画占比会相对变粗,反而更"壮"、不是要的那个轻。
+			ctx.setLineWidth(1.9)
+			let left = r.minX + 4.4, right = r.maxX - 4.4
+			let top = r.minY + 6.0					// 页签上缘
+			let shoulder = r.minY + 8.6				// 机身上缘(比页签低)
+			let bottom = r.maxY - 5.2
 			let tabRight = left + (right - left) * 0.34		// 页签右端
 			let notchRight = left + (right - left) * 0.52	// 斜边落到机身上缘的位置
-			let big: CGFloat = 2.4, small: CGFloat = 1.2
+			let big: CGFloat = 2.0, small: CGFloat = 1.0	// 缩小后圆角同比收
 
 			ctx.move(to: CGPoint(x: left, y: (top + bottom) / 2))
 			ctx.addArc(tangent1End: CGPoint(x: left, y: top),
