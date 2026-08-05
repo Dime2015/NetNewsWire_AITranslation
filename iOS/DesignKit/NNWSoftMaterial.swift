@@ -199,12 +199,12 @@ enum NNWSoftMaterial {
 	///   - icon: 24×24 的模板图(`NNWDockIcons` 那一套)
 	///   - traits: 用哪一套深浅色/缩放来画。**传宿主视图的 `traitCollection`**,别传 `.current`
 	///   - tint: 图标颜色,默认强调橙
-	///   - diameter: 面板直径。默认 34 = 三档控件的高度,两者并排时一样高
+	///   - diameter: 面板直径。默认 40 = 三档控件的高度,两者并排时一样高
 	@MainActor
 	static func roundButtonImage(icon: UIImage,
 								 traits: UITraitCollection,
 								 tint: UIColor? = nil,
-								 diameter: CGFloat = 34) -> UIImage {
+								 diameter: CGFloat = 40) -> UIImage {
 
 		let scale = traits.displayScale > 0
 			? traits.displayScale
@@ -222,19 +222,14 @@ enum NNWSoftMaterial {
 										  traits: UITraitCollection,
 										  scale: CGFloat) -> UIImage {
 
-		// ⚠️ **余量要尽量小**(2026-08-05,用户报"三个控件大小不一样")。
+		// 阴影要画在图片里,所以四周留一点余量(否则会被画布边缘切掉)。
 		//
-		// UIBarButtonItem 会把图片**缩放到约 28pt 以内**。余量也算进画布,
-		// 所以余量越大、圆盘在画布里的占比越小、缩放后就越小:
-		// 原来 44pt 画布配 34pt 圆盘(占 77%),缩放后圆盘只剩 **21.7pt**,
-		// 而旁边的三档控件是 34pt —— 并排一眼就看出不一样。
-		// 现在把余量压到 1.5pt(圆盘占 96%),缩放后约 27pt。
-		// 阴影因此几乎没有余量可画 —— 影响很小,这套材质的层次本来就主要靠亮边。
-		// 余量取到最小(只留够抗锯齿)。反推过:实测圆盘 28.3pt / 画布 37pt →
-		// **UIKit 把 bar button 的图片渲染到约 31pt**。圆盘占比越高、渲染出来越大,
-		// 所以这里压到 0.5 —— 圆盘约 30pt,是这条通道能给到的上限。
-		// 再大只能改走 customView(那条路要自己转发 menu 和 isEnabled,见 NOTES-todo)。
-		let pad: CGFloat = 0.5
+		// ⚠️ **更正(2026-08-05)**:这里曾经写着"UIBarButtonItem 会把图片缩放到
+		// 约 28–31pt",还据此把余量抠到 0.5 —— **那个结论是错的**。
+		// 它是从一次错误测量推出来的:竖扫圆形量到的是**弦**不是直径(见 L109)。
+		// 重测:直径给 44 就真的画出 **44.3pt** —— 图片是 **1:1 渲染,没有上限**。
+		// 所以尺寸想给多大就给多大,余量也不必抠;这里留 2pt 够画阴影。
+		let pad: CGFloat = 2
 		let side = diameter + pad * 2
 		let rect = CGRect(x: pad, y: pad, width: diameter, height: diameter)
 		let colors = panelColors(for: traits)

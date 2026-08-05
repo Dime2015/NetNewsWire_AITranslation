@@ -46,14 +46,13 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
-	/// ⚠️ 这个高度要和**旁边两颗圆钮的实际直径**对齐(2026-08-05,用户报"大小不一样")。
-	///
-	/// 圆钮走 `UIBarButtonItem.image` 通道,会被 UIKit 缩放,所以它的实际直径
-	/// 取决于"圆盘在画布里占多大比例" —— 把阴影余量压到 0.5pt 之后,**实测 34.3pt**。
+	/// 这个高度要和**旁边两颗圆钮的直径**一致(用户 2026-08-05 要求整体做高一点,
+	/// 并明确授权"旁边两个控件也同时做大")。
+	/// 改这个数时,`NNWSoftMaterial.roundButtonImage` 的 `diameter` 默认值要同步改。
 	///
 	/// ⚠️ **量圆的直径要横扫取最宽处,别竖扫**:竖扫如果没扫在圆心上,
-	/// 量到的是**弦**不是直径,会低估(这个坑当天就踩了一次,把 34.3 量成了 21.7)。
-	private static let barHeight: CGFloat = 34
+	/// 量到的是**弦**不是直径,会低估(L109 —— 当天就是这个错让我一路改反了方向)。
+	private static let barHeight: CGFloat = 40
 	private static let buttonSpacing: CGFloat = 2
 
 	/// 总宽恒定 —— 这是整个设计的地基,别改成"按内容算"
