@@ -57,7 +57,9 @@ import UIKit
 	private let stack = UIStackView()
 
 	/// [外观] 2026-08-04:整条做成软面板,当前档是一颗浮起的胶囊(参考图里的 Chat|History)
-	private let softPanel = NNWSoftPanel(kind: .panel)
+	// [外观] 2026-08-05:改成**真磨砂** —— 这一条浮在文章列表上方,
+	// 底下是滚动的文章。不透明的话等于把唯一有内容可透的地方盖死了。
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
 	private let capsule = UIView()
 	private let capsuleMaterial = NNWSoftPanel(kind: .capsule)
 	private var buttons: [NNWReadingMode: UIButton] = [:]

@@ -309,6 +309,8 @@ enum NNWSoftMaterial {
 	private let fill = CAGradientLayer()
 	private let rim = CAGradientLayer()
 	private let rimMask = CAShapeLayer()
+	/// 半透明档垫在最底下的那层真磨砂(不透明档为 nil)
+	private var blurView: UIVisualEffectView?
 
 	init(kind: Kind, translucent: Bool = false) {
 		self.kind = kind
@@ -321,11 +323,30 @@ enum NNWSoftMaterial {
 
 		view.backgroundColor = .clear
 
+		// [外观] 2026-08-05:半透明档在最底下垫一层**真磨砂**,让下面的内容透上来。
+		//
+		// ⚠️ 图层顺序是这里唯一的坑:`insertSublayer(at: 0)` 加的是**裸图层**,
+		// 它永远排在**子视图**的图层下面 —— 磨砂是子视图,会把 fill / rim 整个盖住。
+		// 解法:半透明档把 fill / rim 挂到**磨砂自己的 contentView** 上。
+		// 于是顺序天然正确:磨砂(底) → fill → rim → 宿主原有的子视图(按钮、文字)。
+		let host: UIView
+		if isTranslucent {
+			let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+			blur.isUserInteractionEnabled = false
+			blur.layer.masksToBounds = true
+			blur.layer.cornerCurve = .continuous
+			view.insertSubview(blur, at: 0)
+			blurView = blur
+			host = blur.contentView
+		} else {
+			host = view
+		}
+
 		// ⚠️ **必须开 masksToBounds**:CAGradientLayer 的 cornerRadius 不开这个不裁切,
 		// 渐变会画成一块**矩形**压在圆角胶囊上(2026-08-04 第一版那"一坨多余的框"就是它)。
 		fill.masksToBounds = true
 		fill.needsDisplayOnBoundsChange = true
-		view.layer.insertSublayer(fill, at: 0)
+		host.layer.insertSublayer(fill, at: 0)
 
 		// 上缘高光:用一层「白→透明」的竖向渐变,再用描边形状把它裁成一圈线。
 		// 直接用 CAShapeLayer 的 strokeColor 做不到"沿高度衰减"。
@@ -333,7 +354,7 @@ enum NNWSoftMaterial {
 		rimMask.strokeColor = UIColor.black.cgColor
 		rimMask.lineWidth = NNWSoftMaterial.rimWidth
 		rim.mask = rimMask
-		view.layer.insertSublayer(rim, above: fill)
+		host.layer.insertSublayer(rim, above: fill)
 
 		view.layer.shadowRadius = NNWSoftMaterial.shadowRadius
 		view.layer.shadowOffset = CGSize(width: 0, height: NNWSoftMaterial.shadowOffsetY)
@@ -346,6 +367,10 @@ enum NNWSoftMaterial {
 
 		let bounds = view.bounds
 		let traits = view.traitCollection
+
+		// 磨砂跟着宿主走(它自己裁圆角 —— 宿主不能裁,裁了阴影就没了)
+		blurView?.frame = bounds
+		blurView?.layer.cornerRadius = cornerRadius
 
 		// —— 填充:由上向下变亮 ——
 		let colors = kind == .panel ? NNWSoftMaterial.panelColors(for: traits)

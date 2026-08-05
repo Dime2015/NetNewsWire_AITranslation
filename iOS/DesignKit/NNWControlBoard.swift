@@ -93,7 +93,8 @@ final class NNWArticleControlBoard: UIView {
 
 	/// [外观] 2026-08-04:dock 的「软面板」材质(渐变 + 上缘 hairline + 极淡阴影)。
 	/// 数值来自对参考图逐像素采样,见 NNWSoftMaterial 的文件头。
-	private let softPanel = NNWSoftPanel(kind: .panel)
+	// [外观] 2026-08-05:改成**真磨砂**,正文从 dock 底下透上来
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
 
 	/// [外观] 板子做成一颗完整的胶囊(参考图里的 dock 是全圆角)
 	override func layoutSubviews() {

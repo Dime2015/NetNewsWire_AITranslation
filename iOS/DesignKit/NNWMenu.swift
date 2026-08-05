@@ -198,7 +198,8 @@ private final class NNWMenuViewController: UIViewController {
 	private let shadowHost = UIView()					// 只负责投影 + 弹出动画(不裁切)
 	private let card = UIView()							// 负责圆角裁切(裁切层画不了阴影,见文件头)
 	/// [外观] 卡片的软面板材质(和 dock / 三档同一套)
-	private let softPanel = NNWSoftPanel(kind: .panel)
+	/// [外观] 2026-08-05:**真磨砂** —— 选单压在整页内容上,这是最能体现玻璃的位置
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
 	private let scrollView = UIScrollView()				// 选项列表;超高时在这里面滚
 	private var placed = false							// 位置只算一次(见文件头 L73 那条)
 	private var isClosing = false
