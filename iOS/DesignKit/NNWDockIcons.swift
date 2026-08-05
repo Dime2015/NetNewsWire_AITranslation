@@ -275,10 +275,17 @@ import UIKit
 			// 一起把线宽从整套的 2.1 收到 1.9 —— 图形缩小而线宽不变的话,
 			// 笔画占比会相对变粗,反而更"壮"、不是要的那个轻。
 			ctx.setLineWidth(1.9)
-			let left = r.minX + 4.4, right = r.maxX - 4.4
-			let top = r.minY + 6.0					// 页签上缘
-			let shoulder = r.minY + 8.6				// 机身上缘(比页签低)
-			let bottom = r.maxY - 5.2
+			// ⚠️ **竖向要在画布里居中**(2026-08-05,用户"和后面的字没对齐"):
+			// 上一版 y 是 6.0→18.8,中心 12.4,而画布中心是 12.0 —— **偏下 0.4pt**。
+			// 上下内缩取同一个数就自然居中了,别再一个 6.0 一个 5.2。
+			//
+			// ⚠️ **右边少留白**(用户"间隔稍微远了一点"):
+			// 图形缩小时左右都加了内缩,等于在图标右边凭空多出空白,
+			// 视觉上就是"图标离文字远了"。所以**左多缩、右少缩**,整体往文字那边靠。
+			let left = r.minX + 5.6, right = r.maxX - 3.2
+			let top = r.minY + 5.6					// 页签上缘
+			let shoulder = r.minY + 8.2				// 机身上缘(比页签低)
+			let bottom = r.maxY - 5.6
 			let tabRight = left + (right - left) * 0.34		// 页签右端
 			let notchRight = left + (right - left) * 0.52	// 斜边落到机身上缘的位置
 			let big: CGFloat = 2.0, small: CGFloat = 1.0	// 缩小后圆角同比收
