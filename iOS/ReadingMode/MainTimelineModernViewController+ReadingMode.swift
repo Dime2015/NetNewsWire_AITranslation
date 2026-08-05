@@ -89,7 +89,7 @@ extension MainTimelineModernViewController {
 		if coordinator?.timelineFeed is Feed {
 			// [外观] 2026-08-05:和首页那两颗同一套 —— 手绘图标 + 磨砂圆钮 + 拆系统玻璃胶囊。
 			// 这两颗也压在**头图**上,所以底必须是真磨砂(理由见 NNWSoftGlassButton 文件头)。
-			let button = NNWSoftGlassButton(icon: NNWDockIcons.gear())
+			let button = NNWSoftGlassButton(icon: MainFeedCollectionViewController.nnwNavSymbol("gearshape"))
 			button.addTarget(self, action: #selector(nnwFeedSettingsTapped), for: .touchUpInside)
 			button.accessibilityLabel = "源信息与设置"
 			let gear = UIBarButtonItem(customView: button)
@@ -101,7 +101,7 @@ extension MainTimelineModernViewController {
 	}
 
 	@objc func nnwSearchBarButtonItem() -> UIBarButtonItem {
-		let button = NNWSoftGlassButton(icon: NNWDockIcons.search())
+		let button = NNWSoftGlassButton(icon: MainFeedCollectionViewController.nnwNavSymbol("magnifyingglass"))
 		button.addTarget(self, action: #selector(nnwSearchTapped), for: .touchUpInside)
 		button.accessibilityLabel = "搜索文章"
 		let item = UIBarButtonItem(customView: button)

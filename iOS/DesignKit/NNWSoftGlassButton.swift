@@ -35,10 +35,11 @@ import UIKit
 
 @MainActor final class NNWSoftGlassButton: UIControl {
 
-	/// 可见圆盘直径。和 `NNWReadingModeBar.barHeight`、`roundButtonImage` 的默认直径对齐。
-	static let discSize: CGFloat = 34
+	/// 可见圆盘直径 —— **读全 app 的唯一真源**,别在这里写死。
+	/// 用户 2026-08-05:「以后都一直保持一样」。见 `NNWSoftMaterial.controlDiameter`。
+	static var discSize: CGFloat { NNWSoftMaterial.controlDiameter }
 	/// 点按区边长(苹果最小标准)。圆盘在中间,四周 5pt 只吃点按。
-	static let hitSize: CGFloat = 44
+	static var hitSize: CGFloat { max(44, discSize + 4) }
 
 	/// 磨砂底。⚠️ 它必须在最下面,而且要自己裁圆角。
 	private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))

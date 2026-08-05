@@ -46,13 +46,11 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
-	/// 这个高度要和**旁边两颗圆钮的直径**一致(用户 2026-08-05 要求整体做高一点,
-	/// 并明确授权"旁边两个控件也同时做大")。
-	/// 改这个数时,`NNWSoftMaterial.roundButtonImage` 的 `diameter` 默认值要同步改。
+	/// 高度 —— **读全 app 的唯一真源**,别在这里写死(用户 2026-08-05:「以后都一直保持一样」)。
 	///
 	/// ⚠️ **量圆的直径要横扫取最宽处,别竖扫**:竖扫如果没扫在圆心上,
 	/// 量到的是**弦**不是直径,会低估(L109 —— 当天就是这个错让我一路改反了方向)。
-	private static let barHeight: CGFloat = 40
+	private static var barHeight: CGFloat { NNWSoftMaterial.controlDiameter }
 	private static let buttonSpacing: CGFloat = 2
 	/// 选中胶囊比它那一格四周各收多少(实测参考图 ≈3.2pt,取 3.5 让"小一点"更明确)
 	private static let capsuleInset: CGFloat = 3.5

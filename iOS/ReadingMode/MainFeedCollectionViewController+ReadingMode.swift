@@ -161,7 +161,7 @@ extension MainFeedCollectionViewController {
 		// 和底栏中间那条三档同一套材质(整圈亮边 + 极淡阴影)。
 		// ⚠️ 这两颗压在**头图**上,所以底必须是真磨砂,不能用工具栏那种烘焙的不透明圆盘
 		// (试过,是两张贴纸)。缘由见 NNWSoftGlassButton 的文件头。
-		let search = UIBarButtonItem(customView: nnwGlassButton(icon: NNWDockIcons.search(),
+		let search = UIBarButtonItem(customView: nnwGlassButton(icon: Self.nnwNavSymbol("magnifyingglass"),
 															   action: #selector(nnwGlobalSearchTapped),
 															   label: "搜索全部订阅源"))
 		search.nnwHideSystemGlassCapsule()
@@ -174,7 +174,11 @@ extension MainFeedCollectionViewController {
 		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
 		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
 		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
-		let edit = UIBarButtonItem(customView: nnwGlassButton(icon: NNWDockIcons.edit(),
+		// [外观] 2026-08-05 **改回定过案的那版**(用户:「重绘左边的这个,太丑了」)。
+		// ⚠️ 这个图标 2026-07-28 已经三版定案:光秃秃的 pencil → pencil.circle.fill(用户说丑)
+		// → **square.and.pencil**(方框 + 从右上角伸出的铅笔,用户指定)。
+		// 2026-08-04 那轮"全套手绘"又把它换掉了 —— 和分享/长图/翻译是同一个错误(L110)。
+		let edit = UIBarButtonItem(customView: nnwGlassButton(icon: Self.nnwNavSymbol("square.and.pencil"),
 															 action: #selector(nnwEditSubscriptionsTapped),
 															 label: "编辑订阅"))
 		edit.nnwHideSystemGlassCapsule()
@@ -182,6 +186,14 @@ extension MainFeedCollectionViewController {
 
 		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
 		navigationItem.rightBarButtonItems = [search, edit]
+	}
+
+	/// [外观] 导航栏圆钮里的系统符号。字号跟着圆钮直径走(约 45%),
+	/// 这样以后改 `NNWSoftMaterial.controlDiameter`,图标会自己按比例变。
+	static func nnwNavSymbol(_ name: String) -> UIImage {
+		let size = (NNWSoftMaterial.controlDiameter * 0.45).rounded()
+		let config = UIImage.SymbolConfiguration(pointSize: size, weight: .medium)
+		return UIImage(systemName: name, withConfiguration: config) ?? UIImage()
 	}
 
 	/// [外观] 造一颗导航栏用的磨砂圆钮。

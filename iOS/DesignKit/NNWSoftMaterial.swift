@@ -54,6 +54,16 @@ enum NNWSoftMaterial {
 	/// 总开关。false = 完全不生效,控件回到改动前的样子。
 	static let isEnabled = true
 
+	/// **全 app 圆形/胶囊控件的统一尺寸(直径 = 高度)。这是唯一真源。**
+	///
+	/// ⚠️ 用户 2026-08-05 明确要求:「以后都一直保持一样(如果又要修改任何一方)」。
+	/// 所以**别再在别处写死尺寸** —— 下面这些全部读这一个数:
+	///   · 首页 / 文章列表页导航栏的磨砂圆钮(`NNWSoftGlassButton.discSize`)
+	///   · 底部工具栏的烘焙圆钮(`roundButtonImage` 的 diameter 默认值)
+	///   · 三档控件的高度(`NNWReadingModeBar.barHeight`)
+	/// 改这一个数,三处一起变;想只改一处 = 违背用户的要求,别这么干。
+	static let controlDiameter: CGFloat = 40
+
 	// MARK: - 颜色:**相对于 app 自身的底色**推导,不用参考图的绝对色号
 	//
 	// ⚠️ 2026-08-04 第一版就栽在这里:直接把参考图的冷灰 #E5/#E7 搬进来,
@@ -199,12 +209,12 @@ enum NNWSoftMaterial {
 	///   - icon: 24×24 的模板图(`NNWDockIcons` 那一套)
 	///   - traits: 用哪一套深浅色/缩放来画。**传宿主视图的 `traitCollection`**,别传 `.current`
 	///   - tint: 图标颜色,默认强调橙
-	///   - diameter: 面板直径。默认 40 = 三档控件的高度,两者并排时一样高
+	///   - diameter: 面板直径。默认走 `controlDiameter`(全 app 唯一真源),别单独传值
 	@MainActor
 	static func roundButtonImage(icon: UIImage,
 								 traits: UITraitCollection,
 								 tint: UIColor? = nil,
-								 diameter: CGFloat = 40) -> UIImage {
+								 diameter: CGFloat = controlDiameter) -> UIImage {
 
 		let scale = traits.displayScale > 0
 			? traits.displayScale
