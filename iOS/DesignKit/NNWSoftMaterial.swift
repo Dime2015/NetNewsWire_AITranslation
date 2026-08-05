@@ -230,7 +230,11 @@ enum NNWSoftMaterial {
 		// 而旁边的三档控件是 34pt —— 并排一眼就看出不一样。
 		// 现在把余量压到 1.5pt(圆盘占 96%),缩放后约 27pt。
 		// 阴影因此几乎没有余量可画 —— 影响很小,这套材质的层次本来就主要靠亮边。
-		let pad: CGFloat = 1.5
+		// 余量取到最小(只留够抗锯齿)。反推过:实测圆盘 28.3pt / 画布 37pt →
+		// **UIKit 把 bar button 的图片渲染到约 31pt**。圆盘占比越高、渲染出来越大,
+		// 所以这里压到 0.5 —— 圆盘约 30pt,是这条通道能给到的上限。
+		// 再大只能改走 customView(那条路要自己转发 menu 和 isEnabled,见 NOTES-todo)。
+		let pad: CGFloat = 0.5
 		let side = diameter + pad * 2
 		let rect = CGRect(x: pad, y: pad, width: diameter, height: diameter)
 		let colors = panelColors(for: traits)

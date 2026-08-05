@@ -46,10 +46,14 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
-	/// ⚠️ 这个高度要和**烘焙圆钮缩放后的实际直径**对齐(2026-08-05)。
-	/// 圆钮走 UIBarButtonItem 的图片通道,会被 UIKit 缩到约 28pt —— 我们够不到 34pt,
-	/// 所以反过来把这条也降到 28,三个控件才一样大。
-	private static let barHeight: CGFloat = 28
+	/// ⚠️ 这个高度要和**旁边两颗圆钮的实际直径**对齐(2026-08-05,用户报"大小不一样")。
+	///
+	/// 圆钮走 `UIBarButtonItem.image` 通道,会被 UIKit 缩放,所以它的实际直径
+	/// 取决于"圆盘在画布里占多大比例" —— 把阴影余量压到 0.5pt 之后,**实测 34.3pt**。
+	///
+	/// ⚠️ **量圆的直径要横扫取最宽处,别竖扫**:竖扫如果没扫在圆心上,
+	/// 量到的是**弦**不是直径,会低估(这个坑当天就踩了一次,把 34.3 量成了 21.7)。
+	private static let barHeight: CGFloat = 34
 	private static let buttonSpacing: CGFloat = 2
 
 	/// 总宽恒定 —— 这是整个设计的地基,别改成"按内容算"
@@ -210,7 +214,7 @@ import UIKit
 		}
 		capsule.isHidden = false
 		// 胶囊贴着当前那一格,上下各收 3pt —— 参考图里胶囊比槽矮一圈
-		capsule.frame = convert(currentButton.bounds, from: currentButton).insetBy(dx: 0, dy: 3)
+		capsule.frame = convert(currentButton.bounds, from: currentButton).insetBy(dx: 0, dy: 2.5)
 		capsuleMaterial.layout(in: capsule, cornerRadius: capsule.bounds.height / 2)
 	}
 }
