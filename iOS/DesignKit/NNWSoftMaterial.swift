@@ -54,6 +54,37 @@ enum NNWSoftMaterial {
 	/// 总开关。false = 完全不生效,控件回到改动前的样子。
 	static let isEnabled = true
 
+	/// **iOS 27 起:栏里那层胶囊由系统画,我们不再自己画** —— 这是唯一真源,别在各处重复判断版本。
+	///
+	/// ## 为什么必须分版本(2026-08-05,在用户的 iOS 27 真机上逐条件实测出来的)
+	///
+	/// iOS 26/27 会给栏里的每一项(或一组)垫一层液态玻璃胶囊。我们原本用
+	/// `hidesSharedBackground = true` 把它拆掉,好让自己那层软面板成为唯一的一层。
+	/// **但在 iOS 27 上,那层"共享背景"顺带管着「内容能不能从栏底下穿过去」** ——
+	/// 一拆,正文就在栏上沿被硬切断,栏那块变成一条不透明黑带(用户报的「遮罩」和
+	/// 「没有渐隐」是同一个病的两个症状)。实测数据见 `nnwHideSystemGlassCapsule` 的注释。
+	///
+	/// 于是 iOS 27 上只剩两种可能,**不能兼得**:
+	///
+	/// | | 内容穿过栏底 | 单层 |
+	/// |---|---|---|
+	/// | 拆掉系统胶囊 + 画我们的面板 | ❌ 硬切断 | ✅ |
+	/// | 保留系统胶囊 + 画我们的面板 | ✅ | ❌ **两层套娃**(用户 2026-08-05 截图指出) |
+	/// | **保留系统胶囊 + 不画我们的面板** | ✅ | ✅ ← 就是这条 |
+	///
+	/// ⚠️ 查过 SDK:`hidesSharedBackground` 是唯一相关的开关,
+	/// **没有"保留行为、只隐藏外观"的第三种接口**。所以这不是偷懒,是没有别的路。
+	///
+	/// **iOS 26 保持原样**(那里拆掉系统胶囊没有副作用,不拆反而是套娃),
+	/// 已逐像素确认改动前后零差异。
+	///
+	/// ⚠️ **这个开关只管"栏里的控件"**。自绘选单(`NNWMenu`)不在栏里、
+	/// 系统不给它垫胶囊,那里照旧画我们自己的软面板 —— **别把它也关掉**。
+	static var systemDrawsBarCapsule: Bool {
+		ProcessInfo.processInfo.isOperatingSystemAtLeast(
+			OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
+	}
+
 	/// **全 app 圆形/胶囊控件的统一尺寸(直径 = 高度)。这是唯一真源。**
 	///
 	/// ⚠️ 用户 2026-08-05 明确要求:「以后都一直保持一样(如果又要修改任何一方)」。
@@ -215,6 +246,14 @@ enum NNWSoftMaterial {
 								 traits: UITraitCollection,
 								 tint: UIColor? = nil,
 								 diameter: CGFloat = controlDiameter) -> UIImage {
+
+		// [外观] iOS 27+:胶囊由系统的液态玻璃画,这里**只出图标**,
+		// 再烘焙一层自己的面板就是两层套娃(用户 2026-08-05 真机截图指出)。
+		// 详见 `NNWSoftMaterial.systemDrawsBarCapsule`。
+		if systemDrawsBarCapsule {
+			return icon.withTintColor((tint ?? accent).resolvedColor(with: traits),
+									  renderingMode: .alwaysOriginal)
+		}
 
 		let scale = traits.displayScale > 0
 			? traits.displayScale
@@ -497,8 +536,37 @@ extension UIBarButtonItem {
 	/// ⚠️ 这是 iOS 26 的正规接口(`hidesSharedBackground`),不是 hack,
 	/// 而且是**逐项**的属性 —— `toolbarItems` 数组一个字节都没动,
 	/// `expectedItemCount == 3` 的守卫和 `addNewItemButton` 的 IBOutlet 都不受影响。
+	///
+	/// ## ⚠️ 2026-08-05:iOS 27 起**不能再拆**,拆了会把「内容从栏底下穿过去」一起弄丢
+	///
+	/// 用户在 iOS 27 真机上报「底栏没有那道柔和的渐隐,是硬切断」。
+	/// 在真机上逐条件实测(app 自己截图采样、把数字打进日志)后定位到就是这一句:
+	///
+	/// | 条件 | 内容→底栏 交界处每行平均亮度 |
+	/// |---|---|
+	/// | 拆胶囊(原样) | 214 → **55 → 33**(4 个像素掉到底,硬切) |
+	/// | **不拆胶囊** | 214 → **195 → 225**(内容一路穿到 dock 底下) |
+	///
+	/// **病根不是"渐隐丢了",是内容压根没滚到栏底下去** ——
+	/// 栏底下没东西,自然没什么可渐隐的,同时那条不透明黑带就是用户之前说的「遮罩」。
+	/// 一句话:iOS 27 上「共享背景」顺带管着"内容能不能从栏底下穿过去",拆掉就一起没了。
+	/// (这正是 L114 那条判据的又一次:**"让某个系统外壳消失"时,
+	///  先想清楚那层外壳还顺带提供了什么** —— 上一轮以为丢的是渐隐,其实丢的是可视区域。)
+	///
+	/// **两条已实测排除、别再走**:
+	/// - `UIScrollView.bottomEdgeEffect`(style/isHidden):对 WKWebView **完全无效** ——
+	///   反向强制关掉它,画面逐像素不变。
+	/// - `UIScrollEdgeElementContainerInteraction`:挂上去了(有日志),画面**逐行完全不变**。
+	///
+	/// **为什么按版本分道,而不是干脆不拆**:iOS 26 上不拆就是两层胶囊套娃(已在 26 模拟器上
+	/// 复现并截图确认);而 iOS 27 上不拆本来就只有一层,拆了反而坏事。**两个系统要的相反。**
 	func nnwHideSystemGlassCapsule() {
 		guard NNWSoftMaterial.isEnabled else { return }
+		// iOS 27+:不拆。系统只画一层,拆了会连带弄丢"内容穿过栏底"。
+		if ProcessInfo.processInfo.isOperatingSystemAtLeast(
+			OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)) {
+			return
+		}
 		if #available(iOS 26, *) {
 			hidesSharedBackground = true
 		}
@@ -511,20 +579,26 @@ extension UIScrollView {
 
 	/// [外观] 2026-08-05:把**底部边缘的渐隐**打开。
 	///
-	/// ## 为什么需要这一条(用户:「没有边缘的渐变,这个部分坏了」)
+	/// ## ⚠️⚠️ 2026-08-05 更正:**这个函数没有修好任何东西,原来的解释是错的**
 	///
-	/// iOS 26 起,滚动视图和栏交界处有一道系统画的**渐隐**(`UIScrollEdgeEffect`)——
-	/// 内容滚到栏附近会柔和淡出,而不是硬生生被切断。**创世版里这道渐隐是有的**,
-	/// 因为那时工具栏用的是系统自带的底。
+	/// 原注释说「为了让 dock 浮起来把工具栏拍平,那道渐隐是随着栏的底一起被拍掉的,
+	/// 所以直接向滚动视图要回来」。这套因果**已在 iOS 26 模拟器和 iOS 27 真机上双双证伪**:
 	///
-	/// 而我们为了让 dock"浮"起来,在三处调了 `configureWithTransparentBackground()`
-	/// 把工具栏整个拍平 —— **那道渐隐是随着栏的底一起被拍掉的**,
-	/// 我当时只想着"把套娃的第二层去掉",没意识到还连带拿掉了这个。
+	/// - **拍平不拍平根本无关**:iOS 27 真机上,拍平与不拍平两张截图**逐字节完全相同**。
+	/// - **这个函数是空操作**:把它反过来、强制 `isHidden = true`(日志回读确认真的写进去了),
+	///   画面**逐像素不变**。`bottomEdgeEffect` 对 WKWebView 根本不起作用。
+	/// - `UIScrollEdgeElementContainerInteraction` 也试过(有日志确认挂上了),**逐行不变**。
 	///
-	/// 修法不是把栏的底装回去(那样套娃就回来了),而是**直接向滚动视图要这道渐隐** ——
-	/// 它本来就是滚动视图的属性,和栏有没有底无关。
+	/// **真正的病根是 `hidesSharedBackground`**(见上面 `nnwHideSystemGlassCapsule` 的注释):
+	/// iOS 27 上拆掉共享背景,内容就不再从栏底下穿过去了 —— 栏底下没内容,自然没得渐隐。
 	///
-	/// ⚠️ 判据:**"让某个系统外壳消失"时,先想清楚那层外壳还顺带提供了什么。**
+	/// ## 那为什么还留着这个函数
+	///
+	/// 上面的证伪是在**文章页的 WKWebView** 上做的。首页和文章列表页用的是普通
+	/// `UICollectionView`,那上面 `bottomEdgeEffect` **有没有用没验过**,
+	/// 所以不动它 —— 删一个没验过的东西,风险大于留着一个无害的调用。
+	/// ⚠️ **但别再把它当成"渐隐的修法"** —— 它至少在正文页什么都没做。
+	/// 清理与否见 NOTES-todo 的 T41。
 	func nnwEnableSoftBottomEdgeFade() {
 		guard NNWSoftMaterial.isEnabled else { return }
 		if #available(iOS 26, *) {

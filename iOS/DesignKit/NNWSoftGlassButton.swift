@@ -70,7 +70,15 @@ import UIKit
 
 		material.isUserInteractionEnabled = false
 		addSubview(material)
-		softPanel.install(in: material)
+		// [外观] iOS 27+:导航栏里这颗的底由系统的液态玻璃画,我们不画磨砂圆盘也不画亮边,
+		// 否则就是"系统胶囊里再套一颗圆钮"(用户 2026-08-05 真机截图指出)。
+		// 见 NNWSoftMaterial.systemDrawsBarCapsule
+		if !NNWSoftMaterial.systemDrawsBarCapsule {
+			softPanel.install(in: material)
+		} else {
+			blur.isHidden = true
+			material.isHidden = true
+		}
 
 		iconView.image = icon.withRenderingMode(.alwaysTemplate)
 		iconView.tintColor = tint ?? NNWSoftMaterial.accent
@@ -109,7 +117,10 @@ import UIKit
 		blur.frame = disc
 		blur.layer.cornerRadius = Self.discSize / 2
 		material.frame = disc
-		softPanel.layout(in: material, cornerRadius: Self.discSize / 2)
+		// iOS 27+ 不画我们这层底(系统画),只摆图标
+		if !NNWSoftMaterial.systemDrawsBarCapsule {
+			softPanel.layout(in: material, cornerRadius: Self.discSize / 2)
+		}
 		iconView.frame = bounds
 	}
 

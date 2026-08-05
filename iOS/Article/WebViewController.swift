@@ -1393,14 +1393,13 @@ extension WebViewController {
 		webView.underPageBackgroundColor = .clear	// 橡皮筋区域也交给 UIKit,纸色只留一个来源
 		view.backgroundColor = AppAppearance.paperBackground	// ← 纸色的唯一来源(动态色,自适应深浅)
 
-		// [外观] 2026-08-05:补回**底部边缘的渐隐**(用户:「文章内容页的底栏还是有问题」)。
-		//
-		// 文章页为了让 dock 浮起来,把工具栏的底拍平了(`nnwUseFloatingToolbar`),
-		// 而 iOS 26 那道"内容接近栏就柔和淡出"的系统渐隐,是**随着栏的底一起被拍掉的**。
-		// 首页和文章列表页已经补过,这一页当时没接上 —— 因为 `webView` 是本类 private,
-		// 从 ArticleViewController 够不着(上一次就是插错了地方,插到了导航栏那段)。
-		// 在这里接才对:这是唯一能拿到这个 WKWebView 的地方。
+		// ⚠️ 2026-08-05 更正:这一行**在本页什么都没做**(实测:反过来强制关掉它,
+		// 画面逐像素不变 —— `bottomEdgeEffect` 对 WKWebView 不起作用)。
+		// 原来写在这里的那套"拍平工具栏把渐隐一起拍掉了"的解释**是错的,已证伪**。
+		// 真正的病根是 `hidesSharedBackground`,修在 `nnwHideSystemGlassCapsule` 里。
+		// 留着它只是因为无害;详见 NNWSoftMaterial 里该函数的注释与 NOTES-todo T41。
 		webView.scrollView.nnwEnableSoftBottomEdgeFade()
+
 	}
 
 	/// 告诉导航栏「请盯着本页的滚动视图」,这样系统才肯给出「顶部透明 / 滚动毛玻璃」两态。

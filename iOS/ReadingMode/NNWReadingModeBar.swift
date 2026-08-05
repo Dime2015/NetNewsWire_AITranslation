@@ -81,8 +81,13 @@ import UIKit
 		stack.alignment = .center
 		stack.distribution = .fill
 		stack.spacing = Self.buttonSpacing
-		// [外观] 面板 + 胶囊要垫在按钮**下面**,先加它们
-		softPanel.install(in: self)
+		// [外观] 面板 + 胶囊要垫在按钮**下面**,先加它们。
+		// ⚠️ iOS 27+ 跳过**外面这层面板**(那里由系统的液态玻璃画,再画就是套娃),
+		// 但下面那个 `capsuleMaterial` **要留着** —— 它是"当前选中哪一档"的指示器,
+		// 不是栏的背景,系统不会替我们画。见 NNWSoftMaterial.systemDrawsBarCapsule
+		if !NNWSoftMaterial.systemDrawsBarCapsule {
+			softPanel.install(in: self)
+		}
 		capsule.isUserInteractionEnabled = false
 		addSubview(capsule)
 		capsuleMaterial.install(in: capsule)
@@ -199,7 +204,10 @@ import UIKit
 	/// [外观] 面板与胶囊按当前档重画。胶囊对准当前那一格。
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+		// iOS 27+ 不画外层面板(系统画),但下面的选中胶囊照旧要排版
+		if !NNWSoftMaterial.systemDrawsBarCapsule {
+			softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+		}
 
 		// ⚠️ **必须先让 stack 排完版再读按钮的 frame**(2026-08-04 用户报"遮罩错位"):
 		// 换档时改的是每格的宽度约束,而 super.layoutSubviews() 只排到 stack 这一层,

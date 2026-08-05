@@ -99,6 +99,8 @@ final class NNWArticleControlBoard: UIView {
 	/// [外观] 板子做成一颗完整的胶囊(参考图里的 dock 是全圆角)
 	override func layoutSubviews() {
 		super.layoutSubviews()
+		// [外观] iOS 27+ 由系统画胶囊,我们不画(否则两层)。见 NNWSoftMaterial.systemDrawsBarCapsule
+		guard !NNWSoftMaterial.systemDrawsBarCapsule else { return }
 		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
 	}
 
@@ -113,7 +115,10 @@ final class NNWArticleControlBoard: UIView {
 		tintColor = NNWSoftMaterial.isEnabled ? NNWSoftMaterial.ink : AppAppearance.inkPrimary
 
 		// [外观] 把 dock 变成一块浮起的软面板。⚠️ 不能开 clipsToBounds,会把阴影裁掉。
-		softPanel.install(in: self)
+		// iOS 27+ 跳过:那里胶囊由系统的液态玻璃画,再画一层就是套娃。
+		if !NNWSoftMaterial.systemDrawsBarCapsule {
+			softPanel.install(in: self)
+		}
 
 		// [外观] 统一图标尺寸(2026-07-25 用户指出:最后两键看着偏大 —— 不是错觉):
 		// 注入的阅读视图按钮用的是系统默认符号尺寸,比板上其他键的 17pt 大一圈,
