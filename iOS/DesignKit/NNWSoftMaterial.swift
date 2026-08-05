@@ -331,7 +331,7 @@ enum NNWSoftMaterial {
 		// 于是顺序天然正确:磨砂(底) → fill → rim → 宿主原有的子视图(按钮、文字)。
 		let host: UIView
 		if isTranslucent {
-			let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+			let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
 			blur.isUserInteractionEnabled = false
 			blur.layer.masksToBounds = true
 			blur.layer.cornerCurve = .continuous
@@ -375,9 +375,23 @@ enum NNWSoftMaterial {
 		// —— 填充:由上向下变亮 ——
 		let colors = kind == .panel ? NNWSoftMaterial.panelColors(for: traits)
 									: NNWSoftMaterial.capsuleColors(for: traits)
-		// 半透明档只留一层极淡的染色,主要的"底"由下面的磨砂负责
-		let tint: CGFloat = isTranslucent ? 0.32 : 1
-		let top = colors.top.withAlphaComponent(tint), bottom = colors.bottom.withAlphaComponent(tint)
+		// [外观] 2026-08-05 二版:半透明档在磨砂之上叠一层**白**,而不是叠一层"底色"。
+		//
+		// ⚠️ 为什么必须是白:磨砂玻璃压在**深色内容**上会跟着变灰 —— 实测三档控件
+		// 从不透明版的 233 掉到 230,而且**随背后内容浮动**(参考图是恒定的 232)。
+		// 用户的原话是「不够白不够亮」,量出来确实如此,而且是上一版改出来的。
+		// 苹果自己的 `*Material` 也是这么干的:模糊之上再压一层浅色,
+		// 让面板亮度**基本不受背后内容影响**,同时仍然透得出轮廓。
+		//
+		// 白的浓度是这里唯一的旋钮:调高 = 更白更亮但更不透,调低 = 更透但会跟着背景变灰。
+		let top: UIColor, bottom: UIColor
+		if isTranslucent {
+			top = UIColor.white.withAlphaComponent(0.52)
+			bottom = UIColor.white.withAlphaComponent(0.60)
+		} else {
+			top = colors.top
+			bottom = colors.bottom
+		}
 		fill.frame = bounds
 		fill.cornerRadius = cornerRadius
 		fill.cornerCurve = .continuous
