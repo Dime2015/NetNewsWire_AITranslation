@@ -54,6 +54,8 @@ import UIKit
 	/// 量到的是**弦**不是直径,会低估(L109 —— 当天就是这个错让我一路改反了方向)。
 	private static let barHeight: CGFloat = 40
 	private static let buttonSpacing: CGFloat = 2
+	/// 选中胶囊比它那一格四周各收多少(实测参考图 ≈3.2pt,取 3.5 让"小一点"更明确)
+	private static let capsuleInset: CGFloat = 3.5
 
 	/// 总宽恒定 —— 这是整个设计的地基,别改成"按内容算"
 	private static var totalWidth: CGFloat {
@@ -212,8 +214,14 @@ import UIKit
 			return
 		}
 		capsule.isHidden = false
-		// 胶囊贴着当前那一格,上下各收 3pt —— 参考图里胶囊比槽矮一圈
-		capsule.frame = convert(currentButton.bounds, from: currentButton).insetBy(dx: 0, dy: 2.5)
+		// 胶囊比它那一格四周都收一圈 —— 参考图里胶囊是"嵌在槽里"的,四边都留缝。
+		//
+		// ⚠️ **左右也要收**(2026-08-05,用户报"在框体边缘时看不出内外的区别")。
+		// 原来写的是 `dx: 0` —— 只收了上下。选中格在**最左或最右**时,
+		// 胶囊的边就直接贴上轨道的亮边,两层叠在一起,间隔完全消失。
+		// 实测参考图 IMG_2440:胶囊左缘 x=680、轨道左缘 x=664 → 缝 16px ÷ 4.94 = **3.2pt**。
+		capsule.frame = convert(currentButton.bounds, from: currentButton)
+			.insetBy(dx: Self.capsuleInset, dy: Self.capsuleInset)
 		capsuleMaterial.layout(in: capsule, cornerRadius: capsule.bounds.height / 2)
 	}
 }
