@@ -222,10 +222,15 @@ enum NNWSoftMaterial {
 										  traits: UITraitCollection,
 										  scale: CGFloat) -> UIImage {
 
-		// 阴影要画在图片里,所以四周留出余量(否则会被画布边缘切掉)。
-		// ⚠️ 余量也算进图片尺寸,而 UIBarButtonItem 是**按图片原尺寸**摆的 ——
-		// 总边长必须压在栏高(44pt)以内,否则导航栏会挤爆、把按钮折进「…」。
-		let pad: CGFloat = 5
+		// ⚠️ **余量要尽量小**(2026-08-05,用户报"三个控件大小不一样")。
+		//
+		// UIBarButtonItem 会把图片**缩放到约 28pt 以内**。余量也算进画布,
+		// 所以余量越大、圆盘在画布里的占比越小、缩放后就越小:
+		// 原来 44pt 画布配 34pt 圆盘(占 77%),缩放后圆盘只剩 **21.7pt**,
+		// 而旁边的三档控件是 34pt —— 并排一眼就看出不一样。
+		// 现在把余量压到 1.5pt(圆盘占 96%),缩放后约 27pt。
+		// 阴影因此几乎没有余量可画 —— 影响很小,这套材质的层次本来就主要靠亮边。
+		let pad: CGFloat = 1.5
 		let side = diameter + pad * 2
 		let rect = CGRect(x: pad, y: pad, width: diameter, height: diameter)
 		let colors = panelColors(for: traits)
@@ -244,7 +249,7 @@ enum NNWSoftMaterial {
 			// 余量只有 5pt,模糊半径按余量收一档,免得影子被画布边缘切出一条硬边
 			ctx.saveGState()
 			ctx.setShadow(offset: CGSize(width: 0, height: shadowOffsetY),
-						  blur: pad * 1.6,
+						  blur: pad * 2,
 						  color: UIColor.black.withAlphaComponent(CGFloat(shadowOpacity(for: traits))).cgColor)
 			colors.top.resolvedColor(with: traits).setFill()
 			circle.fill()

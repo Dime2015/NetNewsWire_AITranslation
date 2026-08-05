@@ -46,7 +46,10 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
-	private static let barHeight: CGFloat = 34
+	/// ⚠️ 这个高度要和**烘焙圆钮缩放后的实际直径**对齐(2026-08-05)。
+	/// 圆钮走 UIBarButtonItem 的图片通道,会被 UIKit 缩到约 28pt —— 我们够不到 34pt,
+	/// 所以反过来把这条也降到 28,三个控件才一样大。
+	private static let barHeight: CGFloat = 28
 	private static let buttonSpacing: CGFloat = 2
 
 	/// 总宽恒定 —— 这是整个设计的地基,别改成"按内容算"
