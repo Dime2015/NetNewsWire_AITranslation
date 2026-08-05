@@ -82,6 +82,10 @@ final class SettingsViewController: UITableViewController {
 		super.tableView(tableView, numberOfRowsInSection: Section.appearance.rawValue)
 	}
 
+	/// [外观] 本 fork 新增:「强调色」排在「界面语言」后面。
+	/// 换色影响全 app 走 `NNWSoftMaterial.accent` 的所有地方,见 NNWAccentPalette。
+	private var accentColorRowIndex: Int { interfaceLanguageRowIndex + 1 }
+
 	private weak var opmlAccount: Account?
 
 	@IBOutlet var timelineSortOrderSwitch: UISwitch!
@@ -225,8 +229,8 @@ final class SettingsViewController: UITableViewController {
 			// 它正好是 TimelineRow 的最后一行(rawValue = 4),所以减 1 即可,不需要重排索引。
 			return super.tableView(tableView, numberOfRowsInSection: section) - 1
 		case .appearance:
-			// [翻译] 本 fork 新增:末尾多一行「界面语言」
-			return super.tableView(tableView, numberOfRowsInSection: section) + 1
+			// [翻译] 末尾多一行「界面语言」;[外观] 再多一行「强调色」
+			return super.tableView(tableView, numberOfRowsInSection: section) + 2
 		case .troubleshooting:
 			let defaultNumberOfRows = super.tableView(tableView, numberOfRowsInSection: section)
 			if !AccountManager.shared.hasiCloudAccount {
@@ -274,6 +278,13 @@ final class SettingsViewController: UITableViewController {
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
 			cell.textLabel?.text = "界面语言"
 			cell.detailTextLabel?.text = AppLanguageController.currentDisplayName
+			cell.accessoryType = .disclosureIndicator
+		case .appearance where indexPath.row == accentColorRowIndex:
+			// [外观] 强调色:一键换掉全 app 的橙(2026-08-05 用户要求做成设置项)
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "强调色"
+			cell.detailTextLabel?.text = NNWAccentPalette.choice.displayName
+			cell.detailTextLabel?.textColor = NNWSoftMaterial.accent
 			cell.accessoryType = .disclosureIndicator
 		default:
 			cell = super.tableView(tableView, cellForRowAt: indexPath)
@@ -340,6 +351,8 @@ final class SettingsViewController: UITableViewController {
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			let picker = AppLanguagePickerViewController(style: .insetGrouped)
 			self.navigationController?.pushViewController(picker, animated: true)
+		case .appearance where indexPath.row == accentColorRowIndex:
+			nnwShowAccentColorPicker(from: indexPath)
 		case .articles:
 			switch ArticlesRow(rawValue: indexPath.row) {
 			case .theme:

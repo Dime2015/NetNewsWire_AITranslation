@@ -218,11 +218,15 @@ extension FeedInspectorViewController {
 		guard let urlString else {
 			return nil
 		}
-		return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+		return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
 			let copyAction = UIAction(title: title, image: Assets.Images.copy) { _ in
 				UIPasteboard.general.string = urlString
 			}
-			return UIMenu(title: "", children: [copyAction])
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单。只有一项,不提顶部图标行
+			guard let self else { return UIMenu(title: "", children: [copyAction]) }
+			return self.nnwSoftMenu(UIMenu(title: "", children: [copyAction]),
+									anchor: self.nnwMenuAnchor(atPoint: point, in: tableView),
+									quickActionCount: 0)
 		}
 	}
 

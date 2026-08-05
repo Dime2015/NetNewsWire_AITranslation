@@ -560,7 +560,12 @@ extension MainTimelineModernViewController: UICollectionViewDelegate {
 				menuElements.append(UIMenu(title: "", options: .displayInline, children: [action]))
 			}
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行只放头两项(已读 / 星标)—— 后面的「标记以上为已读」这类
+			// 摘掉文字就认不出来了,必须留在文字行里。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: firstIndex),
+									quickActionCount: 2)
 
 		})
 	}
@@ -877,6 +882,7 @@ private extension MainTimelineModernViewController {
 			}
 		}
 		updateToolbarProgressView()
+		nnwRestyleTimelineToolbarIcons()	// [外观] 加一行:两颗工具栏键换软面板圆钮(实现在 +ReadingMode 扩展)
 	}
 
 	func resetUI(resetScroll: Bool) {

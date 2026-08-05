@@ -87,8 +87,13 @@ extension MainTimelineModernViewController {
 	@objc func nnwNavBarButtonItems() -> [UIBarButtonItem] {
 		var items = [nnwSearchBarButtonItem()]
 		if coordinator?.timelineFeed is Feed {
-			let gear = UIBarButtonItem(image: UIImage(systemName: "gearshape"),
-									   style: .plain, target: self, action: #selector(nnwFeedSettingsTapped))
+			// [外观] 2026-08-05:和首页那两颗同一套 —— 手绘图标 + 磨砂圆钮 + 拆系统玻璃胶囊。
+			// 这两颗也压在**头图**上,所以底必须是真磨砂(理由见 NNWSoftGlassButton 文件头)。
+			let button = NNWSoftGlassButton(icon: NNWDockIcons.gear())
+			button.addTarget(self, action: #selector(nnwFeedSettingsTapped), for: .touchUpInside)
+			button.accessibilityLabel = "源信息与设置"
+			let gear = UIBarButtonItem(customView: button)
+			gear.nnwHideSystemGlassCapsule()
 			gear.accessibilityLabel = "源信息与设置"
 			items.append(gear)
 		}
@@ -96,10 +101,37 @@ extension MainTimelineModernViewController {
 	}
 
 	@objc func nnwSearchBarButtonItem() -> UIBarButtonItem {
-		let item = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
-								   style: .plain, target: self, action: #selector(nnwSearchTapped))
+		let button = NNWSoftGlassButton(icon: NNWDockIcons.search())
+		button.addTarget(self, action: #selector(nnwSearchTapped), for: .touchUpInside)
+		button.accessibilityLabel = "搜索文章"
+		let item = UIBarButtonItem(customView: button)
+		item.nnwHideSystemGlassCapsule()
 		item.accessibilityLabel = "搜索文章"
 		return item
+	}
+
+	/// [外观] 2026-08-05:把本页底部工具栏那两颗(标记全部已读 / 下一篇未读)
+	/// 换成和首页齿轮、加号同一套的**软面板圆钮**。
+	///
+	/// ⚠️ 只换 `image` —— `markAllAsReadButton` 是 storyboard 的 IBOutlet、
+	/// `nextUnreadButton` 上游还在改 `isEnabled`,换掉对象会打断那些写入点。
+	/// 面板烘焙进图片的做法与首页完全一致(见 NNWSoftMaterial.roundButtonImage)。
+	@objc func nnwRestyleTimelineToolbarIcons() {
+		guard NNWSoftMaterial.isEnabled else { return }
+		for item in toolbarItems ?? [] {
+			guard let action = item.action else { continue }
+			// 上游给的原图尺寸不一,先压到 20pt 再合成,免得几颗圆钮里的图标大小不齐
+			let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+			guard let base = item.image?.applyingSymbolConfiguration(config) ?? item.image else { continue }
+			// ⚠️ `markAllAsRead` 有两个重载(sender 版 / articles 版),`#selector` 会歧义,
+			// 必须把类型标出来指定是哪一个。
+			let markAll = #selector(MainTimelineModernViewController.markAllAsRead(_:)
+									as (MainTimelineModernViewController) -> (Any?) -> Void)
+			if action == markAll || action == #selector(MainTimelineModernViewController.nextUnread(_:)) {
+				item.image = NNWSoftMaterial.roundButtonImage(icon: base, traits: traitCollection)
+				item.nnwHideSystemGlassCapsule()
+			}
+		}
 	}
 
 	@objc private func nnwSearchTapped() {

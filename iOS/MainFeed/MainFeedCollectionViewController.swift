@@ -1018,7 +1018,9 @@ extension MainFeedCollectionViewController: UIContextMenuInteractionDelegate {
 
 			menuElements.append(UIMenu(title: "", options: .displayInline, children: [self.deactivateAccountAction(account: account)]))
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(atPoint: location, in: interaction.view))
 		}
 	}
 
@@ -1075,7 +1077,11 @@ extension MainFeedCollectionViewController {
 										   ]))
 			}
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行放头两项(显示简介 / 打开主页)—— 只有这两个摘掉文字还认得出。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: indexPath),
+									quickActionCount: 2)
 		})
 	}
 
@@ -1099,7 +1105,9 @@ extension MainFeedCollectionViewController {
 										self.deleteAction(indexPath: indexPath)
 									   ]))
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: indexPath))
 
 		})
 	}
@@ -1109,8 +1117,11 @@ extension MainFeedCollectionViewController {
 			return nil
 		}
 
-		return UIContextMenuConfiguration(identifier: MainFeedRowIdentifier(indexPath: indexPath), previewProvider: nil, actionProvider: { _ in
-			return UIMenu(title: "", children: [markAllAction])
+		return UIContextMenuConfiguration(identifier: MainFeedRowIdentifier(indexPath: indexPath), previewProvider: nil, actionProvider: { [weak self] _ in
+			// [外观] 一行换一行:同上。只有一项,不提顶部图标行
+			guard let self else { return UIMenu(title: "", children: [markAllAction]) }
+			return self.nnwSoftMenu(UIMenu(title: "", children: [markAllAction]),
+									anchor: self.nnwMenuAnchor(for: indexPath), quickActionCount: 0)
 		})
 	}
 

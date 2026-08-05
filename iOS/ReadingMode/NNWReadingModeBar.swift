@@ -110,6 +110,10 @@ import UIKit
 		// 所以每条都自己盯着通知,不用谁去挨个通知谁。
 		NotificationCenter.default.addObserver(self, selector: #selector(modeDidChange),
 											   name: NNWReadingModeStore.didChangeNotification, object: nil)
+		// [外观] 换强调色之后当前档的字色要跟着变 —— 颜色是在 makeConfiguration 里
+		// 一次性写进 UIButton.Configuration 的,不会自己刷新,必须重跑一遍。
+		NotificationCenter.default.addObserver(self, selector: #selector(modeDidChange),
+											   name: NNWAccentPalette.didChangeNotification, object: nil)
 
 		apply(mode: NNWReadingModeStore.shared.mode)
 	}

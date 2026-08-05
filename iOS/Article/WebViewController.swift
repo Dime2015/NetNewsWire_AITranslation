@@ -395,7 +395,11 @@ extension WebViewController: UIContextMenuInteractionDelegate {
 			menus.append(UIMenu(title: "", options: .displayInline, children: [self.toggleArticleExtractorAction()]))
 			menus.append(UIMenu(title: "", options: .displayInline, children: [self.shareAction()]))
 
-			return UIMenu(title: "", children: menus)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行放头两项(上一篇 / 下一篇)—— 箭头是最不需要文字的一类图标。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menus),
+									anchor: self.nnwMenuAnchor(atPoint: location, in: interaction.view),
+									quickActionCount: 2)
         }
     }
 

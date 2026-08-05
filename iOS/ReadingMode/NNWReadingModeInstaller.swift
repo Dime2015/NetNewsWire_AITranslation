@@ -34,13 +34,22 @@ extension UIViewController {
 	func nnwReadingModeBarItem(onSelect: @escaping (NNWReadingMode) -> Void) -> UIBarButtonItem {
 
 		if let existing = nnwReadingModeBar {
-			return UIBarButtonItem(customView: existing)
+			return Self.nnwWrap(existing)
 		}
 
 		let bar = NNWReadingModeBar()
 		bar.onSelect = onSelect
 		nnwReadingModeBar = bar
-		return UIBarButtonItem(customView: bar)
+		return Self.nnwWrap(bar)
+	}
+
+	/// [外观] 2026-08-04:包成工具栏项时**顺手拆掉 iOS 26 的系统玻璃胶囊**。
+	/// 不拆的话屏幕上是"系统胶囊套我们的软面板"两层,中间一道灰缝 + 两道阴影
+	/// (用户看到的"后面有个阴影")。详见 `UIBarButtonItem.nnwHideSystemGlassCapsule()`。
+	private static func nnwWrap(_ bar: NNWReadingModeBar) -> UIBarButtonItem {
+		let item = UIBarButtonItem(customView: bar)
+		item.nnwHideSystemGlassCapsule()
+		return item
 	}
 }
 

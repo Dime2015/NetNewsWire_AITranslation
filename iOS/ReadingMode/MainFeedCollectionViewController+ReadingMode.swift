@@ -38,6 +38,8 @@ extension MainFeedCollectionViewController {
 	private static var nnwGesturesKey: UInt8 = 0
 	private static var nnwRenderedModeKey: UInt8 = 0
 	private static var nnwStarredObserverKey: UInt8 = 0
+	/// [外观] 「切深浅色要重画工具栏那两颗圆钮」的观察者只注册一次
+	private static var nnwToolbarTraitObserverKey: UInt8 = 0
 
 	/// 装好的两个切档手势。
 	///
@@ -149,12 +151,20 @@ extension MainFeedCollectionViewController {
 		if nnwIsEditingFeeds { return }
 
 		// 已经装过就别重造(viewWillAppear 会调很多次)
-		if navigationItem.rightBarButtonItems?.first?.action == #selector(nnwGlobalSearchTapped) { return }
+		// ⚠️ 判据从「第一项的 action 是不是放大镜」改成「第一项是不是我们的圆钮」——
+		// 2026-08-04 改成 customView 之后 `item.action` 恒为 nil,老判据会永远判"没装过",
+		// 每次 viewWillAppear 都重造一对按钮。
+		if navigationItem.rightBarButtonItems?.first?.customView is NNWSoftGlassButton { return }
 
 		// [外观] 2026-08-04:手绘图标 + 橙色(这一页的控件统一重绘)
-		let search = UIBarButtonItem(image: NNWDockIcons.search(),
-									 style: .plain, target: self, action: #selector(nnwGlobalSearchTapped))
-		search.tintColor = NNWSoftMaterial.accent
+		// [外观] 2026-08-04 二版:装进**磨砂圆钮**,并拆掉 iOS 26 的系统玻璃胶囊 ——
+		// 和底栏中间那条三档同一套材质(整圈亮边 + 极淡阴影)。
+		// ⚠️ 这两颗压在**头图**上,所以底必须是真磨砂,不能用工具栏那种烘焙的不透明圆盘
+		// (试过,是两张贴纸)。缘由见 NNWSoftGlassButton 的文件头。
+		let search = UIBarButtonItem(customView: nnwGlassButton(icon: NNWDockIcons.search(),
+															   action: #selector(nnwGlobalSearchTapped),
+															   label: "搜索全部订阅源"))
+		search.nnwHideSystemGlassCapsule()
 		search.accessibilityLabel = "搜索全部订阅源"
 
 		// [管理] 「编辑订阅」入口(2026-07-25 用户拍板的方案乙):
@@ -164,13 +174,22 @@ extension MainFeedCollectionViewController {
 		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
 		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
 		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
-		let edit = UIBarButtonItem(image: NNWDockIcons.edit(),
-								   style: .plain, target: self, action: #selector(nnwEditSubscriptionsTapped))
-		edit.tintColor = NNWSoftMaterial.accent
+		let edit = UIBarButtonItem(customView: nnwGlassButton(icon: NNWDockIcons.edit(),
+															 action: #selector(nnwEditSubscriptionsTapped),
+															 label: "编辑订阅"))
+		edit.nnwHideSystemGlassCapsule()
 		edit.accessibilityLabel = "编辑订阅"
 
 		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
 		navigationItem.rightBarButtonItems = [search, edit]
+	}
+
+	/// [外观] 造一颗导航栏用的磨砂圆钮。
+	private func nnwGlassButton(icon: UIImage, action: Selector, label: String) -> NNWSoftGlassButton {
+		let button = NNWSoftGlassButton(icon: icon)
+		button.addTarget(self, action: action, for: .touchUpInside)
+		button.accessibilityLabel = label
+		return button
 	}
 
 	/// [外观] 2026-08-04:把底部工具栏那两个系统图标(设置齿轮、加号)换成手绘橙图标。
@@ -180,7 +199,14 @@ extension MainFeedCollectionViewController {
 	/// `expectedItemCount == 3` 的守卫(数量一变刷新进度条就永久装不上,L19 那一族);
 	/// ② `addNewItemButton` 是 storyboard 的 IBOutlet,别处还往它身上挂 menu 和 isEnabled。
 	/// 换整个 item 会同时踩这两条。
+	///
+	/// [外观] 2026-08-04 二版:这两个键也换成**软面板圆钮**,和底栏中间那条三档同一套材质。
+	/// 面板是**画进图片里**的 —— 因为这里只有 image 这一条通道可走
+	/// (换 customView 会把加号身上上游挂的 `menu` 弄丢)。做法见
+	/// `NNWSoftMaterial.roundButtonImage(icon:tint:diameter:)`。
 	func nnwRestyleToolbarIcons() {
+
+		nnwObserveStyleChangesForToolbarIcons()
 
 		guard let items = toolbarItems else { return }
 
@@ -188,14 +214,37 @@ extension MainFeedCollectionViewController {
 			guard let action = item.action else { continue }
 			switch action {
 			case #selector(MainFeedCollectionViewController.add(_:)):
-				item.image = NNWDockIcons.plus()
-				item.tintColor = NNWSoftMaterial.accent
+				item.image = NNWSoftMaterial.roundButtonImage(icon: NNWDockIcons.plus(),
+															  traits: traitCollection)
+				item.nnwHideSystemGlassCapsule()
 			case #selector(MainFeedCollectionViewController.settings(_:)):
-				item.image = NNWDockIcons.gear()
-				item.tintColor = NNWSoftMaterial.accent
+				item.image = NNWSoftMaterial.roundButtonImage(icon: NNWDockIcons.gear(),
+															  traits: traitCollection)
+				item.nnwHideSystemGlassCapsule()
 			default:
 				break
 			}
+		}
+	}
+
+	/// [外观] 切深浅色时把这两颗圆钮重画一遍。
+	///
+	/// ⚠️ 为什么必须自己盯着:面板是**画进图片**里的,而图片不会跟随深浅色。
+	/// 试过用 `UIImageAsset` 登记浅/深两张让 UIKit 自己挑 —— **实测不生效**
+	/// (2026-08-04 深色下截图,两颗仍是浅色的,重启 app 也一样)。
+	/// 所以退回最笨的做法:自己监听,自己重画。
+	private func nnwObserveStyleChangesForToolbarIcons() {
+		guard objc_getAssociatedObject(self, &Self.nnwToolbarTraitObserverKey) == nil else { return }
+		objc_setAssociatedObject(self, &Self.nnwToolbarTraitObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (controller: MainFeedCollectionViewController, _) in
+			controller.nnwRestyleToolbarIcons()
+		}
+		// [外观] 换强调色之后同样要重画(理由完全一样:面板是烘焙进图片的)
+		nnwObserveAccentChanges { [weak self] in
+			self?.nnwRestyleToolbarIcons()
+			self?.nnwReinstallDefaultRightBarButtons()
+			// 分组头与文件夹行的三角色是**配装 cell 时**写进去的,不重画就还是旧颜色
+			self?.collectionView.reloadData()
 		}
 	}
 

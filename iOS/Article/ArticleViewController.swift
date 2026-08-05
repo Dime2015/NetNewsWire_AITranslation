@@ -667,7 +667,11 @@ extension ArticleViewController {
 		board.legacyItemsKeptAlive = toolbarItems ?? []
 
 		let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-		toolbarItems = [flex(), UIBarButtonItem(customView: board), flex()]
+		// [外观] 2026-08-04:拆掉 iOS 26 自动套在外面的系统玻璃胶囊 ——
+		// 不拆的话 dock 是"系统胶囊套软面板"两层,中间一道灰缝、阴影也叠两遍。
+		let boardItem = UIBarButtonItem(customView: board)
+		boardItem.nnwHideSystemGlassCapsule()
+		toolbarItems = [flex(), boardItem, flex()]
 	}
 
 	/// [外观] 控件板的查找(扩展里不能存属性,从工具栏里现找,只有一项是它,开销可忽略)。
