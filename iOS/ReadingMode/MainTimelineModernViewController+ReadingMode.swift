@@ -42,6 +42,8 @@ import Account	// [翻译] 齿轮按钮要判断"当前时间线是不是单一�
 
 extension MainTimelineModernViewController {
 
+	private static var nnwTimelineIconObserverKey: UInt8 = 0
+
 	/// 造本页那条三档控件的工具栏项。**由上游 `configureToolbar()` 里"一行换一行"调用**
 	///(原来那行是 `navigationItem.searchBarPlacementBarButtonItem`)。
 	@objc func nnwReadingModeToolbarItem() -> UIBarButtonItem {
@@ -118,6 +120,7 @@ extension MainTimelineModernViewController {
 	/// 面板烘焙进图片的做法与首页完全一致(见 NNWSoftMaterial.roundButtonImage)。
 	@objc func nnwRestyleTimelineToolbarIcons() {
 		guard NNWSoftMaterial.isEnabled else { return }
+		nnwObserveStyleChangesForTimelineIcons()
 		for item in toolbarItems ?? [] {
 			guard let action = item.action else { continue }
 			// 上游给的原图尺寸不一,先压到 20pt 再合成,免得几颗圆钮里的图标大小不齐
@@ -132,6 +135,20 @@ extension MainTimelineModernViewController {
 				item.nnwHideSystemGlassCapsule()
 			}
 		}
+	}
+
+	/// [外观] 切深浅色 / 换强调色时把这两颗圆钮重画。
+	///
+	/// ⚠️ **首页早就有这个观察者,这一页漏了**(2026-08-05 用户在深色下发现:
+	/// 这一页的圆钮还是浅色那张,白得刺眼)。烘焙成图片的东西**不会自己跟随** ——
+	/// 凡是用 `roundButtonImage` 的地方,都必须有人在这两件事发生时叫它重画(L105 第 2 条)。
+	private func nnwObserveStyleChangesForTimelineIcons() {
+		guard objc_getAssociatedObject(self, &Self.nnwTimelineIconObserverKey) == nil else { return }
+		objc_setAssociatedObject(self, &Self.nnwTimelineIconObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (vc: MainTimelineModernViewController, _) in
+			vc.nnwRestyleTimelineToolbarIcons()
+		}
+		nnwObserveAccentChanges { [weak self] in self?.nnwRestyleTimelineToolbarIcons() }
 	}
 
 	@objc private func nnwSearchTapped() {

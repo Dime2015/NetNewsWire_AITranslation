@@ -400,8 +400,17 @@ enum NNWSoftMaterial {
 		// 白的浓度是这里唯一的旋钮:调高 = 更白更亮但更不透,调低 = 更透但会跟着背景变灰。
 		let top: UIColor, bottom: UIColor
 		if isTranslucent {
-			top = UIColor.white.withAlphaComponent(0.52)
-			bottom = UIColor.white.withAlphaComponent(0.60)
+			// ⚠️ **提亮层必须分深浅色**(2026-08-05,用户报"深色下这些按钮很丑")。
+			// 上一版为了修"不够白不够亮"压了一层 52% 的白,**却没有分深浅色** ——
+			// 深色下那层白照样生效,于是 dock、三档、圆钮全变成浅灰塑料板。
+			// 深色下要的是反过来的东西:只补一点点白把玻璃"提"出暗底,不能把它刷白。
+			if traits.userInterfaceStyle == .dark {
+				top = UIColor.white.withAlphaComponent(0.10)
+				bottom = UIColor.white.withAlphaComponent(0.16)
+			} else {
+				top = UIColor.white.withAlphaComponent(0.52)
+				bottom = UIColor.white.withAlphaComponent(0.60)
+			}
 		} else {
 			top = colors.top
 			bottom = colors.bottom

@@ -47,7 +47,10 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			// (照用户给的参考图,粗线 + 圆头,和整套 dock 图标同一套笔画)。
 			// ⚠️ `isSymbol: true` 是关键:这样 NNWFeedIconStyle 不会把它转成位图,
 			// 颜色继续由下面那行的 tintColor 决定 —— 用户要求的"随主题色变色"就靠这个。
-			faviconView.iconImage = IconImage(NNWDockIcons.folder(), isSymbol: true)
+			// ⚠️ `isBackgroundSuppressed: true`:不加的话宿主会自己在图标后面垫一块底,
+			// 浅色下几乎看不见,**深色下是一块显眼的方板**(2026-08-05 用户在深色下发现)。
+			faviconView.iconImage = IconImage(NNWDockIcons.folder(), isSymbol: true,
+											  isBackgroundSuppressed: true)
 			// [外观] 2026-08-05:一行换一行 —— 文件夹图标改用**调色板**的强调色。
 			// 原来走 `Assets.Colors.secondaryAccent`(xcassets 静态色板),
 			// 换强调色时它跟不上,和全 app 脱节。见 NNWAccentPalette。
