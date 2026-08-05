@@ -46,7 +46,8 @@ final class NNWArticleControlBoard: UIView {
 
 	private static let slotSize: CGFloat = 44		// 每键的格子边长(点按区,苹果最小标准)
 	/// 总宽定死(L78)。7 键共 308,余下的宽度由 equalSpacing 平均分给 6 个间隔。
-	private static let boardWidth: CGFloat = 342
+	/// ⚠️ 临时:v1 档收窄,试「窄一点是不是更像浮起来的胶囊」。挑定后删。
+	private static var boardWidth: CGFloat { NNWSoftMaterial.variant == "v1" ? 288 : 342 }
 	/// [外观] dock 总高。比格子高一圈,让图标四周有呼吸 —— 参考图里 dock 明显高于图标。
 	private static let boardHeight: CGFloat = 54
 

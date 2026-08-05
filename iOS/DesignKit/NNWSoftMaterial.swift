@@ -171,7 +171,10 @@ enum NNWSoftMaterial {
 	///
 	/// 于是亮边 6px ÷ 4.94 = **1.2pt**(原来按 6.4 px/pt 算成 0.8pt,**细了三分之一**)。
 	/// 用户 2026-08-05 的原话是「边缘也没有反光效果」—— 就是这条细出来的。
-	static let rimWidth: CGFloat = 1.2
+	/// ⚠️ 临时:材质对比试验档(NNW_DOCK=v1/v2/v3),挑定一版后删掉,把选中的值写死回去。
+	static let variant = ProcessInfo.processInfo.environment["NNW_DOCK"] ?? ""
+
+	static var rimWidth: CGFloat { variant == "v3" ? 2.0 : 1.2 }
 
 	/// 亮边的白色浓度。实测参考图**四条边都是 #FFFFFF**(左右在 y=700 和 y=1200
 	/// 两个高度上都量过,一样亮)—— 是一整圈均匀的纯白,不是有方向的高光。
@@ -200,8 +203,8 @@ enum NNWSoftMaterial {
 	}
 
 	/// 阴影:极淡、极宽。实测贴边比背景暗 7–10 级,扩散约 5pt。
-	static let shadowRadius: CGFloat = 6
-	static let shadowOffsetY: CGFloat = 2
+	static var shadowRadius: CGFloat { variant == "v2" ? 18 : 6 }
+	static var shadowOffsetY: CGFloat { variant == "v2" ? 8 : 2 }
 	/// 浅色下的阴影浓度。0.13 在暖纸底上量到"贴边暗 7 级",正落在实测区间里。
 	/// ⚠️ 真正让阴影变明显的从来不是这个数,而是**套娃**(见 NNWSoftPanel 的注释)。
 	static func shadowOpacity(for traits: UITraitCollection) -> Float {
