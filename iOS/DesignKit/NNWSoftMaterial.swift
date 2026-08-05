@@ -325,6 +325,8 @@ enum NNWSoftMaterial {
 	private let rimMask = CAShapeLayer()
 	/// 半透明档垫在最底下的那层真磨砂(不透明档为 nil)
 	private var blurView: UIVisualEffectView?
+	/// 用的是系统原生玻璃(true)还是退回的手搓模糊(false)。决定上面那层白压多少。
+	private var usesNativeGlass = false
 
 	init(kind: Kind, translucent: Bool = false) {
 		self.kind = kind
@@ -345,7 +347,24 @@ enum NNWSoftMaterial {
 		// 于是顺序天然正确:磨砂(底) → fill → rim → 宿主原有的子视图(按钮、文字)。
 		let host: UIView
 		if isTranslucent {
-			let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+			// [外观] 2026-08-05:**优先用系统原生的液态玻璃 `UIGlassEffect`**(iOS 26+)。
+			//
+			// ⚠️ 起因:用户在 **iOS 27 beta 真机**上报"底栏变成了遮罩,不是毛玻璃"。
+			// 我的 SDK 与模拟器都是 26,**复现不了**(这个项目在 L94/L95 已经栽过同一件事)。
+			// 所以不去"修"手搓的那套,而是**换成系统自己的机制**(L92 的老规矩):
+			// 系统材质由系统负责在各版本上渲染正确,比我们拼「模糊 + 白层」稳得多。
+			//
+			// 配套:走原生玻璃时,上面那层白**必须大幅调低**(见 layout 里的 tint) ——
+			// 原生玻璃本身就够亮,再压 52% 的白就正好变成用户说的那种"遮罩"。
+			let effect: UIVisualEffect
+			if #available(iOS 26, *) {
+				let glass = UIGlassEffect(style: .regular)
+				effect = glass
+				usesNativeGlass = true
+			} else {
+				effect = UIBlurEffect(style: .systemUltraThinMaterial)
+			}
+			let blur = UIVisualEffectView(effect: effect)
 			blur.isUserInteractionEnabled = false
 			blur.layer.masksToBounds = true
 			blur.layer.cornerCurve = .continuous
@@ -404,7 +423,14 @@ enum NNWSoftMaterial {
 			// 上一版为了修"不够白不够亮"压了一层 52% 的白,**却没有分深浅色** ——
 			// 深色下那层白照样生效,于是 dock、三档、圆钮全变成浅灰塑料板。
 			// 深色下要的是反过来的东西:只补一点点白把玻璃"提"出暗底,不能把它刷白。
-			if traits.userInterfaceStyle == .dark {
+			// ⚠️ 走**原生玻璃**时这层白要压得很低:玻璃本身已经够亮,
+			// 再盖 52% 的白就成了一块遮罩(用户 2026-08-05 在 iOS 27 真机上看到的正是这个)。
+			// 退回手搓模糊时才需要那层白去提亮。
+			let isDark = traits.userInterfaceStyle == .dark
+			if usesNativeGlass {
+				top = UIColor.white.withAlphaComponent(isDark ? 0.03 : 0.10)
+				bottom = UIColor.white.withAlphaComponent(isDark ? 0.06 : 0.16)
+			} else if isDark {
 				top = UIColor.white.withAlphaComponent(0.10)
 				bottom = UIColor.white.withAlphaComponent(0.16)
 			} else {

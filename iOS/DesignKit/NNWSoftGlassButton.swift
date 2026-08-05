@@ -42,7 +42,14 @@ import UIKit
 	static var hitSize: CGFloat { max(44, discSize + 4) }
 
 	/// 磨砂底。⚠️ 它必须在最下面,而且要自己裁圆角。
-	private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+	/// [外观] 2026-08-05:和 NNWSoftPanel 一样,优先用系统原生的液态玻璃。
+	/// 理由见那边的注释(用户在 iOS 27 真机上报"变成遮罩",而我复现不了 → 换系统机制)。
+	private let blur: UIVisualEffectView = {
+		if #available(iOS 26, *) {
+			return UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+		}
+		return UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+	}()
 	/// 材质层(半透明染色 + 整圈亮边 + 极淡阴影)的宿主。
 	///
 	/// 为什么单独开一个视图而不是画在 self 上:`NNWSoftPanel` 把渐变塞的是**图层**,
