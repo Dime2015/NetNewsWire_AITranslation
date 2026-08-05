@@ -82,6 +82,7 @@ extension MainFeedCollectionViewController {
 			nnwInstallGlobalSearchButton()
 		}
 
+		collectionView.nnwEnableSoftBottomEdgeFade()	// [外观] 补回被拍平的那道边缘渐隐
 		nnwInstallModeBarIfNeeded()
 		nnwInstallSwipeGesturesIfNeeded()
 		nnwObserveStarredIndexIfNeeded()

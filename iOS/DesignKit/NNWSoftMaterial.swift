@@ -505,6 +505,35 @@ extension UIBarButtonItem {
 	}
 }
 
+// MARK: - 补回"内容接近栏时的渐隐"
+
+extension UIScrollView {
+
+	/// [外观] 2026-08-05:把**底部边缘的渐隐**打开。
+	///
+	/// ## 为什么需要这一条(用户:「没有边缘的渐变,这个部分坏了」)
+	///
+	/// iOS 26 起,滚动视图和栏交界处有一道系统画的**渐隐**(`UIScrollEdgeEffect`)——
+	/// 内容滚到栏附近会柔和淡出,而不是硬生生被切断。**创世版里这道渐隐是有的**,
+	/// 因为那时工具栏用的是系统自带的底。
+	///
+	/// 而我们为了让 dock"浮"起来,在三处调了 `configureWithTransparentBackground()`
+	/// 把工具栏整个拍平 —— **那道渐隐是随着栏的底一起被拍掉的**,
+	/// 我当时只想着"把套娃的第二层去掉",没意识到还连带拿掉了这个。
+	///
+	/// 修法不是把栏的底装回去(那样套娃就回来了),而是**直接向滚动视图要这道渐隐** ——
+	/// 它本来就是滚动视图的属性,和栏有没有底无关。
+	///
+	/// ⚠️ 判据:**"让某个系统外壳消失"时,先想清楚那层外壳还顺带提供了什么。**
+	func nnwEnableSoftBottomEdgeFade() {
+		guard NNWSoftMaterial.isEnabled else { return }
+		if #available(iOS 26, *) {
+			bottomEdgeEffect.style = .soft
+			bottomEdgeEffect.isHidden = false
+		}
+	}
+}
+
 // MARK: - 让 dock 浮起来:把系统工具栏的底抹掉
 
 extension UIViewController {

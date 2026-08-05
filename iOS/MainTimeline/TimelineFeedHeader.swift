@@ -739,6 +739,7 @@ extension MainTimelineModernViewController {
 	private func applyNavigationBarAppearance(to navigationItem: UINavigationItem, host: UIViewController) {
 		let transparent = UINavigationBarAppearance()
 		transparent.configureWithTransparentBackground()
+		collectionView?.nnwEnableSoftBottomEdgeFade()	// [外观] 补回被拍平的那道边缘渐隐
 		transparent.shadowColor = .clear	// 不要那条分隔线,和无边界风格一致
 		transparent.titleTextAttributes = [.foregroundColor: UIColor.clear]	// 标题由我们自己画
 
