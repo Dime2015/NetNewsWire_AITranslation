@@ -1288,6 +1288,29 @@ iOS/macOS 编译均过。**验证**:下次 ⌘R 真机,错误应消失;若仍报
 ⚠️ **只验了编译 + 装机,没有肉眼验证**:这圈环只在滚动"飞行"时可见,
 要验得进文章页滚一下、并且换个强调色对比。**下个窗口补验。**
 
+**追加六(2026-08-05):换主题色的三处修复 + 一条性能问题待查**
+
+① **底栏圆钮换色后变纯色圆饼** —— 根因见 **L113**(合成函数读写同一个字段、不幂等,
+   我给它加观察者之后就烂了)。改成从 `Assets.Images` 原图现合成。
+② **星标 / 分组头三角不跟主题色** —— 两个不同的病:
+   - **三角**:tint 写在 **IBOutlet 的 `didSet`** 里,那只在 nib 加载时跑一次,
+     而分组头是**复用**的 → 换色后没人再走它。挪到 `disclosureExpanded` 的 didSet(每次配装都跑)。
+   - **星标等侧栏图标**:`MainFeedCollectionViewCell` 两处
+     `iconImage?.preferredColor ?? Assets.Colors.secondaryAccent` —— 静态色板,跟不上。
+     改成直接用 `NNWSoftMaterial.accent`。
+   ⚠️ **判据**:"换主题色跟不上"到目前为止只有两种原因 ——
+   **(a) 用了 `Assets.Colors.*` 静态色板;(b) 上色写在只跑一次的地方**。查这两条就够。
+
+③ 🔴 **未做:底部控件进/回页面时慢 0.5–1s 才出现**(用户 2026-08-05 报)。
+   **没有排查,以下只是怀疑方向,别当结论**:
+   - 底栏那条三档控件是在 `viewWillAppear → nnwUpdateReadingMode → nnwInstallModeBarIfNeeded`
+     里装的,而不是 `viewDidLoad` —— 每次出现都要走一遍装配判断。
+   - `nnwRestyleToolbarIcons` / `nnwRestyleTimelineToolbarIcons` **每次调用都现画位图**
+     (`UIGraphicsImageRenderer`,两颗圆钮 × 每次 viewWillAppear),没有缓存。
+   - ★ 档还要等 `NNWStarredIndex` 异步查库(L53),开机停在★档时必然有延迟。
+   **建议排查方式**:按 L94 的老规矩**埋日志**打时间戳(viewWillAppear / 装配完成 /
+   图片画完各一条),先证明时间花在哪一段,别猜。
+
 **遗留的不一致(下一步)**:首页与文章列表页那**四颗圆钮**(齿轮/加号/标记已读/下一篇未读)
 仍是**不透明**的 —— 它们的面板是**烘焙进图片**的,而图片里装不下磨砂。
 要它们也透,得改成 customView,但加号身上挂着上游的 `menu`、

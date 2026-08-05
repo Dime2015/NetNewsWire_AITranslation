@@ -23,7 +23,7 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 			// [外观] 订阅源图标统一风格(彩色 → 灰度;透明背景的图形补一层方块底),
 			// 实现全在本 fork 新增的 NNWFeedIconStyle 里,这里只加一层包装。
 			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
-			faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
+			faviconView.tintColor = NNWSoftMaterial.accent	// [外观] 走调色板;不再吃 preferredColor(那是静态色板,换色跟不上)
 		}
 	}
 
@@ -115,7 +115,7 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 			unreadCountLabel.textColor = .secondaryLabel
 			if traitCollection.userInterfaceIdiom == .phone {
 				if feedTitle.text == "All Unread" {
-					faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
+					faviconView.tintColor = NNWSoftMaterial.accent	// [外观] 走调色板;不再吃 preferredColor(那是静态色板,换色跟不上)
 				}
 			}
 		}
