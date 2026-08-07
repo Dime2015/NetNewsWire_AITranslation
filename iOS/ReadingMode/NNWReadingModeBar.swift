@@ -60,6 +60,23 @@ import UIKit
 		expandedWidth + collapsedWidth * 2 + buttonSpacing * 2
 	}
 
+	/// **外圈那条轨道归谁画。**
+	///
+	/// - `false`(默认,住在系统工具栏里):跟着 `NNWSoftMaterial.systemDrawsBarCapsule` 走 ——
+	///   那个开关**现在恒为 `false`**(2026-08-05 晚已把版本分叉去掉),所以实际上也是我们画。
+	///   ⚠️ 保留这条判断的意义:万一哪天把那个开关翻回 `true`(重新让系统画栏里的胶囊),
+	///   栏里这条要跟着跳过,否则就是套娃。
+	/// - `true`(已搬出工具栏,浮在页面上):**不管那个开关怎么设,浮层永远得自己画** ——
+	///   系统不给浮层垫任何东西。
+	///
+	/// 📌 用户 2026-08-05 报过的「真机上内圈比外圈小很多」曾经就是这里的病根:
+	/// 那时 27 上外圈是**系统**画的(实测 48pt、自带内边距)、内圈是**我们**按自己的高度算的(40pt),
+	/// 两把尺子不是同一把。**现在外圈内圈都归我们,这个差从根上没有了**(判据见 L121)。
+	let drawsOwnTrack: Bool
+
+	/// 外圈到底画不画。
+	private var showsOwnPanel: Bool { drawsOwnTrack || !NNWSoftMaterial.systemDrawsBarCapsule }
+
 	private let stack = UIStackView()
 
 	/// [外观] 2026-08-04:整条做成软面板,当前档是一颗浮起的胶囊(参考图里的 Chat|History)
@@ -74,8 +91,10 @@ import UIKit
 	/// [外观] 当前档 —— 胶囊要对准它(layoutSubviews 用)
 	private var currentMode: NNWReadingMode = NNWReadingModeStore.shared.mode
 
-	override init(frame: CGRect) {
-		super.init(frame: frame)
+	/// - Parameter drawsOwnTrack: 外圈归不归我们画,见该属性的说明。
+	init(drawsOwnTrack: Bool = false) {
+		self.drawsOwnTrack = drawsOwnTrack
+		super.init(frame: .zero)
 
 		stack.axis = .horizontal
 		stack.alignment = .center
@@ -85,7 +104,7 @@ import UIKit
 		// ⚠️ iOS 27+ 跳过**外面这层面板**(那里由系统的液态玻璃画,再画就是套娃),
 		// 但下面那个 `capsuleMaterial` **要留着** —— 它是"当前选中哪一档"的指示器,
 		// 不是栏的背景,系统不会替我们画。见 NNWSoftMaterial.systemDrawsBarCapsule
-		if !NNWSoftMaterial.systemDrawsBarCapsule {
+		if showsOwnPanel {
 			softPanel.install(in: self)
 		}
 		capsule.isUserInteractionEnabled = false
@@ -204,8 +223,9 @@ import UIKit
 	/// [外观] 面板与胶囊按当前档重画。胶囊对准当前那一格。
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		// iOS 27+ 不画外层面板(系统画),但下面的选中胶囊照旧要排版
-		if !NNWSoftMaterial.systemDrawsBarCapsule {
+		// 还住在栏里时,iOS 27+ 的外层面板由系统画,这里跳过;搬出来之后永远自己画。
+		// 不管画不画,下面的选中胶囊照旧要排版。
+		if showsOwnPanel {
 			softPanel.layout(in: self, cornerRadius: bounds.height / 2)
 		}
 

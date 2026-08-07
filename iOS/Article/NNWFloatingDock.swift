@@ -111,18 +111,46 @@ extension ArticleViewController {
 
 	/// [外观] 让 dock 的显隐跟着系统栏走。**在 `viewSafeAreaInsetsDidChange` 里调**。
 	///
-	/// 沉浸阅读下滑藏栏时,上游会 `setToolbarHidden(true)` —— 那一刻安全区变化,
+	/// 沉浸阅读下滑藏栏时,上游会同时藏导航栏和工具栏 —— 那一刻安全区变化,
 	/// 本方法被叫醒,把 dock 一起淡出;上滑现栏时反过来。
 	/// 这样就不用去碰 `nnwToggleBars` 那段(那里有防栈溢出的闸门,别加东西,见 L80~L84)。
+	///
+	/// ⚠️ **这里有两个坑,都是 2026-08-05 用探针实测出来的,第一版两个都踩了。**
+	///
+	/// **坑一:工具栏藏不藏,底部安全区完全不动。**
+	/// 工具栏被我们抹成了透明底 + `toolbarItems = []`,它对底部安全区的贡献是 **0** ——
+	/// 实测藏栏前后 `safeAreaInsets.bottom` 都是 96.0(= 34 Home 条 + 62 我们给 dock 让的),
+	/// 一个字节都没变。**所以"藏工具栏"根本不会触发安全区回调**;
+	/// 唯一那次回调是**导航栏**藏起来(顶部 inset 变了)带来的。
+	///
+	/// **坑二:回调恰好插在上游那两句中间,所以工具栏的值一定是旧的。**
+	/// 上游 `hideBars()` / `showBars()` 都是"先导航栏、后工具栏"两句,
+	/// 而安全区回调在第一句里就同步发生了 —— 实测两个方向都读到旧值:
+	///
+	/// | | 回调时 navHidden | 回调时 toolbarHidden(旧值) |
+	/// |---|---|---|
+	/// | 下滑藏栏 | true | **false** |
+	/// | 上滑现栏 | false | **true** |
+	///
+	/// 所以**推迟一轮 runloop 再读**,等两个值都落定。0.25s 的淡入淡出本来就和
+	/// 栏的动画同步,晚一帧看不出来。
+	///
+	/// 两个都读:导航栏管沉浸阅读,工具栏管「文内查找」——
+	/// 那条路只藏工具栏、不藏导航栏(见 `beginFind`,它会显式叫一次本方法)。
 	func nnwSyncFloatingDockVisibility() {
 		guard let dock = nnwFloatingDock else { return }
 		// 每次栏变化都顺手置顶一次 —— 翻页容器换页时会重排子视图,不置顶会被盖回去
 		if dock.superview === view { view.bringSubviewToFront(dock) }
-		let shouldHide = navigationController?.isToolbarHidden ?? false
-		let target: CGFloat = shouldHide ? 0 : 1
-		guard dock.alpha != target else { return }
-		UIView.animate(withDuration: 0.25) { dock.alpha = target }
-		dock.isUserInteractionEnabled = !shouldHide
+
+		DispatchQueue.main.async { [weak self, weak dock] in
+			guard let self, let dock, dock.superview === self.view else { return }
+			let shouldHide = (self.navigationController?.isNavigationBarHidden ?? false)
+				|| (self.navigationController?.isToolbarHidden ?? false)
+			let target: CGFloat = shouldHide ? 0 : 1
+			guard dock.alpha != target else { return }
+			UIView.animate(withDuration: 0.25) { dock.alpha = target }
+			dock.isUserInteractionEnabled = !shouldHide
+		}
 	}
 }
 

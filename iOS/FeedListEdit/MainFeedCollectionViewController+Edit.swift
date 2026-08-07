@@ -247,6 +247,10 @@ extension MainFeedCollectionViewController {
 
 	private func nnwUpdateEditingChrome() {
 
+		// [阅读档] 三档控件 2026-08-05 从工具栏搬成了浮层,不再随 toolbarItems 一起被换掉,
+		// 所以进出编辑模式要显式收起 / 放回来(见 NNWFloatingModeBar.swift)。
+		nnwSetFloatingModeBarHidden(nnwIsEditingFeeds)
+
 		if nnwIsEditingFeeds {
 
 			// 右上角:换成「完成」。左上角原本没东西,不用动。

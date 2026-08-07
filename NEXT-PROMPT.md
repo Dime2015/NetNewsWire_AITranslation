@@ -73,18 +73,47 @@ xcrun devicectl device copy from --device $DEV \
 
 ---
 
+# ✅ 已具备：**iOS 27 模拟器**（T49 已完成，2026-08-05）
+
+用户装了 Xcode 27 beta（与 Xcode 26.6 并存），runtime **iOS 27.0 (24A5390f)**
+—— **和他手机同一个 build**。**这一整类「只在真机上不一样」的问题到此结束。**
+
+```bash
+SIM27=87C9AE05-88C0-44E6-A871-242FF782D949     # 模拟器「iPhone 17 (iOS 27)」,已获用户授权
+SIM26=A7B1AE1F-0391-4C3A-B979-FA35653256FF     # 原来那台 iOS 26.5(装着 87 个真实源)
+
+# ⚠️ 仍然用 Xcode 26.6 编译(别动 xcode-select),只是把产物装到 27 上跑 ——
+#    这样才和用户手机一致(app 用 26 SDK 编译、运行在 27 上)。
+BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
+xcrun simctl install $SIM27 "$BUILT"
+xcrun simctl launch  $SIM27 com.wenbopan.NetNewsWire.iOS-DEBUG    # ⚠️ 27 那台是 com.wenbopan
+./tools/install-to-simulator.sh                                    # 26 那台照旧用脚本
+```
+
+⚠️ **别顺手把 `xcode-select` 切到 Xcode 27** —— 用 27 的 SDK 编译会改变系统控件外观
+（样式按**编译时的 SDK**走）。那是一件要单独评估的事，不是顺手做的。
+⚠️ 27 那台是**空模拟器**（只有上游自带的默认源），不是用户的数据。
+
+**📌 这件事装完 20 分钟就回本了**：第一件事是复验 T42/L116 那条「27 上不能拆系统胶囊」，
+结果**推翻了它**，顺手治好用户报的两处丑，还省掉了原计划「搬四颗控件」的全部风险。
+判据见 **L122** —— **拿到能复现的工具之后，第一件事不是写新代码，
+是复验那些"当初只能靠一次测量定下来的结论"。**
+
+---
+
 # 🔴 待办（按建议顺序，前三条是"坏没坏"，优先于"好不好看"）
 
-## 1. 浮动 dock 的三项功能验证（**最优先，我没验完就交了**）
+## 1. ~~浮动 dock 的三项功能验证~~ —— ✅ **已验完（2026-08-05），详见 T44**
 
-文章页 dock 已从工具栏搬出来当浮层（`iOS/Article/NNWFloatingDock.swift`）。
-**以下三件只在模拟器上看过静态截图，没有实际操作验证**：
+三项都在 iOS 26 模拟器上实际操作验证过（浅色 + 深色各走一遍）：
 
-- **沉浸阅读**：下滑藏栏时 dock 有没有跟着淡出、上滑有没有回来
-  （钩子接在 `viewSafeAreaInsetsDidChange` → `nnwSyncFloatingDockVisibility`）
-- **翻页**：上一篇/下一篇之后 dock 还在不在最上层
-  （⚠️ 装它的代码比 `pageViewController.view` 早，被盖过一次，见文件头）
-- **滚到文章最底部**：最后一行能不能真的露到 dock 之上（补了 `additionalSafeAreaInsets.bottom`）
+- **沉浸阅读** —— ❌ **本来是坏的，已修**。两个坑叠在一起：
+  ① 工具栏被我们抹平 + 清空 items 之后，**它对底部安全区的贡献是 0**，
+  藏它根本不会触发安全区回调；② 那唯一一次回调（导航栏带来的）恰好插在上游
+  「先导航栏、后工具栏」两句中间，读到的工具栏值**一定是旧的**。
+  修法：推迟一轮 runloop 再读，判据改成「导航栏藏 **或** 工具栏藏」。见 **T44 / L118**。
+- **翻页** —— ✅ 本来就是好的（dock 的「下一篇未读」和导航栏的「下一篇」各翻一次，都在最上层）
+- **滚到最底** —— ✅ 够，**余量 14pt**（dock 顶距屏底 82pt、正文底部预留 96pt，都是让 app 自己报的）
 
 ## 2. iOS 27 真机上装一次浮动 dock 版
 

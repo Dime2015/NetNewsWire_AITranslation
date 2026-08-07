@@ -80,10 +80,30 @@ enum NNWSoftMaterial {
 	///
 	/// ⚠️ **这个开关只管"栏里的控件"**。自绘选单(`NNWMenu`)不在栏里、
 	/// 系统不给它垫胶囊,那里照旧画我们自己的软面板 —— **别把它也关掉**。
-	static var systemDrawsBarCapsule: Bool {
-		ProcessInfo.processInfo.isOperatingSystemAtLeast(
-			OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
-	}
+	/// ✅ **2026-08-05 晚:这个版本分叉已作废,恒为 `false`(= 栏里的胶囊一律归我们画)。**
+	///
+	/// **为什么当初要分叉**:iOS 27 上「拆掉系统胶囊」会连带弄丢"内容能从栏底下穿过去"
+	/// (硬切断 + 一条不透明黑带),所以 27 上只好保留系统那层、我们不画。见上面那张表。
+	///
+	/// **为什么现在不需要了 —— 前提消失了**:那个副作用是在**文章页的 `WKWebView`** 上量到的,
+	/// 而文章页的 dock 后来**搬出了工具栏**(`toolbarItems = []`,见 `NNWFloatingDock.swift`)——
+	/// 于是文章页**再没有任何 bar item 会去设 `hidesSharedBackground`**,压根碰不到这个副作用。
+	/// 现在还会拆系统胶囊的 9 处调用**全部在首页和文章列表页**,那两页是普通 `UICollectionView`。
+	///
+	/// **在真的 iOS 27 模拟器上实测**(2026-08-05,装了 Xcode 27 之后第一件事就是复验这条):
+	///
+	/// | 页面 | 拆掉系统胶囊后,栏那一带的逐行亮度 | 判定 |
+	/// |---|---|---|
+	/// | 首页 | 203–235 **随内容起伏**,一路到 870pt | ✅ 内容照旧穿过去 |
+	/// | 文章列表页 | 212–235 随内容起伏 | ✅ 同上 |
+	/// | 文章页 | 不受影响(没有 bar item,代码层面即可确定) | ✅ |
+	///
+	/// **所以合并回统一写法**,顺带治好用户 2026-08-05 报的两处(判据见 **L121**):
+	/// 右上角两颗不再被系统合成一颗连体药丸;底栏三个控件回到同一个直径
+	/// (系统按 **48pt** 画、我们按 **40pt** 画,量出来差 8pt —— 全归我们画就没这回事了)。
+	///
+	/// ⚠️ **开关留着不删**:万一以后哪个系统版本又反过来,改这一个值就能整体退回"系统画"。
+	static var systemDrawsBarCapsule: Bool { false }
 
 	/// **全 app 圆形/胶囊控件的统一尺寸(直径 = 高度)。这是唯一真源。**
 	///
@@ -345,7 +365,7 @@ enum NNWSoftMaterial {
 /// 然后在自己的 `layoutSubviews` 里调 `layout(in:cornerRadius:)`。
 ///
 /// ⚠️ 宿主**不能** `clipsToBounds = true` —— 会把阴影裁掉。
-@MainActor final class NNWSoftPanel {
+@MainActor final class NNWSoftPanel: NSObject {
 
 	enum Kind {
 		/// dock 本体
@@ -369,10 +389,47 @@ enum NNWSoftMaterial {
 	private var blurView: UIVisualEffectView?
 	/// 用的是系统原生玻璃(true)还是退回的手搓模糊(false)。决定上面那层白压多少。
 	private var usesNativeGlass = false
+	/// 宿主视图。回前台时要重画它(见 `nnwAppDidBecomeActive`)。**弱引用**:宿主持有本对象。
+	private weak var hostView: UIView?
+	/// 上一次排版用的圆角。回前台重画时要原样用回去(`layout` 的另一个参数 bounds 它自己会读)。
+	private var lastCornerRadius: CGFloat?
 
 	init(kind: Kind, translucent: Bool = false) {
 		self.kind = kind
 		self.isTranslucent = translucent
+		super.init()
+	}
+
+	/// [外观] 2026-08-05:**回到前台时重画一次。**
+	///
+	/// ⚠️ 为什么需要这一句 —— 这是本类唯一的"隐性状态"(用户 2026-08-05 在 iOS 27 真机上报的
+	/// 「从别的软件切回来,底栏中间选中那格变成深色的」):
+	///
+	/// `layout(in:)` 把颜色 **解析成 `CGColor`** 写进 `CAGradientLayer`,
+	/// 而 **`CGColor` 不跟随深浅色** —— 它是一次性烘焙的结果,
+	/// 只有下一次 `layoutSubviews` 才会重新解析。于是只要**曾经有一帧是用深色排的版**,
+	/// 而之后没人再叫它排一次,这块面板就永久停在深色。
+	/// (iOS 在 app 退到后台时会为 app 切换器**额外用另一种深浅色渲染一遍**,
+	/// 这是最可能造出那一帧的地方。)
+	///
+	/// ⚠️ **诚实交代**:这个现象我在 iOS 26 模拟器上**复现不出来**
+	/// (冷启动 / 切后台 / 切深浅色 / 系统深色+app 浅色,四种路径都试过,都正常)。
+	/// 所以这一句是**按机制修的,不是按复现修的** —— 它让面板"回前台必重画一次",
+	/// 不管那一帧是怎么来的都能自愈。**iOS 27 上是否真的好了,要用户确认**(L114)。
+	///
+	/// 挂在这里而不是挂在某一个宿主上:所有软面板(dock / 三档 / 选单 / 圆钮)
+	/// 共用同一个烘焙机制,病也是共用的,**要修就在这一层修一次**(L112)。
+	///
+	/// ⚠️⚠️ **第一版写成 `hostView?.setNeedsLayout()`,在 iOS 27 上没用,原因值得记住**:
+	/// 真正调用 `layout(in:)` 的**未必是宿主自己的 `layoutSubviews`**。
+	/// 三档控件就是这样 —— `capsuleMaterial` 的宿主是**内层那颗胶囊视图**,
+	/// 而调用它的是**外层控件**的 `layoutSubviews`;叫子视图重排**不会**触发父视图重排。
+	/// iOS 26 上碰巧没暴露,是因为 26 上外层轨道也是软面板(宿主就是外层控件本身),
+	/// 顺带把内层一起重画了;**而 iOS 27 上外层归系统画,那个宿主根本不存在**。
+	/// 所以改成**自己直接重画**,不再依赖"谁会调 layoutSubviews"这个外部约定。
+	@objc private func nnwAppDidBecomeActive() {
+		guard let view = hostView, let cornerRadius = lastCornerRadius else { return }
+		layout(in: view, cornerRadius: cornerRadius)
 	}
 
 	func install(in view: UIView) {
@@ -380,6 +437,9 @@ enum NNWSoftMaterial {
 		guard NNWSoftMaterial.isEnabled else { return }
 
 		view.backgroundColor = .clear
+		hostView = view
+		NotificationCenter.default.addObserver(self, selector: #selector(nnwAppDidBecomeActive),
+											   name: UIApplication.didBecomeActiveNotification, object: nil)
 
 		// [外观] 2026-08-05:半透明档在最底下垫一层**真磨砂**,让下面的内容透上来。
 		//
@@ -439,6 +499,9 @@ enum NNWSoftMaterial {
 	func layout(in view: UIView, cornerRadius: CGFloat) {
 
 		guard NNWSoftMaterial.isEnabled else { return }
+
+		hostView = view					// 回前台重画要用(install 时也设过,这里兜住"换了宿主"的情形)
+		lastCornerRadius = cornerRadius
 
 		let bounds = view.bounds
 		let traits = view.traitCollection
@@ -563,15 +626,41 @@ extension UIBarButtonItem {
 	///
 	/// **为什么按版本分道,而不是干脆不拆**:iOS 26 上不拆就是两层胶囊套娃(已在 26 模拟器上
 	/// 复现并截图确认);而 iOS 27 上不拆本来就只有一层,拆了反而坏事。**两个系统要的相反。**
+	/// ✅ **2026-08-05 晚:原来这里按系统版本分道(iOS 27+ 直接 return),那个分叉已删。**
+	///
+	/// 当初 27 上不拆,是怕连带弄丢"内容能从栏底下穿过去"。
+	/// 那个副作用只发生在**文章页的 `WKWebView`** 上,而文章页的 dock 后来搬出了工具栏,
+	/// 现在调用本方法的 9 处**全部在首页 / 文章列表页**(普通 `UICollectionView`)——
+	/// 已在**真的 iOS 27 模拟器**上逐行采样复验:拆掉之后内容照旧穿过去。
+	/// 完整证据与那两个被治好的症状,写在 `NNWSoftMaterial.systemDrawsBarCapsule` 的注释里。
 	func nnwHideSystemGlassCapsule() {
 		guard NNWSoftMaterial.isEnabled else { return }
-		// iOS 27+:不拆。系统只画一层,拆了会连带弄丢"内容穿过栏底"。
-		if ProcessInfo.processInfo.isOperatingSystemAtLeast(
-			OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)) {
-			return
-		}
 		if #available(iOS 26, *) {
+			// ⚠️⚠️ **这两句的顺序不能换,而且缺一不可**(2026-08-05 晚查 iOS 27 SDK 头文件才搞清)。
+			//
+			// `hidesSharedBackground` 的文档里有一句要命的话:
+			// **「This property is ignored if the item is in a `UIBarButtonItemGroup`
+			// with more than one item.」** ——
+			// 而 iOS 27 会把**相邻的多个 bar item 自动归进一个隐式组**。
+			// 于是首页右上角那两颗(搜索 + 编辑)在 27 上落进同一个组 →
+			// **我们这句"拆胶囊"被系统直接忽略** → 屏幕上就是用户报的那颗**连体药丸**。
+			// (iOS 26 不这么分组,所以同一份代码在 26 上一直是对的 —— 又一次 L116 那类
+			// "同一句话两个系统结果不同",但这次不需要分道,因为下面这句在 26 上也成立。)
+			//
+			// `sharesBackground = false` 的文档:「这一项不会和任何其他项视觉分组」。
+			// **先脱组,上面那句才轮得到执行。**
+			sharesBackground = false
 			hidesSharedBackground = true
+
+			// ⚠️ **临时试探**:iOS 27 上齿轮左边还露出一块 27.7pt 高的圆角矩形
+			// (加号那颗没有;iOS 26 完全没有)。怀疑是 iOS 27 给 item 的"标准内边距"
+			// 那一圈画了底,而 27 新增的 `paddingRemoved` 正是关掉它的开关。
+			// 我们还在用 **iOS 26 SDK** 编译(见 T49),编译期看不到这个属性 → 只能走 KVC。
+			// ⚠️ 必须先 `responds(to:)`,否则 iOS 26 上会 NSUnknownKeyException **崩溃**。
+			// 等哪天升到 iOS 27 SDK,把这段换成直接 `paddingRemoved = true`。
+			if responds(to: NSSelectorFromString("setPaddingRemoved:")) {
+				setValue(true, forKey: "paddingRemoved")
+			}
 		}
 	}
 }

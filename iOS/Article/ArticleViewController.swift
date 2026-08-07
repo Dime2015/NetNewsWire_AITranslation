@@ -470,6 +470,7 @@ extension ArticleViewController {
 	@objc func beginFind(_ _: Any? = nil) {
 		searchBar.isHidden = false
 		navigationController?.setToolbarHidden(true, animated: true)
+		nnwSyncFloatingDockVisibility()	// [外观] 只藏工具栏不藏导航栏 → 安全区不变、回调不来,得显式叫一次
 		currentWebViewController?.additionalSafeAreaInsets.bottom = searchBar.frame.height
 		searchBar.becomeFirstResponder()
 	}
@@ -478,6 +479,7 @@ extension ArticleViewController {
 		searchBar.resignFirstResponder()
 		searchBar.isHidden = true
 		navigationController?.setToolbarHidden(false, animated: true)
+		nnwSyncFloatingDockVisibility()	// [外观] 同上,查找结束把 dock 放回来
 		currentWebViewController?.additionalSafeAreaInsets.bottom = 0
 		currentWebViewController?.endSearch()
 	}

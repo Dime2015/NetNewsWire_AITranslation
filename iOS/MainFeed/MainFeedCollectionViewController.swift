@@ -167,6 +167,15 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		self.deselectIfNeccessary()
 	}
 
+	// [阅读档] 三档控件 2026-08-05 从工具栏搬成了浮层,而浮层挂在**导航控制器的 view** 上
+	// (不那样挂就拿不到触摸,见 NNWFloatingModeBar.swift 的文件头)——
+	// 那是整个导航栈共用的一层,所以离开本页必须收起来,否则它会浮在文章列表页上,
+	// 和那一页自己的那条撞车。和文章页 `nnwUseFloatingToolbar(false)` 是同一个位置、同一个理由。
+	override func viewWillDisappear(_ animated: Bool) {
+		nnwSetFloatingModeBarHidden(true)
+		super.viewWillDisappear(animated)
+	}
+
 	func deselectIfNeccessary() {
 		guard traitCollection.userInterfaceIdiom == .phone else {
 			return

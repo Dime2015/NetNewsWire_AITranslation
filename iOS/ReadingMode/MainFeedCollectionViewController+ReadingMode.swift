@@ -104,25 +104,26 @@ extension MainFeedCollectionViewController {
 
 	// MARK: - 装控件
 
+	/// [阅读档][外观] 2026-08-05:**控件不再插进工具栏,改成浮在页面之上。**
+	///
+	/// 为什么搬(用户报的「内圈比外圈小很多」+ T43 陀螺仪的前置条件)、
+	/// 以及位置是怎么算的,全写在 `NNWFloatingModeBar.swift` 的文件头。
+	///
+	/// ⚠️ 顺带的好处:`toolbarItems` 回到故事板原样的 3 项 ——
+	/// 原来我们往里插了 [控件][空白] 两项,把 `expectedItemCount == 3` 那条守卫撑破了
+	/// (那时是靠"排在上游那句之后"绕开的)。现在连绕都不用绕。
 	private func nnwInstallModeBarIfNeeded() {
 
-		// [编辑] 编辑模式期间工具栏是 [移动到…][删除],**别往里插阅读档控件** ——
-		// 退出编辑时会把原来那套整个还原回去(见 nnwSavedToolbarItems),这里插了反而会打乱。
-		if nnwIsEditingFeeds { return }
-
-		var items = toolbarItems ?? []
-		guard items.count >= 2 else { return }		// 故事板里至少有 [设置][空白][+]
-
-		// 已经在工具栏里了就什么都不用做(控件自己盯着通知换外观)
-		if let bar = nnwReadingModeBar, items.contains(where: { $0.customView === bar }) { return }
-
-		let barItem = nnwReadingModeBarItem { [weak self] mode in
-			self?.nnwSelectReadingMode(mode)
+		// [编辑] 编辑模式下工具栏整条换成 [新建文件夹][移动到…][删除],浮层要收起来
+		if nnwIsEditingFeeds {
+			nnwSetFloatingModeBarHidden(true)
+			return
 		}
 
-		// 插在**最后一项(+)之前**,并补一个可伸缩空白 → 控件被两侧空白挤到正中
-		items.insert(contentsOf: [barItem, UIBarButtonItem.flexibleSpace()], at: items.count - 1)
-		toolbarItems = items
+		nnwInstallFloatingModeBar { [weak self] mode in
+			self?.nnwSelectReadingMode(mode)
+		}
+		nnwSetFloatingModeBarHidden(false)
 	}
 
 	// MARK: - 右上角的全局搜索

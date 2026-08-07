@@ -21,6 +21,28 @@ set -e
 # API Key)都在它名下**,所以不能换成别的,换了等于从空 app 重来。
 BUNDLE_ID="com.ranchero.NetNewsWire.iOS-DEBUG"
 
+# ⚠️ 2026-08-05 加的闸门(当天被咬过一次,见 NOTES-lessons L123):
+# 本脚本全程用 `simctl ... booted`,而 **`booted` 在有多台模拟器同时启动时是有歧义的** ——
+# 它会挑其中一台,而且不告诉你挑了哪台。
+# 那天同时开着 iOS 26 和 iOS 27 两台,脚本把新版装到了 27 那台,
+# 于是"在 iOS 26 上验证没退化"量的其实是**旧二进制**,得出了一个错误结论。
+#
+# 现在:多于一台就直接停,并把该用的精确命令打出来。宁可多打一行,也不要静默装错设备。
+BOOTED_COUNT=$(xcrun simctl list devices booted | grep -c "Booted" || true)
+if [ "$BOOTED_COUNT" -gt 1 ]; then
+  echo "❌ 有 $BOOTED_COUNT 台模拟器同时启动着,\`booted\` 会装错设备(见脚本里的说明)。"
+  echo "   现在启动着的是:"
+  xcrun simctl list devices booted | grep "Booted" | sed 's/^/     /'
+  echo ""
+  echo "   两条路,选一条:"
+  echo "   ① 关掉多余的:  xcrun simctl shutdown <UDID>"
+  echo "   ② 指定目标:    SIM_UDID=<UDID> ./tools/install-to-simulator.sh"
+  [ -z "${SIM_UDID:-}" ] && exit 1
+  echo "   ✅ 已指定 SIM_UDID=$SIM_UDID,继续。"
+fi
+# 后面所有 simctl 都用这个目标(默认还是 booted,保持原有习惯)
+SIM_TARGET="${SIM_UDID:-booted}"
+
 BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator \
   -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
 [ -z "$BUILT" ] && { echo "❌ 找不到构建产物,先编译"; exit 1; }
@@ -34,9 +56,9 @@ BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/
 # **装的和比的根本是两个不同的 app**,不是 simctl 的毛病(原 L41 的判断需要更正)。
 BUILT_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$BUILT/Info.plist" 2>/dev/null || echo "")
 
-xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null || true
+xcrun simctl terminate "$SIM_TARGET" "$BUNDLE_ID" 2>/dev/null || true
 
-if xcrun simctl get_app_container booted "$BUNDLE_ID" app >/dev/null 2>&1; then
+if xcrun simctl get_app_container "$SIM_TARGET" "$BUNDLE_ID" app >/dev/null 2>&1; then
   # 目标 app 已经在模拟器上了 —— **不要再 install**,否则会按构建产物的 id 装出一个分身。
   # 直接把新代码覆盖进它的容器(下面的 rsync 干这件事)。
   [ "$BUILT_ID" != "$BUNDLE_ID" ] && \
@@ -44,11 +66,11 @@ if xcrun simctl get_app_container booted "$BUNDLE_ID" app >/dev/null 2>&1; then
 else
   # 全新模拟器,目标 app 还不存在 → 正常装一次,并以构建产物的 id 为准
   echo "ℹ️  模拟器上还没有这个 app,首次安装"
-  xcrun simctl install booted "$BUILT"
+  xcrun simctl install "$SIM_TARGET" "$BUILT"
   BUNDLE_ID="$BUILT_ID"
 fi
 
-ACTIVE=$(xcrun simctl get_app_container booted "$BUNDLE_ID" app)
+ACTIVE=$(xcrun simctl get_app_container "$SIM_TARGET" "$BUNDLE_ID" app)
 
 # 要比对的「带代码的文件」:主可执行文件 + Debug 版的 .debug.dylib(存在才比)。
 # Release 版没有 .debug.dylib,代码就在主可执行文件里 —— 那时只比主文件即可。
@@ -73,4 +95,4 @@ else
   echo "❌ 仍然不一致,别相信接下来的测试结果"; exit 1
 fi
 
-xcrun simctl launch booted "$BUNDLE_ID"
+xcrun simctl launch "$SIM_TARGET" "$BUNDLE_ID"

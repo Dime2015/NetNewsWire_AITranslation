@@ -23,8 +23,27 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 			// [外观] 订阅源图标统一风格(彩色 → 灰度;透明背景的图形补一层方块底),
 			// 实现全在本 fork 新增的 NNWFeedIconStyle 里,这里只加一层包装。
 			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
-			faviconView.tintColor = NNWSoftMaterial.accent	// [外观] 走调色板;不再吃 preferredColor(那是静态色板,换色跟不上)
+			faviconView.tintColor = Self.nnwIconTint(for: iconImage)
 		}
+	}
+
+	/// [外观] 侧栏图标的着色。
+	///
+	/// 默认**走调色板**(`NNWSoftMaterial.accent`)—— 换主题色时全 app 一起跟上;
+	/// 不能吃上游的 `preferredColor`,那是 xcassets 静态色板,换色跟不动(T40 追加六的判据)。
+	///
+	/// **唯一的例外是「今天」那颗太阳**(用户 2026-08-05:
+	/// 「希望在全部统一的主题色里加一抹亮色,但是用克制的方式」)。
+	/// ⚠️ 那抹亮色**直接用它上游自带的 `preferredColor`(systemOrange),不另立色号** ——
+	/// 这样它天然跟随深浅色,而且以后上游改了这颗图标的颜色我们自动跟上。
+	///
+	/// ⚠️ 判据用 `===`:`IconImage` 是 final class,`Assets.Images.todayFeed` 是唯一实例。
+	/// 别改成比字符串(标题会被本地化)或比颜色(那是循环论证)。
+	static func nnwIconTint(for icon: IconImage?) -> UIColor {
+		if let icon, icon === Assets.Images.todayFeed, let preferred = icon.preferredColor {
+			return preferred
+		}
+		return NNWSoftMaterial.accent
 	}
 
 	private var _unreadCount: Int = 0
