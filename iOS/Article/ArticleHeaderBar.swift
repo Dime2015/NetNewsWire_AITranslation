@@ -106,6 +106,13 @@ import os
 
 		/// 飞完这么长的距离(pt)就算完全冻结。越小越"跟手",越大越舒缓。
 		static let flightDistance: CGFloat = 120
+
+		/// 网页还在装载时,滚动偏移要**超过静止位这么多**才算"用户真的在滑"。
+		///
+		/// WebKit 装载中会自己把滚动位置重置回静止位附近,那种抖动不该让头区跟着飞;
+		/// 而用户真的用手指滑动时,一下就远超这个值。取小一点,让头区跟手不迟钝。
+		/// 详见 `layoutAndApply` 里 `contentSettled == false` 那一段。
+		static let settleGrace: CGFloat = 8
 		/// 交接:飞到这个进度之后,大标题淡出、冻结标题淡入
 		static let swapStart: CGFloat = 0.45
 		/// 毛玻璃底从这个进度开始现
@@ -487,13 +494,26 @@ import os
 		// —— 飞行进度(0 = 停在顶部,1 = 完全冻结)——
 		// ⚠️ 网页还没装载完时偏移不可信(WebKit 装载中会自己重置滚动位置),
 		// 一律按"停在顶部"画;didFinish 之后才用真实偏移(见 contentSettled 的说明)。
+		let restY = -scrollView.adjustedContentInset.top
+		let travelled = scrollView.contentOffset.y - restY
+		let measuredFlight = min(max(travelled / Style.flightDistance, 0), 1)
+
 		let flight: CGFloat
 		if contentSettled {
-			let restY = -scrollView.adjustedContentInset.top
-			let travelled = scrollView.contentOffset.y - restY
-			flight = min(max(travelled / Style.flightDistance, 0), 1)
+			flight = measuredFlight
 		} else {
-			flight = 0
+			// ⚠️ **装载期间不能一律钉死 0**(2026-08-08 修,用户报的第二个现象)。
+			//
+			// 原来这里无条件 `flight = 0`,理由是"WebKit 装载中会自己重置滚动位置,偏移不可信"。
+			// 那条防护本身没错,但它有个没考虑到的副作用:**用户此时其实已经能滚了**。
+			// 一滚,内容跟着手指上移、头区却纹丝不动 —— 屏幕上就是
+			// **大标题压在正文上、和正文叠在一起**(用户 2026-08-08 的截图 2);
+			// 直到 `didFinish` 把 contentSettled 翻成 true,下一帧才突然算出真值 ——
+			// 也就是用户说的"等一会会**突然**变成正常的毛玻璃和大小,还有位置"。
+			//
+			// 折中:WebKit 的自动重置总是把偏移放回**静止位附近**,不会明显超过它;
+			// 而用户真的在滑时会明显超过。所以只认"明显超过"的那一部分。
+			flight = travelled > Style.settleGrace ? measuredFlight : 0
 		}
 
 		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop)

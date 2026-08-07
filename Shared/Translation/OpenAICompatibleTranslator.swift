@@ -122,6 +122,9 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 		// 只对 OpenRouter 发这个字段;其他 OpenAI 兼容服务商可能不认识它。
 		let providerPreference: ChatRequest.Provider? =
 			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Provider(sort: "throughput") : nil
+		// [翻译] 关掉思考模式,理由见 ChatRequest.Reasoning 的说明
+		let reasoningPreference: ChatRequest.Reasoning? =
+			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Reasoning(effort: "none", exclude: true) : nil
 
 		let body = ChatRequest(
 			model: model,
@@ -133,6 +136,7 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 			// 0.45 仍然偏保守 —— 翻译要的是稳定,不是创意。
 			temperature: 0.45,
 			provider: providerPreference,
+			reasoning: reasoningPreference,
 			stream: nil
 		)
 		request.httpBody = try JSONEncoder().encode(body)
@@ -150,9 +154,19 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 			throw TranslationError.serverError(status: http.statusCode, message: message)
 		}
 
-		guard let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data),
-			  let content = decoded.choices.first?.message.content,
-			  !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+		let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data)
+		let content = decoded?.choices.first?.message.content ?? ""
+
+		guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			// [翻译] 空译文最常见的一种死法:模型把正文写进了 `reasoning`(思考区)。
+			// 我们已经请求关掉思考(见 ChatRequest.Reasoning),但有的模型关不掉。
+			// 与其抛一句笼统的"响应格式不对",不如告诉用户**该怎么办**。
+			let reasoning = decoded?.choices.first?.message.reasoning ?? ""
+			if !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+				throw TranslationError.serverError(
+					status: 200,
+					message: "这个模型把正文写进了「思考」区、正式回复是空的,关不掉。请在设置里换一个模型。")
+			}
 			throw TranslationError.invalidResponse
 		}
 
@@ -184,6 +198,9 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 
 		let providerPreference: ChatRequest.Provider? =
 			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Provider(sort: "throughput") : nil
+		// [翻译] 关掉思考模式,理由见 ChatRequest.Reasoning 的说明
+		let reasoningPreference: ChatRequest.Reasoning? =
+			config.baseURL.lowercased().contains("openrouter") ? ChatRequest.Reasoning(effort: "none", exclude: true) : nil
 
 		let body = ChatRequest(
 			model: model,
@@ -193,6 +210,7 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 			],
 			temperature: 0.45,
 			provider: providerPreference,
+			reasoning: reasoningPreference,
 			stream: true
 		)
 		request.httpBody = try JSONEncoder().encode(body)
@@ -260,11 +278,15 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 		request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
 
+		// [翻译] 连通性测试也关掉思考:开着的话有的模型要想上十几秒才吐两个字,
+		// 会让用户以为"测试卡住了"。理由详见 ChatRequest.Reasoning。
 		let body = ChatRequest(
 			model: model,
 			messages: [ChatRequest.Message(role: "user", content: "只回复两个字:你好")],
 			temperature: 0,
 			provider: nil,
+			reasoning: config.baseURL.lowercased().contains("openrouter")
+				? ChatRequest.Reasoning(effort: "none", exclude: true) : nil,
 			stream: nil
 		)
 		request.httpBody = try JSONEncoder().encode(body)
@@ -373,10 +395,28 @@ private struct ChatRequest: Encodable {
 		let sort: String
 	}
 
+	/// [翻译] **关掉"思考模式"**(2026-08-08,用户在别的项目上踩过这个坑后问起)。
+	///
+	/// 很多模型(尤其新出的)在 OpenRouter 上**默认开着推理**,会先输出一大段自言自语。
+	/// 对翻译这件事,那段推理**纯粹是浪费**:多花 token、多等时间,而且
+	/// **推理文字是放在单独的 `reasoning` 字段里的,不在 `content` 里** ——
+	/// 我们的解析只读 `content`,于是有的模型会让我们拿到**一段空译文**,还看不出原因。
+	///
+	/// 两个字段都带上(查 OpenRouter 文档确认过的写法,不是凭记忆):
+	///   · `effort: "none"` —— **彻底不思考**(能关的模型走这条,省钱又省时间)
+	///   · `exclude: true`  —— 关不掉的模型至少**别把推理回传给我们**
+	///
+	/// ⚠️ 只对 OpenRouter 发(和 `provider` 同一个理由:别的 OpenAI 兼容服务商不认识它)。
+	struct Reasoning: Encodable {
+		let effort: String
+		let exclude: Bool
+	}
+
 	let model: String
 	let messages: [Message]
 	let temperature: Double
 	let provider: Provider?
+	let reasoning: Reasoning?
 	/// 流式开关。nil 时整个字段不出现在请求里(同 provider,靠 encodeIfPresent),
 	/// 非流式请求的 JSON 和以前一个字节都不差。
 	let stream: Bool?
@@ -387,6 +427,13 @@ private struct ChatResponse: Decodable {
 	struct Choice: Decodable {
 		struct Message: Decodable {
 			let content: String?
+			/// [翻译] 只用来**诊断**,不当译文用(2026-08-08)。
+			///
+			/// 有的模型即使被要求关掉思考也照样思考,而推理文字是放在**这个字段**里的、
+			/// `content` 反而留空 —— 那时我们本来只会抛一句笼统的"响应格式不对",
+			/// 用户根本不知道该换模型。有了它就能给出一条能照着做的错误。
+			/// ⚠️ **绝不能拿它当译文** —— 那是模型的自言自语,不是翻译结果。
+			let reasoning: String?
 		}
 		let message: Message
 	}

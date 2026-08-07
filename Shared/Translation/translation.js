@@ -63,6 +63,70 @@
 		return null;
 	}
 
+	/// 把"直接挂在容器上的裸文本"包进 `<span>`,让它们成为可翻译的单元。
+	///
+	/// 分段规则:以 `<br>` 和**块级元素**为界,把它们之间连续的节点(裸文本 + 行内元素)
+	/// 收成一段。只有**真的含裸文本**的那些段才包 —— 纯元素的段本来就收得到,
+	/// 不包就不会平白多一层 span。
+	///
+	/// ⚠️ **为什么用行内的 `<span>` 而不是 `<p>`**:`<p>` 是块级的,会改变页面排版
+	/// (MacRumors 那种 `<br>` 分行的文章会凭空多出段间距)。`<span>` 是行内元素,
+	/// 包上去**视觉上一个像素都不变**。
+	///
+	/// ⚠️ **幂等**:包完之后,裸文本已经在 span 里,容器的直接子节点里不再有裸文本 ——
+	/// 所以再跑一遍什么都不会发生,不会套娃(重新翻译时会再调一次 splitBody)。
+	///
+	/// ⚠️ **在 `originalHTML` 存档之后才调**(splitBody 开头就存了),
+	/// 所以"还原原文"仍然是把存档的 innerHTML 塞回去,这些 span 一起消失。
+	function wrapLooseText(container) {
+
+		// 块级元素:它们自己就是完整的单元,不该和旁边的裸文本捆在一起
+		var BLOCK = {
+			P: 1, DIV: 1, BLOCKQUOTE: 1, PRE: 1, HR: 1, TABLE: 1, FIGURE: 1, FIGCAPTION: 1,
+			UL: 1, OL: 1, LI: 1, DL: 1, DT: 1, DD: 1, SECTION: 1, ARTICLE: 1, ASIDE: 1,
+			HEADER: 1, FOOTER: 1, NAV: 1, MAIN: 1, FORM: 1, IFRAME: 1, VIDEO: 1, AUDIO: 1,
+			H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1
+		};
+
+		var nodes = Array.prototype.slice.call(container.childNodes);
+		var run = [];
+		var runHasBareText = false;
+
+		function flush() {
+			if (run.length > 0 && runHasBareText) {
+				var span = container.ownerDocument.createElement("span");
+				span.setAttribute("data-nnw-run", "1");
+				container.insertBefore(span, run[0]);		// 先占位,再把这一段搬进去
+				for (var s = 0; s < run.length; s++) {
+					span.appendChild(run[s]);
+				}
+			}
+			run = [];
+			runHasBareText = false;
+		}
+
+		for (var i = 0; i < nodes.length; i++) {
+			var node = nodes[i];
+
+			// <br> 和块级元素都是"分界":把前面攒的收掉,它们自己不进任何一段
+			if (node.nodeType === 1 && (node.tagName === "BR" || BLOCK[node.tagName])) {
+				flush();
+				continue;
+			}
+
+			if (node.nodeType === 3) {			// 文本节点
+				if (normalizeSpace(node.textContent).length > 0) {
+					runHasBareText = true;
+				} else if (run.length === 0) {
+					continue;					// 段首的纯空白不收,免得 span 从空格开始
+				}
+			}
+
+			run.push(node);
+		}
+		flush();
+	}
+
 	function normalizeSpace(text) {
 		return (text || "").replace(/\s+/g, " ").trim();
 	}
@@ -242,6 +306,25 @@
 			// 下钻一层,把它的子元素当作切分单元。
 			var translatable = [];
 			(function collect(container) {
+				// ⚠️ **先把"裸文本"包起来,再遍历元素子节点**(2026-08-08 修,用户报的真 bug)。
+				//
+				// 下面这个循环遍历的是 `container.children` —— **只有元素子节点**。
+				// 于是**直接挂在容器上的文本节点从头到尾没被看见**,一个字都不会被翻译。
+				//
+				// 有些源的正文就是这么写的(实测 MacRumors 的 RSS 原文):
+				//     Apple captured 65% of the global premium smartphone market...
+				//     <br/><img .../><br/>
+				//     That's according to <a href="...">Handset Model Sales Tracker</a>, which...
+				// 全篇没有一个 <p>。结果是:<br>/<img> 没文字被跳过,
+				// **只有 <a> 因为"有文字"被收走翻译了** —— 用户看到的正是
+				// "整篇英文,只有超链接变成了中文"。
+				//
+				// 修法见 wrapLooseText:把裸文本连成的一段(以 <br> 和块级元素为界)
+				// 包进一个 <span>,它就成了正常的翻译单元。
+				// 顺带一个真正的改善:句子里的链接从此**跟着句子一起翻**,
+				// 不再被单独拆出来译成"Bloomberg 报道 短信摘录Axios报道"那种碎片。
+				wrapLooseText(container);
+
 				var children = container.children;
 				for (var i = 0; i < children.length; i++) {
 					var child = children[i];
