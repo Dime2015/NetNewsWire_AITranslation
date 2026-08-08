@@ -67,6 +67,10 @@ import Images
 		// 单例是懒加载的,不摸的话冷启动第一轮刷新拉回的新文章会整段错过预翻译。
 		_ = NNWTitleTranslationController.shared
 
+		// [外文] 把「外文」这个智能源追加进侧栏。**必须在造树之前**,这里最早(scene 还没连上)。
+		// 上游 Shared/SmartFeeds/ 一行没改,详见 NNWForeignSmartFeed.swift 的文件头。
+		NNWForeignSmartFeed.install()
+
 		Task {
 			await WebViewConfiguration.compileContentBlockingRules()
 		}
@@ -91,6 +95,8 @@ import Images
 			self.unreadCount = AccountManager.shared.unreadCount
 			// Force the badge to update on launch.
 			self.updateBadge()
+			// [外文] 冷启动也认一遍 —— 用户可能很久不手动刷新,不能只挂在刷新完成上
+			NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
 		}
 
 		UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .sound, .alert]) { (granted, _) in
@@ -156,6 +162,8 @@ import Images
 
 	@objc func accountRefreshDidFinish(_ note: Notification) {
 		AppDefaults.shared.lastRefresh = Date()
+		// [外文] 刷新拉回新文章之后,把还没认过语言的源认一遍(幂等,已认过的直接跳过)
+		NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
 	}
 
 	// MARK: - API

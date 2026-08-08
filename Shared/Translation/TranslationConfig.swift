@@ -142,11 +142,14 @@ enum TranslationConfigStore {
 
 	static var selectedModel: String {
 		get {
+			// ⚠️ 2026-08-08 改:**不再要求它出现在 `availableModels` 里**。
+			// 老写法是「选中的模型若不在列表里就退回列表第一个」,前提是"列表 = 全部可选项"。
+			// 新的模型菜单直接从 OpenRouter 的完整目录(约 400 个)里挑,
+			// 那个前提没了 —— 再留着这条守卫,用户选的模型会被**静默换掉**(T51 #7)。
 			if let saved = UserDefaults.standard.string(forKey: selectedModelKey),
-			   availableModels.contains(saved) {
+			   !saved.trimmingCharacters(in: .whitespaces).isEmpty {
 				return saved
 			}
-			// 选中的模型可能在刷新后从列表里消失了,这时退回列表第一个
 			return availableModels.first ?? defaultModel
 		}
 		set { UserDefaults.standard.set(newValue, forKey: selectedModelKey) }

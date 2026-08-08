@@ -689,8 +689,33 @@ extension MainTimelineModernViewController {
 			progress: progress,
 			headerHeight: headerView.headerHeight,
 			dockBand: dockedTitleBand(in: host),
-			safeAreaTop: host.view.safeAreaInsets.top
+			safeAreaTop: host.view.safeAreaInsets.top,
+			dockedAvailableWidth: dockedAvailableWidth(in: host)
 		)
+	}
+
+	/// 标题**停靠之后**能占多宽 —— 也就是右上角那组控件之间的净空。
+	///
+	/// ⚠️ 这一条是用户 2026-08-08 第 10 件的另一半(「齿轮压在标题上」)。
+	/// 把右上角两颗圆钮换成一颗双图标胶囊省下了 ≈28pt,但**源名可以任意长**,
+	/// 光靠控件变窄治不干净 —— 必须有个地方把标题夹住。
+	///
+	/// 标题是**居中**的,所以左右要留一样宽:净空 = 栏宽 − 2 ×(右侧控件宽 + 余量)。
+	/// 控件宽度现问现算,不写死常数(单源页是胶囊、智能源页是一颗圆钮,两种自动各得其所)。
+	private func dockedAvailableWidth(in host: UIViewController) -> CGFloat {
+		let width: CGFloat = host.view.bounds.width
+		let items: [UIBarButtonItem] = host.navigationItem.rightBarButtonItems ?? []
+		var controlsWidth: CGFloat = 0
+		for item in items {
+			if let view = item.customView {
+				controlsWidth += view.bounds.width > 0 ? view.bounds.width : view.intrinsicContentSize.width
+			} else {
+				controlsWidth += 44
+			}
+		}
+		controlsWidth += CGFloat(max(0, items.count - 1)) * 8	// 项与项之间的间距(系统值取不到,按 8pt 估)
+		let margin: CGFloat = 12								// 字和控件之间至少留这么宽
+		return max(width - 2 * (controlsWidth + margin), 80)
 	}
 
 	/// 标题停靠区:**状态栏下沿 到 安全区顶部** 之间那一条(也就是两个圆钮所在的那条)。
@@ -1043,7 +1068,8 @@ extension MainTimelineModernViewController {
 		setNeedsLayout()
 	}
 
-	func apply(progress: CGFloat, headerHeight: CGFloat, dockBand: CGRect, safeAreaTop: CGFloat) {
+	func apply(progress: CGFloat, headerHeight: CGFloat, dockBand: CGRect, safeAreaTop: CGFloat,
+			   dockedAvailableWidth: CGFloat) {
 		let width: CGFloat = bounds.width
 		guard width > 0, headerHeight > 0 else { return }
 
@@ -1097,6 +1123,19 @@ extension MainTimelineModernViewController {
 
 		// 线性插值(位置 + 缩放同步进行)
 		let scale: CGFloat = 1 + (TimelineStyle.headerDockedTitleFontSize / TimelineStyle.headerTitleFontSize - 1) * progress
+
+		// [外观] 2026-08-08(用户第 10 件):**越靠近停靠位,可用宽度越收紧到右上角控件之间的净空**。
+		// 不这么做的话,长源名(如「MacRumors: Mac News and Rumors - All Stories」)飞上去
+		// 就会伸到齿轮底下 —— 那正是用户报的"齿轮压在标题上"。
+		//
+		// ⚠️ 比的是**屏幕上的实际宽度**(fitted × scale),不是 bounds 宽度:
+		// 这个标签飞行时是被 transform 缩放的,拿 bounds 去比会算错一整个缩放比(L123)。
+		// 起点(progress 0)allowedNow == available,所以头图里那个大标题一个像素都没变。
+		let allowedNow: CGFloat = available + (dockedAvailableWidth - available) * progress
+		if fitted.width * scale > allowedNow {
+			fitted.width = allowedNow / scale
+			titleLabel.bounds = CGRect(origin: .zero, size: fitted)
+		}
 		let interpolatedY: CGFloat = restCenter.y + (dockedCenter.y - restCenter.y) * progress
 		// 保险:无论几何怎么算,都不许飞到停靠区上沿以上(否则会滑出画面)
 		let minCenterY: CGFloat = dockBand.minY + fitted.height * scale / 2

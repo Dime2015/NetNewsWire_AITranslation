@@ -290,7 +290,8 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			label.isUserInteractionEnabled = ((coordinator?.timelineFeed as? PseudoFeed) == nil)
 			label.sizeToFit()
 		}
-		nnwUpdateFeedHeader()	// [外观] 单源页顶部头部区(实现在 TimelineFeedHeader.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
+		nnwUpdateFeedHeader()	// [外观] 单源页顶部头部区
+		nnwTimelineTopBarDidUpdate()	// [外观][阅读位置] 加一行:夹住标题宽度 + 装「点顶栏回顶/回原位」(实现在 +NNWTimelineExtras)(实现在 TimelineFeedHeader.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
 	}
 
 	func updateNavigationBarSubtitle(_ text: String) {
@@ -308,6 +309,7 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 		}
 		resetUI(resetScroll: resetScroll)
 		restoreSelectionIfNecessary(adjustScroll: false)
+		nnwRestoreFeedScrollPositionIfNeeded(resetScroll: resetScroll)	// [阅读位置] 加一行:换源时回到这个源上次停的那一篇(实现在 +NNWTimelineExtras)
 	}
 
 	func reloadArticles(animated: Bool) {
@@ -535,6 +537,9 @@ extension MainTimelineModernViewController: UICollectionViewDelegate {
 				secondaryActions.append(action)
 			}
 			if let action = self.markAllInFeedAsReadAction(article, indexPath: firstIndex) {
+				secondaryActions.append(action)
+			}
+			if let action = self.nnwFeedSettingsAction(article) {	// [管理] 加三行:进这个源的设置页(实现在 +NNWTimelineExtras)
 				secondaryActions.append(action)
 			}
 			if !secondaryActions.isEmpty {
@@ -785,7 +790,7 @@ private extension MainTimelineModernViewController {
 			}
 
 			readAction.image = article.status.read ? Assets.Images.circleClosed : Assets.Images.circleOpen
-			readAction.backgroundColor = Assets.Colors.primaryAccent
+			readAction.backgroundColor = NNWAccentPalette.live
 			actions.append(readAction)
 
 			let config = UISwipeActionsConfiguration(actions: actions)
@@ -894,7 +899,7 @@ private extension MainTimelineModernViewController {
 		navigationItem.rightBarButtonItems = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? [filterButton] : nnwNavBarButtonItems()
 
 		if isReadArticlesFiltered {
-			filterButton.tintColor = Assets.Colors.primaryAccent
+			filterButton.tintColor = NNWAccentPalette.live
 			filterButton.accLabelText = NSLocalizedString("Selected - Filter Read Articles", comment: "Selected - Filter Read Articles")
 		} else {
 			filterButton.tintColor = .label

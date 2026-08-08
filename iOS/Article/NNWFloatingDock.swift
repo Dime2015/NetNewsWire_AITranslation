@@ -146,6 +146,9 @@ extension ArticleViewController {
 			guard let self, let dock, dock.superview === self.view else { return }
 			let shouldHide = (self.navigationController?.isNavigationBarHidden ?? false)
 				|| (self.navigationController?.isToolbarHidden ?? false)
+				// [阅读] 2026-08-08:翻到彩蛋页(没有下一篇了)时也收起来 ——
+				// 那一页没有文章,dock 上每一颗键都无从下手,留着只会误导。
+				|| self.nnwIsShowingNoMoreArticlesPage
 			let target: CGFloat = shouldHide ? 0 : 1
 			guard dock.alpha != target else { return }
 			UIView.animate(withDuration: 0.25) { dock.alpha = target }

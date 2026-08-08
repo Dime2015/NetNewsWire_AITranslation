@@ -45,7 +45,7 @@ final class ArticleViewController: UIViewController {
 		button.frame = CGRect(x: 0, y: 0, width: 44.0, height: 44.0)
 		button.setImage(Assets.Images.articleExtractorOff, for: .normal)
 		if #unavailable(iOS 26) {
-			button.tintColor = Assets.Colors.primaryAccent
+			button.tintColor = NNWAccentPalette.live
 		} else {
 			button.tintColor = .label
 		}
@@ -166,6 +166,7 @@ final class ArticleViewController: UIViewController {
 		}
 
 		installTranslationButton()	// [翻译] 本 fork 新增
+		nnwInstallBackToListSwipe()	// [阅读] 本 fork 新增:从任意位置右滑 = 回文章列表(实现在 NNWArticlePaging.swift)
 
 		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
 		pageViewController.delegate = self
@@ -519,19 +520,21 @@ extension ArticleViewController: WebViewControllerDelegate {
 extension ArticleViewController: UIPageViewControllerDataSource {
 
 	func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-		guard let webViewController = viewController as? WebViewController,
-			let currentArticle = webViewController.article,
-			let article = coordinator.findPrevArticle(currentArticle) else {
-			return nil
-		}
-		return createWebViewController(article)
+		// [阅读] 一行换一行(用户 2026-08-08 第 4 件):**永远没有前一页**。
+		// 右滑不再翻上一篇,而是交给「右滑回列表」那个手势(见 NNWArticlePaging.swift)。
+		// 上一篇的入口没丢:底部 dock 的箭头和键盘快捷键照旧。
+		return nil
 	}
 
 	func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+		// [阅读] 一行换一行(用户 2026-08-08 第 4 件):后一页 = **下一篇未读**(原来是"下一篇")。
+		// 已经在彩蛋页上了就到头了,不再往后给。
 		guard let webViewController = viewController as? WebViewController,
-			let currentArticle = webViewController.article,
-			let article = coordinator.findNextArticle(currentArticle) else {
+			let currentArticle = webViewController.article else {
 			return nil
+		}
+		guard let article = nnwFindNextUnreadArticle(after: currentArticle) else {
+			return nnwMakeNoMoreArticlesPage()	// [阅读] 没有下一篇未读了 → 彩蛋页
 		}
 		return createWebViewController(article)
 	}
@@ -548,6 +551,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 
 	func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
 		isPageTransitionInProgress = false
+		nnwSyncFloatingDockVisibility()	// [阅读] 加一行:翻到/翻离彩蛋页时 dock 跟着收放(翻页不改安全区,那条回调不会来)
 
 		if let pending = pendingSetViewController {
 			pendingSetViewController = nil

@@ -139,7 +139,7 @@ extension FeedInspectorViewController {
 
 	override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
 		let count = super.tableView(tableView, numberOfRowsInSection: shift(section))
-		return section == 0 ? count + 1 : count	// [翻译] 第 0 区末尾加「标题翻译成中文」开关行(实现见 +NNWTitleTranslation)
+		return section == 0 ? count + nnwExtraRowCount : count	// [翻译][外文] 第 0 区末尾加本 fork 的开关行(实现见 +NNWTitleTranslation)
 	}
 
 	override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
@@ -150,11 +150,11 @@ extension FeedInspectorViewController {
 	// 这两个问题必须替那一行答 —— 拿 storyboard 里不存在的行号去问 super 会直接崩溃。
 	// storyboard 里的行照旧问 super,行为与上游一致。
 	override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-		nnwIsTitleTranslationRow(indexPath) ? UITableView.automaticDimension : super.tableView(tableView, heightForRowAt: shift(indexPath))
+		nnwIsExtraRow(indexPath) ? UITableView.automaticDimension : super.tableView(tableView, heightForRowAt: shift(indexPath))
 	}
 
 	override func tableView(_ tableView: UITableView, indentationLevelForRowAt indexPath: IndexPath) -> Int {
-		nnwIsTitleTranslationRow(indexPath) ? 0 : super.tableView(tableView, indentationLevelForRowAt: shift(indexPath))
+		nnwIsExtraRow(indexPath) ? 0 : super.tableView(tableView, indentationLevelForRowAt: shift(indexPath))
 	}
 
 	// [翻译] 这个方法整个是本 fork 加的:cell 底色刷成暖纸风,和设置页同一套
@@ -163,7 +163,7 @@ extension FeedInspectorViewController {
 	}
 
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-		if nnwIsTitleTranslationRow(indexPath) { return nnwTitleTranslationCell() }	// [翻译]
+		if let cell = nnwExtraRowCell(at: indexPath) { return cell }	// [翻译][外文] 本 fork 追加的开关行
 		let cell = super.tableView(tableView, cellForRowAt: shift(indexPath))
 		if indexPath.section == 0 && indexPath.row == 1 {
 			guard let label = cell.contentView.subviews.filter({ $0.isKind(of: UILabel.self) })[0] as? UILabel else {

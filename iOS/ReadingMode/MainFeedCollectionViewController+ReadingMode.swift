@@ -153,41 +153,40 @@ extension MainFeedCollectionViewController {
 		if nnwIsEditingFeeds { return }
 
 		// 已经装过就别重造(viewWillAppear 会调很多次)
-		// ⚠️ 判据从「第一项的 action 是不是放大镜」改成「第一项是不是我们的圆钮」——
+		// ⚠️ 判据从「第一项的 action 是不是放大镜」改成「第一项是不是我们的控件」——
 		// 2026-08-04 改成 customView 之后 `item.action` 恒为 nil,老判据会永远判"没装过",
 		// 每次 viewWillAppear 都重造一对按钮。
-		if navigationItem.rightBarButtonItems?.first?.customView is NNWSoftGlassButton { return }
+		// ⚠️ 2026-08-08 合成一颗胶囊之后,这里的类型也得跟着换 ——
+		// 忘了换就等于把上面那个 bug 原样放回来(每次进页面重造一遍)。
+		if navigationItem.rightBarButtonItems?.first?.customView is NNWSoftGlassDualButton { return }
 
-		// [外观] 2026-08-04:手绘图标 + 橙色(这一页的控件统一重绘)
-		// [外观] 2026-08-04 二版:装进**磨砂圆钮**,并拆掉 iOS 26 的系统玻璃胶囊 ——
-		// 和底栏中间那条三档同一套材质(整圈亮边 + 极淡阴影)。
-		// ⚠️ 这两颗压在**头图**上,所以底必须是真磨砂,不能用工具栏那种烘焙的不透明圆盘
-		// (试过,是两张贴纸)。缘由见 NNWSoftGlassButton 的文件头。
-		let search = UIBarButtonItem(customView: nnwGlassButton(icon: Self.nnwNavSymbol("magnifyingglass"),
-															   action: #selector(nnwGlobalSearchTapped),
-															   label: "搜索全部订阅源"))
-		search.nnwHideSystemGlassCapsule()
-		search.accessibilityLabel = "搜索全部订阅源"
+		// [外观] 2026-08-08(用户看截图后要求):**编辑 + 搜索合成一颗双图标胶囊**,
+		// 和文章列表页那颗(齿轮 + 放大镜)同一个控件。
+		//
+		// ⚠️ **这一条推翻了 T51 里「首页保持两颗独立圆钮」那句** —— 那句当时的理由是
+		// "两个页面范围不同,别顺手一起改";现在是用户看过成品之后主动要求统一,理由消失了。
+		//
+		// ⚠️ **仍然是我们自己画的,不是让系统去合并**(L121:要么全归系统,要么全归我们)。
+		// 系统合并出来的是系统材质,26/27 上是两副样子,2026-08-05 绕了一整轮才统一,别退回去。
+		//
+		// ⚠️ 这颗压在**头图**上,所以底必须是真磨砂 —— `NNWSoftGlassDualButton` 用的就是
+		// 和圆钮同一套(磨砂 + 整圈亮边),不是工具栏那种烘焙的不透明圆盘(试过,是贴纸)。
+		//
+		// 左右分工照旧:**搜索在右**(用得更勤,占最右),**编辑在左**。
+		//
+		// 编辑那个图标 2026-07-28 已经三版定案:光秃秃的 pencil → pencil.circle.fill(用户说丑)
+		// → **square.and.pencil**(方框 + 从右上角伸出的铅笔,用户指定)。别再换(L110)。
+		// 它点开的是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
+		// 页面标题叫「编辑订阅」,心智上 = 本列表的编辑模式(2026-07-25 用户拍板的方案乙)。
+		let dual = NNWSoftGlassDualButton(
+			leftIcon: Self.nnwNavSymbol("square.and.pencil"), leftLabel: "编辑订阅",
+			rightIcon: Self.nnwNavSymbol("magnifyingglass"), rightLabel: "搜索全部订阅源")
+		dual.addLeftTarget(self, action: #selector(nnwEditSubscriptionsTapped))
+		dual.addRightTarget(self, action: #selector(nnwGlobalSearchTapped))
 
-		// [管理] 「编辑订阅」入口(2026-07-25 用户拍板的方案乙):
-		// 原来藏在右下角 + 的第二层选单里,不直觉 —— 提到导航栏,和放大镜并排。
-		// 点开的就是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
-		// 页面标题已改叫「编辑订阅」,心智上 = 本列表的编辑模式。
-		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
-		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
-		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
-		// [外观] 2026-08-05 **改回定过案的那版**(用户:「重绘左边的这个,太丑了」)。
-		// ⚠️ 这个图标 2026-07-28 已经三版定案:光秃秃的 pencil → pencil.circle.fill(用户说丑)
-		// → **square.and.pencil**(方框 + 从右上角伸出的铅笔,用户指定)。
-		// 2026-08-04 那轮"全套手绘"又把它换掉了 —— 和分享/长图/翻译是同一个错误(L110)。
-		let edit = UIBarButtonItem(customView: nnwGlassButton(icon: Self.nnwNavSymbol("square.and.pencil"),
-															 action: #selector(nnwEditSubscriptionsTapped),
-															 label: "编辑订阅"))
-		edit.nnwHideSystemGlassCapsule()
-		edit.accessibilityLabel = "编辑订阅"
-
-		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
-		navigationItem.rightBarButtonItems = [search, edit]
+		let item = UIBarButtonItem(customView: dual)
+		item.nnwHideSystemGlassCapsule()
+		navigationItem.rightBarButtonItems = [item]
 	}
 
 	/// [外观] 导航栏圆钮里的系统符号。字号跟着圆钮直径走(约 45%),
@@ -198,13 +197,10 @@ extension MainFeedCollectionViewController {
 		return UIImage(systemName: name, withConfiguration: config) ?? UIImage()
 	}
 
-	/// [外观] 造一颗导航栏用的磨砂圆钮。
-	private func nnwGlassButton(icon: UIImage, action: Selector, label: String) -> NNWSoftGlassButton {
-		let button = NNWSoftGlassButton(icon: icon)
-		button.addTarget(self, action: action, for: .touchUpInside)
-		button.accessibilityLabel = label
-		return button
-	}
+	// ⚠️ 这里原来有个 `nnwGlassButton(icon:action:label:)`,造首页右上角那**两颗独立圆钮**用的。
+	// 2026-08-08 两颗合成一颗双图标胶囊之后没人调它了,**已删**,免得留一份死代码
+	// 让下一个人以为首页还是两颗。要单颗圆钮直接 `NNWSoftGlassButton(icon:)`,
+	// 文章列表页的智能源/文件夹页就是那么用的。
 
 	/// [外观] 2026-08-04:把底部工具栏那两个系统图标(设置齿轮、加号)换成手绘橙图标。
 	///

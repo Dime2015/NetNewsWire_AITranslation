@@ -183,9 +183,9 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 		switch (state.isHighlighted || state.isSelected || state.isFocused, traitCollection.userInterfaceIdiom) {
 		case (true, .pad):
 			backgroundConfig.backgroundColor = .tertiarySystemFill
-			folderTitle.textColor = Assets.Colors.primaryAccent
+			folderTitle.textColor = NNWAccentPalette.live
 			folderTitle.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
-			unreadCountLabel.textColor = Assets.Colors.primaryAccent
+			unreadCountLabel.textColor = NNWAccentPalette.live
 			unreadCountLabel.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
 		default:
 			folderTitle.textColor = .label

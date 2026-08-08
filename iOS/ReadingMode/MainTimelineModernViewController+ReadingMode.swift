@@ -87,19 +87,27 @@ extension MainTimelineModernViewController {
 	/// 数组顺序 = 从右往左:放大镜保持最右(老位置、老习惯),齿轮挨在它左边。
 	/// 齿轮 = 这个源的设置页(2026-07-29 用户要求,取代初版头图上的 info 圆钮)。
 	@objc func nnwNavBarButtonItems() -> [UIBarButtonItem] {
-		var items = [nnwSearchBarButtonItem()]
+
+		// [外观] 2026-08-08(用户第 10 件):单源页原来是**两颗独立圆钮**(齿轮 + 放大镜),
+		// 加起来 ≈ 96pt,源名一长(如 "Conversable Economist")标题就伸到齿轮底下去了。
+		// 改成**一颗双图标胶囊**(≈ 68pt),省下的 ≈ 28pt 直接还给标题;
+		// 标题那头还有夹宽度那道保险(见 nnwClampNavigationTitleWidth)。
+		//
+		// ⚠️ 只有这一页合并。**首页那两颗(搜索/编辑)保持独立**,用户已经验收过了 ——
+		// 两个页面范围不同,别顺手一起改(T51 里专门标了这一条)。
 		if coordinator?.timelineFeed is Feed {
-			// [外观] 2026-08-05:和首页那两颗同一套 —— 手绘图标 + 磨砂圆钮 + 拆系统玻璃胶囊。
-			// 这两颗也压在**头图**上,所以底必须是真磨砂(理由见 NNWSoftGlassButton 文件头)。
-			let button = NNWSoftGlassButton(icon: MainFeedCollectionViewController.nnwNavSymbol("gearshape"))
-			button.addTarget(self, action: #selector(nnwFeedSettingsTapped), for: .touchUpInside)
-			button.accessibilityLabel = "源信息与设置"
-			let gear = UIBarButtonItem(customView: button)
-			gear.nnwHideSystemGlassCapsule()
-			gear.accessibilityLabel = "源信息与设置"
-			items.append(gear)
+			let dual = NNWSoftGlassDualButton(
+				leftIcon: MainFeedCollectionViewController.nnwNavSymbol("gearshape"), leftLabel: "源信息与设置",
+				rightIcon: MainFeedCollectionViewController.nnwNavSymbol("magnifyingglass"), rightLabel: "搜索文章")
+			dual.addLeftTarget(self, action: #selector(nnwFeedSettingsTapped))
+			dual.addRightTarget(self, action: #selector(nnwSearchTapped))
+			let item = UIBarButtonItem(customView: dual)
+			item.nnwHideSystemGlassCapsule()
+			return [item]
 		}
-		return items
+
+		// 智能源 / 文件夹页没有「源设置」可进,还是一颗放大镜
+		return [nnwSearchBarButtonItem()]
 	}
 
 	@objc func nnwSearchBarButtonItem() -> UIBarButtonItem {
