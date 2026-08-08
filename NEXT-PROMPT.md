@@ -3,118 +3,140 @@
 
 **请先按顺序读，读完再动手：**
 
-1. `CLAUDE.md` —— 项目规则。**但第 0 节第 7 条已被下面的「工作方式更正」推翻**
+1. `CLAUDE.md` —— 项目规则。⚠️ **第 0 节第 7 条 2026-08-08 刚改过，必须读**
 2. `NOTES-progress.md` 最前面的「📍 接手须知」
-3. `NOTES-todo.md` 的 **T51**（这一整轮要做的 7 件事，方案已和我逐条谈定）
-   —— 顺带扫一眼 **T49 / T50**（iOS 27 模拟器怎么用、底栏控件那场仗的结论）
-4. `NOTES-lessons.md` 的 **L118–L123**
+3. `NOTES-lessons.md` 的 **L124 / L125 / L126**（上一轮的新账）
+4. `NOTES-todo.md` 的 **T51**（上一轮那 10 件事的完整记录：做法、坑、为什么这么修）
 
 ---
 
-## ⚠️ 分支与回滚点（先跑 `git branch --show-current`）
+# 🔴 开工前先记住这一条（上一轮最贵的教训）
+
+## 界面上的点按与截图验收 —— **交给用户，不要自己去点**
+
+覆盖**一切驱动界面的工具**，包括那个"专门的 iOS 模拟器 MCP"
+（`mcp__Claude_Code_iOS_Simulator__control` 的 screenshot / tap / swipe）、
+computer-use、claude-in-chrome。**默认一律不用。**
+
+| 事情 | 谁来做 |
+|---|---|
+| 写代码、编译 `xcodebuild` | **你** |
+| 装机 `xcrun simctl install/launch` | **你**（命令行，不费 token） |
+| 看日志、查数据库、`curl` 验接口、拉真数据预演 | **你**，而且**一个都不要省** |
+| **在界面上点、截图看效果** | **用户**。你说清楚点哪里、看什么、什么算对 |
+
+⚠️ **别重蹈 L126**：2026-08-04 我以"本环境有专门的模拟器工具，又快又便宜"为由绕过了这条规则
+（还写进了 L100），2026-08-08 用户当场推翻 —— **那个工具同样费 token，截图是图片，每张都整个进上下文**。
+判据：**规则的理由是"太贵"，换个工具不改变成本；理由没变，规则就没变。**
+
+⚠️ **L100 里"自己截图看过"那半句已作废**，但它的内核（**改了界面不能靠猜、不能盲交**）继续有效 ——
+只是验收的执行者是用户。交付时给一份**用户能照着做的清单**，不是"应该没问题"。
+
+⚠️ **验收不了就明说**。别把"我觉得没问题"写成"已验证"（L114/L119 的老账）。
+
+---
+
+# ⚠️ 分支与回滚点（先跑 `git branch --show-current`）
 
 ```
-design/custom-dock   ← 当前工作分支，已 push，最新 commit 7cd77dcbb
+design/custom-dock   ← 当前工作分支，已 push，最新 e0f99df00
 design/soft-dock     稳定版：tag dock-system-glass 在这条上
-main                 停在 tag genesis（这一整轮设计改动一行没进）
+main                 停在 tag genesis
 design/soft-shell    被否决的设计师方案，留档别用
 ```
 
 **三个回滚点，说哪个回哪个**：
 - 「回到创世版本」→ `git checkout genesis`
 - 「回到玻璃版」→ `git checkout dock-system-glass`
-- 当前 → `design/custom-dock`
+- **「回到上一轮之前」→ `9b18566dc`**（T51 第二批那 7 件的前一个）
 
 ---
 
-# 🔧 这一轮开始前，先知道你手里有什么工具
+# 🔧 手上有什么工具
 
-## ① iOS 27 模拟器（2026-08-05 新装，这是最大的变化）
+## ① 两台模拟器
 
 ```bash
+SIM26=A7B1AE1F-0391-4C3A-B979-FA35653256FF   # iPhone 17 (iOS 26.5)，用户那台，87 个源 + 真 API Key
 SIM27=87C9AE05-88C0-44E6-A871-242FF782D949   # iPhone 17 (iOS 27.0)，空数据，随便点
-SIM26=A7B1AE1F-0391-4C3A-B979-FA35653256FF   # iPhone 17 (iOS 26.5)，有 87 个源的那台
 ```
 
-⚠️ **仍然用 Xcode 26.6 编译**（`xcode-select` 别动），只是把产物装到 27 的模拟器上跑 ——
-这样才和用户手机上的情况一致（app 用 26 SDK 编译、跑在 27 上）。
-换成 Xcode 27 编译会改变系统控件外观，那是另一件事，要单独评估。
+⚠️ **仍然用 Xcode 26.6 编译**（`xcode-select` 别动），只把产物装到 27 上跑 ——
+这样才和用户手机一致（app 用 26 SDK 编译、跑在 27 上）。
 
-⚠️ **装机脚本认 UDID**（2026-08-05 加的闸门，别再用裸 `booted`）：
+⚠️ **装机脚本认 UDID**（别再用裸 `booted`，两台同时开着会装错设备，L123）：
 ```bash
-SIM_UDID=$SIM26 ./tools/install-to-simulator.sh          # 装 26（用户数据那台）
-# 装 27（那台的 bundle id 是 com.wenbopan，不是 com.ranchero）：
+SIM_UDID=$SIM26 ./tools/install-to-simulator.sh
+```
+装 27（那台的 bundle id 是 `com.wenbopan`，不是 `com.ranchero`）：
+```bash
 BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
 xcrun simctl install $SIM27 "$BUILT"
 xcrun simctl launch  $SIM27 com.wenbopan.NetNewsWire.iOS-DEBUG
 ```
-（两台同时开着时脚本会拦下并提示 —— 那是有意的，L123。）
 
-## ② 真机（iOS 27）
+## ② 编译
+
+```bash
+xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS \
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+⚠️ **编译和装机分两步跑，别用 `&&` 串** —— 编译失败会把旧产物装进去。
+
+## ③ 真机（iOS 27）
 
 ```bash
 DEV=B0E875BF-CAEA-549C-A020-1C01331F0DF3
 BID=com.wenbopan.NetNewsWire.iOS-DEBUG      # 与手机上现有 app 同身份 = 覆盖升级，数据不丢
-
-xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug \
-  -destination "platform=iOS,id=$DEV" build
-xcrun devicectl device install app --device $DEV <产物路径>/NetNewsWire.app
-xcrun devicectl device process launch --device $DEV --terminate-existing $BID
 ```
-⚠️ **手机锁屏时编译和启动都会失败**（报 `Locked` / `device was not unlocked`）——要用户解锁。
-⚠️ **动用户手机前先问。** 现在有 iOS 27 模拟器了，多数事情不必再上真机。
+⚠️ 手机锁屏时编译和启动都会失败。⚠️ **动用户手机前先问。**
 
-## ③ 工作方式（这个项目最贵的几条）
+## ④ 看日志（本项目常用，埋探针必备）
 
-1. 🔴 **界面上的验收交给用户，不要自己去点模拟器**（CLAUDE.md 第 0 节第 7 条；
-   2026-08-08 用户第二次强调并要求写进大原则，**L100 里"自己截图"那半句已作废**，见 **L126**）。
-   ⚠️ 这条覆盖**一切驱动界面的工具**，包括那个专门的 iOS 模拟器 MCP —— 它同样费 token。
-   编译、装机、看日志、查库、`curl` 验接口照旧自己做，**一个都不要省**。
-   交付时给一份**用户能照着做的验收清单**，而不是"应该没问题"。
-2. **深色模式是验收面积的另一半**（L112）。"做完"的定义里必须包含深色 ——
-   **请用户在深色下也看一眼**，别只报浅色。
-3. **别目测，要采样**（L101/L104/L107/L109）。量圆要**横扫取最宽处**，别竖扫（量到的是弦）。
-4. ⚠️ **"我量到了" ≠ "我量的是它"**（L123，当晚栽了两次）：
-   - 量之前先确认**装的是不是你刚编的那份、在不在你以为的那台设备上**
-   - 报告"修好了"之前先问：**我这个指标是不是直接测量了那个症状**？
-     （那次用"外接框宽度"去回答"那块多余的东西还在不在"，被数字骗了）
-5. **别猜，先埋日志**（L94）。而且要做**反向实验** + **回读确认真写进去了**（L115）。
+```bash
+xcrun simctl spawn $SIM26 log show --last 2m --info \
+  --predicate 'category == "NNWTimelineExtras"' --style compact
+```
+⚠️ **必须带 `--info`**（甚至 `--debug`）—— 不带的话 `Logger.info` 根本不落盘，
+你会以为"代码没执行"，其实只是没打印（2026-08-08 为此白查了一轮）。
 
 ---
 
-# 🔴 这一轮要做的（7 件，方案已全部谈定，细节在 T51）
+# 📌 上一轮（T51 第二批）留下的两件悬案
 
-用户的原话：**「动手后一口气全部完成」**。上一轮已经把 #1 #8 #2 做完并验收，
-剩下这 7 件是新功能 / 改交互，量大，请一次做完再交付。
+## 1️⃣ 「点顶栏第二次回原位」没做成
 
-| # | 事情 | 已定的关键决定 |
+「点顶栏第一次回顶 + 记原位」是好的，**第二次回原位**三条路全部实测失败：
+
+| 试过什么 | 结果 |
+|---|---|
+| `scrollViewShouldScrollToTop` | ❌ 列表已在顶上时**系统压根不问** |
+| 给 `navigationBar` 加点击手势 | ❌ 一次都没触发 |
+| 给列表加点击手势 + 只收顶栏那一带 | ❌ 一次都没触发 |
+
+病根：本 fork 的**头图浮层**（`TimelineFeedHeaderController` 的 overlay）铺满整页、
+盖在列表之上，顶栏那一带的触摸先落到它身上就没了。
+要做得从那一层下手（给 overlay 加手势 / 让它对那一带放行）——
+**那是动"会飞的标题"那套机制，风险不小**。详见 **L125**。
+
+## 2️⃣ `grok-build-0.1` 占了精选里 xAI 那一席
+
+它比 `grok-4.5` 便宜（¥0.086 vs ¥0.23），所以按"该家最便宜的合格档"被选中。
+名字看着像编程 / agent 专用线，但**没有数据能证实**，所以没擅自加规则。
+要排掉的话：往 `OpenRouterCatalog.featuredSpecialistTokens` 里加 `"build"` 即可。
+
+---
+
+# 📋 更早还悬着的（都在 NOTES-todo 里，按需捡）
+
+| 编号 | 事情 | 状态 |
 |---|---|---|
-| 3 | 记住每个 feed 的滚动位置 | 按 feed 存**文章 ID**（不是像素）；点顶栏第一次回顶+记原位，第二次回原位 |
-| 4 | 右滑回列表、左滑下一篇未读 | 前一页返回 nil；后一页=下一篇**未读**；没有时给彩蛋页「**没有下一篇啦！**」 |
-| 5 | 智能 Feed 加「外文」 | **不改上游一行**（`smartFeeds` 是 var、`SmartFeedDelegate` 是协议，运行时追加）；**按源**判定语言 + 源设置里手动开关 |
-| 6 | 长按菜单加「订阅源设置」 | 复用上游 `showFeedInspector(for:)`，改上游 3 行 |
-| 7 | 模型菜单重做 | 精选=**按价格从低到高前 10**（排除 `:free`）+ 按厂商分组 + 搜索框 + 顶部余额 |
-| 9 | 开关/控件接入主题色 | `window.tintColor` + `UISwitch.appearance().onTintColor`，换色重刷 |
-| 10 | 文章列表页齿轮挡标题 | 齿轮+搜索合成**一个自绘双图标胶囊**（别退回让系统合并） |
-
-**每一条的做法、已排除的路、以及要当心的坑，全写在 `NOTES-todo.md` 的 T51 里。**
-下面只挑几条最容易踩的重复一遍：
-
-- **#5 的禁区问题**：`Shared/SmartFeeds/` 是 **A 级禁区（绝对不碰）**。
-  已找到不碰它的路（见 T51）。**别去改那些文件。**
-- **#7 的余额接口**：`/api/v1/credits` 和 `/api/v1/auth/key` **都存在**（无 key 时 401 不是 404），
-  但**没有用真 key 验过成功时的返回结构**。两个都试、解析不出来就**不显示余额**，
-  **不要瞎猜一个数显示出来**。
-- **#7 的价格**：OpenRouter `/api/v1/models` 有 400 个模型 / 58 个厂商，
-  给的是 `pricing.prompt` / `pricing.completion`（**美元/token**）。
-  用户要「≈¥X/篇」，按**真实翻译量**估（约 4000 token 进 + 4000 出），汇率写死在代码里并标明"估算"。
-- **#9 的两个病根**（T40 早就记过的判据）：**(a) 用了 `Assets.Colors.*` 静态色板；
-  (b) 上色写在只跑一次的地方**。设置页那些开关的 `onTintColor` 是**写死在 storyboard 里**的，
-  源设置卡片那个绿的是**从没上过色**。全仓静态色板引用 33 处。
-- **#10 和上一轮的改动方向相反**：上一轮为修「首页右上角变连体」加了 `sharesBackground = false`。
-  #10 要的是**文章列表页**把两颗合成一个 —— 两个页面，范围不同，不冲突。
-  ⚠️ 但**别退回让系统去合并**（系统材质在 26/27 上又是两副样子，上一轮绕了一整轮才统一），
-  应当自己画一颗双图标胶囊。
+| T43 | 陀螺仪驱动的边缘反光（dock 亮边跟手机倾斜转） | 🔵 用户提过，未做 |
+| T46 | 深色下 dock 底板"有点过于透明" | 🔵 用户观察，未动 |
+| T50 尾巴 | 齿轮左边那块圆角矩形残留（**iOS 27 独有**） | 🔴 未解决。下一步是**把 `toolbarItems` 整个打出来**，别再猜（已误判过一次，L123） |
+| T45 | 切回 app 时选中胶囊变深色 | 🟡 已按机制修，等用户在 27 上确认 |
+| T41 | `nnwEnableSoftBottomEdgeFade()` 是死代码 | 🟡 留着，别当成"渐隐的修法" |
+| T13 | ACX 连续多图之间空隙偏大 | 未诊断 |
 
 ---
 
@@ -122,25 +144,40 @@ xcrun devicectl device process launch --device $DEV --terminate-existing $BID
 
 - **一律中文回复，代码注释也用中文**（写给读不懂代码的用户看）
 - **最高优先级是保持可 merge**：优先新增文件；改上游要最小化并带
-  `[翻译]/[外观]/[管理]/[发现]/[链接]/[长图]/[品牌]/[阅读档]/[编辑]` 标记
+  `[翻译]/[外观]/[管理]/[发现]/[链接]/[长图]/[品牌]/[阅读档]/[编辑]/[阅读位置]/[外文]` 标记
 - **每次改完自己编译**（scheme `NetNewsWire-iOS`）
-- ⚠️ **编译和装机分两步跑，别用 `&&` 串** —— 编译失败会把旧产物装进去
-- ⚠️ **`Shared/` 会被扩展目标编译，那里看不到 `iOS/` 的类型**（L103）
+- ⚠️ **`Shared/` 会被扩展目标单独编译**，那里看不到 `iOS/` 的类型（L103）。
+  尤其 **`Shared/Assets.swift` 被 Share Extension 点名单编**，别在里面引用 `iOS/` 下的东西
+- ⚠️ **`Shared/SmartFeeds/`、`Modules/Account/` 是 A 级禁区**，一行都别改
+  （要加智能源？看 `iOS/ForeignFeed/` 是怎么绕开的）
 - ⚠️ **底部工具栏的 `toolbarItems` 结构不能动**：`expectedItemCount == 3` 的守卫 +
   `addNewItemButton` 是 IBOutlet 且上游往它身上挂 menu
 - ⚠️ **改 `translation.js` 之后跑 `swift tools/check-js-syntax.swift`**
 - ⚠️ **改翻译提示词要把 `TranslationCache.promptGeneration` +1**，否则旧译文一直从缓存跳出来
-- **commit / push 我说了才做**
+- ⚠️ **给 `OpenRouterCatalogModel` 加字段 → 缓存文件名要 +1**（现在是 v3），
+  否则旧缓存整份解不出来、目录变空
+- **commit / push 我说了才做**；记录文件和代码在**同一个 commit** 里（第 9 节）
+
+---
 
 # 反复咬人的判据
 
+- **规则的"理由"和"当时的手段"要分开；理由没变，换工具不算解法**（L126）
+- **钩子加完先埋一行日志确认它真的被调用了**；同一轮里两处改动都能解释同一个好结果时，必须分开验（L124）
+- **系统"顺手给"的回调不一定每次都给**（L125/L118）
 - **要么全归系统，要么全归我们，半分最贵**（L121）
 - **结论要连着适用范围一起记；改了架构要回头查哪些旧决定的前提被作废了**（L122）
 - **"我量到了" ≠ "我量的是它"**（L123）
 - **排查"点不动"，第一问不是"我在不在最前"，而是"我的 `hitTest` 被调用了没有"**（L120）
-- **借 X 的回调去读 Y 的状态：先量 (1) Y 变时 X 会不会响、(2) X 响时 Y 落定没**（L118）
 - **解析成 CGColor 的颜色是隐性状态，谁负责在它过期时叫它重来？**（L119）
 - **同一个地方反复出问题，先假设是同一个原因**（L117）
-- **"让某个系统外壳消失"时，先想清楚那层外壳还顺带提供了什么**（L114/L116）
 - **给已有函数加观察者/通知之前，先确认它幂等**（L113）
 - **给浅色打的补丁，先问它在深色下是不是反的**（L112）
+- ⚠️ **本 fork 已经把上游的标题机制整个换掉了（头图 + 会飞的标题）。
+  凡是和"文章列表页标题"有关的活，第一站是 `TimelineFeedHeader.swift`，不是 `navigationItem`**
+
+---
+
+# 这一轮我想做的
+
+（在这里写你要做的事。如果只是想让它先熟悉项目，就写「先读完上面那几份，然后告诉我你打算怎么做」。）
