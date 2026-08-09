@@ -53,8 +53,21 @@ import UIKit
 	/// 可见圆盘直径 —— **读全 app 的唯一真源**,别在这里写死。
 	/// 用户 2026-08-05:「以后都一直保持一样」。见 `NNWSoftMaterial.controlDiameter`。
 	static var discSize: CGFloat { NNWSoftMaterial.controlDiameter }
-	/// 点按区边长(苹果最小标准)。圆盘在中间,四周 5pt 只吃点按。
-	static var hitSize: CGFloat { max(44, discSize + 4) }
+	/// 点按区边长(苹果最小标准 44pt)。
+	///
+	/// 🔴 **2026-08-09:从 `discSize + 4` 改成 `max(44, discSize)`** ——
+	/// 直径抬到 44 之后,前者算出 48,而**导航栏给 bar item 的高度上限就是 44**,
+	/// 于是真机日志里刷了一整屏:
+	/// ```
+	/// NNWSoftGlassButton.height == 48 (active)
+	/// NavigationBarPlatterRepresentable.height == 44 (active)
+	/// Will attempt to recover by breaking constraint ... height == 48
+	/// ```
+	/// 系统每次都得打断我们一条约束才能排下去 —— 不崩,但那是"我们的约束正在被系统悄悄丢掉",
+	/// 属于随时会变成真 bug 的那种脏状态。
+	///
+	/// 直径已经是 44(= 苹果的最小点按标准)本身,不必再外扩:**盘子多大,点按区就多大**。
+	static var hitSize: CGFloat { max(44, discSize) }
 
 	/// 磨砂底。⚠️ 它必须在最下面,而且要自己裁圆角。
 	/// [外观] 2026-08-05:和 NNWSoftPanel 一样,优先用系统原生的液态玻璃。

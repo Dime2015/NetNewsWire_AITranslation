@@ -40,7 +40,9 @@ import UIKit
 	/// 可见胶囊的宽。1.7 倍是"两个图标各自够宽、又明显比两颗圆钮省地方"的折中。
 	static var capsuleWidth: CGFloat { (capsuleHeight * 1.7).rounded() }
 	/// 控件本体的高(苹果最小点按标准),胶囊在中间。
-	static var hitHeight: CGFloat { max(44, capsuleHeight + 4) }
+	/// 🔴 2026-08-09:同 `NNWSoftGlassButton.hitSize`,从 `+4` 改成不外扩 ——
+	/// 导航栏给 bar item 的高度上限就是 44,要 48 会被系统打断一条约束(真机日志里刷屏)。
+	static var hitHeight: CGFloat { max(44, capsuleHeight) }
 
 	private let blur: UIVisualEffectView = {
 		if #available(iOS 26, *) {

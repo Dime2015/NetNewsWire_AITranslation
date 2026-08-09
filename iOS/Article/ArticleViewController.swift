@@ -86,6 +86,12 @@ final class ArticleViewController: UIViewController {
 						}
 					}
 				}
+			} else if nnwIsShowingNoMoreArticlesPage, let article {
+				// [阅读] 加一行(2026-08-09,修用户报的 bug):**彩蛋页占着位置时,
+				// `currentWebViewController` 是 nil,上面那个分支进不去** ——
+				// 于是从列表点任何一篇文章都换不掉它,每篇都显示「没有下一篇啦!」。
+				// 彩蛋页成了单向的死胡同。实现在 NNWArticlePaging.swift。
+				nnwReplaceEasterEggPage(with: article)
 			}
 			// [翻译] 本 fork 新增:换文章时重置翻译按钮图标。
 			// 挂在这里是因为**所有**切换文章的入口(手指滑动、右上角上下箭头、
@@ -168,7 +174,15 @@ final class ArticleViewController: UIViewController {
 		installTranslationButton()	// [翻译] 本 fork 新增
 		nnwInstallReadingGestures()	// [阅读] 本 fork 新增:右滑回列表 / 左滑开原文 / 到头再拽翻篇(实现在 NNWArticlePaging.swift)
 
-		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
+		// [阅读] 2026-08-09 一处换一处:`.horizontal` → **`.vertical`**(用户:「上下翻页的动画很生硬,
+		// 能否上下整体翻页、垂直地自然过渡」)。翻篇改由 `nnwTurnPage` 用
+		// `setViewControllers(animated: true)` 驱动,竖向的容器给出来的就是**竖向的整页推移**。
+		//
+		// ⚠️ **改朝向不会影响手势**:本 fork 的 `viewControllerBefore/After` **恒返回 nil**
+		// (翻页早就改由我们自己的手势触发了),所以这个容器里**永远只有一页** ——
+		// 它内部那个滚动视图的 contentSize 等于自身大小、根本滚不动,
+		// 不会和正文的竖向滚动抢触摸。横向那会儿也是同一个道理。
+		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .vertical, options: [:])
 		pageViewController.delegate = self
 		pageViewController.dataSource = self
 

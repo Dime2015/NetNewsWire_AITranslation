@@ -463,7 +463,35 @@ import os
 		let hostSafeTop = host.view.safeAreaInsets.top
 		let windowSafeTop = container.window?.safeAreaInsets.top ?? 0
 		let safeTop = max(hostSafeTop, windowSafeTop)
-		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge {
+		// 🔴 **正在"拽过头翻页"时,这条自愈必须让路**(2026-08-09,用户报"标题和正文一直抖动")。
+		//
+		// 那个手势会给翻页容器加一个 `transform` 平移(把正文推开、给箭头让位),
+		// 而**平移一个视图会真的改变它的安全区** —— 视图往下挪了,压在状态栏底下的部分就少了,
+		// `safeAreaInsets.top` 从 62 掉到 44。
+		// 这条自愈的前提是"host < window 一定是系统没传播",而现在**多了一个合法原因**,
+		// 于是它每帧请求一次重排、重排又触发下一帧 —— 真机日志里刷了 150 多条,那就是抖动本身。
+		//
+		// 📌 判据(L122 的又一次):**一条"异常检测"要连着它的适用范围一起记。**
+		// T24 当初若写成「**在没人主动位移这一层的前提下**,host < window 就是没传播」,
+		// 这次加位移时就会立刻想到要给它开个口子。
+		//
+		// ⚠️ 让路是安全的:上面 `safeTop` 取的是 `max(host, window)`,拽的过程中它恒等于
+		// window 那个值(稳定、正确),**排版不受影响**,只是不再徒劳地请求重排。
+		// 🔴 **必须往上找,`host` 不是 `ArticleViewController`**(2026-08-09,第二次才修对):
+		// 这条栏的 `host` 是 `WebViewController`(见 `WebViewController+ReadingBar.swift` 的调用),
+		// 上一版写成 `host as? ArticleViewController` —— **恒为 nil,这个口子从来没打开过**,
+		// 用户报的抖动一次都没被治到。又一次 L124:**钩子挂在了一个不成立的分支上。**
+		// 判据:**写 `as?` 之前,先去调用方确认那个参数到底是什么类型。**
+		var articleHost: ArticleViewController? {
+			var current: UIViewController? = host
+			while let vc = current {
+				if let article = vc as? ArticleViewController { return article }
+				current = vc.parent
+			}
+			return nil
+		}
+		let isPullingToTurnPage = articleHost?.nnwIsPullingToTurnPage ?? false
+		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge, !isPullingToTurnPage {
 			pendingSafeAreaNudge = true
 			Self.logger.info("[外观] 阅读栏:宿主安全区疑似未传播(host=\(hostSafeTop, privacy: .public), window=\(windowSafeTop, privacy: .public)),已请求重排自愈(T24)")
 			DispatchQueue.main.async { [weak self] in
