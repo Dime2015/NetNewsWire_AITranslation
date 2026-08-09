@@ -3,181 +3,209 @@
 
 **请先按顺序读，读完再动手：**
 
-1. `CLAUDE.md` —— 项目规则。⚠️ **第 0 节第 7 条 2026-08-08 刚改过，必须读**
-2. `NOTES-progress.md` 最前面的「📍 接手须知」
-3. `NOTES-lessons.md` 的 **L124 / L125 / L126**（上一轮的新账）
-4. `NOTES-todo.md` 的 **T51**（上一轮那 10 件事的完整记录：做法、坑、为什么这么修）
+1. `CLAUDE.md` —— 项目规则。⚠️ **第 0 节第 7 条必须读**（界面验收交给用户）
+2. `NOTES-progress.md` 最前面的「📍 接手须知：2026-08-09 第四轮」
+3. `NOTES-todo.md` 的 **T55**（这一轮的主线，**整条读完再动手**）
+4. `NOTES-lessons.md` 的 **L124** 和 **L132**（同一个错误，我上一轮犯了三次）
 
 ---
 
-# 🔴 开工前先记住这一条（上一轮最贵的教训）
+# 🔴 开工前先记死这两条
 
-## 界面上的点按与截图验收 —— **交给用户，不要自己去点**
+## ① 界面上的点按与截图验收 —— **交给用户，不要自己去点**
 
-覆盖**一切驱动界面的工具**，包括那个"专门的 iOS 模拟器 MCP"
-（`mcp__Claude_Code_iOS_Simulator__control` 的 screenshot / tap / swipe）、
-computer-use、claude-in-chrome。**默认一律不用。**
+覆盖**一切驱动界面的工具**（`mcp__Claude_Code_iOS_Simulator__control` 的 screenshot/tap/swipe、
+computer-use、claude-in-chrome）。**默认一律不用。**
 
 | 事情 | 谁来做 |
 |---|---|
 | 写代码、编译 `xcodebuild` | **你** |
-| 装机 `xcrun simctl install/launch` | **你**（命令行，不费 token） |
-| 看日志、查数据库、`curl` 验接口、拉真数据预演 | **你**，而且**一个都不要省** |
+| 装机 `xcrun simctl install/launch` | **你** |
+| 看日志、查数据库、`curl` 验接口、埋探针量数字 | **你**，而且**一个都不要省** |
 | **在界面上点、截图看效果** | **用户**。你说清楚点哪里、看什么、什么算对 |
 
-⚠️ **别重蹈 L126**：2026-08-04 我以"本环境有专门的模拟器工具，又快又便宜"为由绕过了这条规则
-（还写进了 L100），2026-08-08 用户当场推翻 —— **那个工具同样费 token，截图是图片，每张都整个进上下文**。
-判据：**规则的理由是"太贵"，换个工具不改变成本；理由没变，规则就没变。**
+判据：**规则的理由是"太贵"，换个工具不改变成本**（L126）。
 
-⚠️ **L100 里"自己截图看过"那半句已作废**，但它的内核（**改了界面不能靠猜、不能盲交**）继续有效 ——
-只是验收的执行者是用户。交付时给一份**用户能照着做的清单**，不是"应该没问题"。
+## ② 🔴 加了"带条件的钩子"，交付前必须有一次"它被走到了"的证据
 
-⚠️ **验收不了就明说**。别把"我觉得没问题"写成"已验证"（L114/L119 的老账）。
+**这是上一轮最贵的教训（L132），一天之内犯了三次：**
 
----
+| 哪里 | 恒不成立的条件 | 结果 |
+|---|---|---|
+| 返回键守卫 | `navigationController.viewControllers.count > 1` | 返回键一次都没装上 |
+| T24 让路 | `host as? ArticleViewController` | 口子从没打开，抖动一次都没治到 |
+| 标题夹宽度（8 号） | `navigationItem.titleView as? UILabel` | 同上 |
 
-# ⚠️ 分支与回滚点（先跑 `git branch --show-current`）
+**L124 早就写好了做法：在钩子里埋一行日志、跑一次、回读。** 三次都跳过了。
 
-```
-design/custom-dock   ← 当前工作分支，已 push，最新 e0f99df00
-design/soft-dock     稳定版：tag dock-system-glass 在这条上
-main                 停在 tag genesis
-design/soft-shell    被否决的设计师方案，留档别用
-```
+✅ **当硬规矩执行**：加了 `if` / `guard` / `as?` 才生效的钩子 →
+**同一轮内埋日志 → 读一次 → 再谈交付**。
 
-**三个回滚点，说哪个回哪个**：
-- 「回到创世版本」→ `git checkout genesis`
-- 「回到玻璃版」→ `git checkout dock-system-glass`
-- **「回到上一轮之前」→ `9b18566dc`**（T51 第二批那 7 件的前一个）
+⚠️ 附带：**写 `as?` 前去调用方确认参数的真实类型。**
+`ArticleHeaderBar.host` 名字像"本页宿主"，实际是 `WebViewController`。
+**参数名描述的是角色，不是类型。**
 
 ---
 
-# 🔧 手上有什么工具
+# ⚠️ 工作环境（上一轮定的，别走错）
 
-## ① 两台模拟器
+## 🔴 一律以 **SIM27** 为主
 
-```bash
-SIM26=A7B1AE1F-0391-4C3A-B979-FA35653256FF   # iPhone 17 (iOS 26.5)，用户那台，87 个源 + 真 API Key
-SIM27=87C9AE05-88C0-44E6-A871-242FF782D949   # iPhone 17 (iOS 27.0)，空数据，随便点
+```
+SIM27 = 87C9AE05-88C0-44E6-A871-242FF782D949   # iPhone 17 (iOS 27)，用户在看的就是这台
+SIM26 = A7B1AE1F-0391-4C3A-B979-FA35653256FF   # iOS 26，保持同步即可
 ```
 
-⚠️ **仍然用 Xcode 26.6 编译**（`xcode-select` 别动），只把产物装到 27 上跑 ——
-这样才和用户手机一致（app 用 26 SDK 编译、跑在 27 上）。
+⚠️ 上一轮我一路往 SIM26 装、在 SIM26 读日志，而**用户全程在 SIM27 上看**，白花了好几个来回（L131）。
 
-⚠️ **装机脚本认 UDID**（别再用裸 `booted`，两台同时开着会装错设备，L123）：
-```bash
-SIM_UDID=$SIM26 ./tools/install-to-simulator.sh
-```
-装 27（那台的 bundle id 是 `com.wenbopan`，不是 `com.ranchero`）：
-```bash
-BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
-xcrun simctl install $SIM27 "$BUILT"
-xcrun simctl launch  $SIM27 com.wenbopan.NetNewsWire.iOS-DEBUG
-```
-
-## ② 编译
+⚠️ **仍然用 Xcode 26.6 编译**（`xcode-select` 别动），只把产物装到 27 上跑。
 
 ```bash
 xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS \
   -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build
-```
-⚠️ **编译和装机分两步跑，别用 `&&` 串** —— 编译失败会把旧产物装进去。
 
-## ③ 真机（iOS 27）
+BUILT=$(find ~/Library/Developer/Xcode/DerivedData/NetNewsWire-*/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "NetNewsWire.app" -type d | head -1)
+xcrun simctl install 87C9AE05-88C0-44E6-A871-242FF782D949 "$BUILT"
+xcrun simctl launch  87C9AE05-88C0-44E6-A871-242FF782D949 com.wenbopan.NetNewsWire.iOS-DEBUG
+```
+
+⚠️ 编译和装机**分两步跑，别用 `&&` 串** —— 编译失败会把旧产物装进去。
+
+## 真机
+
+用户**自己从 Xcode 跑真机**（⌘R），你不要动他的手机。
+他会把 Xcode 的日志整段贴给你 —— **那是这条路上最有价值的输入，认真读**。
+
+## 看日志
 
 ```bash
-DEV=B0E875BF-CAEA-549C-A020-1C01331F0DF3
-BID=com.wenbopan.NetNewsWire.iOS-DEBUG      # 与手机上现有 app 同身份 = 覆盖升级，数据不丢
+xcrun simctl spawn $SIM27 log show --last 3m --info \
+  --predicate 'category == "NNWArticlePaging"' --style compact
 ```
-⚠️ 手机锁屏时编译和启动都会失败。⚠️ **动用户手机前先问。**
-
-## ④ 看日志（本项目常用，埋探针必备）
-
-```bash
-xcrun simctl spawn $SIM26 log show --last 2m --info \
-  --predicate 'category == "NNWTimelineExtras"' --style compact
-```
-⚠️ **必须带 `--info`**（甚至 `--debug`）—— 不带的话 `Logger.info` 根本不落盘，
-你会以为"代码没执行"，其实只是没打印（2026-08-08 为此白查了一轮）。
+⚠️ **必须带 `--info`**，否则 `Logger.info` 根本不落盘。
 
 ---
 
-# 📌 上一轮（T51 第二批）留下的两件悬案
+# 📍 git
 
-## 1️⃣ 「点顶栏第二次回原位」没做成
+```
+design/custom-dock   ← 当前分支，已 push，最新 bc8765a84
+```
 
-「点顶栏第一次回顶 + 记原位」是好的，**第二次回原位**三条路全部实测失败：
+**回滚点**：
+- 「回到这一轮之前」→ `5ed408517`（44pt 统一那一版，**手势之前**）
+- 「回到创世版本」→ `git checkout genesis`
+- 「回到玻璃版」→ `git checkout dock-system-glass`
 
-| 试过什么 | 结果 |
-|---|---|
-| `scrollViewShouldScrollToTop` | ❌ 列表已在顶上时**系统压根不问** |
-| 给 `navigationBar` 加点击手势 | ❌ 一次都没触发 |
-| 给列表加点击手势 + 只收顶栏那一带 | ❌ 一次都没触发 |
-
-病根：本 fork 的**头图浮层**（`TimelineFeedHeaderController` 的 overlay）铺满整页、
-盖在列表之上，顶栏那一带的触摸先落到它身上就没了。
-要做得从那一层下手（给 overlay 加手势 / 让它对那一带放行）——
-**那是动"会飞的标题"那套机制，风险不小**。详见 **L125**。
-
-## 2️⃣ `grok-build-0.1` 占了精选里 xAI 那一席
-
-它比 `grok-4.5` 便宜（¥0.086 vs ¥0.23），所以按"该家最便宜的合格档"被选中。
-名字看着像编程 / agent 专用线，但**没有数据能证实**，所以没擅自加规则。
-要排掉的话：往 `OpenRouterCatalog.featuredSpecialistTokens` 里加 `"build"` 即可。
+⚠️ `bc8765a84` 是一个**存档点，不是做完的功能** —— 拽过头翻篇那套还没验收通过。
 
 ---
 
-# 📋 更早还悬着的（都在 NOTES-todo 里，按需捡）
+# 🎯 这一轮的主线：修「拽过头翻篇」
 
-| 编号 | 事情 | 状态 |
+**完整背景、已排除的岔路、所有已确认的硬事实，全在 `NOTES-todo.md` 的 T55。先整条读完。**
+
+下面只列**动手顺序**：
+
+## 第 1 步：修抖动（先做这个，它可能是另一件的因）
+
+**病根已确认**：推开正文用的 `transform` 平移**会真的改变子视图的安全区**，
+于是 `ArticleHeaderBar` 里 T24 那条自愈（`host < window ⇒ 系统没传播`）每帧触发一次
+`setNeedsLayout` → 重排 → 下一帧再触发。真机日志刷 150+ 行 `[外观] 阅读栏:宿主安全区疑似未传播`。
+
+当前代码里已经有一个"拽的时候让路"的口子（`ArticleHeaderBar` 里找 `ArticleViewController`
+再读 `nnwIsPullingToTurnPage`），**但用户说问题还在，而我没验证过它有没有生效**。
+
+📌 **第一件事就是埋日志确认那个标志在拽的过程中真的是 `true`**（见上面第 ② 条硬规矩）。
+- 如果是 `false` → 找为什么没传到（parent 链？时序？）
+- 如果是 `true` 但日志照旧刷 → 说明**让路让得不够**，抖动另有来源，继续量
+
+## 第 2 步：抖动干净之后，再看"往上翻不动"
+
+⚠️ **重要**：我逐条核对了用户最后那份真机日志，**里面每个 `拽够=top` 后面都跟着
+`ArticleViewController: article didSet`** —— 也就是**那份日志里往上翻其实每次都成功了**。
+
+所以两种可能：(a) 用户测的是修复前的版本；(b) **抖动风暴本身在打断翻页**。
+
+📌 判据很简单：修好抖动后让用户再跑一次，看日志里
+`[拽] 松手 拽够=top` 后面**有没有** `article didSet` —— 一眼分辨"没触发"还是"触发了没换成"。
+
+## 💡 第 3 步（可能要摆到用户面前的选项）
+
+「用 `transform` 推开正文」是**抖动、安全区风暴、翻页动画被打断**这三件事的**共同来源**。
+**砍掉它能一次性消掉一整类问题**，代价只是箭头压在正文边缘、而不是在让出来的空隙里。
+
+⚠️ **这是用户的设计决定，不要擅自砍。** 但如果修抖动又要花两三个来回，
+应该把选项摆出来：**"留着这个效果要再花 N 轮，砍掉现在就能干净，你选。"**
+
+---
+
+# 🔧 现场留了什么（别急着删）
+
+| 探针 | category | 打什么 |
 |---|---|---|
-| T43 | 陀螺仪驱动的边缘反光（dock 亮边跟手机倾斜转） | 🔵 用户提过，未做 |
-| T46 | 深色下 dock 底板"有点过于透明" | 🔵 用户观察，未动 |
-| T50 尾巴 | 齿轮左边那块圆角矩形残留（**iOS 27 独有**） | 🔴 未解决。下一步是**把 `toolbarItems` 整个打出来**，别再猜（已误判过一次，L123） |
-| T45 | 切回 app 时选中胶囊变深色 | 🟡 已按机制修，等用户在 27 上确认 |
-| T41 | `nnwEnableSoftBottomEdgeFade()` 是死代码 | 🟡 留着，别当成"渐隐的修法" |
-| T13 | ACX 连续多图之间空隙偏大 | 未诊断 |
+| `[拽] 松手 …` | `NNWArticlePaging` | 拽够哪一头、**峰值**、滚动视图的全部几何（offset / contentH / boundsH / inset / 静止位 / 超出量）|
+| `[对齐] …` | `NNWGlassAlign` | 底部三个控件的窗口坐标外接框 |
+
+- `[拽]` 是这条路上**最有用的工具**，修完再删。
+- `[对齐]`：文章列表页已确认（圆盘 44、三档 44、中心都是 822）；
+  **首页那条三档浮层在直径改成 44 之后还没复验过**，用户进一次首页就能读到。
+
+---
+
+# 📌 已经做完、用户验收过的（别回头改）
+
+- **全屏控件统一到 44pt**：返回键、右上双图标胶囊、底部两颗圆钮、中间三档，
+  全部读同一个真源 `NNWSoftMaterial.controlDiameter`。实测同高同心。
+- **首页头图上那两条硬边界**：靠在头图之上、内容之下**垫一层纸**解决
+  （不是盖遮罩）。判据：**"边"是两种颜色相邻才有的东西，与其一条条糊，不如让相邻两边同色。**
+- **「外文」换成彩色地球**，深色下降饱和 40% + 压亮度 22%，尺寸和 SF Symbol 对齐（占比 0.87）。
+- **左滑打开原文 / 右滑回列表**。
 
 ---
 
 # 硬约束（最容易忘的）
 
 - **一律中文回复，代码注释也用中文**（写给读不懂代码的用户看）
-- **最高优先级是保持可 merge**：优先新增文件；改上游要最小化并带
-  `[翻译]/[外观]/[管理]/[发现]/[链接]/[长图]/[品牌]/[阅读档]/[编辑]/[阅读位置]/[外文]` 标记
+- **最高优先级是保持可 merge**：优先新增文件；改上游最小化并带
+  `[翻译]/[外观]/[管理]/[发现]/[链接]/[长图]/[品牌]/[阅读档]/[编辑]/[阅读位置]/[外文]/[阅读]` 标记
+- ⚠️ **别用 `NSLocalizedString` 给本 fork 自己的控件加字符串** —— Xcode 会往上游的
+  `Shared/Localizable.xcstrings` 里自动加条目，平白给一个高频改动的上游文件增加冲突面。
+  **直接写中文**（「源信息与设置」「搜索文章」「返回」都是这么写的）。
 - **每次改完自己编译**（scheme `NetNewsWire-iOS`）
-- ⚠️ **`Shared/` 会被扩展目标单独编译**，那里看不到 `iOS/` 的类型（L103）。
-  尤其 **`Shared/Assets.swift` 被 Share Extension 点名单编**，别在里面引用 `iOS/` 下的东西
+- ⚠️ **`Shared/` 会被扩展目标单独编译**，那里看不到 `iOS/` 的类型（L103）
 - ⚠️ **`Shared/SmartFeeds/`、`Modules/Account/` 是 A 级禁区**，一行都别改
-  （要加智能源？看 `iOS/ForeignFeed/` 是怎么绕开的）
 - ⚠️ **底部工具栏的 `toolbarItems` 结构不能动**：`expectedItemCount == 3` 的守卫 +
   `addNewItemButton` 是 IBOutlet 且上游往它身上挂 menu
+  （⚠️ 但**给已有 item 设 `customView` 是允许的** —— 对象不换、结构不变，见 `NNWSoftGlassBarButton.swift`）
 - ⚠️ **改 `translation.js` 之后跑 `swift tools/check-js-syntax.swift`**
-- ⚠️ **改翻译提示词要把 `TranslationCache.promptGeneration` +1**，否则旧译文一直从缓存跳出来
-- ⚠️ **给 `OpenRouterCatalogModel` 加字段 → 缓存文件名要 +1**（现在是 v3），
-  否则旧缓存整份解不出来、目录变空
+- ⚠️ **改翻译提示词要把 `TranslationCache.promptGeneration` +1**
+- ⚠️ **给 `OpenRouterCatalogModel` 加字段 → 缓存文件名 +1**（现在是 v3）
 - **commit / push 我说了才做**；记录文件和代码在**同一个 commit** 里（第 9 节）
 
 ---
 
-# 反复咬人的判据
+# 反复咬人的判据（这一天新增的在最前）
 
-- **规则的"理由"和"当时的手段"要分开；理由没变，换工具不算解法**（L126）
-- **钩子加完先埋一行日志确认它真的被调用了**；同一轮里两处改动都能解释同一个好结果时，必须分开验（L124）
-- **系统"顺手给"的回调不一定每次都给**（L125/L118）
-- **要么全归系统，要么全归我们，半分最贵**（L121）
+- 🔴 **带条件的钩子，交付前必须有"它被走到了"的证据 —— 埋日志，别推理**（L124/L132）
+- 🔴 **写 `as?` 前去调用方确认真实类型；参数名描述的是角色，不是类型**（L132）
+- **"边"是两种颜色相邻才有的东西；与其一条条糊，不如让相邻的两边同色**（L130）
+- **用遮罩藏边，遮罩自己的每条边界也得是化开的**（L129）
+- **遮一条会动的边，遮罩就得跟着它动；别复用 `progress` 这种夹过的量**（L128）
+- **一条老约束，先把它的"理由"单独复述一遍，再问我的做法是否落在射程内**（L126/L127）
+- **一天四次"量错了"：装错设备 / 量到转场动画中间的值 / 探针自己静默返回 /
+  按类型找东西找到了不唯一的那个**（L131）
+- **一个补丁如果要求"状态只能单向变化"，先回头看是不是量错了**（T55）
+- **"我在列表里的位置"这个前提，在会自我删减的列表上随时失效**（T53/T55）
 - **结论要连着适用范围一起记；改了架构要回头查哪些旧决定的前提被作废了**（L122）
 - **"我量到了" ≠ "我量的是它"**（L123）
-- **排查"点不动"，第一问不是"我在不在最前"，而是"我的 `hitTest` 被调用了没有"**（L120）
-- **解析成 CGColor 的颜色是隐性状态，谁负责在它过期时叫它重来？**（L119）
-- **同一个地方反复出问题，先假设是同一个原因**（L117）
-- **给已有函数加观察者/通知之前，先确认它幂等**（L113）
-- **给浅色打的补丁，先问它在深色下是不是反的**（L112）
 - ⚠️ **本 fork 已经把上游的标题机制整个换掉了（头图 + 会飞的标题）。
   凡是和"文章列表页标题"有关的活，第一站是 `TimelineFeedHeader.swift`，不是 `navigationItem`**
+- ⚠️ **本工程里"我的 `navigationController`"从来不等于"那个真正在推页面的栈"** ——
+  文章页和文章列表页都住在只有自己一个的导航控制器里，真正的栈是**父导航控制器**
 
 ---
 
 # 这一轮我想做的
 
-（在这里写你要做的事。如果只是想让它先熟悉项目，就写「先读完上面那几份，然后告诉我你打算怎么做」。）
+（在这里写你要做的事。如果就是接着修上面那条，写「按 T55 继续修拽过头翻篇」即可。）
