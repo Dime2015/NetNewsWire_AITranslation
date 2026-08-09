@@ -113,7 +113,33 @@ enum NNWSoftMaterial {
 	///   · 底部工具栏的烘焙圆钮(`roundButtonImage` 的 diameter 默认值)
 	///   · 三档控件的高度(`NNWReadingModeBar.barHeight`)
 	/// 改这一个数,三处一起变;想只改一处 = 违背用户的要求,别这么干。
-	static let controlDiameter: CGFloat = 40
+	/// [外观] 2026-08-09:**40 → 44**(用户:「上下这几个控件都调整成和返回键一样大」)。
+	///
+	/// 在这之前,我们自己的四个控件(右上胶囊、底部两颗圆钮、三档轨道)本来就**全部是 40pt、
+	/// 而且中心都对齐在 822**(实测,不是推断)。唯一的异类是**系统那颗返回键** ——
+	/// 它归系统画,比我们的大一圈,所以并排看就是"我们的偏小"。
+	///
+	/// 这一轮两件事一起做:① 返回键也换成我们自己的(见 `NNWSoftGlassBackButton`),
+	/// 于是"唯一真源"第一次真的覆盖了整屏;② 把这个数往上抬一档,补上那点视觉差。
+	/// **44 = 苹果的最小点按标准**,拿它当可见直径,尺寸和手感是一回事,不用再解释。
+	///
+	/// ⚠️ 嫌大嫌小**只改这一个数**,五个控件一起变、两个页面一起变。别在别处写死。
+	static let controlDiameter: CGFloat = 44
+
+	/// **全 app 控件里图标的统一字号(pt)。这是唯一真源。**
+	///
+	/// [外观] 2026-08-09(用户报「各个控件质感不一致」时一起收的):
+	/// 在这之前同样是 40pt 的底盘,图标却有四种字号 —— 三档 13、文章页 dock 17、
+	/// 顶部胶囊 18、文章列表页底部圆钮 20。**同一个盘子上图标从 13 到 20,
+	/// 视觉分量差一大截**,这是"质感不一致"里最实的一条。
+	///
+	/// 取 45% 是沿用顶部胶囊已经在用、且用户验收过的比例(40 × 0.45 = 18)。
+	/// 写成比例而不是写死 18:以后改 `controlDiameter`,图标自己跟着走。
+	///
+	/// ⚠️ **三档控件是唯一的例外**,它有自己的 `NNWReadingModeBar.iconPointSize`(15pt) ——
+	/// 那一格里图标要和「未读」两个汉字并排,拉到 18 会挤,而且那一格的宽度是写死的。
+	/// 例外只此一处,别再开第二个。
+	static var iconPointSize: CGFloat { (controlDiameter * 0.45).rounded() }
 
 	// MARK: - 颜色:**相对于 app 自身的底色**推导,不用参考图的绝对色号
 	//
@@ -235,7 +261,16 @@ enum NNWSoftMaterial {
 
 	/// 把一个手绘图标压进一颗「软面板圆钮」,返回可直接塞进 `UIBarButtonItem.image` 的图。
 	///
-	/// ## 为什么是烘焙图片,而不是 customView
+	/// ## 🔴 2026-08-09 起:**全仓已无调用者**,留着当回退路径
+	///
+	/// 底部那四颗圆钮已经全部改走 `NNWSoftGlassBarButton`(真玻璃 customView),
+	/// 原因是"图片装不下磨砂",详见那个文件。**别再拿这个函数去做新控件** ——
+	/// 它画出来的是**不透明**的盘子,和全 app 其余控件不是一种材质。
+	///
+	/// 不删的理由只有一个:它是那次改动的**回退路径**(万一玻璃圆钮在某个系统上出事,
+	/// 改回来只要一行)。已记进 NOTES-todo,和 T41 那条死代码同一个待遇。
+	///
+	/// ## 为什么当初是烘焙图片,而不是 customView
 	///
 	/// 底部工具栏那两个键(设置齿轮、加号)**只允许换 image 和 tintColor**:
 	/// 加号是 storyboard 的 IBOutlet,上游还往它身上挂 `menu` 和 `isEnabled`
@@ -382,6 +417,18 @@ enum NNWSoftMaterial {
 	/// 参考图里没有这个场景(它的底永远是纯色),所以这一档是**按本 app 的实际情况推导**的,
 	/// 正是 L102 说的"搬相对关系,不搬绝对值"。
 	private let isTranslucent: Bool
+
+	/// 半透明档里,**这一层要不要自己再垫一块磨砂**。
+	///
+	/// [外观] 2026-08-09:选中胶囊(`.capsule`)是压在**已经磨砂过的轨道**上的一格,
+	/// 再垫一块自己的磨砂就是**玻璃套玻璃** —— 两层模糊叠起来会把底下的内容糊成一片灰,
+	/// 而且它自己那圈边会和轨道的边打架(和 L121「要么全归系统要么全归我们」同一个道理:
+	/// 同一块地方只该有一层材质负责"透")。
+	///
+	/// 所以选中胶囊的半透明档**只画一层更浓的提亮**:轨道透出什么,它就跟着透什么,
+	/// 只是亮一档。这样"选中"是浮在同一块玻璃上的一格,而不是糊上去的另一块板。
+	private var needsOwnBlur: Bool { isTranslucent && kind == .panel }
+
 	private let fill = CAGradientLayer()
 	private let rim = CAGradientLayer()
 	private let rimMask = CAShapeLayer()
@@ -448,7 +495,7 @@ enum NNWSoftMaterial {
 		// 解法:半透明档把 fill / rim 挂到**磨砂自己的 contentView** 上。
 		// 于是顺序天然正确:磨砂(底) → fill → rim → 宿主原有的子视图(按钮、文字)。
 		let host: UIView
-		if isTranslucent {
+		if needsOwnBlur {
 			// [外观] 2026-08-05:**优先用系统原生的液态玻璃 `UIGlassEffect`**(iOS 26+)。
 			//
 			// ⚠️ 起因:用户在 **iOS 27 beta 真机**上报"底栏变成了遮罩,不是毛玻璃"。
@@ -532,7 +579,22 @@ enum NNWSoftMaterial {
 			// 再盖 52% 的白就成了一块遮罩(用户 2026-08-05 在 iOS 27 真机上看到的正是这个)。
 			// 退回手搓模糊时才需要那层白去提亮。
 			let isDark = traits.userInterfaceStyle == .dark
-			if usesNativeGlass {
+			if kind == .capsule {
+				// [外观] 2026-08-09:选中胶囊改为**半透明提亮**,不再是一块实心色。
+				//
+				// 换掉的是什么:原来它走 `capsuleColors`,深色下是恒定的 #323232–#383838 实心块。
+				// 而它坐在一条**真磨砂**的轨道上 —— 一实一虚,深色下尤其明显
+				// (用户 2026-08-09 的原话:「透明度、层次、质感都不太一致,特别是深色模式」)。
+				//
+				// 现在改成"在轨道那块玻璃上再压一层白":轨道透出什么它就透什么,只是亮一档,
+				// 于是**它和轨道永远是同一种材质**,不管背后滚过去的是白图还是黑字。
+				//
+				// ⚠️ 这两个数是**按机制定的,没法自己验**(视觉的事归用户看,CLAUDE.md 第 0 节第 7 条):
+				// 浅色要压得够浓才看得出"这一格被选中"(轨道自己已经有 0.10–0.16 的白);
+				// 深色下白一浓就变塑料板(L112 那一族的老账),所以只补一点点。
+				top = UIColor.white.withAlphaComponent(isDark ? 0.10 : 0.42)
+				bottom = UIColor.white.withAlphaComponent(isDark ? 0.14 : 0.50)
+			} else if usesNativeGlass {
 				top = UIColor.white.withAlphaComponent(isDark ? 0.03 : 0.10)
 				bottom = UIColor.white.withAlphaComponent(isDark ? 0.06 : 0.16)
 			} else if isDark {

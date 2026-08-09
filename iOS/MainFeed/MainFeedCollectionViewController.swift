@@ -607,6 +607,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		addNewItemButton?.isEnabled = !AccountManager.shared.activeAccounts.isEmpty
 
 		configureContextMenu()
+		nnwSyncSoftGlassToolbarButtons()	// [外观] 加一行:上面写的 isEnabled 与菜单要搬到玻璃圆钮上(UIKit 不会自己传给 customView)
 	}
 
 	func updateFeedSelection(animations: Animations) {

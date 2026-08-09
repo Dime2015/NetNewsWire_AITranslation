@@ -665,11 +665,19 @@ extension MainTimelineModernViewController {
 		//      → **返回再进来,头图整个不见了**
 		guard let collectionView, let host, currentSubject != nil else { return }
 		let restY: CGFloat = -collectionView.adjustedContentInset.top
-		let raw: CGFloat = (collectionView.contentOffset.y - restY) / TimelineStyle.headerScrollFadeDistance
+		/// 从静止位往上滚了多少(往下拽是负数)。**不夹**,渐隐带要用真值。
+		let scrolled: CGFloat = collectionView.contentOffset.y - restY
+		let raw: CGFloat = scrolled / TimelineStyle.headerScrollFadeDistance
 		let progress: CGFloat = min(max(raw, 0), 1)
 
 		// 头图(图片本身)照旧渐隐
 		headerView.contentAlpha = 1 - progress
+
+		// [外观] 2026-08-09:那层垫在图和内容之间的纸,上沿跟着**内容的上边缘**走。
+		// ⚠️ 用 `scrolled`(未夹)而不是 `progress`(夹在 0…1):滚过 140pt 之后
+		// progress 就不动了,而内容的边还在继续往上走 —— 拿 progress 反推的话
+		// 这层纸会落在原地,卡片的边就重新露出来了(L128)。
+		headerView.contentTop = headerView.headerHeight - scrolled
 
 		// 首页:停靠之后标题换成系统那套(页面名 + 刷新时间)。
 		// **每次都重新读一遍** —— 副标题("更新于 x 分钟前")是上游在不断更新的。
@@ -804,6 +812,38 @@ extension MainTimelineModernViewController {
 
 	let backgroundImageView = UIImageView()
 
+	/// [外观] 2026-08-09:垫在**头图之上、列表内容之下**的那层纸。
+	///
+	/// ## 为什么必须垫这一层(用户来回三次才找准的那件事)
+	///
+	/// 这一页的列表底色是**透明**的(`config.backgroundColor = .clear`,2026-07-23 为了
+	/// 让头图透出来才特意设的)—— 于是**卡片之间的缝、卡片左右的留白,露的全是头图**,
+	/// 每一块不透明的纸色元素都被头图描了一圈边(分组标题栏的直角、分组卡片的圆角)。
+	///
+	/// 铺上这层纸之后,内容底下从头到尾都是纸,**卡片和缝隙同色,边就不存在了**。
+	///
+	/// ⚠️ **它必须是 `addSubview` 加在 `backgroundImageView` 之后**,不能用
+	/// `layer.addSublayer` —— 裸图层永远排在**子视图**的图层下面,那样它会被头图盖住,
+	/// 等于没加(`NNWSoftPanel.install` 里逐字记过同一个坑)。
+	///
+	/// ⚠️ **它不受 `contentAlpha` 影响**(那个只作用于 `backgroundImageView`)。
+	/// 这是对的:头图随滚动渐隐,而底下这层纸要一直在 —— 它是内容的底,不是装饰。
+	private let paperBackdrop = UIView()
+	private let paperBackdropGradient = CAGradientLayer()
+	/// 上次给底板解析颜色时用的深浅色。`CGColor` 不跟深浅色走(L119),记着才知道要不要重来。
+	private var paperBackdropStyle: UIUserInterfaceStyle?
+
+	/// 列表内容的上边缘此刻在本视图坐标里的 y。纸色底板从这里(往上羽化一段)开始往下铺满。
+	///
+	/// ⚠️ 由控制器每次滚动时喂进来,**必须是没被夹过的真实位置**(可以是负数)——
+	/// 拿 0…1 的滚动进度反推的话,滚过头之后底板就停在原地了(L128)。
+	var contentTop: CGFloat = 0 {
+		didSet {
+			guard abs(contentTop - oldValue) > 0.01 else { return }
+			setNeedsLayout()
+		}
+	}
+
 	/// 头图区总高(从屏幕顶算),由控制器设置
 	var headerHeight: CGFloat = 0 {
 		didSet { setNeedsLayout() }
@@ -826,7 +866,14 @@ extension MainTimelineModernViewController {
 		backgroundImageView.contentMode = .scaleToFill
 		addSubview(backgroundImageView)
 
+		// ⚠️ 顺序即层级:必须**在头图之后**加进来,才能盖在它上面。
+		paperBackdrop.isUserInteractionEnabled = false
+		paperBackdrop.layer.addSublayer(paperBackdropGradient)
+		addSubview(paperBackdrop)
+
 		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TimelineFeedHeaderView, _) in
+			view.paperBackdropStyle = nil		// CGColor 不跟深浅色(L119),清记号,下次排版重解析
+			view.setNeedsLayout()
 			view.onAppearanceChange?()
 		}
 	}
@@ -858,7 +905,44 @@ extension MainTimelineModernViewController {
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		backgroundImageView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
+		layoutPaperBackdrop()
 		onLayout?()
+	}
+
+	/// [外观] 把那层纸铺到内容的上边缘之下。
+	///
+	/// 形状:上沿羽化一段(透明 → 纸色),往下**一路铺到底**。
+	/// 于是「内容上边缘以上 = 图、以下 = 纸」,而且中间那道是化开的。
+	///
+	/// ⚠️ **关掉隐式动画**:滚动时每帧都在改 frame,不关的话每次变化都会被排成一段
+	/// 0.25 秒的动画,这层纸就会拖在手指后面(毛玻璃那条羽化早就栽过同一个坑)。
+	private func layoutPaperBackdrop() {
+
+		let feather: CGFloat = TimelineStyle.headerContentBackdropFeather
+		let top: CGFloat = contentTop - feather
+		let height: CGFloat = max(bounds.height - top, 0)
+
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+
+		paperBackdrop.frame = CGRect(x: 0, y: top, width: bounds.width, height: height)
+		paperBackdropGradient.frame = paperBackdrop.bounds
+		// 羽化只占最上面那一段,剩下全是实的
+		let featherRatio = height > 0 ? min(feather / height, 1) : 0
+		paperBackdropGradient.locations = [0, NSNumber(value: Double(featherRatio)), 1]
+
+		let style: UIUserInterfaceStyle = traitCollection.userInterfaceStyle
+		if paperBackdropStyle != style {
+			paperBackdropStyle = style
+			let paper: UIColor = AppAppearance.paperBackground.resolvedColor(with: traitCollection)
+			// ⚠️ 三端必须是**同一个颜色的三个透明度**,不能拿 `.clear`(那是透明的黑)——
+			// 否则羽化那一段会掺进一丝灰,在暖纸上看得出来。
+			paperBackdropGradient.colors = [paper.withAlphaComponent(0).cgColor,
+											paper.withAlphaComponent(1).cgColor,
+											paper.withAlphaComponent(1).cgColor]
+		}
+
+		CATransaction.commit()
 	}
 
 	/// 安全区变了也要重排 —— **导航栏变高/变矮时,这是唯一会到的通知**。
@@ -914,6 +998,17 @@ extension MainTimelineModernViewController {
 	///
 	/// ⚠️ **effect 初始是 nil,浓度由下面的 `scrimAnimator` 驱动,别在这里直接给它 effect。**
 	private let scrimView = UIVisualEffectView(effect: nil)
+
+	// ⚠️ 这里原本有一条 `contentFadeLayer`(盖在内容之上的纸色渐变),
+	// 2026-08-09 试了两版都不成立,**已整个删掉**:
+	// - v1 方向反了,在图上多画出一条新硬边(用户:「更丑了」);
+	// - v2 改成三段晕,最上面那条边治好了,但**下面每一块卡片的边还在** ——
+	//   因为那些边不是"内容压着图",而是**列表底色透明、缝隙里露出图**造成的。
+	//
+	// 正解是**在图和内容之间垫一层纸**(`TimelineFeedHeaderView.paperBackdrop`),
+	// 让相邻的两边同色,而不是在上面盖遮罩。判据见 L129 与 `TimelineStyle` 那段注释。
+	// ⚠️ **别再往浮层里加"盖住内容"的东西** —— 浮层在内容之上,盖什么都会把文字一起洗糊
+	//(v2 就把「智能 Feed」几个字洗花了,用户截图里能看见)。
 
 	/// 给毛玻璃底边做羽化的遮罩:上面那段全实,最后 `headerDockedScrimFeather` 点渐隐到透明。
 	/// 没有它,毛玻璃的下沿是一条切齐的硬边,整条看起来像块挡板而不是一层雾。

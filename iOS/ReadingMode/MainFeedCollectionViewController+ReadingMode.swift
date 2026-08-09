@@ -189,11 +189,13 @@ extension MainFeedCollectionViewController {
 		navigationItem.rightBarButtonItems = [item]
 	}
 
-	/// [外观] 导航栏圆钮里的系统符号。字号跟着圆钮直径走(约 45%),
-	/// 这样以后改 `NNWSoftMaterial.controlDiameter`,图标会自己按比例变。
+	/// [外观] 导航栏圆钮里的系统符号。
+	/// 字号读全 app 唯一真源 `NNWSoftMaterial.iconPointSize`(= 直径的 45%),
+	/// 这样以后改 `controlDiameter`,图标会自己按比例变。
+	/// ⚠️ 2026-08-09 前这里自己写着 `* 0.45` —— 同一条规则有两个出处,
+	/// 别处想跟这个比例走时无从引用。已收进真源,**别再在这里算一遍**。
 	static func nnwNavSymbol(_ name: String) -> UIImage {
-		let size = (NNWSoftMaterial.controlDiameter * 0.45).rounded()
-		let config = UIImage.SymbolConfiguration(pointSize: size, weight: .medium)
+		let config = UIImage.SymbolConfiguration(pointSize: NNWSoftMaterial.iconPointSize, weight: .medium)
 		return UIImage(systemName: name, withConfiguration: config) ?? UIImage()
 	}
 
@@ -211,9 +213,17 @@ extension MainFeedCollectionViewController {
 	/// 换整个 item 会同时踩这两条。
 	///
 	/// [外观] 2026-08-04 二版:这两个键也换成**软面板圆钮**,和底栏中间那条三档同一套材质。
-	/// 面板是**画进图片里**的 —— 因为这里只有 image 这一条通道可走
-	/// (换 customView 会把加号身上上游挂的 `menu` 弄丢)。做法见
-	/// `NNWSoftMaterial.roundButtonImage(icon:tint:diameter:)`。
+	///
+	/// [外观] **2026-08-09 三版:从"画进图片"改成"真玻璃控件"**(用户报各控件质感不一致)。
+	///
+	/// ⚠️ 上一版那句「这里只有 image 这一条通道可走,换 customView 会把加号身上的 `menu` 弄丢」
+	/// **只对"换掉整个 UIBarButtonItem 对象"成立**。现在走的是另一条路:
+	/// **对象不换,只设 `customView`,再把 `menu` / `isEnabled` 转发过去** ——
+	/// `toolbarItems` 结构、`addNewItemButton` 这个 IBOutlet 都原封不动。
+	/// 完整理由与那两处"加一行"的挂点见 `NNWSoftGlassBarButton.swift`。
+	///
+	/// 换来的好处:图片装不下磨砂,而 customView 装得下 ——
+	/// 这两颗从此和顶部胶囊、三档轨道**共用同一块玻璃**,深色下不再是两块实心灰盘。
 	func nnwRestyleToolbarIcons() {
 
 		nnwObserveStyleChangesForToolbarIcons()
@@ -224,25 +234,27 @@ extension MainFeedCollectionViewController {
 			guard let action = item.action else { continue }
 			switch action {
 			case #selector(MainFeedCollectionViewController.add(_:)):
-				item.image = NNWSoftMaterial.roundButtonImage(icon: NNWDockIcons.plus(),
-															  traits: traitCollection)
-				item.nnwHideSystemGlassCapsule()
+				item.nnwUseSoftGlassButton(icon: NNWDockIcons.plus())
 			case #selector(MainFeedCollectionViewController.settings(_:)):
-				item.image = NNWSoftMaterial.roundButtonImage(icon: NNWDockIcons.gear(),
-															  traits: traitCollection)
-				item.nnwHideSystemGlassCapsule()
+				item.nnwUseSoftGlassButton(icon: NNWDockIcons.gear())
 			default:
 				break
 			}
 		}
 	}
 
-	/// [外观] 切深浅色时把这两颗圆钮重画一遍。
+	/// [外观] 切深浅色 / 换强调色时把这两颗圆钮重画一遍。
 	///
-	/// ⚠️ 为什么必须自己盯着:面板是**画进图片**里的,而图片不会跟随深浅色。
-	/// 试过用 `UIImageAsset` 登记浅/深两张让 UIKit 自己挑 —— **实测不生效**
-	/// (2026-08-04 深色下截图,两颗仍是浅色的,重启 app 也一样)。
-	/// 所以退回最笨的做法:自己监听,自己重画。
+	/// 📌 **2026-08-09 起,这两件事的必要性不一样了**(改成真玻璃控件之后):
+	/// - **深浅色**:已经不需要人管了 —— 玻璃是真材质,`NNWSoftPanel` 会在排版时按
+	///   当时的 traits 重画。留着这个监听是**无害的冗余**(重画一次结果一样),不删是因为
+	///   删一个已验证可用的保险,风险大于留着它。
+	/// - **换强调色**:**仍然必须**。`NNWSoftMaterial.accent` 取的是
+	///   `NNWAccentPalette.current` 这个**静态值**,不是动态色,换色之后不会自己刷新,
+	///   得有人来重设一次 tintColor(L105 第 2 条那一族)。
+	///
+	/// ⚠️ 历史(别再走):烘焙成图片的年代试过用 `UIImageAsset` 登记浅/深两张让 UIKit 自己挑,
+	/// **实测不生效** —— `UIBarButtonItem.image` 这条路不会去重新解析 asset。
 	private func nnwObserveStyleChangesForToolbarIcons() {
 		guard objc_getAssociatedObject(self, &Self.nnwToolbarTraitObserverKey) == nil else { return }
 		objc_setAssociatedObject(self, &Self.nnwToolbarTraitObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)

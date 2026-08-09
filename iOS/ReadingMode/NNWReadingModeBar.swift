@@ -46,6 +46,16 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
+	/// 三档图标的字号。
+	///
+	/// [外观] 2026-08-09:13 → **15**(用户报「各控件质感不一致」)。
+	/// 全 app 别处的控件图标统一走 `NNWSoftMaterial.iconPointSize`(18pt),
+	/// **这一格是唯一的例外**:展开那格里图标要和「未读」两个汉字并排,
+	/// 拉到 18 会挤,而且 `expandedWidth` 是写死的(见文件头),改大要连带调宽。
+	/// 15 是"明显不再是全屏最小的那个图标"和"不挤"之间的折中。
+	/// ⚠️ 字重保持 `.semibold`:SF Symbol 的笔画随字号走,15pt semibold 的**绝对笔画**
+	/// 才和别处 18pt medium 接近 —— 统一的是**看起来的粗细**,不是那个枚举值。
+	private static let iconPointSize: CGFloat = 15
 	/// 高度 —— **读全 app 的唯一真源**,别在这里写死(用户 2026-08-05:「以后都一直保持一样」)。
 	///
 	/// ⚠️ **量圆的直径要横扫取最宽处,别竖扫**:竖扫如果没扫在圆心上,
@@ -84,7 +94,11 @@ import UIKit
 	// 底下是滚动的文章。不透明的话等于把唯一有内容可透的地方盖死了。
 	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
 	private let capsule = UIView()
-	private let capsuleMaterial = NNWSoftPanel(kind: .capsule)
+	// [外观] 2026-08-09:选中那一格也改成**半透明**(`translucent: true`)。
+	// 原来是实心色,坐在一条真磨砂的轨道上 —— 一实一虚,深色下最扎眼。
+	// ⚠️ 半透明的 `.capsule` 档**不会**再垫一块自己的磨砂(否则玻璃套玻璃),
+	// 它只是在轨道那块玻璃上压一层更浓的白。见 `NNWSoftPanel.needsOwnBlur`。
+	private let capsuleMaterial = NNWSoftPanel(kind: .capsule, translucent: true)
 	private var buttons: [NNWReadingMode: UIButton] = [:]
 	/// 每一格的宽度约束,换档时只改这三条的常数(总和不变)
 	private var widthConstraints: [NNWReadingMode: NSLayoutConstraint] = [:]
@@ -176,7 +190,7 @@ import UIKit
 
 		var config = UIButton.Configuration.plain()
 		config.image = UIImage(systemName: mode.symbolName,
-							   withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+							   withConfiguration: UIImage.SymbolConfiguration(pointSize: iconPointSize, weight: .semibold))
 		config.imagePadding = 5
 		// ⚠️ 内边距一律给 0:每一格的宽度已经由约束钉死,再叠内边距只会把内容往里挤
 		//(第二版就是内边距 + 自适应宽度一起作用,才把文字挤没的)。内容自己会居中。

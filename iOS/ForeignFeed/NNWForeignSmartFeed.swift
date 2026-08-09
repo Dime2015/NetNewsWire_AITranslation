@@ -56,10 +56,20 @@ import Images
 	/// 见文件头:这是个**永远取不到东西的空查询**,真正取文章走下面四个方法。
 	let fetchType: FetchType = .articleIDs(Set<String>())
 
+	/// [外观] 2026-08-09:换成用户提供的**彩色地球**(`external resources/外文.png`)。
+	/// 原来是系统符号 `character.book.closed` 染主题橙,用户:「现在这个太丑了」。
+	///
+	/// ⚠️ **不传 `preferredColor`** —— 传了就会被染成单色,那这张图就白换了。
+	///
+	/// ⚠️ **`isSymbol: true` 是关键,虽然它并不是一个 SF Symbol**(和文件夹图标同一个套路,
+	/// 见 `MainFeedCollectionViewFolderCell` 里那段注释)。这个标志在本 fork 里实际管两件事:
+	/// ① `NNWFeedIconStyle.styled()` 会**跳过**它 —— 否则它会走 favicon 那条加工流水线,
+	///    而那条会给"背景透明的图标"**补一块底板**。地球四角本来就是透明的,补出来就是
+	///    一张卡片糊在圆球后面。
+	/// ② `IconView` 对它按**整个格子**摆放(不做二次 aspect-fit),尺寸完全可预测 ——
+	///    我们已经在图里补好了留白,不需要它再插一手。
 	var smallIcon: IconImage? {
-		guard let image = UIImage(systemName: "character.book.closed") else { return nil }
-		return IconImage(image, isSymbol: true, isBackgroundSuppressed: true,
-						 preferredColor: NNWAccentPalette.live)
+		IconImage(NNWForeignFeedIcon.image, isSymbol: true, isBackgroundSuppressed: true)
 	}
 
 	func fetchUnreadCount(account: Account) async -> Int {

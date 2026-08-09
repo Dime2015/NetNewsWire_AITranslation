@@ -166,7 +166,7 @@ final class ArticleViewController: UIViewController {
 		}
 
 		installTranslationButton()	// [翻译] 本 fork 新增
-		nnwInstallBackToListSwipe()	// [阅读] 本 fork 新增:从任意位置右滑 = 回文章列表(实现在 NNWArticlePaging.swift)
+		nnwInstallReadingGestures()	// [阅读] 本 fork 新增:右滑回列表 / 左滑开原文 / 到头再拽翻篇(实现在 NNWArticlePaging.swift)
 
 		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
 		pageViewController.delegate = self
@@ -527,16 +527,15 @@ extension ArticleViewController: UIPageViewControllerDataSource {
 	}
 
 	func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-		// [阅读] 一行换一行(用户 2026-08-08 第 4 件):后一页 = **下一篇未读**(原来是"下一篇")。
-		// 已经在彩蛋页上了就到头了,不再往后给。
-		guard let webViewController = viewController as? WebViewController,
-			let currentArticle = webViewController.article else {
-			return nil
-		}
-		guard let article = nnwFindNextUnreadArticle(after: currentArticle) else {
-			return nnwMakeNoMoreArticlesPage()	// [阅读] 没有下一篇未读了 → 彩蛋页
-		}
-		return createWebViewController(article)
+		// [阅读] 一行换一行。**2026-08-09 起也永远没有后一页。**
+		//
+		// 2026-08-08 这里是「后一页 = 下一篇未读」(左滑翻页)。
+		// 用户 2026-08-09 把左滑改成了「打开原文」,「下一篇未读」搬到
+		// **「已经在底部、再用力上拽」**上 —— 两者不能并存:左滑既翻页又开链接必然打架。
+		//
+		// ⚠️ 那套逻辑一行没丢,只是换了触发方式:`nnwGoToNextUnread()`(含彩蛋页)
+		// 在 NNWArticlePaging.swift 里,仍然只在当前列表内找、找不到就露彩蛋页。
+		return nil
 	}
 
 }

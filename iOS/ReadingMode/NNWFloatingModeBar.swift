@@ -71,13 +71,28 @@ import ObjectiveC
 
 	let bar: NNWReadingModeBar
 
-	/// 工具栏允许 bar item 的圆盘**探入 Home 条那一段**多少 —— 实测值,iOS 26 与 27 相同。
+	/// 工具栏里那些 bar item 的**中心**,距离安全区底沿多少 pt。
 	///
-	/// 本浮层要和左右两颗圆钮(齿轮/加号,它们是真的 bar item)对齐,就得跟着探这么多。
-	/// ⚠️ **这是一个实测常量,不是推导值** —— 我没找到 UIToolbar 凭什么这么摆。
-	/// 判据:改它之前先重新量一遍三个控件的外接框(办法见 `layoutSubviews` 里的表),
-	/// **别凭观感调**。
-	private static let nnwBarItemOvershoot: CGFloat = 2
+	/// ## ⚠️ 2026-08-09 改:从"对底边"改成"对中心",这是一个**真回归的修复**
+	///
+	/// 原来这里是 `nnwBarItemOvershoot = 2`,配的公式把浮层的**底边**钉在
+	/// `屏高 − 安全区底 + 2`。当时(直径 40)量出来两边完全吻合,所以看不出问题。
+	///
+	/// **但工具栏摆 bar item 用的是"中心对齐",不是"底边对齐"** —— 实测两次:
+	///
+	/// | 直径 | 工具栏圆钮中心 | 老公式给浮层的中心 |
+	/// |---|---|---|
+	/// | 40 | 822 | 822 ✅ 碰巧一样 |
+	/// | 44 | 822 | **820** ❌ 差 2pt |
+	///
+	/// 也就是说:**直径一变,老公式立刻错位**。40 那一版是"两个不同的算法碰巧算出同一个数",
+	/// 不是真的对齐 —— 又一次 L122(结论要连着适用范围一起记:那个 2 只在直径 40 时成立)。
+	///
+	/// 现在直接钉**中心**:`中心 = 屏高 − 安全区底 − 18`。
+	/// **18 是实测常量**(屏高 874、安全区底 34 时,工具栏圆钮中心恒为 822),
+	/// 而且在直径 40 和 44 上**各量过一次,都是 822** —— 它不随我们的控件大小变。
+	/// ⚠️ 改它之前先重新量一遍(`nnwLogGlassAlignment`),**别凭观感调**。
+	private static let nnwBarItemCenterInset: CGFloat = 18
 
 	init(bar: NNWReadingModeBar) {
 		self.bar = bar
@@ -112,25 +127,25 @@ import ObjectiveC
 		// 三档控件和那两颗圆钮**共用同一个直径**(`NNWSoftMaterial.controlDiameter`,
 		// 用户 2026-08-05 要求的唯一真源,见 L111),所以高度天然一致。
 		//
-		// ⚠️ **那个 +overshoot 不是凑数,是量出来的**(2026-08-05 晚,用户看出"三个控件没对齐"):
-		// 装上 iOS 27 模拟器后把三个控件的外接框都量了一遍(阈值扫亮边,不靠任何假设的圆心):
-		//
-		// | | 上缘 | 下缘 | 高 | 中心 |
-		// |---|---|---|---|---|
-		// | 齿轮 / 加号(bar item) | 802.00 | **841.67** | 39.67 | **821.83** |
-		// | 三档(本浮层,改前) | 800.00 | 839.67 | 39.67 | 819.83 |
-		//
-		// **iOS 26 和 27 上这两组数字完全相同**,所以这不是版本差异,是"工具栏怎么摆 bar item"。
-		// 关键发现:bar item 的圆盘下缘 **841.67 > 安全区上沿 840** ——
-		// **工具栏允许圆盘略微探入 Home 条那一段**(超出 1.67pt)。
-		// 而本浮层老老实实贴着安全区上沿放,于是恒定高 2pt。
+		// ⚠️ **钉的是"中心",不是"底边"**(2026-08-09 改,修一个真回归):
+		// 工具栏摆 bar item 用的是中心对齐,它的中心**不随控件大小变**(实测 40 和 44 都是 822)。
+		// 老公式钉的是底边,在直径 40 时碰巧算出同一个数,直径一改就错开 2pt。
+		// 详见 `nnwBarItemCenterInset` 的注释。
 		let homeIndicatorInset = window?.safeAreaInsets.bottom ?? 0
-		let centerY = bounds.height - homeIndicatorInset + Self.nnwBarItemOvershoot - size.height / 2
+		let centerY = bounds.height - homeIndicatorInset - Self.nnwBarItemCenterInset
 
 		bar.frame = CGRect(x: ((bounds.width - size.width) / 2).rounded(),
 						   y: (centerY - size.height / 2).rounded(),
 						   width: size.width, height: size.height)
 
+		// ⚠️ 临时探针(2026-08-09,量完就删):首页齿轮/加号从"图片"换成"自绘视图"之后,
+		// 工具栏摆它们的方式可能变了,而上面那个 +overshoot 是按**旧摆法**校准的。
+		// 把这条浮层的窗口坐标打出来,和另一条日志里那两颗对一下就知道有没有跑偏。
+		if let window, bar.bounds.height > 0 {
+			let frame = bar.convert(bar.bounds, to: window)
+			NNWGlassAlignLog.logger.info(
+				"[对齐] 首页三档浮层 上\(frame.minY, privacy: .public) 下\(frame.maxY, privacy: .public) 高\(frame.height, privacy: .public) 中心\(frame.midY, privacy: .public) | 安全区底=\(window.safeAreaInsets.bottom, privacy: .public)")
+		}
 	}
 
 	/// ⚠️ **必须重写**:宿主铺满整屏,不放行的话整页都点不动、滑不动。

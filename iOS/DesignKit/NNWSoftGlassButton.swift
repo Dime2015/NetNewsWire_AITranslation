@@ -4,36 +4,51 @@
 //
 //  [外观] 本 fork 新增。一颗「软面板圆钮」,和底栏中间那条三档是同一套材质。
 //
-//  ## 为什么它和工具栏那两颗(齿轮/加号)不是同一种实现
+//  ## 📌 2026-08-09 起,全 app 的圆钮**都是这一颗**
 //
-//  两者**长得一样,底不一样**:
+//  在这之前分成两种实现,而且底不一样:
 //
-//  | 用在哪 | 底是什么 | 实现 |
+//  | 用在哪 | 当时的底 | 当时的实现 |
 //  |---|---|---|
-//  | 底部工具栏(齿轮 / 加号) | 纯色暖纸 | 面板**烘焙进图片**(`NNWSoftMaterial.roundButtonImage`) |
-//  | 导航栏(搜索 / 编辑) | **首页头图,是张照片** | 本文件:磨砂玻璃 + 同一圈亮边 |
+//  | 底部工具栏(齿轮/加号、标记已读/下一篇未读) | 不透明 | 面板**烘焙进图片**(`NNWSoftMaterial.roundButtonImage`) |
+//  | 导航栏(搜索 / 编辑) | 真磨砂 | 本文件 |
 //
-//  分开的两个原因,都是硬的:
+//  当时的理由是「工具栏那两颗只能换 image」(加号是 storyboard 的 IBOutlet,
+//  上游还往它身上挂 `menu`,换成 customView 会把菜单弄丢)。
+//  **那个理由只对"换掉整个 UIBarButtonItem 对象"成立** —— 现在改成
+//  「对象不换、只设 customView、把 menu/isEnabled 转发过去」,四颗全部换成了本类。
+//  完整来龙去脉见 `NNWSoftGlassBarButton.swift`。
 //
-//  1. **工具栏那两颗只能换 image**。加号是 storyboard 的 IBOutlet,上游还往它身上挂
-//     `menu`(`MainFeedCollectionViewController.swift:897`),换成 customView 会把长按菜单
-//     整个弄丢。所以那两颗只能烘焙成图片 —— 而图片里装不下"磨砂"。
-//  2. **导航栏那两颗压在照片上**。2026-08-04 先按工具栏的做法上了不透明圆盘,
-//     截图一看是两张**贴纸**:圆盘和背后的画毫无关系。压在图上就必须真透。
-//
-//  在各自的底上,两者观感一致(磨砂盖在纯色上 ≈ 那个纯色),所以"统一"没有破。
+//  **换的原因**:用户 2026-08-09 报「各控件的玻璃透明度、层次、质感不一致,深色下尤其明显」。
+//  病根就是这张表 —— 同一屏上一半是真玻璃、一半是不透明图片。浅色下两者亮度接近还混得过去,
+//  深色下玻璃只补 3–6% 的白、亮度跟着背后内容浮动,而图片是恒定实心,**当场分家**。
 //
 //  ## 尺寸
 //
-//  可见圆盘 34pt = 三档控件的高度(并排时一样高);
+//  可见圆盘 = `NNWSoftMaterial.controlDiameter`(40pt,全 app 唯一真源);
 //  控件本体 44pt = 苹果的最小点按标准,圆盘居中,多出来的一圈只吃点按不画东西。
+//  ⚠️ 实测(2026-08-09,读真 frame 不是截图反推):放进工具栏后圆盘落在
+//  **上802 / 下842 / 中心822**,和首页那条三档浮层**四项完全相同**。
 //
 
 #if os(iOS)
 
 import UIKit
 
-@MainActor final class NNWSoftGlassButton: UIControl {
+/// ## ⚠️ 为什么基类是 `UIButton` 而不是 `UIControl`(2026-08-09 改)
+///
+/// 这一颗原来只当导航栏的圆钮用,`UIControl` 就够。现在**底部工具栏那四颗也改用它**
+/// (首页齿轮/加号、文章列表页标记已读/下一篇未读),而那四颗身上带着两样
+/// `UIControl` 给不了的东西:
+///
+/// - **点击弹菜单**:首页的加号上,上游挂着一个 `UIMenu`
+///   (`MainFeedCollectionViewController.configureContextMenu`)。`UIButton` 自带
+///   `menu` + `showsMenuAsPrimaryAction`,`UIControl` 没有。
+/// - **禁用态**:上游会写 `isEnabled`(没有账户时加号禁用、没有下一篇未读时那颗禁用)。
+///
+/// `UIButton` 是 `UIControl` 的子类,`addTarget(_:action:for:)` 一字不变,
+/// 唯一原来的用法(导航栏放大镜)不受影响。
+@MainActor final class NNWSoftGlassButton: UIButton {
 
 	/// 可见圆盘直径 —— **读全 app 的唯一真源**,别在这里写死。
 	/// 用户 2026-08-05:「以后都一直保持一样」。见 `NNWSoftMaterial.controlDiameter`。
@@ -126,7 +141,30 @@ import UIKit
 
 	/// 按下去整颗轻微变暗,和板上其他键的手感一致。
 	override var isHighlighted: Bool {
-		didSet { alpha = isHighlighted ? 0.55 : 1 }
+		didSet { nnwUpdateVisualState() }
+	}
+
+	/// 禁用时整颗变淡。
+	///
+	/// ⚠️ **必须和上面那条走同一个出口**:两处都直接写 `alpha` 的话会互相盖掉 ——
+	/// 「按下(0.55)后松手(1)」会把「本来就是禁用(0.35)」一并抹成正常态。
+	/// 这是本项目反复吃过的那类账:**同一个属性有两个写入点,就要先合并成一个**(L74)。
+	override var isEnabled: Bool {
+		didSet { nnwUpdateVisualState() }
+	}
+
+	private func nnwUpdateVisualState() {
+		if !isEnabled {
+			alpha = 0.35
+		} else {
+			alpha = isHighlighted ? 0.55 : 1
+		}
+	}
+
+	/// 换图标(换强调色 / 换页面状态时用)。
+	func nnwSetIcon(_ icon: UIImage, tint: UIColor? = nil) {
+		iconView.image = icon.withRenderingMode(.alwaysTemplate)
+		iconView.tintColor = tint ?? NNWSoftMaterial.accent
 	}
 }
 

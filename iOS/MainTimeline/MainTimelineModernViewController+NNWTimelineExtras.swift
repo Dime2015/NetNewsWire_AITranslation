@@ -223,6 +223,11 @@ extension MainTimelineModernViewController {
 	/// 所以那个分支在有头图的页面上根本不成立 —— 而有头图的页面恰恰就是全部单源页。
 	func nnwTimelineTopBarDidUpdate() {
 		nnwClampNavigationTitleWidth()	// 上游那个标题标签(没有头图的页面才用得上)
+		// [外观] 2026-08-09:左上角返回键换成我们自己的玻璃圆钮(唯一一个原来不受
+		// `NNWSoftMaterial.controlDiameter` 管的控件)。**幂等**,所以放心挂在这个会被
+		// 反复调用的地方 —— 而且这里是"viewWillAppear 和切源都必经"的那一处,
+		// 转场后系统若把返回键或侧滑 delegate 换回去,下一次经过就会被重新装上。
+		nnwInstallSoftGlassBackButton()
 	}
 
 	func nnwClampNavigationTitleWidth() {

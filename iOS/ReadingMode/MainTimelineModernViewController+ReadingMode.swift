@@ -123,23 +123,24 @@ extension MainTimelineModernViewController {
 	/// [外观] 2026-08-05:把本页底部工具栏那两颗(标记全部已读 / 下一篇未读)
 	/// 换成和首页齿轮、加号同一套的**软面板圆钮**。
 	///
-	/// ⚠️ 只换 `image` —— `markAllAsReadButton` 是 storyboard 的 IBOutlet、
-	/// `nextUnreadButton` 上游还在改 `isEnabled`,换掉对象会打断那些写入点。
-	/// 面板烘焙进图片的做法与首页完全一致(见 NNWSoftMaterial.roundButtonImage)。
+	/// [外观] **2026-08-09 二版:从"画进图片"改成"真玻璃控件"**(用户报各控件质感不一致)。
+	/// 对象一个都不换,只设 `customView`,再把 `isEnabled` 转发过去 ——
+	/// `markAllAsRead` 这个 storyboard 项、`nextUnreadButton` 这个上游还在写 `isEnabled` 的项
+	/// 都原封不动。完整理由见 `NNWSoftGlassBarButton.swift`。
+	///
+	/// 📌 **上一版那个"自己吃自己"的坑就此消失**:原来是
+	/// `roundButtonImage(icon: item.image …)`,而 `item.image` 正是这个函数上一次的输出 ——
+	/// 被深浅色/换色观察者再触发几次就把圆钮当图标层层嵌套,糊成一块纯色
+	/// (2026-08-05 用户报"底部两个控件变成纯色了")。现在**根本不写 `item.image`**,
+	/// 图标每次都从 `Assets.Images` 的原图现配,跑一百遍结果都一样。
+	/// 判据仍然值得记住:**任何"就地改写自己读的那个字段"的函数,都要问"跑第二遍会怎样"。**
 	@objc func nnwRestyleTimelineToolbarIcons() {
 		guard NNWSoftMaterial.isEnabled else { return }
 		nnwObserveStyleChangesForTimelineIcons()
 
-		// ⚠️ **必须从"原图"合成,不能读 `item.image`**(2026-08-05 用户报"底部两个控件变成纯色了")。
-		//
-		// 上一版是 `roundButtonImage(icon: item.image …)` —— 而 `item.image` 正是
-		// **这个函数自己上一次的输出**。第一次跑没事(那时还是上游的原图),
-		// 但补了深浅色/换色观察者之后它会被再次触发,于是**把合成好的圆钮
-		// 又当成图标合成进新的圆钮**,反复几次就糊成一块纯色。
-		//
-		// 判据:**任何"就地改写自己读的那个字段"的函数,都要问一句"跑第二遍会怎样"。**
-		// 这里改成每次都从 `Assets.Images` 的原图现合成 —— 跑一百遍结果都一样。
-		let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+		// 图标字号走全 app 唯一真源(18pt),原来这里写死 20pt —— 比顶部胶囊那两个大一圈,
+		// 正是用户说的"质感不一致"里最实的一条。见 NNWSoftMaterial.iconPointSize
+		let config = UIImage.SymbolConfiguration(pointSize: NNWSoftMaterial.iconPointSize, weight: .medium)
 		let markAll = #selector(MainTimelineModernViewController.markAllAsRead(_:)
 								as (MainTimelineModernViewController) -> (Any?) -> Void)
 
@@ -152,16 +153,19 @@ extension MainTimelineModernViewController {
 			default:		continue
 			}
 			guard let base = source?.applyingSymbolConfiguration(config) ?? source else { continue }
-			item.image = NNWSoftMaterial.roundButtonImage(icon: base, traits: traitCollection)
-			item.nnwHideSystemGlassCapsule()
+			item.nnwUseSoftGlassButton(icon: base)
 		}
 	}
 
 	/// [外观] 切深浅色 / 换强调色时把这两颗圆钮重画。
 	///
-	/// ⚠️ **首页早就有这个观察者,这一页漏了**(2026-08-05 用户在深色下发现:
-	/// 这一页的圆钮还是浅色那张,白得刺眼)。烘焙成图片的东西**不会自己跟随** ——
-	/// 凡是用 `roundButtonImage` 的地方,都必须有人在这两件事发生时叫它重画(L105 第 2 条)。
+	/// 📌 **2026-08-09 起两件事的必要性不一样了**(改成真玻璃控件之后):
+	/// **深浅色**已经不需要人管(玻璃会自己按当时的 traits 重画),留着是无害的冗余;
+	/// **换强调色**仍然必须 —— `NNWSoftMaterial.accent` 是静态值不是动态色,
+	/// 得有人来重设一次图标的 tintColor(L105 第 2 条那一族)。
+	///
+	/// ⚠️ 历史:烘焙成图片的年代这两件事**都**必须自己盯着,而这一页当初漏了
+	/// (2026-08-05 用户在深色下发现这一页的圆钮还是浅色那张,白得刺眼)。
 	private func nnwObserveStyleChangesForTimelineIcons() {
 		guard objc_getAssociatedObject(self, &Self.nnwTimelineIconObserverKey) == nil else { return }
 		objc_setAssociatedObject(self, &Self.nnwTimelineIconObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)

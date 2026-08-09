@@ -923,6 +923,7 @@ private extension MainTimelineModernViewController {
 	func updateToolbar() {
 		markAllAsReadButton?.isEnabled = isTimelineUnreadAvailable
 		nextUnreadButton.isEnabled = coordinator?.isNextUnreadAvailable ?? false
+		nnwSyncSoftGlassToolbarButtons()	// [外观] 加一行:上面写的 isEnabled 要搬到玻璃圆钮上(UIKit 不会自己传给 customView)
 		if #unavailable(iOS 26) {
 			rebuildToolbarItems()
 		}
