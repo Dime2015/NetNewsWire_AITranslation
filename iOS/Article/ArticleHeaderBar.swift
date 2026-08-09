@@ -127,14 +127,6 @@ import os
 		/// 圆角方形配圆环会露出四个角的空当。
 		static let ringWidth: CGFloat = 3
 
-		/// 🔴 **翻页时"安全区还没到"的那段,要不要用 transform 把正文垫住**(2026-08-09 第十九轮)。
-		///
-		/// ⚠️ **出问题就把它改成 `false`,一行就能关掉整套补偿** ——
-		/// 上一轮我把 app 弄成白屏假死过,这次留个闸(L137)。
-		static let compensatesLateSafeArea = true
-		/// 垫付的上限。安全区最多也就 116pt 上下;超过这个数说明我算错了,宁可不垫。
-		static let maxSafeDebt: CGFloat = 200
-
 		/// 内容高度变化后,进度条冻结多久(秒)。
 		/// **翻译是逐块替换的**,替换时内容总高会跳变,进度跟着往回跳很难看;
 		/// 图片异步加载同理。冻一下等它稳定。
@@ -264,21 +256,6 @@ import os
 	/// 🎯 第十七轮的验收量:**夹后的顶部总量**(我们写的 + 系统的安全区)。
 	/// 修好之后它必须全程恒定 —— 这是"正文不再跳"的数字版说法。
 	private var nnwTurnAdjustedTrace = NNWTurnTrace()
-
-	// MARK: - 安全区垫付(第十九轮,治"翻页时正文掉 116pt")
-
-	/// 此刻替系统垫着多少安全区(用 `transform` 画上去的位移,**不碰滚动状态**)。
-	private var nnwSafeDebt: CGFloat = 0
-	/// 这一页"欠多少"是否已经**定过了**。
-	///
-	/// 🔴 **这个标志是防振荡的核心。** 垫付量算自 `safeAreaInsets`,
-	/// 而本项目早有实测(T24/第七轮):**平移一个视图会真的改变它的安全区**。
-	/// 也就是说"垫付"和"依据"互为因果 —— 天然是个反馈环。
-	/// 所以设计成**单向**:一页只在第一次排版时定一次,之后**只会归零,永不再抬高**。
-	/// 单向 ⇒ 状态机没有回路 ⇒ **数学上不可能振荡**,最坏情况也只是回到"不垫"的现状。
-	private var nnwSafeDebtLatched = false
-	/// 探针用:定下垫付时的滚动视图安全区,和撤销时的。查完就删。
-	private var nnwSafeDebtAtLatch: CGFloat = 0
 
 	/// 网页装载完了没(false = 还在装)。
 	///
@@ -466,13 +443,8 @@ import os
 		// 新页 syncInset 时算出的差值接近 0 → **新页根本没被下推**,
 		// 正文顶到阅读栏底下,而"停在顶部"的基准位置也就错了 ——
 		// 表现就是用户报的「拉到最上面还是显示冻结后的样子」。
-		// ⚠️ 换页之前**先把垫付撤回给旧那一页** —— 位移是画在旧网页上的,
-		// 指针一换就再也够不着它了,会永久留下一个歪掉的页面(和 `releaseInset` 同一个道理)。
-		nnwApplySafeDebt(0)
 		releaseInset()
 		self.scrollView = scrollView
-		// 新的一页重新开始:允许再定一次垫付量(见 `nnwSafeDebtLatched` 的说明)。
-		nnwSafeDebtLatched = false
 		offsetObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
 			MainActor.assumeIsolated { self?.layoutAndApply() }
 		}
@@ -564,7 +536,6 @@ import os
 		offsetObservation = nil
 		sizeObservation = nil
 		insetObservation = nil		// ⚠️ 第十三轮的临时探针,和上面两条同生共死
-		nnwApplySafeDebt(0)			// 卸载前一定把垫付撤掉,别留下歪掉的网页
 		releaseInset()
 		scrollView = nil
 		installedArticleID = nil
@@ -703,12 +674,6 @@ import os
 				+ titleHeight(width: textWidth) + Style.sourceTitleGap + sourceSize.height + Style.bottomPadding
 			syncInset()
 		}
-
-		// [外观] 第十九轮:翻页时替系统垫上它还没送到的安全区(用 transform,不碰滚动状态)。
-		// ⚠️ 这里**每帧都调是安全的** —— 它只读、只画 transform,
-		// 而且是**单向状态机**(定一次 → 归零),不写任何滚动状态,不会形成 L137 那个环。
-		nnwUpdateSafeDebt(expectedSafeTop: safeTop, scrollView: scrollView, isTurningPage: isTurningPage)
-
 		// 🔴🔴 **2026-08-09 第十七轮:这里曾经改成"每次排版都问一次 syncInset(带安全区补偿)",
 		// 结果真机白屏假死,已全部回退。** 来龙去脉见 NOTES-todo「第十八轮」和 **L137**。
 		// ⚠️ 本文件开头那条硬约束("绝不在滚动回调里碰 contentInset / safeArea",L63 的
@@ -961,79 +926,6 @@ import os
 			current = vc.parent
 		}
 		return nil
-	}
-
-	/// [外观] 翻页时替系统**垫上**它还没送到的那份安全区 —— 用 `transform`,**不碰滚动状态**。
-	///
-	/// ## 为什么需要(真机 12 次翻页 11 次同一形状,`[拽] 滚动视图安全区` 实测)
-	///
-	/// ```
-	/// 滚动视图安全区 首0→末116 | offset 首-175→末-291
-	/// ```
-	/// 新页的滚动视图在我们写内边距的那一刻安全区**还是 0**,那 116pt 是在
-	/// **翻页动画进行当中**才到的。到货时"滚到顶"这个基准位置下移 116pt,
-	/// 屏幕上就是**正文在动画中途整体掉一截**。
-	/// 只有真的新建了一页才会有这种"安全区还没到"的滚动视图 ——
-	/// 所以和用户那句「翻成了就一定抖,不抖就是没翻成」完全对得上(L135)。
-	///
-	/// ## 为什么用 transform 而不是改内边距
-	///
-	/// 上一轮我就是去改内边距的,结果**白屏假死**(L137):
-	/// 补偿量依赖 `safeAreaInsets`,而写内边距会反过来影响它 → 目标值来回跳 → 每帧落笔。
-	/// 本文件开头那条硬约束早就写着:**只允许改 `transform` 和 `alpha`,
-	/// 绝不在滚动回调里碰 `contentInset` / `safeArea`。**
-	/// `transform` 是画上去的位移,**滚动状态一个字节都不变**,不参与那个环。
-	///
-	/// ## 为什么它不会变成第二个反馈环
-	///
-	/// ⚠️ 平移一个视图**确实会改变它的安全区**(本项目 T24/第七轮实测过)——
-	/// 所以"垫付量算自安全区"本身仍然是有回路的。
-	/// **靠单向状态机切断**:一页只在第一次排版时定一次垫付量,之后**只会归零,永不再抬高**。
-	/// 没有回路 ⇒ 不可能振荡;最坏情况是"撤早了/撤晚了",退化成今天的那一跳,**不会更糟**。
-	private func nnwUpdateSafeDebt(expectedSafeTop: CGFloat, scrollView: UIScrollView, isTurningPage: Bool) {
-
-		guard Style.compensatesLateSafeArea else { return }
-
-		// ① 只定一次:这一页第一次排版时,看系统欠多少。
-		if !nnwSafeDebtLatched {
-			nnwSafeDebtLatched = true
-			let debt = expectedSafeTop - scrollView.safeAreaInsets.top
-			// ⚠️ 只在**翻页动画期间**垫 —— 平时打开文章时安全区本来就已经到位(模拟器实测 116),
-			// 不该无缘无故给正文加位移。
-			guard isTurningPage, debt > 0.5, debt <= Style.maxSafeDebt else { return }
-			nnwSafeDebtAtLatch = scrollView.safeAreaInsets.top
-			nnwApplySafeDebt(debt)
-			NNWArticlePagingLog.logger.info("""
-				[拽] 安全区垫付 垫上=\(debt, privacy: .public) \
-				| 此刻滚动视图安全区=\(scrollView.safeAreaInsets.top, privacy: .public) \
-				| 期望=\(expectedSafeTop, privacy: .public)
-				""")
-			return
-		}
-
-		// ② 单向归零:安全区到货了(或者这一页已经不在翻页里了)就撤掉。
-		// **只读,不重算垫付量** —— 撤了就不会再垫回去,所以没有回路。
-		guard nnwSafeDebt > 0 else { return }
-		let arrived = scrollView.safeAreaInsets.top >= expectedSafeTop - 0.5
-		guard arrived || !isTurningPage else { return }
-		NNWArticlePagingLog.logger.info("""
-			[拽] 安全区垫付 撤销 原因=\(arrived ? "安全区到货" : "翻页结束", privacy: .public) \
-			| 垫过=\(self.nnwSafeDebt, privacy: .public) \
-			| 定时安全区=\(self.nnwSafeDebtAtLatch, privacy: .public) \
-			→ 现在=\(scrollView.safeAreaInsets.top, privacy: .public)
-			""")
-		nnwApplySafeDebt(0)
-	}
-
-	/// 真正把位移画上去 / 撤下来。垫的是**网页那一层**(滚动视图的宿主 = `WKWebView`)。
-	///
-	/// ⚠️ 只在**我们自己垫过**的前提下才写 `.identity`(靠 `nnwSafeDebt != debt` 保证),
-	/// 免得把别人设的 transform 抹掉。现有代码里动 transform 的只有
-	/// `nnwSetContentPushBack`,它动的是**翻页容器**那一层,和这里不是同一个视图。
-	private func nnwApplySafeDebt(_ debt: CGFloat) {
-		guard nnwSafeDebt != debt else { return }
-		nnwSafeDebt = debt
-		scrollView?.superview?.transform = debt > 0.5 ? CGAffineTransform(translationX: 0, y: debt) : .identity
 	}
 
 	/// 记一行「我们自己动了正文的内边距和偏移」。
