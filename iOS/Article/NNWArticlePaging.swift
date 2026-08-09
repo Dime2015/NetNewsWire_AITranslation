@@ -413,7 +413,8 @@ extension ArticleViewController {
 				[拽] 上一篇 闸门=\(self.nnwHasDestination(for: .top), privacy: .public) \
 				| 来路栈=\(self.nnwPageBackStack.count, privacy: .public) 条 \
 				| 我这页在第=\(myRow.map { String($0) } ?? "找不到", privacy: .public) 行 \
-				| 进门锚=\(self.nnwAnchoredPreviousArticle != nil ? "有" : "无", privacy: .public) \
+				| 进门锚=\(self.nnwAnchoredPreviousArticle == nil ? "无" : (self.nnwEntryNeighborByDate ? "有(按日期兜底)" : "有(列表相邻)"), privacy: .public) \
+				| 画的线=\(String(describing: self.nnwHintState(for: .top)), privacy: .public) \
 				| 上游=\(coordinator.isPrevArticleAvailable, privacy: .public) \
 				| 协调器认的在第=\(coordRow.map { String($0) } ?? "找不到", privacy: .public) 行 \
 				| 列表共=\(coordinator.articles.count, privacy: .public) 篇 \
@@ -574,7 +575,9 @@ extension ArticleViewController {
 		//
 		// 用户 2026-08-09 拍板的做法:**线照出,但它是"到头"的样子** ——
 		// 不弯(永远是 `—`)、淡一档、松手不翻、不震。
-		let hasDestination = nnwHasDestination(for: over.edge)
+		// 🔴 第十三轮:不再只问"有没有下一站",而是问"是哪一种没有" —— 见 `NNWPageTurnHintState`。
+		let hintState = nnwHintState(for: over.edge)
+		let hasDestination = (hintState == .ready)
 
 		// 🔴 **拽了才出现,不是贴到边就出现**(用户 2026-08-09:
 		// 「下方这个形变之前的 `—` 会一直存在,而不是触发才出现」)。
@@ -617,7 +620,7 @@ extension ArticleViewController {
 							  distance: hasDestination ? max(visualGap - over.alreadyMoved, 0) : 0)
 		hint.update(edge: over.edge, progress: shaped,
 					gap: hasDestination ? max(visualGap, over.alreadyMoved) : over.alreadyMoved,
-					isDeadEnd: !hasDestination, in: view)
+					state: hintState, in: view)
 
 		// ⚠️ 临时探针(2026-08-09):记下这一拽**到过的最大值**。
 		nnwOverscrollPeak = max(nnwOverscrollPeak, over.amount)
@@ -668,8 +671,80 @@ extension ArticleViewController {
 	///   而这一篇之前存下的那个锚正是我们要救的东西。
 	func nnwRememberListNeighbor() {
 		guard let coordinator, let article else { return }
-		guard let index = coordinator.articles.firstIndex(of: article) else { return }
-		nnwEntryNeighbor = index > 0 ? [article, coordinator.articles[index - 1]] : nil
+
+		if let index = coordinator.articles.firstIndex(of: article) {
+			nnwEntryNeighbor = index > 0 ? [article, coordinator.articles[index - 1]] : nil
+			nnwEntryNeighborByDate = false
+			return
+		}
+
+		// 🔴 **找不到自己:原来到这里就 return,于是锚"根本没建起来"**(2026-08-09 第十三轮修)。
+		//
+		// 上面那条注释写着「找不到自己 → 保持不动,这一篇之前存下的锚正是我们要救的东西」——
+		// 那句话有个**没说出来的前提:它之前确实存过一个**。真机日志钉死了不成立的那种:
+		// **启动时状态恢复进来的第一篇**,上次读完就已经是已读,压根不在「全部未读」里,
+		// 从来没有"列表认得它"的那一刻 → 锚永远是空的 → 四条路全落空 →
+		// 用户拽了 190~220pt 却看到一条"到头"的线(日志里 5 次,形状一模一样)。
+		//
+		// 📌 判据:**"趁它还成立的时候存下来"这个办法,前提是"那一刻确实存在过"。**
+		//
+		// 用户拍板的补法 (a):这时**按日期在列表里找紧挨着我的那一篇**当锚。
+		// ⚠️ 只在"这一篇还没有自己的锚"时补 —— 已经有的说明它曾经是列表里的一员,那个更准。
+		if let pair = nnwEntryNeighbor, pair.count == 2, pair[0] == article { return }
+
+		let byDate = nnwPreviousArticleByDate(for: article, coordinator: coordinator)
+		if let byDate {
+			nnwEntryNeighbor = [article, byDate]
+			nnwEntryNeighborByDate = true
+		}
+
+		// ⚠️ 临时探针(第十三轮,查完就删):**这条兜底藏在两层 guard 后面,
+		// 不打一行日志就没法证明它被走到过** —— L124/L132 那个"钩子挂在不成立的分支上"
+		// 的错误,这个项目里一天之内犯过三次。所以**无条件打**,补不上也打。
+		NNWArticlePagingLog.logger.info("""
+			[拽] 进门锚 列表里找不到这一篇 \(article.articleID.prefix(8), privacy: .public) \
+			| 按日期兜底=\(byDate == nil ? "🔴没找到" : "找到了", privacy: .public) \
+			| 按源分组=\(coordinator.groupByFeed, privacy: .public) \
+			| 最新在前=\(coordinator.sortDirection == .orderedDescending, privacy: .public) \
+			| 列表共=\(coordinator.articles.count, privacy: .public) 篇
+			""")
+	}
+
+	/// [阅读] 按**日期**在列表里找"排在我前面的那一篇"。只给 `nnwRememberListNeighbor` 兜底用。
+	///
+	/// ## 为什么放在这里算,而不是等要用的时候再算
+	/// 闸门 `nnwHasDestination` 是**每一帧**都要问的(拽的过程中)。
+	/// 列表有 7700 篇,每帧扫一遍就是自己制造卡顿 —— 而抖动正是这一轮要查的东西,
+	/// **探针绝不能自己成为病因**。所以只在**换文章那一刻**算一次,结果存进同一个进门锚。
+	/// 顺带白拿一个好处:**门和路读的是同一个锚,天然是同一套条件**,
+	/// 不会再出现第五轮那种「门比路窄,白白挡掉合法操作」。
+	///
+	/// ## 不假设排序方向
+	/// 「上一篇」= 列表里排在我前面的那一篇。它到底"更新"还是"更旧",由用户的排序设置决定,
+	/// 所以这里**读 `coordinator.sortDirection`**,不靠猜(L123 的老账:先问这两个值平时谁大)。
+	/// - 最新在前 → 上一篇 = 比我新的那些里面**最旧**的一篇(离我最近的那个)
+	/// - 最旧在前 → 上一篇 = 比我旧的那些里面**最新**的一篇
+	///
+	/// ⚠️ **按源分组时直接放弃**(返回 nil):那种排法下"相邻"由源决定,和日期没关系,
+	/// 硬按日期挑会给出一篇根本不相邻的文章 —— **张冠李戴的"上一篇"比没有更难查**(L123)。
+	/// 这种情况留给 (c) 那条「这里断了」的线去诚实表达。
+	private func nnwPreviousArticleByDate(for article: Article, coordinator: SceneCoordinator) -> Article? {
+
+		guard !coordinator.groupByFeed else { return nil }
+
+		let mine = article.logicalDatePublished
+		let newestFirst = coordinator.sortDirection == .orderedDescending
+
+		return coordinator.articles.reduce(nil) { (best: Article?, candidate: Article) -> Article? in
+			let date = candidate.logicalDatePublished
+			// 只看"排在我前面"那一侧的候选
+			guard newestFirst ? date > mine : date < mine else { return best }
+			guard let best else { return candidate }
+			// 在那一侧里挑离我最近的
+			return newestFirst
+				? (date < best.logicalDatePublished ? candidate : best)
+				: (date > best.logicalDatePublished ? candidate : best)
+		}
 	}
 
 	/// 进门锚里给**当前这一篇**准备的"上一篇"。对不上就当没有。
@@ -693,6 +768,27 @@ extension ArticleViewController {
 	///
 	/// 📌 判据:**守门的条件必须和干活的条件是同一套。门比路窄 = 白白挡掉合法操作。**
 	/// 所以下面三条**和 `nnwGoToPreviousArticle` 里的三条一一对应**,改一边就要改另一边。
+	/// [阅读] 这一头是「有下一站」「确认到头」还是「失联」(2026-08-09 第十三轮,用户拍板的 (c))。
+	///
+	/// ⚠️ **闸门仍然只有 `nnwHasDestination` 一个** —— 这里只是在"没有下一站"之后
+	/// 再分一次类,决定**画哪一种线**。不新增放行条件,所以不会又搞出"门和路不是同一套"。
+	private func nnwHintState(for edge: NNWScrollEdge) -> NNWPageTurnHintState {
+
+		if nnwHasDestination(for: edge) { return .ready }
+		// 底部永远有下一站(没有下一篇未读时是彩蛋页),照理走不到这儿
+		guard edge == .top else { return .atEnd }
+
+		guard let coordinator,
+			  let current = (nnwCurrentPage as? WebViewController)?.article else { return .lost }
+
+		if let index = coordinator.articles.firstIndex(of: current) {
+			// 找得到自己:第 0 行 = 真的到头(事实);不是第 0 行却无路可走 = 不该发生,当失联报
+			return index == 0 ? .atEnd : .lost
+		}
+		// 列表里找不到我,而且按日期也没能补出锚(按源分组时会这样)—— 我不知道上一篇是谁
+		return .lost
+	}
+
 	private func nnwHasDestination(for edge: NNWScrollEdge) -> Bool {
 		guard let coordinator, nnwCurrentPage is WebViewController else { return false }
 		switch edge {
@@ -974,6 +1070,20 @@ enum NNWScrollEdge: String {
 	case bottom
 }
 
+/// [阅读] 这一头此刻是什么状况 —— 🔴 **「到头」和「失联」必须分开**
+///(2026-08-09 第十三轮,用户拍板的 (c);第十二轮的代码把这两件当成同一件,都画"到头")。
+///
+/// 判据:**前者是一个事实,后者是我不知道。** 拿"到头"去表达"我不知道",
+/// 是给用户一个**明确但错误的承诺** —— 屏幕上写着"上面没有了",而上面明明还有文章。
+enum NNWPageTurnHintState {
+	/// 有下一站,松手就翻
+	case ready
+	/// **确认**到头:我就在列表第 0 行,上面确实没有了
+	case atEnd
+	/// **失联**:列表里找不到我,按日期也补不出锚(例如按源分组)。**我不知道上一篇是谁。**
+	case lost
+}
+
 // MARK: - 「松手就翻页」的箭头
 
 /// [阅读] 2026-08-09 用户要求:「滑到一定程度,屏幕的下方或者上方就有一个 v 或者 ^,
@@ -1047,7 +1157,8 @@ enum NNWScrollEdge: String {
 	/// 宽度从 44 张到 72、落差从 0 长到 13。
 	/// 📌 判据:**一个视觉量只表达一件事。** 之前拿 alpha 同时表达"在不在"和"够不够",
 	/// 两件事挤在一个通道里,哪件都说不清楚。
-	private static func path(progress: CGFloat, in size: CGSize, pointingDown: Bool) -> CGPath {
+	private static func path(progress: CGFloat, in size: CGSize, pointingDown: Bool,
+							 broken: Bool = false) -> CGPath {
 
 		let t = min(max(progress, 0), 1)
 		let width = dashWidth + (chevronWidth - dashWidth) * t
@@ -1061,11 +1172,27 @@ enum NNWScrollEdge: String {
 		let tip = pointingDown ? mid + drop / 2 : mid - drop / 2
 
 		let path = UIBezierPath()
+
+		// 「失联」:同样是一条平线,但**中间缺一口**。
+		// 它和"到头"那条完整的平线**一眼分得开**,而语义正好对上:
+		// 到头 = 上面没有了(线是连着的、只是不弯);失联 = 这里断了,我不知道上一篇是谁。
+		// (broken 只在 progress 被按死成 0 时用,所以宽度就是那条 `—` 的宽度。)
+		if broken {
+			path.move(to: CGPoint(x: left, y: mid))
+			path.addLine(to: CGPoint(x: size.width / 2 - brokenGap / 2, y: mid))
+			path.move(to: CGPoint(x: size.width / 2 + brokenGap / 2, y: mid))
+			path.addLine(to: CGPoint(x: right, y: mid))
+			return path.cgPath
+		}
+
 		path.move(to: CGPoint(x: left, y: ends))
 		path.addLine(to: CGPoint(x: size.width / 2, y: tip))
 		path.addLine(to: CGPoint(x: right, y: ends))
 		return path.cgPath
 	}
+
+	/// 「失联」那条线中间缺口有多宽。取到"一眼看得出是断的",又不至于变成两个小点。
+	private static let brokenGap: CGFloat = 12
 
 	/// 按当前进度更新。
 	///
@@ -1087,7 +1214,11 @@ enum NNWScrollEdge: String {
 	///     线照出,但**永远不弯**、淡一档)。它说的是"你可以拽,但这头到底了",
 	///     而不是把功能藏起来假装无事发生。
 	func update(edge: NNWScrollEdge, progress: CGFloat, gap: CGFloat,
-				isDeadEnd: Bool = false, in host: UIView) {
+				state: NNWPageTurnHintState = .ready, in host: UIView) {
+
+		// 「到头」和「失联」都不会翻页,所以**都不弯、都淡一档**;
+		// 两者的区别由**线本身的形状**表达:到头是完整的 `—`,失联是中间缺一口的 `- -`。
+		let isDeadEnd = (state != .ready)
 
 		let height = Self.canvasHeight
 		let width = Self.chevronWidth
@@ -1108,7 +1239,8 @@ enum NNWScrollEdge: String {
 		// 到头时**把进度按死在 0** —— 于是它恒是一条平的 `—`,一点都不会弯成 `^`。
 		// 形状本身就是承诺:弯 = 松手会翻;不弯 = 这头没有了。
 		shape.path = Self.path(progress: isDeadEnd ? 0 : progress,
-							   in: bounds.size, pointingDown: edge == .bottom)
+							   in: bounds.size, pointingDown: edge == .bottom,
+							   broken: state == .lost)
 		let style = traitCollection.userInterfaceStyle
 		if strokeStyle != style {
 			strokeStyle = style
@@ -1154,6 +1286,7 @@ extension ArticleViewController {
 	private static nonisolated(unsafe) var nnwBackStackKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwPullingKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwEntryNeighborKey: UInt8 = 0
+	private static nonisolated(unsafe) var nnwEntryNeighborByDateKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwTurningKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwTurnTokenKey: UInt8 = 0
 
@@ -1249,6 +1382,16 @@ extension ArticleViewController {
 	var nnwEntryNeighbor: [Article]? {
 		get { objc_getAssociatedObject(self, &Self.nnwEntryNeighborKey) as? [Article] }
 		set { objc_setAssociatedObject(self, &Self.nnwEntryNeighborKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 当前这个锚是**按日期兜底算出来的**(而不是"列表里真的排在前面")。
+	///
+	/// ⚠️ 只为一件事存在:**让日志说清楚锚是从哪来的**。
+	/// 不然验收时看到 `进门锚=有`,分不清是老路子生效了还是第十三轮新加的兜底生效了 ——
+	/// 又一次 L123:**「我量到了」≠「我量的是它」。**
+	var nnwEntryNeighborByDate: Bool {
+		get { objc_getAssociatedObject(self, &Self.nnwEntryNeighborByDateKey) as? Bool ?? false }
+		set { objc_setAssociatedObject(self, &Self.nnwEntryNeighborByDateKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 	}
 
 	/// 此刻**翻页动画正在放**吗。
