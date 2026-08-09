@@ -66,6 +66,11 @@ final class ArticleViewController: UIViewController {
 		didSet {
 			Self.logger.debug("ArticleViewController: article didSet: \(self.article?.accountID ?? "nil") \(self.article?.articleID ?? "nil") \(self.article?.title ?? "nil")")
 
+			// [阅读] 趁列表还认得这篇文章,先把「列表里排在它前面的那一篇」记下来。
+			// 「全部未读」只装未读文章 —— 你一打开它就被标为已读,列表下次重拉时它就没了,
+			// 之后再问"我在第几行"永远是"找不到"。实现在 NNWArticlePaging.swift。
+			nnwRememberListNeighbor()
+
 			if let controller = currentWebViewController, controller.article != article {
 				controller.setArticle(article)
 				if isPageTransitionInProgress {

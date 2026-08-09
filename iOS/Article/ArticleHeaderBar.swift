@@ -185,6 +185,32 @@ import os
 	/// 安全区自愈请求是否已在路上(T24,防止每帧都发一次)
 	private var pendingSafeAreaNudge = false
 
+	/// ⚠️ 临时探针(2026-08-09 第五轮,查完就删):上一次打出来的「让路」状态。
+	///
+	/// 排版每帧都跑,所以**只在状态翻转时打一行**,不刷屏。
+	/// 用途是补上 L124/L132 定死的那条硬规矩 ——
+	/// **带条件的钩子,交付前必须有一次"它被走到了"的证据**,而不是读代码推断。
+	/// 下面那个「拽的时候让路」的口子已经被我写错过两次(`host as?` 恒为 nil),
+	/// 这一次要有正面证据才算数。
+	private var nnwLoggedPullProbe: String?
+
+	/// ⚠️ 临时探针(2026-08-09 第七轮,查完就删):一次翻页动画期间,
+	/// 排版被叫了多少次,以及**它读到的每一个会变的量各自扫过多大范围**。翻完打一行。
+	///
+	/// 第六轮只量了安全区,结果是 `116→116`(一动不动)—— 假设被推翻,
+	/// 可 `排版=51 次` 说明**高频重排本身是真的**,只是驱动它的是别的量。
+	/// 📌 判据:**推翻一个假设之后,别急着换一个假设去改代码 ——
+	/// 先把"这个函数里所有会变的量"一次全量出来,让数字自己指认。**
+	/// 最近一次**在可信几何下**算出来的飞行进度。翻页动画期间拿它顶着,不再跟着中间态跳。
+	/// 新页从来没记过 → 0 → 大标题态,正是它该有的样子。见 `layoutAndApply` 里的说明。
+	private var nnwLastGoodFlight: CGFloat = 0
+
+	private var nnwTurnLayoutCount = 0
+	private var nnwTurnFlight = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnOffset = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnInset = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnContentH = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+
 	/// 网页装载完了没(false = 还在装)。
 	///
 	/// ⚠️ **装载期间 WebKit 会自己重置滚动位置**,那一瞬的 contentOffset 不可信 ——
@@ -462,7 +488,6 @@ import os
 		//    网页内容的 adjustedContentInset 也随之复位,整体自愈。
 		let hostSafeTop = host.view.safeAreaInsets.top
 		let windowSafeTop = container.window?.safeAreaInsets.top ?? 0
-		let safeTop = max(hostSafeTop, windowSafeTop)
 		// 🔴 **正在"拽过头翻页"时,这条自愈必须让路**(2026-08-09,用户报"标题和正文一直抖动")。
 		//
 		// 那个手势会给翻页容器加一个 `transform` 平移(把正文推开、给箭头让位),
@@ -491,7 +516,43 @@ import os
 			return nil
 		}
 		let isPullingToTurnPage = articleHost?.nnwIsPullingToTurnPage ?? false
-		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge, !isPullingToTurnPage {
+		let isTurningPage = articleHost?.nnwIsTurningPage ?? false
+
+		// 🔴🔴 **2026-08-09 第七轮:这里曾经改成"翻页期间用窗口的安全区",那是错的,已回退。**
+		//
+		// 当时的假设:滑进来的那一页有一截在窗口顶边外,它自己的安全区每帧都不一样。
+		// **探针一量就推翻了**:`宿主安全区 从=116 到=116`,整个动画期间**一动不动**。
+		//
+		// 而且那一改**当场制造了一个新 bug**:`host=116`(状态栏 62 + 导航栏 54),
+		// `window=62` —— 改成用窗口值等于**凭空砍掉导航栏那 54pt**,
+		// 标题直接顶到导航栏底下,用户报的"标题和顶部控件重叠"就是这么来的。
+		//
+		// 📌 两条判据(都是老账的新一遍):
+		// 1. **`max(host, window)` 里 host 更大是常态,不是异常** ——
+		//    宿主视图在导航控制器里,它的安全区本来就含导航栏。
+		//    动它之前先问"这两个值平时到底谁大"(L123:我量到了 ≠ 我量的是它)。
+		// 2. **猜到病根就动刀,是把"假设"当成"结论"。** 这一轮的正确顺序是
+		//    先埋探针跑一次、看见 116→116,再决定改什么。**探针救了这一刀,但它本不该挨这一刀。**
+		let safeTop = max(hostSafeTop, windowSafeTop)
+
+		// ⚠️ 临时探针(2026-08-09 第五轮,查完就删):证明上面那条 `articleHost` **真的被走到了**。
+		//
+		// ⚠️ **必须连"有没有找到宿主"一起打** —— 只打让路状态是不够的:
+		// 万一 parent 链断了,`articleHost` 恒为 nil、这个值恒为 false、**一次都不会翻转**,
+		// 于是日志一片空白 —— 而"没有日志"根本分不清是**口子没生效**还是**用户没拽**。
+		// 📌 判据(L132 那三次栽跟头的形状):**探针的"沉默"必须是有含义的,
+		// 否则它证明不了任何事。** 所以第一次排版就先把"找没找到宿主"打出来。
+		let pullProbe = (articleHost == nil ? "🔴没找到ArticleViewController" : "找到宿主")
+			+ (isPullingToTurnPage ? " / 让路中" : " / 不让路")
+			+ (isTurningPage ? " / 翻页中" : "")
+		if pullProbe != nnwLoggedPullProbe {
+			nnwLoggedPullProbe = pullProbe
+			NNWArticlePagingLog.logger.info("[拽] 让路探针:\(pullProbe, privacy: .public)")
+		}
+
+		// ⚠️ 翻页动画期间这条自愈也要让路:此刻 host 比 window **大**(不是小),
+		// 条件本来就不成立;但万一滑到某一帧反过来了,重排只会给动画添乱。
+		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge, !isPullingToTurnPage, !isTurningPage {
 			pendingSafeAreaNudge = true
 			Self.logger.info("[外观] 阅读栏:宿主安全区疑似未传播(host=\(hostSafeTop, privacy: .public), window=\(windowSafeTop, privacy: .public)),已请求重排自愈(T24)")
 			DispatchQueue.main.async { [weak self] in
@@ -527,8 +588,33 @@ import os
 		let measuredFlight = min(max(travelled / Style.flightDistance, 0), 1)
 
 		let flight: CGFloat
-		if contentSettled {
+		if isTurningPage {
+			// 🔴 **翻页动画期间,把飞行进度冻住**(2026-08-09 第八轮,探针指认的病根)。
+			//
+			// 实测五次翻页,**每一次 `飞行进度` 都扫遍 0→1 的全程**:
+			// ```
+			// 排版=49 次 | 飞行进度 0→1 | offset -291.33→0 | inset上 175.33→291.33 | contentH 271.33→874
+			// ```
+			// 飞行进度 0 = 大标题在头图上,1 = 完全冻结成顶栏小标题 ——
+			// **一次翻页的 45~61 帧里,标题在这两个极端之间来回跑。那就是抖动本身。**
+			//
+			// 为什么会乱跳:飞行进度 = `(contentOffset − 静止位) / 飞行距离`,
+			// 而静止位来自 `adjustedContentInset.top`。新页刚建出来时**内边距还没装好**
+			// (探针实测一次翻页里 `inset上` 变了 116pt、`offset` 变了 291pt,
+			// 网页还在长:`contentH 0→874`)。
+			// 📌 判据:**一个比值,分子和分母都还在装的时候,它算出来的不是"进度",是噪声。**
+			//
+			// 冻成"上一个可信值"而不是一律归 0:
+			// - **新页**从来没记过 → 默认 0 → 大标题态 ✅ 它本来就是停在顶部
+			// - **旧页**保持翻页开始前的样子 → 滑出去的过程里纹丝不动 ✅
+			//   (一律归 0 的话,读到一半、已经是小标题的那一页会在滑走时**突然变回大标题**,
+			//   那是把一种抖动换成另一种。)
+			//
+			// ⚠️ 动画结束后 `nnwTurnPage` 的 completion 会主动叫一次排版,用真实几何重算。
+			flight = nnwLastGoodFlight
+		} else if contentSettled {
 			flight = measuredFlight
+			nnwLastGoodFlight = flight
 		} else {
 			// ⚠️ **装载期间不能一律钉死 0**(2026-08-08 修,用户报的第二个现象)。
 			//
@@ -542,6 +628,38 @@ import os
 			// 折中:WebKit 的自动重置总是把偏移放回**静止位附近**,不会明显超过它;
 			// 而用户真的在滑时会明显超过。所以只认"明显超过"的那一部分。
 			flight = travelled > Style.settleGrace ? measuredFlight : 0
+			nnwLastGoodFlight = flight
+		}
+
+		// ⚠️ 临时探针(2026-08-09 第七轮,查完就删):翻页动画期间,
+		// **这个函数读到的每一个会变的量,各自扫过多大范围。**
+		// 第六轮量了安全区 → 116→116,假设被推翻;可 `排版=51 次` 说明高频重排是真的。
+		// 所以这次把候选一次全摆上,让数字自己指认是谁在抖:
+		// `flight`(飞行进度,标题从大变小那条)、`offset`/`inset上`(它俩算出 flight)、
+		// `contentH`(网页装载中会一直长,长一次就重排一次)。
+		if isTurningPage {
+			nnwTurnLayoutCount += 1
+			nnwTurnFlight = (min(nnwTurnFlight.min, flight), max(nnwTurnFlight.max, flight))
+			nnwTurnOffset = (min(nnwTurnOffset.min, scrollView.contentOffset.y),
+							 max(nnwTurnOffset.max, scrollView.contentOffset.y))
+			nnwTurnInset = (min(nnwTurnInset.min, scrollView.adjustedContentInset.top),
+							max(nnwTurnInset.max, scrollView.adjustedContentInset.top))
+			nnwTurnContentH = (min(nnwTurnContentH.min, scrollView.contentSize.height),
+							   max(nnwTurnContentH.max, scrollView.contentSize.height))
+		} else if nnwTurnLayoutCount > 0 {
+			NNWArticlePagingLog.logger.info("""
+				[拽] 翻页期间 排版=\(self.nnwTurnLayoutCount, privacy: .public) 次 \
+				| 飞行进度 \(self.nnwTurnFlight.min, privacy: .public)→\(self.nnwTurnFlight.max, privacy: .public) \
+				| offset \(self.nnwTurnOffset.min, privacy: .public)→\(self.nnwTurnOffset.max, privacy: .public) \
+				| inset上 \(self.nnwTurnInset.min, privacy: .public)→\(self.nnwTurnInset.max, privacy: .public) \
+				| contentH \(self.nnwTurnContentH.min, privacy: .public)→\(self.nnwTurnContentH.max, privacy: .public) \
+				| 装载完=\(self.contentSettled, privacy: .public)
+				""")
+			nnwTurnLayoutCount = 0
+			nnwTurnFlight = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnOffset = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnInset = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnContentH = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
 		}
 
 		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop)

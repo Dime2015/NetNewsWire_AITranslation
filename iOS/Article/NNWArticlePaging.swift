@@ -380,6 +380,49 @@ extension ArticleViewController {
 			| 静止位 上=\(restTop, privacy: .public) 下=\(restBottom, privacy: .public) \
 			| 超出下=\(offset - restBottom, privacy: .public) 超出上=\(restTop - offset, privacy: .public)
 			""")
+
+		// ⚠️ 临时探针(2026-08-09 第五轮,查完就删):**「上一篇」这一头到底为什么没反应。**
+		//
+		// 用户第四轮那份真机日志里,有 4 次「**峰值恰好 0.000000,而同一刻超出上已经 188pt**」。
+		// 这两个数字不可能同时成立 —— 除非 `nnwUpdatePageTurnHint` 根本没走到记峰值那一行,
+		// 而它前面唯一的早退就是 `guard nnwHasDestination(.top)`。
+		//
+		// 那一问最终落到上游的 `isPrevArticleAvailable`,而它是
+		// `articles.firstIndex(of: currentArticle)` —— **正是 T55 第 4 条那个
+		// "在会自我删减的列表里找自己"的老坑**(`nnwGoToPreviousArticle` 已经用来路栈治好了,
+		// 但**守门的这一问还走在老路上**)。
+		//
+		// 所以这一行要一次分清三种完全不同的情况,不能靠推:
+		// - **真的是第一篇**(我这页在第 0 行)→ 不是 bug,缺的是"到头了"的反馈
+		// - **协调器找不到自己**(第= 找不到)→ 老坑复发,守门那一问要换来路栈
+		// - **两边认的不是同一篇**(我这页 ≠ 协调器认的)→ 翻页收尾没同步,又是另一回事
+		//
+		// ⚠️ 另外顺手对一下**门和路是不是同一套条件**:
+		// `nnwGoToPreviousArticle` 有三条退路(来路栈 / 列表前一篇 / 上游 selectPrev),
+		// 而门只问了 `isPrevArticleAvailable` 一条 —— **门比路窄,就会挡掉本来走得通的翻页。**
+		if let coordinator {
+			let mine = (nnwCurrentPage as? WebViewController)?.article
+			let myRow = mine.flatMap { coordinator.articles.firstIndex(of: $0) }
+			let coordRow = coordinator.currentArticle.flatMap { coordinator.articles.firstIndex(of: $0) }
+			// ⚠️ **2026-08-09 第五轮改名:上一版这里标着「门=」,打的却是
+			// `coordinator.isPrevArticleAvailable` —— 那只是四条路里的最后一条,不是门本身。**
+			// 于是日志里出现「门=false 而来路栈=1」这种自相矛盾的行,得靠人肉推算真正的闸门。
+			// 📌 又一次 L123:**「我量到了」≠「我量的是它」。探针的名字必须就是它量的那个量。**
+			// 现在闸门和它的四条路各占一栏,一眼就能看出是哪一条放的行。
+			NNWArticlePagingLog.logger.info("""
+				[拽] 上一篇 闸门=\(self.nnwHasDestination(for: .top), privacy: .public) \
+				| 来路栈=\(self.nnwPageBackStack.count, privacy: .public) 条 \
+				| 我这页在第=\(myRow.map { String($0) } ?? "找不到", privacy: .public) 行 \
+				| 进门锚=\(self.nnwAnchoredPreviousArticle != nil ? "有" : "无", privacy: .public) \
+				| 上游=\(coordinator.isPrevArticleAvailable, privacy: .public) \
+				| 协调器认的在第=\(coordRow.map { String($0) } ?? "找不到", privacy: .public) 行 \
+				| 列表共=\(coordinator.articles.count, privacy: .public) 篇 \
+				| 本页是正文页=\(self.nnwCurrentPage is WebViewController, privacy: .public)
+				""")
+		} else {
+			// ⚠️ 沉默必须是有含义的:没有协调器也要说一声,否则少一行日志会被误读成"没拽"。
+			NNWArticlePagingLog.logger.info("[拽] 上一篇:**没有协调器**,这一问根本没法答")
+		}
 	}
 
 	/// 正文此刻**贴住/超出**了哪一头,以及"到头之后还拉了多少"。
@@ -516,8 +559,22 @@ extension ArticleViewController {
 			return
 		}
 
-		// 这一头有没有下一站 —— 没有就别给假承诺(到头了还画个箭头,松手却什么都不发生)
-		guard nnwHasDestination(for: over.edge) else { return }
+		// 这一头有没有下一站。
+		//
+		// 🔴 **2026-08-09 第五轮改:没有下一站时不再"什么都不做"。**
+		//
+		// 原来这里是 `guard … else { return }` —— **静默早退**。真机日志钉死了它的代价:
+		// 用户在列表第一篇上往下拽,`超出上` 到过 **245pt**,而 `峰值=0.000000`
+		// (根本没走到记峰值那一行)—— 不出线、不震、不翻,
+		// **可正文照样橡皮筋弹出去 250pt**。用户看到的是"动了但没翻",像功能坏了。
+		//
+		// 📌 判据:**"没有下一站"是一个要**告诉**用户的事实,不是一个可以沉默的分支。**
+		// 那 250pt 的位移不是我们画的(是 WebView 自己的橡皮筋),我们管不了它动不动,
+		// 但我们能决定它动的时候屏幕上写着什么。
+		//
+		// 用户 2026-08-09 拍板的做法:**线照出,但它是"到头"的样子** ——
+		// 不弯(永远是 `—`)、淡一档、松手不翻、不震。
+		let hasDestination = nnwHasDestination(for: over.edge)
 
 		// 🔴 **拽了才出现,不是贴到边就出现**(用户 2026-08-09:
 		// 「下方这个形变之前的 `—` 会一直存在,而不是触发才出现」)。
@@ -553,9 +610,14 @@ extension ArticleViewController {
 		// 不减这一刀的话,顶部就会**动两次**(内容自己走一段、我们再推一段),位移翻倍。
 		// 📌 判据:**做"补偿"之前,先问系统已经替你做了多少。**
 		let visualGap = shaped * Self.nnwPushLimit
-		nnwSetContentPushBack(edge: over.edge, distance: max(visualGap - over.alreadyMoved, 0))
+		// ⚠️ **到头的时候不推正文** —— 推开是"给新的一页让位",而这一头根本没有新的一页。
+		// 让出一块空隙却什么都不进来,比不让更让人以为出了故障。
+		// (顶部本来就会橡皮筋,`alreadyMoved` 常常已经上百点,这一刀多数时候本来也是 0。)
+		nnwSetContentPushBack(edge: over.edge,
+							  distance: hasDestination ? max(visualGap - over.alreadyMoved, 0) : 0)
 		hint.update(edge: over.edge, progress: shaped,
-					gap: max(visualGap, over.alreadyMoved), in: view)
+					gap: hasDestination ? max(visualGap, over.alreadyMoved) : over.alreadyMoved,
+					isDeadEnd: !hasDestination, in: view)
 
 		// ⚠️ 临时探针(2026-08-09):记下这一拽**到过的最大值**。
 		nnwOverscrollPeak = max(nnwOverscrollPeak, over.amount)
@@ -570,7 +632,9 @@ extension ArticleViewController {
 		//
 		// 📌 判据:**一个补丁如果要求"状态只能单向变化",先回头看是不是量错了** ——
 		// 单向锁死是掩盖测量问题的典型手法,代价是把用户的反悔一起锁掉了。
-		let armed = raw >= 1
+		// ⚠️ **到头的那一头永远不算"拽够"** ——
+		// 不震、松手也不翻。震动是"松手就成"的承诺,这一头兑现不了,就不能给。
+		let armed = raw >= 1 && hasDestination
 		if armed, nnwOverscrollArmedEdge == nil {
 			nnwOverscrollHaptic?.impactOccurred()	// 跨过门槛的那一下 —— "手感"多半就是这一下
 		}
@@ -592,6 +656,43 @@ extension ArticleViewController {
 	///
 	/// 现在改成问**上游自己**(`isPrevArticleAvailable`)—— 那是 dock 上「上一篇」
 	/// 那颗键的可用状态用的同一个来源,它比我们自己数索引可靠。
+	/// [阅读] 趁列表还认得当前这篇,把「列表里排在它前面的那一篇」存进**进门锚**。
+	///
+	/// 由 `ArticleViewController.article` 的 `didSet` 每次调用 —— 也就是**每次换文章**
+	/// (从列表点进来、翻页、恢复现场)都刷新一次。为什么必须在那一刻记,见 `nnwEntryNeighbor`。
+	///
+	/// ⚠️ 三条分支都要有明确交代,**不能"查不到就悄悄留着上一次的值"**:
+	/// - 找得到自己且**前面还有** → 记下来
+	/// - 找得到自己且**自己就是第一篇** → **清掉**(它是真的到头了,留着旧值会造出一个假的"上一篇")
+	/// - **找不到自己** → 保持不动。锚是带着"给谁用"一起存的,对不上时自然不会被用,
+	///   而这一篇之前存下的那个锚正是我们要救的东西。
+	func nnwRememberListNeighbor() {
+		guard let coordinator, let article else { return }
+		guard let index = coordinator.articles.firstIndex(of: article) else { return }
+		nnwEntryNeighbor = index > 0 ? [article, coordinator.articles[index - 1]] : nil
+	}
+
+	/// 进门锚里给**当前这一篇**准备的"上一篇"。对不上就当没有。
+	private var nnwAnchoredPreviousArticle: Article? {
+		guard let current = (nnwCurrentPage as? WebViewController)?.article,
+			  let pair = nnwEntryNeighbor, pair.count == 2, pair[0] == current else { return nil }
+		return pair[1]
+	}
+
+	/// 🔴 **2026-08-09 第五轮再修:门必须和路是同一套条件。**
+	///
+	/// 上一版这里只问 `isPrevArticleAvailable` 一条,而真正干活的
+	/// `nnwGoToPreviousArticle` 有**三条**路(来路栈 / 列表前一篇 / 上游)。
+	/// **门比路窄** —— 只要"来路栈里有东西、而协调器在列表里找不到自己",
+	/// 门就会挡掉一次本来走得通的翻页,表现为**动画放了、就是不换页**。
+	///
+	/// 这个坑第五轮的真机日志里**没有暴露**,因为用户当时没开"隐藏已读"
+	/// (`smartFeedsHidingReadArticles: []`),列表不自我删减,`firstIndex(of:)` 不会落空。
+	/// **也就是说它是潜伏的,不是不存在的** —— 一旦打开"隐藏已读",
+	/// 往下翻几篇后读过的从列表消失,`门=false` 而来路栈明明有货,老症状立刻回来。
+	///
+	/// 📌 判据:**守门的条件必须和干活的条件是同一套。门比路窄 = 白白挡掉合法操作。**
+	/// 所以下面三条**和 `nnwGoToPreviousArticle` 里的三条一一对应**,改一边就要改另一边。
 	private func nnwHasDestination(for edge: NNWScrollEdge) -> Bool {
 		guard let coordinator, nnwCurrentPage is WebViewController else { return false }
 		switch edge {
@@ -599,6 +700,15 @@ extension ArticleViewController {
 			// 没有下一篇未读时仍然算"有"—— 那一站是彩蛋页,松手会翻到它
 			return true
 		case .top:
+			// ① 来路栈:我从哪儿来就能回哪儿去,最可靠
+			if !nnwPageBackStack.isEmpty { return true }
+			// ② 列表里排在前面那一篇
+			if let current = (nnwCurrentPage as? WebViewController)?.article,
+			   let index = coordinator.articles.firstIndex(of: current), index > 0 { return true }
+			// ③ 进门锚 —— 列表已经把这一篇删掉了,但打开它的那一刻我们记下了它前面是谁
+			if nnwAnchoredPreviousArticle != nil { return true }
+			// ④ 交给上游 —— ⚠️ 这里**不能**无条件算"有":上游的 `selectPrevArticle()`
+			//    自己就卡在 `isPrevArticleAvailable` 上,它为假时那条路同样什么都不会发生。
 			return coordinator.isPrevArticleAvailable
 		}
 	}
@@ -715,7 +825,14 @@ extension ArticleViewController {
 			return
 		}
 
-		// ③ 最后的退路:交给上游。⚠️ 它靠"当前选中在时间线的第几行",也可能落空,
+		// ③ 进门锚:列表已经不认得这一篇了(读过就被移出「全部未读」),
+		//    但打开它的那一刻我们记下了它前面是谁。见 `nnwEntryNeighbor`。
+		if let anchored = nnwAnchoredPreviousArticle {
+			nnwTurnPage(to: anchored, forward: false, remembersCurrent: false)
+			return
+		}
+
+		// ④ 最后的退路:交给上游。⚠️ 它靠"当前选中在时间线的第几行",也可能落空,
 		// 但**宁可少一个动画,也不要什么都不发生**。
 		coordinator.selectPrevArticle()
 	}
@@ -752,6 +869,23 @@ extension ArticleViewController {
 			return
 		}
 
+		// 🔴 **上一次翻页的动画还没放完 → 直接不理这一次**(2026-08-09 第七轮真机日志)。
+		//
+		// 日志里「翻页中」这个状态**横跨了五次松手** —— 用户在动画进行中又拽了好几把,
+		// 每一把都又发起一次转场,**几次转场叠在同一个容器上**。伴随的症状很明显:
+		// - 量到的滚动视图是 `inset上=0 contentH=874 offset=0`(一个还没排过版的新页)
+		// - `我这页在第=7 行` 而 `协调器认的在第=8 行`(两边对不上,收尾还没跑)
+		//
+		// 上游自己也怕这个:`ArticleViewController` 里那段 `isPageTransitionInProgress`
+		// 的注释写着「转场进行中调 setViewControllers 会踩 UIPageViewController 的内部断言并崩溃」。
+		//
+		// 📌 判据:**一个带动画的状态机,必须自己拒绝在动画期间被重新发起** ——
+		// 指望调用方"别按那么快"是靠不住的。
+		guard !nnwIsTurningPage else {
+			NNWArticlePagingLog.logger.info("[拽] 翻页请求被忽略:上一次的动画还没放完")
+			return
+		}
+
 		if remembersCurrent, let current = (nnwCurrentPage as? WebViewController)?.article {
 			var stack = nnwPageBackStack
 			stack.append(current)
@@ -775,17 +909,60 @@ extension ArticleViewController {
 		let container = pageViewController.view
 		container?.layer.speed = Self.nnwPageTurnSpeed
 
-		pageViewController.setViewControllers([page],
-											  direction: forward ? .forward : .reverse,
-											  animated: true) { [weak self] finished in
+		// [外观] 竖起"正在翻页"的牌子 —— `ArticleHeaderBar` 看到它就把飞行进度冻住。
+		// ⚠️ **必须在结束时放倒**,和上面那个 `layer.speed` 是同一类隐性状态(L119)。
+		nnwTurnToken &+= 1
+		let token = nnwTurnToken
+		nnwIsTurningPage = true
+
+		// 🔴🔴 **收尾必须有两条路,而且只有先到的那条算数**(2026-08-09 第九轮真机日志)。
+		//
+		// 实测:`setViewControllers(animated:)` 的 **completion 有时根本不回调** ——
+		// 日志里 `翻页中` 从某一刻起**再也没放倒**,证据是
+		// `我这页在第=3 行` 而 `协调器认的在第=4 行`(收尾里的 `selectArticle` 从没跑)。
+		//
+		// 代价有多大:这一轮我在这个牌子上挂了两样东西,牌子一卡就**双双变成硬故障** ——
+		// - 重入守卫 → **之后所有翻页永远被拒绝**
+		// - 冻结飞行进度 → **标题永远停在大标题态、不再跟随滚动**(用户截图:大标题压在正文上)
+		//
+		// 📌 判据(L119 那一族最贵的一条,这次是自己踩的):
+		// **凡是"写进去要靠某个回调收回来"的状态,先问一句"那个回调保证会来吗"。
+		// 不保证 → 必须自带兜底,否则你就是把一个隐藏缺陷升级成了硬故障。**
+		//
+		// ⚠️ 我加守卫的那一轮,日志里其实**已经**有"翻页中横跨五次松手"的证据了 ——
+		// 当时它只是让画面抖一下;是我的守卫把它变成了永久锁死。
+		// **判据:给一个状态加"拒绝"语义之前,先确认这个状态一定会被解除。**
+		let finishTurn: (Bool, Bool) -> Void = { [weak self] finished, viaTimeout in
+			guard let self, self.nnwTurnToken == token else { return }
+			self.nnwTurnToken &+= 1			// 推走令牌 → 另一条路自动作废
 			container?.layer.speed = 1
-			guard let self else { return }
+			self.nnwIsTurningPage = false
+			// 牌子放倒之后主动叫一次排版:动画期间飞行进度是冻住的,
+			// 这一下让它用**落定后的真实几何**重算一遍。
+			page.view.setNeedsLayout()
+			NNWArticlePagingLog.logger.info(
+				"[拽] 翻页收尾 \(viaTimeout ? "🔴超时兜底" : "系统回调", privacy: .public) finished=\(finished, privacy: .public)")
 			self.pageViewController(pageViewController,
 									didFinishAnimating: finished,
 									previousViewControllers: previous,
 									transitionCompleted: finished)
 		}
+
+		pageViewController.setViewControllers([page],
+											  direction: forward ? .forward : .reverse,
+											  animated: true) { finished in
+			finishTurn(finished, false)
+		}
+
+		// 兜底:动画名义时长约 0.35 秒,0.7 倍速下约 0.5 秒。给到 0.9 秒还没回调就自己收尾。
+		DispatchQueue.main.asyncAfter(deadline: .now() + Self.nnwTurnTimeout) {
+			finishTurn(true, true)
+		}
 	}
+
+	/// 翻页收尾的兜底时限(秒)。**宁可早一点收,也不要卡住** ——
+	/// 收早了最多是标题提前恢复跟随滚动,收不了就是整个翻页功能锁死。
+	private static var nnwTurnTimeout: TimeInterval { 0.9 }
 
 	/// 翻页动画的时间流速。1 = 系统原速,越小越慢。嫌快嫌慢**只改这一个数**。
 	private static var nnwPageTurnSpeed: Float { 0.7 }
@@ -892,10 +1069,25 @@ enum NNWScrollEdge: String {
 
 	/// 按当前进度更新。
 	///
+	/// 到头(这一头没有下一篇)时,那条线淡到多少。
+	///
+	/// ⚠️ 这**不违反**上面「深浅不再表达进度」那一条:
+	/// 形状表达的是**"够不够"**,透明度现在表达的是**"这一头有没有东西"** ——
+	/// 两个视觉量各说一件事,没有挤在同一个通道里。
+	/// 📌 判据还是那句:**一个视觉量只表达一件事**;它反对的是"一个通道说两件事",
+	/// 不是"不许用透明度"。
+	private static let deadEndAlpha: CGFloat = 0.4
+
+	/// 按当前进度更新。
+	///
 	/// - Parameters:
 	///   - progress: 0…1,到 1 就是"松手会翻页"(= 完整的箭头)
 	///   - gap: 内容被推开让出来的空间有多高。箭头就摆在这块空间的正中。
-	func update(edge: NNWScrollEdge, progress: CGFloat, gap: CGFloat, in host: UIView) {
+	///   - isDeadEnd: 这一头**没有下一篇**(2026-08-09 用户拍板的样子:
+	///     线照出,但**永远不弯**、淡一档)。它说的是"你可以拽,但这头到底了",
+	///     而不是把功能藏起来假装无事发生。
+	func update(edge: NNWScrollEdge, progress: CGFloat, gap: CGFloat,
+				isDeadEnd: Bool = false, in host: UIView) {
 
 		let height = Self.canvasHeight
 		let width = Self.chevronWidth
@@ -913,7 +1105,10 @@ enum NNWScrollEdge: String {
 		CATransaction.begin()
 		CATransaction.setDisableActions(true)
 		shape.frame = bounds
-		shape.path = Self.path(progress: progress, in: bounds.size, pointingDown: edge == .bottom)
+		// 到头时**把进度按死在 0** —— 于是它恒是一条平的 `—`,一点都不会弯成 `^`。
+		// 形状本身就是承诺:弯 = 松手会翻;不弯 = 这头没有了。
+		shape.path = Self.path(progress: isDeadEnd ? 0 : progress,
+							   in: bounds.size, pointingDown: edge == .bottom)
 		let style = traitCollection.userInterfaceStyle
 		if strokeStyle != style {
 			strokeStyle = style
@@ -922,8 +1117,9 @@ enum NNWScrollEdge: String {
 		}
 		CATransaction.commit()
 
-		// ⚠️ **深浅不再表达进度**,所以这里恒为 1(用户明确要求 discard 掉那个过程)
-		alpha = 1
+		// ⚠️ **深浅不表达进度**(用户明确要求 discard 掉那个过程),所以随进度恒为 1;
+		// 只有"这一头到底了"才淡下去 —— 见 `deadEndAlpha` 上面那段。
+		alpha = isDeadEnd ? Self.deadEndAlpha : 1
 	}
 
 	/// 松手/取消:淡出后由调用方丢掉。
@@ -957,6 +1153,9 @@ extension ArticleViewController {
 	private static nonisolated(unsafe) var nnwPinnedTranslationKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwBackStackKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwPullingKey: UInt8 = 0
+	private static nonisolated(unsafe) var nnwEntryNeighborKey: UInt8 = 0
+	private static nonisolated(unsafe) var nnwTurningKey: UInt8 = 0
+	private static nonisolated(unsafe) var nnwTurnTokenKey: UInt8 = 0
 
 	fileprivate var nnwHorizontalSwipeDelegate: NNWAxisSwipeGestureDelegate {
 		if let existing = objc_getAssociatedObject(self, &Self.nnwHorizontalSwipeDelegateKey) as? NNWAxisSwipeGestureDelegate {
@@ -1025,6 +1224,67 @@ extension ArticleViewController {
 	var nnwPageBackStack: [Article] {
 		get { objc_getAssociatedObject(self, &Self.nnwBackStackKey) as? [Article] ?? [] }
 		set { objc_setAssociatedObject(self, &Self.nnwBackStackKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// **进门锚**:`[这一篇, 打开它那一刻列表里排在它前面的那一篇]`。
+	///
+	/// ## 为什么非要在"打开的那一刻"记(2026-08-09 第五轮真机日志逼出来的)
+	///
+	/// 「全部未读」这类智能源**只装未读文章**。你一打开某篇,它立刻被标为已读,
+	/// 列表下一次重拉时**它自己就从列表里消失了** —— 于是
+	/// `articles.firstIndex(of: 当前这篇)` 从此永远是 nil。
+	/// 真机日志里 `我这页在第=找不到 行` 大片出现,`列表共` 也从 7723 一路掉到 7720,
+	/// **这不是偶发,是常态**(而且**不需要**用户打开"隐藏已读")。
+	///
+	/// 后果:来路栈一空(刚从列表点进来的第一篇就是这种情况),
+	/// 就会判成"到头了"并画那条到头的线 —— **可上面明明还有文章。假的到头比没反馈更糟。**
+	///
+	/// 📌 判据(T53/T55 那条的又一次,这次带上解法):
+	/// **"我在列表里的位置"这个前提在会自我删减的列表上随时失效 ——
+	/// 那就别等到要用的时候才去查,在它还成立的那一刻把答案存下来。**
+	///
+	/// ⚠️ **连着"这个答案是给谁的"一起存**(数组第 0 个就是那一篇):
+	/// 只有当前这一篇和它对得上才用,否则宁可没有 ——
+	/// 一个张冠李戴的"上一篇"比没有更难查(L123)。
+	var nnwEntryNeighbor: [Article]? {
+		get { objc_getAssociatedObject(self, &Self.nnwEntryNeighborKey) as? [Article] }
+		set { objc_setAssociatedObject(self, &Self.nnwEntryNeighborKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 此刻**翻页动画正在放**吗。
+	///
+	/// ## 为什么需要它(2026-08-09 用户:「往上翻的时候,标题和正文还在抖动」)
+	///
+	/// 翻页容器换页时,新那一页是**从屏幕外滑进来**的。
+	/// 而**一个视图只要有一部分在窗口顶边之外,它自己的 `safeAreaInsets.top`
+	/// 就会变成「真实状态栏高度 + 露在外面那一截」** —— 滑动过程中每帧都不一样。
+	///
+	/// `ArticleHeaderBar` 的 `safeTop` 同时决定三样东西:停靠带的位置、
+	/// 头区容器的高度、以及 `applyGeometry` 的全部几何;而头区高度一变又会去改
+	/// 正文的 `contentInset`/`contentOffset`。**所以 `safeTop` 每帧变一次,
+  ///	标题和正文就一起抖一次。**
+	///
+	/// 📌 **这正好解释了用户说的"只有往上翻会抖"**:
+	/// 往**下**翻时新页从屏幕**下方**来,压根不碰窗口顶边,`hostSafeTop` 是 0,
+	/// `max(host, window)` 取窗口那个稳定值 —— 一点都不抖。
+	/// 往**上**翻时新页从**上方**来,`hostSafeTop` 一路从很大扫回 62。
+	///
+	/// 📌 判据(T24 那条的射程再往外推一格):
+	/// **视图被人为位移的期间,它自己的安全区是"当下的几何事实",不是"这一页该用的排版基准"。**
+	/// 谁在动它就该由谁负责,而窗口的安全区在整个过程中都是对的。
+	var nnwIsTurningPage: Bool {
+		get { objc_getAssociatedObject(self, &Self.nnwTurningKey) as? Bool ?? false }
+		set { objc_setAssociatedObject(self, &Self.nnwTurningKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+	}
+
+	/// 翻页的**代际令牌**:每发起一次翻页 +1,收尾时再 +1。
+	///
+	/// 用途是让「系统回调」和「超时兜底」这两条收尾路**只有先到的那条算数** ——
+	/// 谁跑完就把令牌推走,另一条一看对不上就自动作废。
+	/// 判据:**两条路都可能先到、也都可能不到时,别用布尔值当锁,用一个只增不减的号。**
+	var nnwTurnToken: Int {
+		get { objc_getAssociatedObject(self, &Self.nnwTurnTokenKey) as? Int ?? 0 }
+		set { objc_setAssociatedObject(self, &Self.nnwTurnTokenKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 	}
 
 	/// 此刻正在"拽过头翻页"吗。
