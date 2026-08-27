@@ -121,7 +121,9 @@ enum AppAppearance {
 	/// ⚠️ 这一档等于「全局换肤」—— 用户 2026-08-04 明确否过一次。
 	/// 现在重新提出来,是因为量化之后确认它是玻璃质感的**唯一**入口,
 	/// 且做成了一行开关,不满意改回 `false` 即可。
-	static let isGlassCanvas = true
+	///
+	/// 🔴 2026-08-11:用户反馈浅色模式下这套中性玻璃色"有点灰",要求改回暖纸——关掉。
+	static let isGlassCanvas = false
 
 	private enum Glass {
 		/// 精确取自参考图三张图的 app 表面:**#EAEAEA**

@@ -228,24 +228,33 @@ extension ArticleViewController {
 		horizontal.delaysTouchesBegan = false
 		view.addGestureRecognizer(horizontal)
 
-		let vertical = UIPanGestureRecognizer(target: self, action: #selector(nnwHandleVerticalPan(_:)))
-		vertical.delegate = nnwVerticalSwipeDelegate
-		vertical.cancelsTouchesInView = false
-		vertical.delaysTouchesBegan = false
-		view.addGestureRecognizer(vertical)
+		// 🗄️ 2026-08-11 封存:「到头再拽翻上/下一篇」这条手势用户很少用,先关掉入口。
+		// 下面这条竖向 pan 是唯一的触发点 —— 不装它,箭头指示器、内容推开、
+		// nnwGoToPreviousArticle/nnwGoToNextUnread 整条链路就都不会跑,
+		// 但代码原样留着,方便以后要捡回来。排查过程、卡住的地方、可能方向见
+		// `NOTES-archive-overscroll-paging.md`。
+		//
+		// let vertical = UIPanGestureRecognizer(target: self, action: #selector(nnwHandleVerticalPan(_:)))
+		// vertical.delegate = nnwVerticalSwipeDelegate
+		// vertical.cancelsTouchesInView = false
+		// vertical.delaysTouchesBegan = false
+		// view.addGestureRecognizer(vertical)
 	}
 
 	// MARK: 横向:右滑回列表 / 左滑开原文
 
 	@objc func nnwHandleHorizontalPan(_ recognizer: UIPanGestureRecognizer) {
 
+		// 🪦 2026-08-12:左滑不再中途接管呈现(交互式转场已拆,理由见下方墓碑注释),
+		// 一切都在 `.ended` 里按位移/速度判定 —— 和右滑回列表同一套写法。
 		guard recognizer.state == .ended else { return }
+
 		let translation = recognizer.translation(in: view)
 		let velocity = recognizer.velocity(in: view)
 		NNWArticlePagingLog.logger.info(
 			"[阅读] 横滑结束 dx=\(translation.x, privacy: .public) vx=\(velocity.x, privacy: .public)")
 
-		// 滑够远,或者甩得够快 —— 两个条件满足一个就算(和系统返回手势的手感对齐)
+		// 右滑回列表 / 左滑(或快速一甩)开原文
 		if translation.x > 90 || (translation.x > 30 && velocity.x > 700) {
 			nnwBackToTimeline()
 			return
@@ -254,6 +263,26 @@ extension ArticleViewController {
 			nnwOpenOriginalLink()
 		}
 	}
+
+	// MARK: 左滑开原文
+
+	// 🪦 2026-08-12:**交互式呈现整条拆除**(此处原有约 90 行:跨过 24pt 门槛就
+	// `present` + `UIPercentDrivenInteractiveTransition` 跟手,配套自定义转场
+	// `.custom` + `NNWBrowserSlideTransition`)。
+	//
+	// ## 为什么拆(这是一次取舍,用户拍板)
+	// 用户要"浏览器页右滑回文章"。真机五轮排查(L144–L146)证实:
+	// `SFSafariViewController` 的内容住在**它自己的 window** 里,宿主侧盖任何
+	// 覆盖层都拿不到触摸 —— 自己做右滑手势这条路在物理上不成立。
+	// 而系统对**普通方式 present** 的 Safari 页**自带**左缘滑动关闭
+	// (Reeder 就是这么"实现"的:什么都不做,白拿系统的),真机对照实测有效;
+	// 一旦套上 `.custom` + 自定义转场,系统这套手势就被顶掉。
+	//
+	// **鱼和熊掌**:左滑"跟手滑入"的动画 vs 右滑返回,只能选一个。
+	// 用户选了右滑返回 —— 于是左滑退回"松手判定 → 普通 present"(系统默认弹出动画),
+	// `nnwHandleHorizontalPan` 里 `.ended` 的老规则就是全部逻辑。
+	//
+	// ⚠️ 想捡回跟手动画的人:先读 NOTES-lessons L144–L146,别再走覆盖层那条路。
 
 	/// [阅读] 左滑:用 app 内浏览器打开这篇文章的原始链接。
 	///
@@ -1289,6 +1318,8 @@ extension ArticleViewController {
 	private static nonisolated(unsafe) var nnwEntryNeighborByDateKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwTurningKey: UInt8 = 0
 	private static nonisolated(unsafe) var nnwTurnTokenKey: UInt8 = 0
+	// 🪦 nnwBrowserInteractorKey / nnwBrowserDelegateKey / nnwBrowserBackSwipeKey /
+	// nnwBrowserTravelWidthKey 已随交互式呈现一起拆除(2026-08-12,见"左滑开原文"墓碑注释)
 
 	fileprivate var nnwHorizontalSwipeDelegate: NNWAxisSwipeGestureDelegate {
 		if let existing = objc_getAssociatedObject(self, &Self.nnwHorizontalSwipeDelegateKey) as? NNWAxisSwipeGestureDelegate {
@@ -1443,6 +1474,9 @@ extension ArticleViewController {
 		get { objc_getAssociatedObject(self, &Self.nnwPageTurnHintKey) as? NNWPageTurnHintView }
 		set { objc_setAssociatedObject(self, &Self.nnwPageTurnHintKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 	}
+
+	// 🪦 nnwBrowserInteractor / nnwBrowserTravelWidth 已随交互式呈现一起拆除
+	// (2026-08-12,见"左滑开原文"墓碑注释)
 }
 
 /// 只在「明显是这个方向」的滑动时才让手势开始。

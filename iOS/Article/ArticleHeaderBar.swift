@@ -139,7 +139,9 @@ import os
 	private let scrimView = UIVisualEffectView(effect: nil)
 	// 可点的部件用「按下有反馈」的子类(2026-07-24,让用户知道这里能点,见文件末尾两个小类)
 	private let iconView = NNWTappableImageView()
-	private let ringLayer = CAShapeLayer()
+	/// 进度环。[外观] 2026-08-11 改成一个真正的 UIView(层类型是 CAShapeLayer)——
+	/// 见 `applyProgressRing` 的详细注释:让它和 `iconView` 走**完全相同**的几何提交路径。
+	private let ringView = NNWProgressRingView()
 	/// 停在顶部时的大标题(多行、衬线)。点 = 开原文
 	private let restTitleLabel = NNWTappableLabel()
 	/// 冻结在顶栏里的小标题(单行)。点 = 开原文
@@ -297,12 +299,15 @@ import os
 		iconView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openFeedHomePage)))
 		container.addSubview(iconView)
 
-		// 进度环:画在图标外面一圈
-		ringLayer.fillColor = UIColor.clear.cgColor
-		ringLayer.lineCap = .round
-		ringLayer.strokeEnd = 0
-		ringLayer.opacity = 0
-		container.layer.addSublayer(ringLayer)
+		// 进度环:画在图标外面一圈。
+		// ⚠️ 不接触摸——它和 iconView 有重叠,不禁用会挡住图标的点击(开源站主页)。
+		ringView.isUserInteractionEnabled = false
+		ringView.backgroundColor = .clear
+		ringView.shapeLayer.fillColor = UIColor.clear.cgColor
+		ringView.shapeLayer.lineCap = .round
+		ringView.shapeLayer.strokeEnd = 0
+		ringView.shapeLayer.opacity = 0
+		container.addSubview(ringView)
 
 		restTitleLabel.numberOfLines = Style.restTitleMaxLines
 		restTitleLabel.textColor = .label
@@ -872,8 +877,25 @@ import os
 			nnwTurnAdjustedTrace = NNWTurnTrace()
 		}
 
-		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop)
-		applyProgressRing(scrollView: scrollView, flight: flight)
+		// [外观] 2026-08-11:图标的尺寸/圆心只在这算**一次**,图标和进度环都直接用这份数,
+		// 不再各自算一遍(下面两个函数原来都各自重算 iconSize,进度环还要反过来读
+		// `iconView.center`——等于隔着一次"写完再读"才对齐)。
+		// 理由见 `applyProgressRing` 那边的详细注释:快速滑动时用户反馈图标和进度环会脱位、
+		// 环总慢一拍;根源不必是哪次具体的动画,只要两者是"各自独立算出来、凑巧数字相同",
+		// 就永远存在"某一帧算出来不完全一样"的空间。改成**同一份数字喂给两边**,
+		// 脱位在结构上就不可能发生。
+		let iconGeometry = Self.iconGeometry(flight: flight, safeTop: safeTop, dockBand: dockBand)
+		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop, iconGeometry: iconGeometry)
+		applyProgressRing(scrollView: scrollView, flight: flight, iconGeometry: iconGeometry)
+	}
+
+	/// 图标此刻的尺寸和圆心。**图标本身和进度环都从这一份数字来**,见调用处的注释。
+	private static func iconGeometry(flight: CGFloat, safeTop: CGFloat, dockBand: CGRect) -> (size: CGFloat, center: CGPoint) {
+		let size = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
+		let restCenterY = safeTop + Style.topPadding + Style.restIconSize / 2
+		let centerY = restCenterY + (dockBand.midY - restCenterY) * flight
+		let centerX = Style.iconLeading + size / 2
+		return (size, CGPoint(x: centerX, y: centerY))
 	}
 
 	/// 内容往下让出头区的高度。**只在高度变了时做一次,绝不在每帧做**(L63)。
@@ -969,16 +991,15 @@ import os
 											limitedToNumberOfLines: Style.restTitleMaxLines).height)
 	}
 
-	private func applyGeometry(flight: CGFloat, width: CGFloat, dockBand: CGRect, safeTop: CGFloat) {
+	private func applyGeometry(flight: CGFloat, width: CGFloat, dockBand: CGRect, safeTop: CGFloat,
+							   iconGeometry: (size: CGFloat, center: CGPoint)) {
 
 		// —— 图标:从头区里的大图标,竖直飞到停靠区,同时缩小 ——
-		let iconSize = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
-		let restIconCenterY = safeTop + Style.topPadding + Style.restIconSize / 2
-		let iconCenterY = restIconCenterY + (dockBand.midY - restIconCenterY) * flight
-		let iconCenterX = Style.iconLeading + iconSize / 2
-
+		// [外观] 2026-08-11:尺寸/圆心由调用方统一算好传进来(见 `iconGeometry(flight:safeTop:dockBand:)`),
+		// 这里不再自己重算一遍。
+		let iconSize = iconGeometry.size
 		iconView.bounds = CGRect(x: 0, y: 0, width: iconSize, height: iconSize)
-		iconView.center = CGPoint(x: iconCenterX, y: iconCenterY)
+		iconView.center = iconGeometry.center
 		iconView.layer.cornerRadius = iconSize / 2	// 正圆 —— 环要紧贴它当描边(见 ringWidth 的说明)
 
 		// —— 两个标题的交接 ——
@@ -1038,29 +1059,51 @@ import os
 
 	// MARK: - 进度环
 
-	private func applyProgressRing(scrollView: UIScrollView, flight: CGFloat) {
+	private func applyProgressRing(scrollView: UIScrollView, flight: CGFloat,
+									iconGeometry: (size: CGFloat, center: CGPoint)) {
 
-		// 环画在图标外面一圈,跟着图标一起飞
-		let iconSize = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
-		// 圆心距 = 图标半径 + 线宽的一半 → 描边正好压在图标边缘上,图标填满环的内部
-		let radius = iconSize / 2 + Style.ringWidth / 2
-		let center = iconView.center
-		let path = UIBezierPath(arcCenter: center, radius: radius,
+		// 环画在图标外面一圈,跟着图标一起飞。
+		//
+		// [外观] 2026-08-11 两轮修:
+		//
+		// 第一轮只是把圆心/半径的**数字**改成和图标共用同一份 `iconGeometry`
+		// (不再读 `iconView.center`)—— 用户反馈"还是慢几帧"。
+		// 说明问题不(只)在数字算得是否一致,而是**环和图标压根是两种不同的东西**:
+		// 图标是 `UIView`,几何变化走 UIKit 的 `bounds`/`center` 赋值(默认不产生隐式动画、
+		// 提交路径由 UIKit 统一管理);环原来是 `container.layer` 上一个裸 `CAShapeLayer`,
+		// 几何变化靠手动写 `path`,提交路径完全是另一套(纯 Core Animation,没有 UIKit 介入)。
+		// **两条不同的路径,没有任何东西保证它们一定同帧提交** ——
+		// 平时看不出来,快速滚动、掉帧压力大时才会露出"谁快谁慢"。
+		//
+		// 第二轮(这次):把环也包成一个真正的 `UIView`(`NNWProgressRingView`,
+		// 层类型是 `CAShapeLayer`),**位置/尺寸用 `bounds`/`center` 赋值**——
+		// 和 `iconView` 一模一样的写法、一模一样的提交路径。剩下真正"画什么样"的
+		// 那部分(path 的形状、颜色、进度)仍然是 CAShapeLayer 的活,继续关掉隐式动画。
+		let side = iconGeometry.size + Style.ringWidth
+		ringView.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+		ringView.center = iconGeometry.center
+
+		// 圆心距 = 图标半径 + 线宽的一半 → 描边正好压在图标边缘上,图标填满环的内部。
+		// 注意这里的圆心是 `ringView` **自己坐标系里**的中心(即上面 side/2),
+		// 不是 `iconGeometry.center`——那是 `container` 坐标系里的,两者不是同一回事。
+		let radius = iconGeometry.size / 2 + Style.ringWidth / 2
+		let localCenter = CGPoint(x: side / 2, y: side / 2)
+		let path = UIBezierPath(arcCenter: localCenter, radius: radius,
 								startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true)
 
 		// ⚠️ 关掉 CALayer 的隐式动画 —— 否则每帧的 path/strokeEnd 变化都会被排成
 		// 一段 0.25 秒的动画,环就跟不上手指了。
 		CATransaction.begin()
 		CATransaction.setDisableActions(true)
-		ringLayer.path = path.cgPath
-		ringLayer.lineWidth = Style.ringWidth
+		ringView.shapeLayer.path = path.cgPath
+		ringView.shapeLayer.lineWidth = Style.ringWidth
 		// [外观] 2026-08-05:一行换一行 —— 走调色板,不走 xcassets 的静态色板。
 		// 原来写死 `Assets.Colors.primaryAccent`,所以在设置里换强调色时**这圈进度环跟不上**。
 		// ⚠️ `CGColor` 不会自己跟随深浅色,所以必须**按当前 traits 解析一次**再取 cgColor
 		// (这个方法每次滚动都跑,深浅色变了下一帧就会带上新值)。
-		ringLayer.strokeColor = NNWSoftMaterial.accent.resolvedColor(with: iconView.traitCollection).cgColor
-		ringLayer.opacity = Float(flight)	// 和冻结同步现身:停在顶部时不需要它
-		ringLayer.strokeEnd = readingProgress(in: scrollView)
+		ringView.shapeLayer.strokeColor = NNWSoftMaterial.accent.resolvedColor(with: iconView.traitCollection).cgColor
+		ringView.shapeLayer.opacity = Float(flight)	// 和冻结同步现身:停在顶部时不需要它
+		ringView.shapeLayer.strokeEnd = readingProgress(in: scrollView)
 		CATransaction.commit()
 	}
 
@@ -1214,6 +1257,15 @@ import os
 		super.touchesCancelled(touches, with: event)
 		UIView.animate(withDuration: 0.15) { self.alpha = 1 }
 	}
+}
+
+/// [外观] 2026-08-11 新增。承载图标外面那圈阅读进度环的容器 ——
+/// 一个**普通 UIView**,只是把它的层类型换成 `CAShapeLayer`。
+/// 目的见 `applyProgressRing` 的注释:让进度环的位置/尺寸和 `iconView` 走
+/// 完全相同的几何提交路径(`bounds`/`center` 赋值),而不是手动挂一个裸 CALayer。
+@MainActor final class NNWProgressRingView: UIView {
+	override class var layerClass: AnyClass { CAShapeLayer.self }
+	var shapeLayer: CAShapeLayer { layer as! CAShapeLayer }
 }
 
 #endif
