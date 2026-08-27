@@ -48,6 +48,7 @@ final class MainTimelineCell: UICollectionViewCell {
 		indicatorView.isHidden = true
 		// [界面] 复用前复位,否则上一篇文章的缩略图/浓淡会串到下一篇上
 		thumbnailView.image = nil
+		thumbnailView.backgroundColor = .clear
 		thumbnailView.isHidden = true
 		contentView.alpha = TimelineStyle.unreadAlpha
 	}
@@ -221,12 +222,22 @@ private extension MainTimelineCell {
 			iconView.isHidden = true
 		}
 
-		// [界面] 缩略图:没有就藏起来,布局那边宽度会按 0 算,文字自动铺满。
-		if let thumbnail = cellData.thumbnail {
-			thumbnailView.image = thumbnail
+		// [界面] 缩略图:确认没有图才藏起来(布局那边宽度按 0 算,文字自动铺满)。
+		// 2026-08-11 改:知道有图、但位图还没下载好时,**先垫一块灰色占位**——
+		// 位置已经在布局里占好了,不这么做的话图片下载完成后占位才出现,
+		// 文字要跟着重新排版,读起来一直在跳。
+		if cellData.hasThumbnail {
 			thumbnailView.isHidden = false
+			if let thumbnail = cellData.thumbnail {
+				thumbnailView.image = thumbnail
+				thumbnailView.backgroundColor = .clear
+			} else {
+				thumbnailView.image = nil
+				thumbnailView.backgroundColor = TimelineStyle.thumbnailPlaceholderColor
+			}
 		} else {
 			thumbnailView.image = nil
+			thumbnailView.backgroundColor = .clear
 			thumbnailView.isHidden = true
 		}
 

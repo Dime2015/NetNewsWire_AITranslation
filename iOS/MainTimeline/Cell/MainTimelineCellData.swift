@@ -29,13 +29,18 @@ import Images
 	let starred: Bool
 	let numberOfLines: Int
 	let iconSize: IconSize
-	/// [界面] 正文首图的缩略图。没有图、或图还没下载好时为 nil,
-	/// 此时列表把文字铺满整宽(见 ArticleThumbnail.swift)。
+	/// [界面] 正文首图的缩略图位图。图还没下载好时为 nil ——
+	/// **布局占不占位不看这个字段**,看下面的 `hasThumbnail`(2026-08-11 改)。
 	let thumbnail: UIImage?
+	/// [界面] 这篇文章有没有图,只看正文 HTML 里扫不扫得到图片地址,不看下没下载好。
+	/// 布局(`MainTimelineCellLayout`)用这个字段决定要不要留出缩略图的位置 ——
+	/// 图片下载完成前先用灰色占位块占住,避免下载完才让文字重新排版跳动。
+	let hasThumbnail: Bool
 
-	init(article: Article, showFeedName: ShowFeedName, feedName: String?, byline: String?, iconImage: IconImage?, showIcon: Bool, numberOfLines: Int, iconSize: IconSize, thumbnail: UIImage? = nil) {
+	init(article: Article, showFeedName: ShowFeedName, feedName: String?, byline: String?, iconImage: IconImage?, showIcon: Bool, numberOfLines: Int, iconSize: IconSize, hasThumbnail: Bool = false, thumbnail: UIImage? = nil) {
 
 		self.thumbnail = thumbnail // [界面]
+		self.hasThumbnail = hasThumbnail // [界面]
 
 		self.accountID = article.accountID
 		self.articleID = article.articleID
@@ -92,6 +97,7 @@ import Images
 		self.numberOfLines = 0
 		self.iconSize = .medium
 		self.thumbnail = nil // [界面]
+		self.hasThumbnail = false // [界面]
 	}
 
 }

@@ -4205,3 +4205,77 @@ static let maxSafeDebt: CGFloat = 200        // 算出超过这个数说明我�
 完整的问题定义、已排除清单、当前结论、四个猜测、建议的第一步,
 **已全部整理进 `NEXT-PROMPT.md`(2026-08-09 重写)**,新窗口直接读那份即可。
 ⚠️ NEXT-PROMPT 里旧的层层划线内容已清掉 —— 那些历史全在本文件 T55 里,要挖细节回这儿。
+
+---
+
+## 📍 T55 封存(2026-08-11)· 功能不常用,先关掉入口,抖动继续挂账
+
+用户:这个功能用得不多,不必现在解决抖动,先把功能整体封存,以后有空再捡回来。
+
+**做法**:`iOS/Article/NNWArticlePaging.swift` 的 `nnwInstallReadingGestures()` 里,
+不再把竖向 `UIPanGestureRecognizer`(拽过头翻页的唯一触发点)装到 view 上,
+代码原样留着,注释说明怎么捡回来。**右滑回列表 / 左滑开原文**(横向那条 pan)不受影响。
+
+完整现状、可复用的部分、卡住的地方、还没查过的方向,
+**整理进了新文档 `NOTES-archive-overscroll-paging.md`**,以后要重启这条线直接读那份。
+
+---
+
+## ❌ 已评估、决定不做:给内置浏览器加「翻译网页」(2026-08-12)
+
+用户问了可行性,听完成本后决定不做。**结论记在这里,别再重新推一遍。**
+
+- **「给 SFSafariViewController 装插件」这条路不存在**:Safari 扩展只对 Safari 这个 App 生效,
+  SFSafariViewController 不加载扩展、不暴露 DOM、跨进程黑盒。
+- 唯一的缝是 iOS 15 的 `SFSafariViewController.Configuration.activityButton` +
+  Share/Action Extension(`NSExtensionJavaScriptPreprocessingFile` 的 `run()`/`finalize()`)。
+  **四个硬伤**:①一来一回,**没有流式**,必须整页翻完才能一次性写回;②独立进程独立内存上限,
+  复用不了 `TranslationController` 实例,key 要走 App Group + Keychain Sharing 重打通;
+  ③不常驻,点一次跑一次;④`finalize()` 在 activityButton 语境下能否改页面**未经验证**。
+- 自己用 `WKWebView` 托浏览器页技术可行、能复用整套翻译栈,但要放弃与 Safari 共享的
+  cookie(登录态)/密码填充/阅读器/内容拦截;而且 `translation.js` 是照**文章页结构**写的,
+  任意网页要重做正文识别 —— **工作量大头在这里,且是没有终点的调优活**。
+- 真要做,推荐的顺序是先做**成本近乎为零**的那条:浏览器页加一颗「用阅读视图打开并翻译」,
+  走已有的文章页 + 已有翻译流水线;用它先量一量"到底多常需要 / 抽取失败率多高",再决定要不要投入。
+
+---
+
+## 🔎 待定位:デイリーポータルＺ 阅读模式图片挤到文章最后(2026-08-12 用户报)
+
+**现象**:该源用阅读视图后,图片全部挤在一起、出现在正文最后;翻译后依然如此
+(说明**不是翻译分组的锅** —— splitBody 里那套 `POSITION_SENSITIVE` / `boundaryBefore`
+是专门防这个的,而且问题在翻译前就有了)。
+
+**已排除**:`ReaderViewExtractor` 对提取结果**没有任何后处理**,拿到 Readability 的
+`content` 就直接用。所以问题出在 Readability 的输出本身。
+
+**两个候选机制(还没验)**:
+1. **原始 DOM 里图片本来就在最后**,靠站点 CSS(grid / float / absolute)摆回文中。
+   阅读模式剥掉站点 CSS,真实的文档顺序就暴露出来了。**如果是这一种,升级
+   Readability 也没用**,只能在我们自己的提取器里对这个站做预处理(把图片按锚点搬回去)。
+2. Readability 的候选打分把图片所在的容器判成了另一块,拼接时排到了正文之后。
+
+**2026-08-12 已查(用户给了 URL:https://dailyportalz.jp/kiji/BAMBOCHE-in-Okinawa)**:
+
+- **原始 DOM 顺序是正常的**:`p p img p img p p figure img p …`,图文规规矩矩交错 → **机制①排除**。
+- **在电脑上拿这份静态 HTML 跑我们 vendored 的那份 Readability**(jsdom),
+  输出**也是正常的**:`p p div h2 p img p p img p p figure img …`,26 张图,
+  其中 25 张的 `src` 被 `_fixLazyImages` 正确换成了真实地址 → **机制②也基本排除**。
+
+**所以 Readability 本身是清白的**,问题只可能出在这两处之一(还没分辨):
+1. **app 的提取环境和我的不同** —— 我们是在**只有一屏高**的隐藏 WKWebView 里提取的,
+   而且**站点自己的 JS 会跑**。这个源的图是懒加载的
+   (`src="…/loading-min.png" data-src="真图" class="lazy-image"`),
+   屏幕外的图在提取那一刻可能还是占位图,站点脚本也可能对 DOM 做了别的事。
+2. **提取是好的,乱在我们的渲染上**(ArticleRenderer / 文章页 CSS)。
+
+**这一轮已经做的两件事**:
+- ✅ **修**:提取前先把 `data-src` / `data-original` / `data-lazy-src` / `data-srcset`
+  落到 `src` / `srcset` 上,把懒加载这个变量彻底去掉(不改 Readability.js,只改我们的 parseScript)。
+- 🔎 **探针**:提取完把结构标签顺序打进日志
+  (`[阅读视图] 提取结果结构顺序:…`)。真机跑一次,拿它和上面那行电脑跑出来的顺序对照:
+  - **顺序也是图文交错** → 提取没问题,去查渲染(第 2 种)
+  - **顺序是一堆 p 然后一堆 img** → 提取阶段就乱了,去查隐藏 WebView 的环境(第 1 种)
+
+⚠️ 修法一律**不许改 `Shared/ReaderView/Readability.js`**(vendored,见 README-vendor.md),
+只能改 `ReaderViewExtractor.swift` 或传给它的 options。

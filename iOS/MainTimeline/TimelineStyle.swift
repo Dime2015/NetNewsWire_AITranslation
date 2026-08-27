@@ -130,6 +130,9 @@ enum TimelineStyle {
 	static let thumbnailCornerRadius = CGFloat(8)
 	/// 缩略图左边到文字区的距离。
 	static let thumbnailMarginLeft = CGFloat(10)
+	/// [界面] 缩略图占位色:知道这篇文章有图、但图还没下载好时,先垫这个颜色占住位置,
+	/// 免得图下载完才让标题/正文重新排版(2026-08-11)。
+	static var thumbnailPlaceholderColor: UIColor { .tertiarySystemFill }
 
 	// MARK: 三段文字
 

@@ -111,6 +111,22 @@ import UIKit
 	/// 把彩色图调到"能和深色底共处"的程度:**降饱和 + 压亮度**,颜色本身保留。
 	///
 	/// 两个数就是全部旋钮 —— 嫌它在深色下还太跳就把它们调大,嫌太灰就调小。
+	///
+	/// 🔴 2026-08-12 重做:用户反馈深色模式下地球图标背后有一层**灰色背景**。
+	///
+	/// 病根在原来的"先铺满矩形再收回来"那套四步:第②步 `.saturation` 用一块
+	/// **铺满整个画布矩形**的灰色去混合,而 Core Graphics 的合成公式里,
+	/// **不管用什么混合模式,结果的 alpha 通道都遵循标准的"盖在上面"算法**
+	/// (`αr = αs + αb×(1−αs)`)——那块灰色本身的 alpha(降饱和强度 0.4)会被
+	/// **直接**算进结果里,哪怕它盖住的地方原来完全透明(αb=0)也一样,
+	/// 于是整块画布(不只是地球图形)都被染上了 0.4 的不透明灰色。
+	/// 第④步想靠"再画一遍原图、用 `.destinationIn` 挖回形状"来清掉这块灰,
+	/// 在图形内部/外部纯色区域算得对,**但地球边缘那一圈半透明的抗锯齿像素**
+	/// 会在这套多步公式里被放大误差,残留成一圈看得见的灰边/灰底。
+	///
+	/// 现在改成**先按原图的 alpha 形状裁开画布,再叠色**:后面不管怎么混合,
+	/// 物理上都画不到图形外面去,不需要再靠最后一步"挖回来"补救,
+	/// 也就不存在"挖不干净"这个问题了。
 	private static func harmonizedForDark(_ image: UIImage) -> UIImage {
 
 		/// 降饱和的程度(0 = 原样,1 = 全灰)
@@ -127,6 +143,12 @@ import UIKit
 
 			let ctx = context.cgContext
 
+			// 先按原图的透明度形状裁一刀——地球轮廓之外(包括半透明的抗锯齿边缘)
+			// 从物理上就不会被后面的叠色画到,不再需要"画完再挖回来"这种容易漏的补救。
+			if let mask = image.cgImage {
+				ctx.clip(to: rect, mask: mask)
+			}
+
 			// ① 原图
 			image.draw(in: rect)
 
@@ -141,10 +163,6 @@ import UIKit
 			ctx.setBlendMode(.sourceAtop)
 			UIColor(white: 0, alpha: darkening).setFill()
 			ctx.fill(rect)
-
-			// ④ 把 alpha 收回原图的形状(② 是铺满矩形的,会给圆形外面染色)
-			ctx.setBlendMode(.destinationIn)
-			image.draw(in: rect)
 		}.withRenderingMode(.alwaysOriginal)
 	}
 }

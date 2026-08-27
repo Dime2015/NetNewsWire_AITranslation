@@ -844,9 +844,12 @@ private extension MainTimelineModernViewController {
 		let showFeedNames = coordinator?.showFeedNames ?? ShowFeedName.none
 		let showIcon = showIcons && iconImage != nil
 		// [界面] 多传一个正文首图的缩略图;取不到就是 nil,列表会把文字铺满。
+		// 2026-08-11:`hasThumbnail` 单独问一次 —— 只扫 HTML(有缓存,不等网络),
+		// 图片真正下载完成之前就能知道要不要占位,布局靠它避免"图下载完文字才跳"。
+		let hasThumbnail = ArticleThumbnail.shared.hasImage(for: article)
 		let thumbnail = ArticleThumbnail.shared.thumbnail(for: article)
 		// [翻译] 标题可能换成中文译文(开了「标题翻译」的源;实现见 NNWTitleTranslationController)
-		let cellData = MainTimelineCellData(article: NNWTitleTranslationController.shared.displayArticle(for: article), showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, thumbnail: thumbnail)
+		let cellData = MainTimelineCellData(article: NNWTitleTranslationController.shared.displayArticle(for: article), showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, hasThumbnail: hasThumbnail, thumbnail: thumbnail)
 		return cellData
 	}
 

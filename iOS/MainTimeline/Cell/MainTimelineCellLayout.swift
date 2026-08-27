@@ -258,7 +258,9 @@ struct MainTimelineDefaultCellLayout: MainTimelineCellLayout {
 		let textTop = currentPoint.y
 
 		// ③ 缩略图只和「标题+正文」这一块并排,不占顶行。没有图时宽度按 0 算,文字铺满。
-		let hasThumbnail = cellData.thumbnail != nil
+		// [界面] 2026-08-11:占不占位看 `cellData.hasThumbnail`(扫到图片地址就占),
+		// 不看位图下没下载好 —— 否则图下载完,这块宽度才冒出来,文字要跟着重新排版跳一下。
+		let hasThumbnail = cellData.hasThumbnail
 		let textAreaWidth = max(0, fullWidth - (hasThumbnail ? TimelineStyle.thumbnailDimension + TimelineStyle.thumbnailMarginLeft : 0))
 
 		// 标题(最多 3 行)
