@@ -298,6 +298,14 @@ enum OpenRouterCatalog {
 		var request = URLRequest(url: modelsURL)
 		request.timeoutInterval = 30
 		request.setValue("NetNewsWire AI Translation", forHTTPHeaderField: "User-Agent")
+		// ⚠️ 2026-08-12(用户报"DeepSeek 调价了,刷新模型列表看不出来"):
+		// 价格是**跟着这个接口一起回来的**(pricing.prompt / pricing.completion),
+		// 所以解析逻辑没问题 —— 问题在**这一层根本没真的去拿**。
+		// URLSession 默认走 `.useProtocolCachePolicy`,OpenRouter 给这个接口带了缓存头,
+		// 于是"刷新模型目录"很可能只是把 URLCache 里的旧 JSON 又读了一遍,
+		// 模型数量、名字都对得上,唯独价格是上次的 —— 一个不会报错的假刷新。
+		// 用户按下刷新就是明确要最新的,这里绕开本地与代理缓存。
+		request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
 
 		let data: Data
 		let response: URLResponse

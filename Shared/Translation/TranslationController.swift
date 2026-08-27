@@ -606,35 +606,49 @@ enum TranslationScript {
 			//    标题最短、回得最快,最先变成中文 —— 让人立刻感觉到"开始了"。
 			//    (之前标题排在所有正文组后面,并发槽一旦占满就轮不到它,
 			//     表现为"标题很靠后才被翻译"。)
-			if let cachedTitle = partialEntry?.titleHTML {
+			//
+			// 🔴 2026-08-12 修:三条路原来是"用了就算数"——`nnwTranslationApplyTitle`
+			// 的返回值被 `_ = try?` 直接丢掉,哪怕它**没有真的应用成功**(比如那一刻
+			// 网页里还没找到标题元素),代码也照样认为标题"处理过了",
+			// 不会再走下一条路,标题就停在原文——用户报的"标题被遗漏翻译"正是这个。
+			// 现在每一条免费路径都要看**真的应用成功了没有**,没成功就退到下一条,
+			// 最后兜底交给真的翻译,而不是"以为处理过了"就算了。
+			if let cachedTitle = partialEntry?.titleHTML,
+			   (try? await webViewController.nnwTranslationApplyTitle(cachedTitle)) == true {
 				// 标题上次已经翻过了,直接用,零请求
-				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 				runTitleTranslation = cachedTitle
-			} else if let article = webViewController.nnwHostArticle,
-					  let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
-				// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
-				// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
-				let escaped = listTitle
-					.replacingOccurrences(of: "&", with: "&amp;")
-					.replacingOccurrences(of: "<", with: "&lt;")
-					.replacingOccurrences(of: ">", with: "&gt;")
-				_ = try? await webViewController.nnwTranslationApplyTitle(escaped)
-				runTitleTranslation = escaped
-			} else if let titleHTML = try await webViewController.nnwTranslationReadTitle(),
-			   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-				let titleContext = context
-				titleTask = Task { [weak webViewController] in
-					// 失败自动重试一次,和正文组同等待遇
-					var translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
-					if translated == nil, !Task.isCancelled {
-						try? await Task.sleep(for: .milliseconds(600))
-						translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+			} else {
+				var appliedFromListTitleCache = false
+				if let article = webViewController.nnwHostArticle,
+				   let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
+					// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
+					// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
+					let escaped = listTitle
+						.replacingOccurrences(of: "&", with: "&amp;")
+						.replacingOccurrences(of: "<", with: "&lt;")
+						.replacingOccurrences(of: ">", with: "&gt;")
+					if (try? await webViewController.nnwTranslationApplyTitle(escaped)) == true {
+						runTitleTranslation = escaped
+						appliedFromListTitleCache = true
 					}
-					guard !Task.isCancelled, let translated, let webViewController else {
-						return nil
+				}
+				if !appliedFromListTitleCache,
+				   let titleHTML = try await webViewController.nnwTranslationReadTitle(),
+				   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+					let titleContext = context
+					titleTask = Task { [weak webViewController] in
+						// 失败自动重试一次,和正文组同等待遇
+						var translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+						if translated == nil, !Task.isCancelled {
+							try? await Task.sleep(for: .milliseconds(600))
+							translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+						}
+						guard !Task.isCancelled, let translated, let webViewController else {
+							return nil
+						}
+						_ = try? await webViewController.nnwTranslationApplyTitle(translated)
+						return translated
 					}
-					_ = try? await webViewController.nnwTranslationApplyTitle(translated)
-					return translated
 				}
 			}
 
