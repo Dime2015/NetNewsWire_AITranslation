@@ -227,14 +227,26 @@ import os
 			} catch {
 				guard !Task.isCancelled, let self else { return }
 				self.refreshControl?.endRefreshing()
-				// 已经有内容时(下拉刷新失败)别往背景垫提示字 —— 会从行底下露出来,
-				// 而且错误卡片本身已经是一重反馈了(独立审查建议 7)
-				if self.articles.isEmpty {
-					self.statusText = "加载失败,下拉可重试"
-				}
-				self.tableView.reloadData()
 				Self.logger.error("[发现] 试读加载失败:\(feedURL) — \(error.localizedDescription)")
-				self.presentError(error)
+
+				// 🔴 2026-08-12:**首次加载失败不再弹卡片**,把话写在页面里。
+				//
+				// 为什么:抓 feed 失败常常几十毫秒就回来,那时 push 转场还没放完,
+				// 在转场中途 present 模态会把 UIKit 的出场/入场回调搅乱 ——
+				// 整页卡死那个 bug 就是这么来的(详见 NNWMenu.show 里的长注释)。
+				// NNWMenu 那边已经改成"等转场结束再弹",这里再从源头上少弹一次:
+				// 这一页本来就有行内的失败提示,弹窗是多余的第二重反馈
+				//(独立审查建议 7 当初就说过错误卡片和背景字二选一)。
+				//
+				// 下拉刷新失败(已经有内容了)则**保留卡片** —— 那时页面早就安定了,
+				// 没有转场在跑,而且背景字会从行底下露出来,只能靠卡片说话。
+				if self.articles.isEmpty {
+					self.statusText = "加载失败:\(error.localizedDescription)\n下拉可重试"
+					self.tableView.reloadData()
+				} else {
+					self.tableView.reloadData()
+					self.presentError(error)
+				}
 			}
 		}
 	}

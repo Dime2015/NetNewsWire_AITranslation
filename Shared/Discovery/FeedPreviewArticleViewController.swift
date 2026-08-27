@@ -5,29 +5,30 @@
 //  [发现] 本 fork 新增,上游没有这个文件。试读 Phase B(2026-07-29)。
 //
 //  试读的文章页:把一篇**内存文章**用上游渲染层原样画出来,
-//  底部工具栏带**翻译 / 阅读模式 / 长图**(Phase C,2026-07-30),点链接外开。
+//  底部工具栏带**翻译 / 阅读模式**(Phase C,2026-07-30;长图按钮已于 2026-08-12 拿掉,
+//  用户反馈试读场景用不上),点链接外开。
 //
 //  ## 为什么不复用主阅读页 WebViewController
 //  它和 SceneCoordinator 深度耦合(上一篇/下一篇、已读/星标、webViewProvider
 //  全走协调器),拿来当预览页要伺候一堆对"库里根本不存在的文章"毫无意义的机制。
 //
-//  ## 三件功能是怎么共用的(Phase C 的核心)
-//  翻译和长图对页面的全部依赖被抽成了 NNWArticlePageHost 协议
+//  ## 两件功能是怎么共用的(Phase C 的核心)
+//  翻译对页面的全部依赖被抽成了 NNWArticlePageHost 协议
 //  (Shared/Translation/NNWArticlePageHost.swift,桥接原样搬自主阅读页):
-//  本页 conform 它,TranslationController / ArticleLongImageExporter 对两页一视同仁。
+//  本页 conform 它,TranslationController 对两页一视同仁。
 //  阅读模式用的 ReaderViewExtractor 本来就是独立组件,照主阅读页的状态机接一遍即可。
 //
 //  ## 复用了上游/fork 的哪些现成件(它们本身一行没改)
 //  - ArticleRenderer.articleHTML —— 独立静态函数,喂内存 Article 就能出整页 HTML
 //    (阅读模式 = 多喂一个 extractedArticle,渲染器自己会用提取出的正文)
 //  - WebViewConfiguration.configuration(with:) —— 主阅读页同款的 WKWebView 配置
-//  - TranslationController(含按钮与整套流程)、ArticleLongImageExporter、
-//    NNWProgressCard、LongImagePreviewViewController、ArticleExtractorButton
+//  - TranslationController(含按钮与整套流程)、ArticleExtractorButton
 //  - NNWLinkOpener —— 点正文里的链接,走 app 统一的外开逻辑
 //
 //  ## 和主阅读页的已知差异(有意为之,记在 T35)
 //  - 不做「长按翻译键强制重翻」(试读场景用不上)
 //  - 不做「按源自动进阅读视图」(试读的源多半还没订阅,没有 Feed 对象)
+//  - 不做长图(2026-08-12 拿掉,用户反馈试读场景用不上)
 //
 
 #if os(iOS)
@@ -138,8 +139,9 @@ import RSCore
 		render()
 	}
 
-	/// 底部工具栏:翻译 ‖ 阅读模式 ‖ 长图。
-	/// 主阅读页的这三个键都是现成组件,原样搬来 —— 状态机(转圈/角标/出错)零重接。
+	/// 底部工具栏:翻译 ‖ 阅读模式。
+	/// [发现] 2026-08-12:长图按钮拿掉了(用户反馈试读页用不上)。
+	/// 两个键都是主阅读页的现成组件,原样搬来 —— 状态机(转圈/角标/出错)零重接。
 	private func configureToolbar() {
 
 		translationController.button.addTarget(self, action: #selector(translateTapped), for: .touchUpInside)
@@ -163,16 +165,10 @@ import RSCore
 		extractorButton.tintColor = .label	// 和主阅读页控件板同色
 		extractorButton.addTarget(self, action: #selector(readerTapped), for: .touchUpInside)
 
-		let longImageItem = UIBarButtonItem(image: UIImage(systemName: "photo.on.rectangle.angled"),
-											style: .plain, target: self, action: #selector(longImageTapped))
-		longImageItem.accessibilityLabel = "生成长图"
-
 		toolbarItems = [
 			UIBarButtonItem(customView: translationController.button),
 			UIBarButtonItem.flexibleSpace(),
-			UIBarButtonItem(customView: extractorButton),
-			UIBarButtonItem.flexibleSpace(),
-			longImageItem
+			UIBarButtonItem(customView: extractorButton)
 		]
 	}
 
@@ -293,26 +289,6 @@ extension FeedPreviewArticleViewController {
 		render()
 	}
 
-	@objc private func longImageTapped() {
-		// 生成要一两秒,给个转圈提示 —— 流程照抄主阅读页的 nnwShareLongImage
-		let progress = NNWProgressCard.present(in: self, text: "正在生成长图…")
-		Task { [weak self] in
-			guard let self else { return }
-			do {
-				let image = try await ArticleLongImageExporter.export(from: self)
-				progress.finish {
-					// 先预览再决定(主阅读页同款):预览页里有「保存到相册」和「分享」
-					let preview = UINavigationController(rootViewController: LongImagePreviewViewController(image: image))
-					preview.modalPresentationStyle = .fullScreen
-					self.present(preview, animated: true)
-				}
-			} catch {
-				progress.finish {
-					self.presentError(title: "生成长图失败", message: error.localizedDescription)
-				}
-			}
-		}
-	}
 }
 
 // MARK: - 阅读模式的提取回调

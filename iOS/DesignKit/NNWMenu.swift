@@ -68,7 +68,8 @@ enum NNWMenuMetrics {
 /// [外观] 自绘品牌选单的对外入口(菜单项、锚点、show 方法都在这个命名空间下)。
 enum NNWMenu {
 
-	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "NNW选单")
+	// fileprivate:同文件里的浮层本体(NNWMenuViewController)也要往这条日志里写兜底记录
+	fileprivate static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "NNW选单")
 
 
 	/// 一行菜单项:图标 + 文字 + 点了做什么。
@@ -144,8 +145,73 @@ enum NNWMenu {
 	static func show(in host: UIViewController, anchor: Anchor,
 					 title: String? = nil, message: String? = nil,
 					 quickActions: [Item] = [],
-					 sections: [[Item]], onCancel: (() -> Void)? = nil) {
+					 sections: [[Item]], onCancel: (() -> Void)? = nil,
+					 nnwRetriesRemaining: Int = 20) {
 		guard !quickActions.isEmpty || sections.contains(where: { !$0.isEmpty }) else { return }
+
+		// 🔴 2026-08-12「点进一个失效的源就整页卡死」的时序守卫。**第二版**。
+		//
+		// ## 第一版错在哪(留着,别再走一遍)
+		// 第一版守的是 `host.view.window != nil && bounds.width > 0`,想拦"还没上屏就弹"。
+		// 它**一次都没拦下过**(三轮真机日志里那条"迟迟没挂进窗口"从未出现)——
+		// 因为 push 转场**一开始**,新页的 view 就已经被塞进转场容器、而容器本身就在 window 里,
+		// 所以从转场第一帧起这两个条件就是真的。这条守卫在物理上不可能触发。
+		//
+		// ## 真正的病根:**转场还在放的时候 present 模态**
+		// `FeedPreviewViewController.load()` 抓 feed 失败常常几十毫秒就回来,
+		// 远快于 push 的约 350ms 转场。于是 `present` 发生在转场中途,UIKit 的
+		// 出场/入场回调会错乱 —— 被弹出的选单**可能收不到 `viewDidAppear`**,
+		// 于是永远停在 `viewDidLayoutSubviews` 里设的 `alpha = 0`(见下面那个类):
+		// 卡片和压暗层都是隐形的,但浮层的**根视图仍然铺满全屏、照样吃掉所有触摸**。
+		// 用户看到的就是"页面还在、但点什么都没用,连下拉刷新都拽不动";
+		// 而点「好」只有按钮自己的高亮反馈,`dismiss` 也一并失灵,永远关不掉。
+		//
+		// ## 正确的等法:问 UIKit 要 transitionCoordinator
+		// 有转场在跑就挂到它的完成回调上,跑完再弹。导航容器的转场归 navigationController,
+		// 所以三处都要问(自己 / 导航 / 标签)。
+		if let coordinator = host.transitionCoordinator
+			?? host.navigationController?.transitionCoordinator
+			?? host.tabBarController?.transitionCoordinator {
+
+			guard nnwRetriesRemaining > 0 else {
+				logger.error("NNW选单 · 转场迟迟不结束,放弃弹出(弹出者=\(String(describing: type(of: host)), privacy: .public))")
+				onCancel?()
+				return
+			}
+			logger.notice("NNW选单 · 转场还在放,等它结束再弹(剩余重试 \(nnwRetriesRemaining, privacy: .public))")
+
+			// animate 注册失败(返回 false)时完成回调不会来,退回定时重试兜底
+			let registered = coordinator.animate(alongsideTransition: nil) { _ in
+				show(in: host, anchor: anchor, title: title, message: message,
+					 quickActions: quickActions, sections: sections, onCancel: onCancel,
+					 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+			}
+			if !registered {
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+					show(in: host, anchor: anchor, title: title, message: message,
+						 quickActions: quickActions, sections: sections, onCancel: onCancel,
+						 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+				}
+			}
+			return
+		}
+
+		// host 自己正在被弹出/收起的途中同理:等一拍再说。
+		// (window 这一条留着当兜底 —— 拦不到转场,但能拦住"这页根本还没上屏"的调用点。)
+		guard host.view.window != nil, host.view.bounds.width > 0,
+			  !host.isBeingPresented, !host.isBeingDismissed else {
+			guard nnwRetriesRemaining > 0 else {
+				logger.error("NNW选单 · host 迟迟没能安定下来,放弃弹出(弹出者=\(String(describing: type(of: host)), privacy: .public))")
+				onCancel?()
+				return
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+				show(in: host, anchor: anchor, title: title, message: message,
+					 quickActions: quickActions, sections: sections, onCancel: onCancel,
+					 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+			}
+			return
+		}
 
 		// ⚠️ **从最顶上那一层弹,不能直接用 host**(2026-07-28 用户报"发现页选不了文件夹")。
 		//
@@ -214,6 +280,10 @@ private final class NNWMenuViewController: UIViewController {
 	private let scrollView = UIScrollView()				// 选项列表;超高时在这里面滚
 	private var placed = false							// 位置只算一次(见文件头 L73 那条)
 	private var isClosing = false
+	/// 已经真正露面(动画放过、交互打开)。兜底逻辑靠它判断"是不是卡在隐形态了"。
+	private var revealed = false
+	/// 收场只走一次(onCancel / handler 不能被调两遍)
+	private var didFinish = false
 
 	/// 居中弹出(错误提示这类)时动画柔一点:不从角上弹,轻轻放大浮现即可
 	private var isCentered: Bool {
@@ -242,6 +312,26 @@ private final class NNWMenuViewController: UIViewController {
 		super.viewDidLoad()
 		view.backgroundColor = .clear
 
+		// 🔴 2026-08-12 兜底一:**没真正露面之前,这一层不吃任何触摸**。
+		// 万一入场回调错乱、`viewDidAppear` 没被调到(见 NNWMenu.show 里的长注释),
+		// 这张浮层会永远停在 alpha=0 的隐形态 —— 隐形的子视图不参与命中测试,
+		// 但**根视图自己 alpha 是 1**,照样把整屏触摸全吃掉,下面那页就彻底死了。
+		// 关掉交互 = 命中测试直接穿过去,最坏情况下用户还能正常操作下面的页面。
+		// 真正露面时(reveal)再打开。
+		view.isUserInteractionEnabled = false
+
+		// 🔴 2026-08-12 兜底二:等不到入场回调就自己收场,绝不留一张关不掉的浮层。
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self, !self.revealed else { return }
+			if self.view.window != nil, self.view.bounds.width > 0 {
+				NNWMenu.logger.error("NNW选单 · 没等到 viewDidAppear,兜底直接显示")
+				self.reveal(animated: false)
+			} else {
+				NNWMenu.logger.error("NNW选单 · 始终没能正常上屏,自行退场")
+				self.dismiss(animated: false) { self.finish(cancelled: true, handler: nil) }
+			}
+		}
+
 		// 压暗层:点它任意处 = 取消
 		dim.backgroundColor = UIColor.black.withAlphaComponent(Self.dimAlpha)
 		dim.frame = view.bounds
@@ -262,6 +352,18 @@ private final class NNWMenuViewController: UIViewController {
 		shadowHost.layer.shadowOpacity = 0.14
 		shadowHost.layer.shadowRadius = 14
 		shadowHost.layer.shadowOffset = CGSize(width: 0, height: 4)
+		// 🔴 2026-08-12:先给一个像样的初始尺寸,别让第一次布局在"宽=0"上求解。
+		//
+		// `card` / `shadowHost` 是**手摆 frame** 的(placeCard),它们的子视图却用的是真约束。
+		// 而 placeCard 要等到 `viewDidLayoutSubviews` 才跑 —— 在那之前 UIKit 已经先解过一轮,
+		// 那一轮里 card.frame 还是 .zero,隐式的"宽=0"和子视图那些要求真实宽度的约束打架,
+		// 就是真机日志里那一串 `unable to simultaneously satisfy constraints`。
+		// 给个初值,第一轮就在正确宽度上求解,警告消失,量出来的高度也才是可信的。
+		//
+		// ⚠️ **不要**用 `translatesAutoresizingMaskIntoConstraints = false` 去"修"这串警告:
+		// 这两层压根没有描述自己位置的约束,关掉隐式约束等于让它们彻底失去尺寸 ——
+		// 那才会真的做出一张看不见的卡片。它们是 frame 派,保持 true 是对的。
+		shadowHost.frame = CGRect(x: 0, y: 0, width: Self.cardWidth, height: 320)
 		view.addSubview(shadowHost)
 
 		// 卡片
@@ -273,6 +375,7 @@ private final class NNWMenuViewController: UIViewController {
 		card.layer.cornerRadius = Self.cardCornerRadius
 		card.layer.cornerCurve = .continuous
 		card.clipsToBounds = true		// 列表滚动时内容不能穿出圆角
+		card.frame = shadowHost.bounds	// 同上:第一次布局就有真实宽度可用
 		if NNWSoftMaterial.isEnabled {
 			softPanel.install(in: card)
 		} else {
@@ -557,21 +660,43 @@ private final class NNWMenuViewController: UIViewController {
 
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
-		UIImpactFeedbackGenerator(style: .light).impactOccurred()
-		if UIAccessibility.isReduceMotionEnabled {
-			// 用户关掉了动态效果:只淡入
-			UIView.animate(withDuration: 0.2) { self.shadowHost.alpha = 1; self.dim.alpha = 1 }
-		} else {
-			// 角上弹出的从小弹开;居中的(错误提示)轻轻放大浮现,别太跳
-			let startScale: CGFloat = isCentered ? 0.9 : 0.25
-			shadowHost.transform = CGAffineTransform(scaleX: startScale, y: startScale)
-			UIView.animate(withDuration: 0.32, delay: 0,
-						   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
-				self.shadowHost.transform = .identity
-				self.shadowHost.alpha = 1
-				self.dim.alpha = 1
+		reveal(animated: true)
+	}
+
+	/// 真正露面:放弹出动画、打开交互。
+	/// 正常走 `viewDidAppear`;入场回调没来时由 viewDidLoad 里那个兜底定时器补调
+	/// (`animated: false` —— 那时候动画早就不合时宜了,直接摆到位)。
+	private func reveal(animated: Bool) {
+		guard !revealed else { return }
+		revealed = true
+		view.isUserInteractionEnabled = true		// 从这一刻起才允许它吃触摸
+
+		guard animated, !UIAccessibility.isReduceMotionEnabled else {
+			// 用户关掉了动态效果 / 兜底补显:只淡入(兜底那次连淡入都几乎看不见,无妨)
+			UIView.animate(withDuration: animated ? 0.2 : 0) {
+				self.shadowHost.alpha = 1; self.dim.alpha = 1
 			}
+			return
 		}
+
+		UIImpactFeedbackGenerator(style: .light).impactOccurred()
+		// 角上弹出的从小弹开;居中的(错误提示)轻轻放大浮现,别太跳
+		let startScale: CGFloat = isCentered ? 0.9 : 0.25
+		shadowHost.transform = CGAffineTransform(scaleX: startScale, y: startScale)
+		UIView.animate(withDuration: 0.32, delay: 0,
+					   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
+			self.shadowHost.transform = .identity
+			self.shadowHost.alpha = 1
+			self.dim.alpha = 1
+		}
+	}
+
+	/// 收场:回调只走一次(兜底路径和正常路径可能都会跑到这儿)
+	private func finish(cancelled: Bool, handler: (() -> Void)?) {
+		guard !didFinish else { return }
+		didFinish = true
+		if cancelled { onCancel?() }
+		handler?()
 	}
 
 	/// 收起(动画完了再执行选中项的动作,不让菜单收起和页面跳转互相打架)。
@@ -588,8 +713,19 @@ private final class NNWMenuViewController: UIViewController {
 			}
 		} completion: { _ in
 			self.dismiss(animated: false) {
-				if cancelled { self.onCancel?() }
-				handler?()
+				self.finish(cancelled: cancelled, handler: handler)
+			}
+			// 🔴 2026-08-12 兜底三:present 被转场搅坏时 `dismiss` 会**静默失灵** ——
+			// 表现正是用户报的"点「好」按钮自己有高亮反馈,但卡片关不掉、整页也点不动"。
+			// 那就自己把浮层拆下来,绝不允许一张关不掉的全屏浮层留在屏幕上。
+			// ⚠️ 这里**不能写 `[weak self]`**:外层 `completion:` 已经隐式强捕获了 self,
+			// 内层再声明弱捕获,Swift 会报"捕获语义和外层不一致"直接编译不过。
+			// 强捕获在这里也没有循环引用的风险 —— 只是把浮层多留 0.3 秒。
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+				guard !self.didFinish else { return }
+				NNWMenu.logger.error("NNW选单 · dismiss 没生效,强制拆掉浮层(弹出者的 present 已被转场搅坏)")
+				self.view.removeFromSuperview()
+				self.finish(cancelled: cancelled, handler: handler)
 			}
 		}
 	}
