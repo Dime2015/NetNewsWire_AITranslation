@@ -251,7 +251,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			var actions = [UIContextualAction]()
 
 			// Set up the delete action
-			let deleteTitle = NSLocalizedString("Delete", comment: "Delete button")
+			// [措辞] 2026-08-12:这颗滑动按钮只有图标没有文字,但 VoiceOver 读的是这个标签 ——
+			// 源要读成「取消订阅」,文件夹才读「删除」
+			let isFolder = self.dataSource.itemIdentifier(for: indexPath)?.node.representedObject is Folder
+			let deleteTitle = isFolder
+				? NSLocalizedString("Delete", comment: "Delete button")
+				: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 			let deleteAction = UIContextualAction(style: .destructive, title: nil) { [weak self] _, _, completion in
 				self?.delete(indexPath: indexPath)
 				completion(true)
@@ -1261,7 +1266,14 @@ extension MainFeedCollectionViewController {
 	}
 
 	func deleteAction(indexPath: IndexPath) -> UIAction {
-		let title = NSLocalizedString("Delete", comment: "Delete button")
+		// [措辞] 2026-08-12:订阅源说「取消订阅」,文件夹才说「删除」。
+		// 这个方法同时供源和文件夹的长按菜单调用(见 makeFeedContextMenu / makeFolderContextMenu),
+		// 所以按当前行代表的对象分流。复用上游已有的 "Delete Feed" 键(中文已译成「取消订阅」),
+		// 不新造键 —— 英文版仍然读得通。
+		let isFolder = dataSource.itemIdentifier(for: indexPath)?.node.representedObject is Folder
+		let title = isFolder
+			? NSLocalizedString("Delete", comment: "Delete button")
+			: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 
 		let action = UIAction(title: title, image: Assets.Images.trash, attributes: .destructive) { [weak self] _ in
 			self?.delete(indexPath: indexPath)
@@ -1444,7 +1456,10 @@ extension MainFeedCollectionViewController {
 		let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
 		alertController.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
 
-		let deleteTitle = NSLocalizedString("Delete", comment: "Delete button")
+		// [措辞] 2026-08-12:确认框上那颗红按钮同理 —— 源说「取消订阅」,文件夹说「删除」
+		let deleteTitle = sidebarItem is Folder
+			? NSLocalizedString("Delete", comment: "Delete button")
+			: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 		let deleteAction = UIAlertAction(title: deleteTitle, style: .destructive) { [weak self] _ in
 			self?.performDelete(indexPath: indexPath)
 		}

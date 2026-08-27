@@ -353,7 +353,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除这 %d 个 Feed 吗?"
+            "value" : "确定要取消订阅这 %d 个源吗?"
           }
         }
       }
@@ -364,7 +364,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除 Feed“%@”吗?"
+            "value" : "确定要取消订阅“%@”吗?"
           }
         }
       }
@@ -397,7 +397,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除 Feed“%@”吗?"
+            "value" : "确定要取消订阅“%@”吗?"
           }
         }
       }
@@ -408,7 +408,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定要删除 Feed“%@”吗?"
+            "value" : "确定要取消订阅“%@”吗?"
           }
         }
       }
@@ -977,7 +977,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除 Feed"
+            "value" : "取消订阅"
           }
         }
       }
@@ -988,7 +988,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除 Feed"
+            "value" : "取消订阅"
           }
         }
       }
@@ -999,7 +999,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除 Feed 和文件夹"
+            "value" : "取消订阅并删除文件夹"
           }
         }
       }
@@ -3493,7 +3493,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Feed 上滑动以显示操作菜单和删除按钮。"
+            "value" : "在源上滑动以显示操作菜单和取消订阅按钮。"
           }
         }
       }

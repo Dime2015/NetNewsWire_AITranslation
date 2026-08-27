@@ -58,6 +58,7 @@ final class FeedInspectorViewController: UITableViewController {
 
 		NotificationCenter.default.addObserver(self, selector: #selector(updateNotificationSettings), name: UIApplication.willEnterForegroundNotification, object: nil)
 
+		nnwInstallUnsubscribeFooter()	// [取消订阅] 表尾那颗红按钮(实现见 +NNWUnsubscribe)
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
