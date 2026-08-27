@@ -85,7 +85,6 @@ import os
 		teardown()
 	}
 }
-
 // MARK: - 私有
 
 private extension ReaderViewExtractor {
@@ -202,8 +201,76 @@ private extension ReaderViewExtractor {
 		try {
 			if (typeof Readability !== "function") { return null; }
 			// ⚠️ 必须传副本:Readability 的 parse() 会改动传进去的 DOM(官方文档明确警告)
-			var article = new Readability(document.cloneNode(true)).parse();
+			// 🔧 2026-08-12:**先把"在真实页面上根本看不见的东西"标记掉,再克隆**。
+			//
+			// 起因是 restofworld.org(用户报"阅读模式排版很乱、翻译后段落不全"):
+			// 它的正文里嵌着**行内术语浮层** —— `<mark>Alibaba</mark>` 后面跟着一整段
+			// "Alibaba, founded in 1999 by … READ MORE",平时被站点 CSS 藏着,
+			// 鼠标悬停才出来。阅读模式剥掉站点 CSS 之后,这些文字**全部冒出来**,
+			// 句子被撑成一团(那就是"排版乱"),而且它们混在 `<p>` 里一起喂给模型 ——
+			// 又长又不成句,模型翻得乱、还容易漏掉整段(那就是"段落不全")。
+			//
+			// ⚠️ 这件事**只有在这里能做**:我们是在真实 WebView 里、站点 CSS 已经生效的时候提取的,
+			// 所以 `getComputedStyle` 说得出"这个元素用户到底看不看得见"。
+			// 换成拿 HTML 字符串离线解析(比如在服务器上跑 Readability)就**判不出来**。
+			//
+			// 判据取得很保守,只认三种"作者明确藏起来"的写法,不猜:
+			//   display:none / visibility:hidden / aria-hidden="true"
+			// (不查 opacity:0 和零尺寸 —— 懒加载和动画中的元素常常是那样,误删风险太大。)
+			var hiddenMarked = [];
+			var probeAll = document.body ? document.body.querySelectorAll("*") : [];
+			for (var h = 0; h < probeAll.length; h++) {
+				var node = probeAll[h];
+				var hidden = node.getAttribute("aria-hidden") === "true";
+				if (!hidden) {
+					var cs = window.getComputedStyle(node);
+					hidden = cs && (cs.display === "none" || cs.visibility === "hidden");
+				}
+				if (hidden) {
+					node.setAttribute("data-nnw-hidden", "1");
+					hiddenMarked.push(node);
+				}
+			}
+
+			var work = document.cloneNode(true);
+			var hiddenInClone = work.querySelectorAll ? work.querySelectorAll("[data-nnw-hidden]") : [];
+			for (var r = hiddenInClone.length - 1; r >= 0; r--) {
+				var doomed = hiddenInClone[r];
+				if (doomed.parentNode) { doomed.parentNode.removeChild(doomed); }
+			}
+			// 把标记从**真实文档**上撤掉 —— 这个 WebView 虽然用户看不见,但别留痕
+			for (var c = 0; c < hiddenMarked.length; c++) {
+				hiddenMarked[c].removeAttribute("data-nnw-hidden");
+			}
+
+			// 🔧 2026-08-12:**先把懒加载图归位,再交给 Readability**。
+			//
+			// 起因是デイリーポータルＺ:它的图是
+			//   <img src="…/loading-min.png" data-src="真正的图" class="lazy-image">
+			// 真实地址只在 data-src 里,src 是个占位图。而我们是在**只有一屏高**的隐藏 WebView 里提取的,
+			// 站点自己的懒加载脚本只会把靠近视口的那几张换成真图,屏幕外的全停在占位图上。
+			//
+			// Readability 自带 _fixLazyImages,但它的判据依赖站点怎么写 class/src,不一定接得住。
+			// 我们**不改 Readability(vendored,不许动)**,而是在交给它之前先把常见的懒加载属性
+			// 落到 src 上 —— 纯粹是"把页面恢复成它本该有的样子",不改结构、不动顺序。
+			var lazyAttrs = ["data-src", "data-original", "data-lazy-src", "data-actualsrc"];
+			var imgs = work.querySelectorAll("img");
+			for (var i = 0; i < imgs.length; i++) {
+				var img = imgs[i];
+				for (var a = 0; a < lazyAttrs.length; a++) {
+					var real = img.getAttribute(lazyAttrs[a]);
+					if (real && real.length > 0 && real !== img.getAttribute("src")) {
+						img.setAttribute("src", real);
+						break;
+					}
+				}
+				var realSet = img.getAttribute("data-srcset");
+				if (realSet && realSet.length > 0) { img.setAttribute("srcset", realSet); }
+			}
+
+			var article = new Readability(work).parse();
 			if (!article || !article.content) { return null; }
+
 			return JSON.stringify({
 				content: article.content,
 				title: article.title || null,

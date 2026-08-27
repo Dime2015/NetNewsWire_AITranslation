@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import os
 @preconcurrency import WebKit
 import RSCore
 import RSWeb
@@ -82,6 +83,9 @@ final class WebViewController: UIViewController {
 			}
 		}
 	}
+	/// [阅读视图] 2026-08-12 加的探针用(见 nnwResetScrollForExtractorToggle)
+	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "WebViewController")
+
 	private var restoreWindowScrollY: Int?
 
 	override func viewDidLoad() {
@@ -281,6 +285,20 @@ final class WebViewController: UIViewController {
 			return
 		}
 
+		// 🔴 2026-08-12(用户报"点阅读模式后页面总往下跑几行"):
+		//
+		// 病根在 `page.html` 里那句 `window.scrollTo(0, [[windowScrollY]])` ——
+		// 它会把**原始排版下量到的像素位置**,还原到**阅读模式这个完全不同的排版**上。
+		// 两套排版的段落宽度、字号、图片尺寸、有没有头图全都不一样,
+		// 同一个 Y 值落在两边根本不是同一段文字,于是每次切都漂几行。
+		// 像素位置在换排版时是没有意义的量。
+		//
+		// 改成:**切换阅读模式一律回到顶部**。和 Safari 阅读器的行为一致,
+		// 而且是可预期的 —— 漂移这件事从构造上就没有了。
+		// ⚠️ 代价:长文读到一半再切阅读模式,会回到开头。
+		// 真要保住位置,得按"段落锚点"而不是像素来记(现在没有这套东西)。
+		nnwResetScrollForExtractorToggle()
+
 		guard articleExtractor?.state != .processing else {
 			stopArticleExtractor()
 			loadWebView()
@@ -304,6 +322,18 @@ final class WebViewController: UIViewController {
 			startArticleExtractor()
 		}
 
+	}
+
+	/// 切阅读模式前把滚动位置清零(理由见 `toggleArticleExtractor`)。
+	/// 顺带留一条探针:万一真机上还在漂,看这两行就知道是"我们没清干净"
+	/// 还是"清了但页面加载完之后又被别的东西挪走了"。
+	private func nnwResetScrollForExtractorToggle() {
+		Self.logger.info("""
+			[阅读视图] 切换前的滚动位置 windowScrollY=\(self.windowScrollY, privacy: .public) \
+			→ 归零(阅读模式和原始排版的像素位置不通用)
+			""")
+		windowScrollY = 0
+		restoreWindowScrollY = nil
 	}
 
 	func stopArticleExtractorIfProcessing() {
