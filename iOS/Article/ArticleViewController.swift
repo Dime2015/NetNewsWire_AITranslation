@@ -729,22 +729,31 @@ extension ArticleViewController {
 	}
 
 	/// [翻译] item②:长按翻译键的处理。
-	/// 只在这篇**有完整译文缓存**时弹确认框;没有缓存则静默不作任何事
-	/// (与需求一致 —— 重翻只对「已经翻过整篇」的文章才有意义)。
+	///
+	/// 🔴 2026-08-12:判据从「有完整缓存」放宽到「有任何译文痕迹」(用户要求) ——
+	/// **翻到一半停下**恰恰是最想重来的时刻(翻砸了 / 中途取消 / 部分组失败),
+	/// 原来那时候长按毫无反应,像按键坏了。详见 `canOfferRetranslate`。
+	/// 从来没翻过的文章仍然静默不响应 —— 那种情况直接点一下翻就行,不需要"重新"。
 	@objc func handleTranslationLongPress(_ recognizer: UILongPressGestureRecognizer) {
 		guard recognizer.state == .began else { return }
 		Task { [weak self] in
 			guard let self else { return }
-			guard await self.translationController.hasFullCache() else { return }
+			guard await self.translationController.canOfferRetranslate() else { return }
 
 			// 长按确实触发了,给一下轻微触感反馈(没缓存的情况上面已提前返回,不会震)。
 			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
 			// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单,从翻译按钮头顶弹出。
 			// 覆盖缓存是破坏性操作 → 红色 + 保留明确的「取消」行(点选单外面也能取消)。
+			// 文案要跟状态走:半途停下时说"已有完整译文"是错的,会让人以为已经翻完了
+			let hasFull = await self.translationController.hasFullCache()
+			let message = hasFull
+				? "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。"
+				: "这篇只翻到一半。重新翻译整篇吗?这会丢掉已翻好的部分,从头再翻一遍。"
+
 			NNWMenu.show(in: self, anchor: .view(self.translationController.button),
 						 title: "重新翻译整篇",
-						 message: "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。",
+						 message: message,
 						 sections: [
 							[NNWMenu.Item(title: "重新翻译全文", icon: "arrow.clockwise", isDestructive: true) { [weak self] in
 								self?.translationController.forceRetranslate()

@@ -131,10 +131,21 @@ extension NNWArticlePageHost {
 		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.state().isShowingTranslation")
 	}
 
-	/// 把页面滚到顶部。点翻译后调用,方便从头读译文(item④)。
-	func nnwTranslationScrollToTop() async throws -> Bool {
+	// [外观] 翻译中的骨架色条(2026-08-12,实现在 translation.js 的 markPending / clearPending)
+
+	/// 把还没翻的段落变成淡色条(文字透明但占位不变,所以译文替换时零跳动)。
+	func nnwTranslationMarkPending() async throws -> Bool {
 		try await nnwTranslationEnsureScriptInjected()
-		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.scrollToTop()")
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.markPending()")
+	}
+
+	/// 拆掉所有色条,把文字放回来。
+	/// ⚠️ **翻译流程的每一条退出路径都必须调它**(成功/失败/取消都要),
+	/// 否则剩下的段落会一直是透明的 = 正文看不见。
+	/// JS 那边还有一道看门狗兜底,但别指望它 —— 那是保险,不是设计。
+	func nnwTranslationClearPending() async throws -> Bool {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningBool("window.nnwTranslation.clearPending()")
 	}
 
 	// [翻译] 先导块流式显示的三个桥接(2026-07-24,实现在 translation.js)
