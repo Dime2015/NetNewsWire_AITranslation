@@ -105,6 +105,12 @@ enum FeedSearchError: LocalizedError {
 	/// 而「限流」和「版块不存在」对用户来说是完全不同的两件事 ——
 	/// 一个该等一下重试,一个该改名字重输。混成一句话会让人白折腾。
 	case reddit(statusCode: Int)
+	/// [发现] 2026-08-11:统一搜索用到的第三方接口(Reddit / YouTube)还没配凭据。
+	/// `service` 用来在提示里说清楚是哪一个、该去哪填。
+	case missingCredentials(service: String)
+	/// YouTube Data API 的错误。单独一条是因为**免费额度很小**(约每天 100 次关键词搜索),
+	/// 配额用完是最容易撞上的失败,值得单独说清楚而不是甩一句"服务器错误"。
+	case youtube(statusCode: Int)
 
 	var errorDescription: String? {
 		switch self {
@@ -136,6 +142,17 @@ enum FeedSearchError: LocalizedError {
 				return "没找到这个版块,检查一下名字拼写。"
 			default:
 				return "Reddit 返回了错误(\(code))。稍后再试试。"
+			}
+		case .missingCredentials(let service):
+			return "还没有配置 \(service) 的 API Key,去 设置 → 文章 → 订阅发现 API Key 里填写后,就能在这里直接搜 \(service) 了。"
+		case .youtube(let code):
+			switch code {
+			case 403:
+				return "YouTube 搜索被拒绝了,多半是免费额度用完了(每天约 100 次)或者 API Key 不对。额度会在太平洋时间午夜重置。"
+			case 400:
+				return "YouTube 返回了「请求不对」,多半是 API Key 填错了。"
+			default:
+				return "YouTube 返回了错误(\(code))。稍后再试试。"
 			}
 		}
 	}

@@ -76,6 +76,11 @@ final class SettingsViewController: UITableViewController {
 		translationModelRowIndex + 1
 	}
 
+	/// [发现] 本 fork 新增:「订阅发现 API Key」排在「翻译 API Key」后面。
+	private var discoveryAPIKeysRowIndex: Int {
+		translationAPIKeyRowIndex + 1
+	}
+
 	/// [翻译] 本 fork 新增:「界面语言」这一行排在 Appearance 分区最后。
 	/// 索引取自 Storyboard 里该分区的静态行数,所以上游增删行也不会错位。
 	private var interfaceLanguageRowIndex: Int {
@@ -220,8 +225,8 @@ final class SettingsViewController: UITableViewController {
 			return defaultNumberOfRows
 		case .articles:
 			// The Full Screen Articles row is iPhone-only.
-			// [翻译] 本 fork 新增:末尾多两行(翻译模型、翻译 API Key),所以 + 2
-			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 2
+			// [翻译] 本 fork 新增:末尾多三行(翻译模型、翻译 API Key、订阅发现 API Key),所以 + 3
+			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 3
 		case .timeline:
 			// [界面] 藏掉最后一行「文章列表布局」(图标大小 / 行数两个滑块)。
 			// 本 fork 的列表改成了固定布局:favicon 固定小尺寸、标题+正文固定共 4 行,
@@ -273,6 +278,14 @@ final class SettingsViewController: UITableViewController {
 			// [翻译] 判断口径:key 有值 **且** 服务地址合法(留空=用默认,算合法)才叫「已设置」。
 			// 原来只看 key 有没有值,服务地址被写成乱码时也报「已设置」,是在骗人。
 			cell.detailTextLabel?.text = TranslationConfigStore.isFullyConfigured ? "已设置" : "未设置"
+			cell.accessoryType = .disclosureIndicator
+		case .articles where indexPath.row == discoveryAPIKeysRowIndex:
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "订阅发现 API Key"
+			// [发现] Reddit 要两个字段都填才算数,YouTube 一个就够——两条都没配也叫"未设置"。
+			let configuredCount = [FeedDiscoveryKeychain.hasRedditCredentials, FeedDiscoveryKeychain.hasYouTubeCredentials]
+				.filter { $0 }.count
+			cell.detailTextLabel?.text = configuredCount == 0 ? "未设置" : "已设置 \(configuredCount)/2"
 			cell.accessoryType = .disclosureIndicator
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
@@ -347,6 +360,9 @@ final class SettingsViewController: UITableViewController {
 			self.navigationController?.pushViewController(picker, animated: true)
 		case .articles where indexPath.row == translationAPIKeyRowIndex:
 			let keyEditor = TranslationAPIKeyViewController(style: .insetGrouped)
+			self.navigationController?.pushViewController(keyEditor, animated: true)
+		case .articles where indexPath.row == discoveryAPIKeysRowIndex:
+			let keyEditor = DiscoveryAPIKeysViewController(style: .insetGrouped)
 			self.navigationController?.pushViewController(keyEditor, animated: true)
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			let picker = AppLanguagePickerViewController(style: .insetGrouped)

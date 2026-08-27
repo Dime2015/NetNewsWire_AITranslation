@@ -135,6 +135,23 @@ computer-use、claude-in-chrome。**默认一律不用。**
 > | `reddit.com/r/<sub>/top/.rss` | ✅ 200,Atom 格式,**帖子正文在 `<content>` 里** |
 > | `reddit.com/subreddits/search.json` | ❌ **403 被封** → 做不了「关键词发现子版」,只能「已知子版名 → 订阅」 |
 > | `old.reddit.com` | ❌ 429 限流,不要用 |
+>
+> ⚠️ **Phase C 追加(2026-08-11,用户已确认):播客 + Reddit + YouTube 统一关键词搜索**
+>
+> 「全部」tab 输入关键词时改为并行搜三类,结果按类别分组显示、可点标题收起/展开。
+> Reddit 用官方 Application Only OAuth(client_credentials 授权,免费、不需要用户登录
+> Reddit 账号,只需要在 reddit.com/prefs/apps 建一个 script 应用拿 client_id/secret)补上了
+> 当初判定"做不了"的关键词搜索;YouTube 用官方 Data API v3 的 search.list(免费,约
+> 100 次/天配额)补上了 Phase C 里搁置的那一项。两边的凭据存 Keychain(FeedDiscoveryKeychain),
+> 由用户在 设置 → 文章 → 订阅发现 API Key 里自己填,不进代码库。
+> 网站关键词搜索(Feedly 非官方接口那条)当时判定"没有干净的免费方案"暂缓;
+> **2026-08-11 同日追加**:用户还是要了,curl 实测 `cloud.feedly.com/v3/search/feeds`
+> 当前稳定可用(不用认证、不用 key),已接入统一搜索的第四类。⚠️ 这是未公开接口,
+> 没有 SLA,随时可能限流/下线——已按"这一类失败不连累其它三类"处理,真挂了只影响
+> "全部 tab 关键词搜网站"这一项,"粘网址自动发现"不依赖它。
+> 涉及文件:RedditSearcher.swift / YouTubeSearcher.swift / WebsiteSearcher.swift /
+> FeedDiscoveryKeychain.swift / DiscoveryAPIKeysViewController.swift,
+> 以及 FeedDiscoveryViewController.swift 的分组列表改造。
 
 > ⚠️ **第三次扩大范围(2026-07-23,用户已确认):文件夹 / 订阅源管理页**
 >

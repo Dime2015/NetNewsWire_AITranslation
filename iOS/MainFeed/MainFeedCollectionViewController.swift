@@ -606,7 +606,22 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		}
 		addNewItemButton?.isEnabled = !AccountManager.shared.activeAccounts.isEmpty
 
-		configureContextMenu()
+		// [发现] 2026-08-11 注释掉:这是上游原版「+ 弹添加订阅/添加文件夹二选一」的菜单。
+		// 本 fork 早在 2026-07-25 就把「+」改成了单一职责——直接进
+		// `FeedDiscoveryViewController`(分类的发现页,见
+		// `Shared/Discovery/MainFeedCollectionViewController+Discovery.swift`),
+		// 「添加文件夹」也已经并入编辑模式,不再需要这个菜单。
+		//
+		// 这一行本来是死代码级别的残留(`addNewItemButton.menu` 设了但没人用它),
+		// **直到 2026-08-09 加了玻璃圆钮**(`NNWSoftGlassBarButton.swift`)——
+		// 那次改动为了照顾"别的按钮身上真的挂了菜单"这种情况,
+		// 统一把 `item.menu` 转发成玻璃圆钮的主动作(`showsMenuAsPrimaryAction = true`)。
+		// 这一转发是通用、正确的逻辑,但它意外地把这里这个"没人指望它生效"的旧菜单
+		// 重新激活了——点击「+」从此走的是这个菜单(添加订阅/添加文件夹),
+		// 而不是 `add(_:)` 里那一行本该调用的 `showFeedDiscovery()`。
+		// 📌 判据:一个"设了但没人用"的状态,一旦被下游的通用机制读取,
+		// 就会变成"有人用了"——加转发逻辑时要连它会激活哪些旧状态一起想到。
+		// configureContextMenu()
 		nnwSyncSoftGlassToolbarButtons()	// [外观] 加一行:上面写的 isEnabled 与菜单要搬到玻璃圆钮上(UIKit 不会自己传给 customView)
 	}
 

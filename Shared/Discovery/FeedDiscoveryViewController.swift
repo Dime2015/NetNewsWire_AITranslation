@@ -16,11 +16,15 @@ import os
 /// 「搜索订阅源」页面。
 ///
 /// 界面结构(从上到下):
-///   搜索框(导航栏下面)
-///   分段控件:播客 / Reddit        ← 决定用哪个后端去搜
-///   ┌ 第 0 组:放进哪个文件夹        ← 点一下弹动作单选(默认顶层)
-///   └ 第 1 组:搜索结果。**点行 = 试读**(Phase B);行尾 ⊕ = 订阅;
+///   搜索框(底部,系统摆的位置)——不用先选类型,`FeedQueryRouter` 自己判断输入是什么
+///   ┌ section 0:放进哪个文件夹        ← 点一下弹动作单选(默认顶层)
+///   └ section 1…N:按类别分组的搜索结果(网站/播客/YouTube/Reddit),
+///     组标题可点击收起/展开。**点行 = 试读**(Phase B);行尾 ⊕ = 订阅;
 ///     已订阅的显示绿勾,**再点绿勾 = 取消订阅**
+///
+/// ⚠️ 2026-08-12 拿掉了顶部的分类滑块选单(播客/Reddit/YouTube/网站/全部 五选一)——
+/// `FeedQueryRouter` 早就会自己判断输入是什么,滑块选单只是多一次点击、
+/// 不提供额外能力,用户反馈"现在不需要了"。
 ///
 /// 订阅成功后**留在本页**(2026-07-29 用户要求):刻意不发 .UserDidAddFeed,
 /// 不让协调器把用户带进新源的文章列表 —— 订阅完通常还要继续挑下一个。
@@ -35,39 +39,13 @@ import os
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FeedDiscovery")
 
-	/// 搜哪一类。
+	/// 搜索框的占位提示。
 	///
-	/// **`.all` 是默认项,也是绝大多数情况下唯一需要用到的。**
-	/// 它会自己判断输入是什么(见 `FeedQueryRouter`),所以用户不必先想
-	/// 「我要找的是播客还是网站」再去点 tab。
-	/// 其余几项的作用只是**缩小范围**,不是必须先选的前置步骤。
-	private enum Source: Int, CaseIterable {
-		case all
-		case podcast
-		case reddit
-		case youtube
-		case website
-
-		var title: String {
-			switch self {
-			case .all: return "全部"
-			case .podcast: return "播客"
-			case .reddit: return "Reddit"
-			case .youtube: return "YouTube"
-			case .website: return "网站"
-			}
-		}
-
-		var placeholder: String {
-			switch self {
-			case .all: return "粘网址,或输入名称搜播客"
-			case .podcast: return "输入播客名称,例如 Stratechery"
-			case .reddit: return "输入版块名,例如 apple 或 r/apple"
-			case .youtube: return "粘频道地址,或输入 @名字"
-			case .website: return "粘网站地址,例如 stratechery.com"
-			}
-		}
-	}
+	/// [发现] 2026-08-12:分类滑块选单拿掉了(用户反馈"现在不需要了")——
+	/// 曾经它的作用是"缩小搜索范围",但 `FeedQueryRouter` 早就会自己判断输入是什么
+	/// (网址按类型直连,关键词并行搜四类),滑块选单只是徒增一次点击、不再提供额外能力。
+	/// 现在页面只有一种搜法,提示语也不再需要按 tab 切换。
+	private static let searchPlaceholder = "粘网址,或输入关键词搜索"
 
 	/// 搜索栏。
 	///
@@ -82,18 +60,32 @@ import os
 	/// 改在 `NNWMenu.show` 里解决 —— 它现在会顺着 presented 链走到**最顶上那一层**再弹,
 	/// 而不是发现"自己名下已经在弹东西"就放弃。详见那个方法的注释。
 	private let searchController = UISearchController(searchResultsController: nil)
-	private lazy var sourceControl: UISegmentedControl = {
-		let control = UISegmentedControl(items: Source.allCases.map { $0.title })
-		control.selectedSegmentIndex = 0
-		control.addTarget(self, action: #selector(sourceChanged), for: .valueChanged)
-		return control
-	}()
 
-	private var source: Source {
-		Source(rawValue: sourceControl.selectedSegmentIndex) ?? .podcast
+	/// [发现] 2026-08-11:一组同类别的搜索结果,按类别分节展示、可以点标题收起/展开。
+	///
+	/// 「全部」tab 输入关键词时,不再只搜播客——播客/Reddit/YouTube 并行搜,
+	/// 一次给三组结果,按类别分节摆在同一个列表里(用户 2026-08-11 要求)。
+	/// 其余情况(具体 tab、或「全部」tab 里输入的是网址)结果只有一类,
+	/// 就是一个只有一组的列表——**统一用同一套数据结构和同一套表格代码**,
+	/// 不为"单类别"和"多类别"分别写一遍表格逻辑。
+	private struct ResultGroup {
+		let kind: FeedSearchResult.Kind
+		var results: [FeedSearchResult] = []
+		/// 这一类没有结果时,给用户看的原因(没配 API Key / 真的没搜到 / 报错了)。
+		/// `results` 非空时这个字段不显示。
+		var statusMessage: String?
+		var isExpanded = true
 	}
 
-	private var results = [FeedSearchResult]()
+	private var groups = [ResultGroup]()
+
+	/// 四个类别按固定顺序摆(2026-08-12 用户拍板:网站最前,其次播客、YouTube、Reddit)。
+	private static let unifiedKindOrder: [FeedSearchResult.Kind] = [.website, .podcast, .youtube, .reddit]
+
+	/// 摊平所有组的结果,给"这条搜到过吗"之类跨组的判断用。
+	private var allResults: [FeedSearchResult] {
+		groups.flatMap { $0.results }
+	}
 
 	/// 已经订阅成功的那几条,用来在行上打勾 —— 让用户看得出哪些已经加过了
 	private var subscribedURLs = Set<String>()
@@ -155,24 +147,13 @@ import os
 		AppAppearance.applyPaperStyle(to: tableView)
 
 		searchController.searchBar.delegate = self
-		searchController.searchBar.placeholder = source.placeholder
+		searchController.searchBar.placeholder = Self.searchPlaceholder
 		searchController.searchBar.autocapitalizationType = .none
 		searchController.searchBar.autocorrectionType = .no
 		searchController.obscuresBackgroundDuringPresentation = false
 		navigationItem.searchController = searchController
 		navigationItem.hidesSearchBarWhenScrolling = false
 		definesPresentationContext = true
-
-		// 分段控件放在表头,始终可见(搜索框由系统摆在底部,不占这里)
-		let header = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
-		header.addSubview(sourceControl)
-		sourceControl.translatesAutoresizingMaskIntoConstraints = false
-		NSLayoutConstraint.activate([
-			sourceControl.leadingAnchor.constraint(equalTo: header.layoutMarginsGuide.leadingAnchor),
-			sourceControl.trailingAnchor.constraint(equalTo: header.layoutMarginsGuide.trailingAnchor),
-			sourceControl.centerYAnchor.constraint(equalTo: header.centerYAnchor)
-		])
-		tableView.tableHeaderView = header
 
 		NotificationCenter.default.addObserver(self,
 											   selector: #selector(imageDidBecomeAvailable(_:)),
@@ -195,12 +176,6 @@ import os
 		}
 	}
 
-	@objc private func sourceChanged() {
-		searchController.searchBar.placeholder = source.placeholder
-		results = []
-		tableView.reloadData()
-	}
-
 	// MARK: - 搜索
 
 	private func performSearch(_ term: String) {
@@ -209,72 +184,134 @@ import os
 
 		let keyword = term.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !keyword.isEmpty else {
-			results = []
+			groups = []
 			tableView.reloadData()
 			return
 		}
 
 		isSearching = true
-		results = []
+		groups = []
 		tableView.reloadData()
 
-		let source = self.source
-
 		searchTask = Task { [weak self] in
+
+			// [发现] 2026-08-11:输入的是**关键词**(不是网址)时,
+			// 播客/Reddit/YouTube/网站**并行搜**,一次给四组结果,按类别分组显示。
+			// 输入的是网址时结果只有一类(网址按域名直连对应类型),
+			// 走下面 do/catch 那条老路,只是把单一结果包成一个只有一组的列表,
+			// 表格代码不用分两套。判断逻辑在 FeedQueryRouter 里,
+			// 单独拆出来是为了能离线跑测试(初版就是靠那批测试抓出
+			// 「不带 https:// 但带路径的网址会被误判成关键词」这个 bug)。
+			if case .podcastKeyword(let unified) = FeedQueryRouter.route(for: keyword) {
+				let built = await Self.unifiedSearch(unified)
+				guard !Task.isCancelled, let self else { return }
+				self.isSearching = false
+				self.groups = built
+				self.tableView.reloadData()
+				return
+			}
+
 			do {
+				let kind: FeedSearchResult.Kind
 				let found: [FeedSearchResult]
-				switch source {
-				case .all:
-					// 「全部」不自己干活,只负责判断该交给谁 —— 判断逻辑在
-					// FeedQueryRouter 里,单独拆出来是为了能离线跑测试
-					// (初版就是靠那批测试抓出「不带 https:// 但带路径的网址
-					//  会被误判成关键词」这个 bug)
-					switch FeedQueryRouter.route(for: keyword) {
-					case .podcastKeyword(let term):
-						found = try await PodcastSearcher.search(term)
-					case .reddit(let name):
-						found = RedditFeedBuilder.results(subreddit: name)
-					case .youtube(let text):
-						found = [try await YouTubeFeedResolver.resolve(text)]
-					case .website(let text):
-						found = try await WebsiteFeedResolver.search(text)
-					case .unsupportedKeyword(let hint):
-						throw FeedSearchError.keywordNotSupported(hint: hint)
-					}
 
-				case .podcast:
+				switch FeedQueryRouter.route(for: keyword) {
+				case .podcastKeyword:
+					// 已经在上面处理过、提前 return 了,这里理论上到不了这一支,
+					// 留着只是让 switch 完整、不崩。
+					kind = .podcast
 					found = try await PodcastSearcher.search(keyword)
-				case .reddit:
-					guard let name = RedditFeedBuilder.subredditName(from: keyword) else {
-						throw FeedSearchError.badSubredditName
-					}
-					// 本地拼地址,不发网络请求 —— 把 Reddit 的请求配额留给真正要紧的订阅那一步。
-					// 原因详见 RedditFeedBuilder.results 的注释。
+				case .reddit(let name):
+					kind = .reddit
 					found = RedditFeedBuilder.results(subreddit: name)
-
-				case .youtube:
-					found = [try await YouTubeFeedResolver.resolve(keyword)]
-
-				case .website:
+				case .youtube(let text):
+					kind = .youtube
+					found = [try await YouTubeFeedResolver.resolve(text)]
+				case .website(let text):
 					// 在**搜索阶段**就把 feed 找出来,而不是等订阅时再发现。
 					// 初版是后者(把网址原样交给 createFeed,指望上游发现),
 					// 实测好几个网站都订不上 —— 详见 WebsiteFeedResolver 的注释。
-					found = try await WebsiteFeedResolver.search(keyword)
+					kind = .website
+					found = try await WebsiteFeedResolver.search(text)
+				case .unsupportedKeyword(let hint):
+					throw FeedSearchError.keywordNotSupported(hint: hint)
 				}
 
 				// 任务被取消(用户改了关键词)就什么都别做,别把旧结果写回界面
 				guard !Task.isCancelled, let self else { return }
 				self.isSearching = false
-				self.results = found
+				var group = ResultGroup(kind: kind, results: found)
+				if found.isEmpty {
+					// 没抛错、但也没搜到东西——给一行说明,别让这一组的 section 光秃秃的。
+					group.statusMessage = Self.emptyMessage(for: kind)
+				}
+				self.groups = [group]
 				self.tableView.reloadData()
 
 			} catch {
 				guard !Task.isCancelled, let self else { return }
 				self.isSearching = false
-				self.results = []
+				self.groups = []
 				self.tableView.reloadData()
 				self.presentError(error)
 			}
+		}
+	}
+
+	/// 播客/Reddit/YouTube/网站并行搜,**一类失败不连累其它三类**——
+	/// 比如没配 Reddit API Key,或者网站那条(Feedly 未公开接口)恰好挂了,
+	/// 别的类照常出结果,失败的那一组只显示自己的原因。
+	private static func unifiedSearch(_ keyword: String) async -> [ResultGroup] {
+
+		async let podcastOutcome = attempt { try await PodcastSearcher.search(keyword) }
+		async let redditOutcome = attempt { try await RedditSearcher.search(keyword) }
+		async let youtubeOutcome = attempt { try await YouTubeSearcher.search(keyword) }
+		async let websiteOutcome = attempt { try await WebsiteSearcher.search(keyword) }
+
+		let (podcast, reddit, youtube, website) = await (podcastOutcome, redditOutcome, youtubeOutcome, websiteOutcome)
+
+		// 按 kind 取对应的结果——不依赖数组下标位置对齐(那种写法两边顺序一旦
+		// 各改各的就会悄悄错位,这里用 switch 直接查,谁改了 unifiedKindOrder 都不会串)。
+		func outcome(for kind: FeedSearchResult.Kind) -> (results: [FeedSearchResult], error: Error?) {
+			switch kind {
+			case .podcast: return podcast
+			case .reddit: return reddit
+			case .youtube: return youtube
+			case .website: return website
+			}
+		}
+
+		return unifiedKindOrder.map { kind in
+			let outcome = outcome(for: kind)
+			// [发现] 2026-08-12 用户要求:网站排最前、默认展开;播客/YouTube/Reddit
+			// 默认收起——网站是最常搜的一类,其余三类先收着,列表不至于一屏全是结果。
+			var group = ResultGroup(kind: kind, results: outcome.results, isExpanded: kind == .website)
+			if outcome.results.isEmpty {
+				group.statusMessage = outcome.error.map(Self.friendlyMessage(for:))
+					?? Self.emptyMessage(for: kind)
+			}
+			return group
+		}
+	}
+
+	private static func attempt(_ work: () async throws -> [FeedSearchResult]) async -> (results: [FeedSearchResult], error: Error?) {
+		do {
+			return (try await work(), nil)
+		} catch {
+			return ([], error)
+		}
+	}
+
+	private static func friendlyMessage(for error: Error) -> String {
+		(error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+	}
+
+	private static func emptyMessage(for kind: FeedSearchResult.Kind) -> String {
+		switch kind {
+		case .podcast: return "没有找到匹配的播客。"
+		case .reddit: return "没有找到匹配的 Reddit 版块。"
+		case .youtube: return "没有找到匹配的 YouTube 频道。"
+		case .website: return "没有找到匹配的网站。"
 		}
 	}
 
@@ -479,36 +516,80 @@ import os
 	}
 
 	// MARK: - 表格
+	//
+	// [发现] 2026-08-11:section 0 恒是「订阅到」;从 section 1 起,每个 `groups`
+	// 元素占一个 section,标题栏可以点击收起/展开(`viewForHeaderInSection`)。
+	// 这一套结构不管是"全部 tab 并行搜出三类"还是"具体 tab / 网址只搜出一类"
+	// 都通用——只是分组数量不同,不需要两套表格代码。
 
-	override func numberOfSections(in tableView: UITableView) -> Int { 2 }
+	/// 这个 indexPath 指向的到底是什么:一条真实结果,还是一行"这一类没有结果"的说明。
+	private enum Row {
+		case result(FeedSearchResult)
+		case status(String)
+	}
+
+	private func row(at indexPath: IndexPath) -> Row? {
+		guard indexPath.section >= 1, indexPath.section - 1 < groups.count else { return nil }
+		let group = groups[indexPath.section - 1]
+		guard group.isExpanded else { return nil }
+		if !group.results.isEmpty {
+			guard indexPath.row < group.results.count else { return nil }
+			return .result(group.results[indexPath.row])
+		}
+		guard let message = group.statusMessage else { return nil }
+		return .status(message)
+	}
+
+	override func numberOfSections(in tableView: UITableView) -> Int {
+		1 + groups.count
+	}
 
 	override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-		section == 0 ? 1 : results.count
+		if section == 0 { return 1 }
+		let group = groups[section - 1]
+		guard group.isExpanded else { return 0 }
+		return group.results.isEmpty ? (group.statusMessage != nil ? 1 : 0) : group.results.count
 	}
 
 	override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-		if section == 0 { return "订阅到" }
-		if isSearching { return "搜索中…" }
-		return results.isEmpty ? nil : "搜索结果"
+		// 分组的头改走自绘 view(见 viewForHeaderInSection),这里只管 section 0。
+		section == 0 ? "订阅到" : nil
+	}
+
+	override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+		guard section >= 1, section - 1 < groups.count else { return nil }
+		let group = groups[section - 1]
+		let header = NNWDiscoveryGroupHeaderView()
+		header.titleLabel.text = group.results.isEmpty ? group.kind.label : "\(group.kind.label)(\(group.results.count))"
+		header.chevron.image = UIImage(systemName: group.isExpanded ? "chevron.down" : "chevron.right")
+		header.onTap = { [weak self] in self?.toggleGroup(section: section) }
+		return header
+	}
+
+	override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+		UITableView.automaticDimension
+	}
+
+	/// 点分组标题:收起/展开这一组,只刷新这一个 section。
+	private func toggleGroup(section: Int) {
+		let index = section - 1
+		guard groups.indices.contains(index) else { return }
+		groups[index].isExpanded.toggle()
+		tableView.reloadSections(IndexSet(integer: section), with: .automatic)
 	}
 
 	override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-		guard section == 1, !isSearching, results.isEmpty else { return nil }
-		switch source {
-		case .all:
-			return "粘一个网址,或者输入名称搜播客 —— 不用先选类型,会自动判断。\n\n"
-				+ "YouTube 频道、Reddit 版块、播客、普通网站都从这里加。\n"
-				+ "上面几个分类只是用来缩小范围的,平时不用管。\n\n"
-				+ "点一条结果可以先进去试读;行尾的 ⊕ 才是订阅,绿勾表示已订阅(再点一下取消)。"
-		case .podcast:
-			return "输入播客名称搜索。点结果可以先试读,点行尾 ⊕ 订阅。"
-		case .reddit:
-			return "Reddit 没有公开的版块搜索接口,所以需要你直接输入版块名(例如 apple、r/apple,或粘一个 Reddit 链接)。会列出「每日 / 每周 / 每月 / 实时热门」四种,挑一个订阅。\n\n版块名对不对要到订阅时才知道 —— 这是有意的,Reddit 限流很严,把请求留给订阅那一步更划算。如果订阅失败,先等一两分钟再试,多半是限流而不是名字错了。"
-		case .youtube:
-			return "粘频道主页地址(youtube.com/@名字),或者直接输入 @名字。\n\n注意要频道的地址,不是某个视频播放页的地址。订阅的是 YouTube 官方 RSS,每次频道更新都会收到。"
-		case .website:
-			return "粘网站地址就行,不用自己去找 RSS 地址 —— 订阅时会自动从网页里找出来。\n\n少写 https:// 也没关系,会自动补。"
-		}
+		// 这段引导文字只在"还没搜过"(groups 是空的)的时候出现,垫在唯一存在的
+		// section 0 下面。真的搜过之后,每个分组自己的标题/说明行已经够用了,
+		// 不需要再叠一段通用文案。
+		guard section == 0, !isSearching, groups.isEmpty else { return nil }
+		return "输入关键词会**同时**搜网站 / 播客 / YouTube / Reddit 四类,结果按类别分组显示,\n"
+			+ "点分组标题可以收起/展开(网站默认展开,其余三类默认收起)。\n"
+			+ "粘一个网址则直接按网址类型处理(YouTube / Reddit / 普通网站),不用先搜索。\n\n"
+			+ "Reddit 和 YouTube 需要先在 设置 → 文章 → 订阅发现 API Key 里填好凭据才能搜到结果,\n"
+			+ "网站那一类不需要凭据,但走的是一个非官方接口,偶尔搜不到属于正常情况;\n"
+			+ "都没配置/都搜不到也不影响播客和粘网址订阅。\n\n"
+			+ "点一条结果可以先进去试读;行尾的 ⊕ 才是订阅,绿勾表示已订阅(再点一下取消)。"
 	}
 
 	override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -519,23 +600,39 @@ import os
 			cell.textLabel?.text = "文件夹"
 			cell.detailTextLabel?.text = folderLabel
 			cell.accessoryType = .disclosureIndicator
+			cell.selectionStyle = .default
 			return cell
 		}
 
-		let result = results[indexPath.row]
-		cell.textLabel?.text = result.title
-		cell.textLabel?.numberOfLines = 2
-		cell.detailTextLabel?.text = result.subtitle
-		cell.detailTextLabel?.numberOfLines = 1
-		cell.detailTextLabel?.textColor = .secondaryLabel
-		cell.accessoryView = accessoryView(for: result, row: indexPath.row)
-		configureIcon(on: cell, for: result)
+		switch row(at: indexPath) {
 
-		// 已经订阅过的:文字调淡 + 绿勾,一眼认出"这个已经有了"。
-		// (T30 时代"点不动"是因为点行=订阅;Phase B 起点行=试读,
-		//  已订阅的源也可以进去看,所以行恢复可点,"已订阅"只由绿勾和淡字表达。)
-		cell.selectionStyle = .default
-		cell.textLabel?.textColor = isAlreadySubscribed(result) ? .secondaryLabel : .label
+		case .status(let message):
+			cell.textLabel?.text = message
+			cell.textLabel?.numberOfLines = 0
+			cell.textLabel?.textColor = .secondaryLabel
+			cell.detailTextLabel?.text = nil
+			cell.accessoryView = nil
+			cell.imageView?.image = nil
+			cell.selectionStyle = .none
+
+		case .result(let result):
+			cell.textLabel?.text = result.title
+			cell.textLabel?.numberOfLines = 2
+			cell.detailTextLabel?.text = result.subtitle
+			cell.detailTextLabel?.numberOfLines = 1
+			cell.detailTextLabel?.textColor = .secondaryLabel
+			cell.accessoryView = accessoryView(for: result)
+			configureIcon(on: cell, for: result)
+
+			// 已经订阅过的:文字调淡 + 绿勾,一眼认出"这个已经有了"。
+			// (T30 时代"点不动"是因为点行=订阅;Phase B 起点行=试读,
+			//  已订阅的源也可以进去看,所以行恢复可点,"已订阅"只由绿勾和淡字表达。)
+			cell.selectionStyle = .default
+			cell.textLabel?.textColor = isAlreadySubscribed(result) ? .secondaryLabel : .label
+
+		case .none:
+			break
+		}
 
 		return cell
 	}
@@ -580,7 +677,7 @@ import os
 	/// 图标要等到用户滚动列表才会冒出来。(做法抄的是本 fork 的 ArticleThumbnail。)
 	@objc private func imageDidBecomeAvailable(_ note: Notification) {
 		guard let url = note.userInfo?["url"] as? String,
-			  results.contains(where: { $0.iconURL == url }) else {
+			  allResults.contains(where: { $0.iconURL == url }) else {
 			return
 		}
 		tableView.reloadData()
@@ -595,7 +692,11 @@ import os
 	/// 之所以把状态全部收在这一个地方,是因为改造前「订阅到没到」被
 	/// 导航栏的「完成」和行尾的对勾两处同时表达,用户不知道该信哪个。
 	/// 现在:**一个地方说一件事。**
-	private func accessoryView(for result: FeedSearchResult, row: Int) -> UIView {
+	///
+	/// [发现] 2026-08-11:结果分组之后,一个"行号"不再能唯一定位一条结果
+	/// (同一个行号在不同分组里指的是不同的东西)。原来靠 `button.tag = row`
+	/// 定位,现在改成 `UIAction` 闭包直接捕获 `result` 本身,不再需要行号。
+	private func accessoryView(for result: FeedSearchResult) -> UIView {
 
 		// 转圈要放在最前面判断:取消订阅进行中时,账户里可能还查得到这个源,
 		// 先判断"已订阅"的话就会显示成绿勾,转圈就永远轮不到了
@@ -614,8 +715,14 @@ import os
 			let button = UIButton(configuration: configuration)
 			button.tintColor = .systemGreen
 			button.accessibilityLabel = "取消订阅"
-			button.tag = row
-			button.addTarget(self, action: #selector(unsubscribeButtonTapped(_:)), for: .touchUpInside)
+			// 点绿勾 = 直接取消订阅。2026-07-29 加;初版有二次确认,用户验收后要求去掉 ——
+			// 误触的挽回成本很低:行还在原地,绿勾变回加号,再点一下就订回来了。
+			button.addAction(UIAction { [weak self] _ in
+				guard let self,
+					  !self.subscribingURLs.contains(result.feedURL),
+					  !self.unsubscribingURLs.contains(result.feedURL) else { return }
+				self.unsubscribe(result)
+			}, for: .touchUpInside)
 			button.sizeToFit()
 			return button
 		}
@@ -627,39 +734,14 @@ import os
 		let button = UIButton(configuration: configuration)
 		button.tintColor = .tintColor
 		button.accessibilityLabel = "订阅"
-		// 用行号定位是哪一条。安全的前提是:每次结果变化都会 reloadData,
-		// 所以按钮上的行号和当前列表永远是一致的。
-		button.tag = row
-		button.addTarget(self, action: #selector(subscribeButtonTapped(_:)), for: .touchUpInside)
+		button.addAction(UIAction { [weak self] _ in
+			guard let self,
+				  !self.subscribedURLs.contains(result.feedURL),
+				  !self.subscribingURLs.contains(result.feedURL) else { return }
+			self.subscribe(to: result)
+		}, for: .touchUpInside)
 		button.sizeToFit()
 		return button
-	}
-
-	@objc private func subscribeButtonTapped(_ sender: UIButton) {
-		guard sender.tag >= 0, sender.tag < results.count else {
-			return
-		}
-		let result = results[sender.tag]
-		guard !subscribedURLs.contains(result.feedURL),
-			  !subscribingURLs.contains(result.feedURL) else {
-			return
-		}
-		subscribe(to: result)
-	}
-
-	/// 点绿勾 = 直接取消订阅。2026-07-29 新增;
-	/// 初版有二次确认,用户验收后要求去掉 —— 误触的挽回成本很低:
-	/// 行还在原地,绿勾变回加号,再点一下就订回来了。
-	@objc private func unsubscribeButtonTapped(_ sender: UIButton) {
-		guard sender.tag >= 0, sender.tag < results.count else {
-			return
-		}
-		let result = results[sender.tag]
-		guard !subscribingURLs.contains(result.feedURL),
-			  !unsubscribingURLs.contains(result.feedURL) else {
-			return
-		}
-		unsubscribe(result)
 	}
 
 	override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -673,7 +755,7 @@ import os
 		// 点整行 = **试读**(Phase B,2026-07-29 起):不订阅,先进去看这个源的文章。
 		// 订阅收敛到两个地方:行尾的 ⊕,和试读页右上角的「订阅」按钮。
 		// (Phase A 以前"点行=订阅",行为已按用户需求重新分配。)
-		let result = results[indexPath.row]
+		guard case .result(let result)? = row(at: indexPath) else { return }
 		let preview = FeedPreviewViewController(result: result, subscriptionHandler: self)
 		navigationController?.pushViewController(preview, animated: true)
 	}
@@ -697,6 +779,55 @@ extension FeedDiscoveryViewController: FeedPreviewSubscriptionHandling {
 			return
 		}
 		subscribe(to: result, completion: completion)
+	}
+}
+
+// MARK: - 分组标题(可点击收起/展开)
+
+/// [发现] 2026-08-11 新增。「播客(12)」这样一行,带一个方向随展开状态翻转的箭头,
+/// 整行可点。不用 `UIButton.Configuration` 拼标题+图标,直接手摆一个
+/// `UILabel` + `UIImageView` 更好控制字号/间距,行为也更好预测。
+private final class NNWDiscoveryGroupHeaderView: UIView {
+
+	let titleLabel = UILabel()
+	let chevron = UIImageView()
+	var onTap: (() -> Void)?
+
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+
+		titleLabel.font = .preferredFont(forTextStyle: .footnote).bold()
+		titleLabel.textColor = .secondaryLabel
+		titleLabel.adjustsFontForContentSizeCategory = true
+
+		chevron.tintColor = .tertiaryLabel
+		chevron.contentMode = .scaleAspectFit
+
+		let stack = UIStackView(arrangedSubviews: [titleLabel, chevron])
+		stack.axis = .horizontal
+		stack.alignment = .center
+		stack.spacing = 4
+		stack.translatesAutoresizingMaskIntoConstraints = false
+		addSubview(stack)
+
+		NSLayoutConstraint.activate([
+			stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+			stack.trailingAnchor.constraint(lessThanOrEqualTo: layoutMarginsGuide.trailingAnchor),
+			// 上下都钉住(不是只用 centerY):`heightForHeaderInSection` 用的是
+			// automaticDimension,得靠这两条约束把内容高度一路传到这个 view 的高度上。
+			stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+			stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
+		])
+
+		isUserInteractionEnabled = true
+		addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+	}
+
+	@available(*, unavailable)
+	required init?(coder: NSCoder) { fatalError("不从故事板加载") }
+
+	@objc private func tapped() {
+		onTap?()
 	}
 }
 
