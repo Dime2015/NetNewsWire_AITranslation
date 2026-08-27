@@ -585,6 +585,7 @@ struct SidebarItemNode: Hashable, Sendable {
 		guard let feed = notification.userInfo?[UserInfoKey.feed] as? Feed else {
 			return
 		}
+		FeedOrderStore.shared.placeNewFeedAtTop(feedID: feed.feedID)	// [管理] 新订阅的源排到列表最上面
 		discloseFeed(feed, animations: [.scroll, .navigation])
 	}
 

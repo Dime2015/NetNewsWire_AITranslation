@@ -213,6 +213,32 @@ import RSTree
 		save()
 	}
 
+	/// [管理] 2026-08-12 新增。新订阅的源要出现在列表最上面(指定了文件夹,
+	/// 就是文件夹内最上面),**越新订阅的排越靠上**——用户要求。
+	///
+	/// 做法:给新源发一个"比谁都小"的负数权重。已有的权重要么是拖出来的
+	/// `0、1、2…`,要么是没拖过的兜底权重(源 1,000,000+、文件夹 2,000,000+,
+	/// 见 `fallbackWeights`)——**全都 ≥ 0**,负数天然排到最前面,不需要现算
+	/// "这个容器眼下最小的权重是多少"。`nextTopWeight` 每次再减一,
+	/// 同一批新订阅的源之间也天然是"最后订阅的最靠上"。
+	///
+	/// ⚠️ 不需要知道订阅到了哪个容器——权重比较只发生在**同一个容器内部的兄弟节点之间**
+	/// (`sortedFeeds`/`sortedNodes` 每次都是拿一个容器的孩子列表来比),
+	/// 这个新源实际落在哪个文件夹,由 `Account.createFeed` 的 `container` 参数决定,
+	/// 这里只要给它一个全局唯一、比 0 还小的数即可。
+	private static let nextTopWeightKey = "nnwFeedOrderNextTopWeight"
+
+	private var nextTopWeight: Double {
+		get { UserDefaults.standard.object(forKey: Self.nextTopWeightKey) as? Double ?? 0 }
+		set { UserDefaults.standard.set(newValue, forKey: Self.nextTopWeightKey) }
+	}
+
+	func placeNewFeedAtTop(feedID: String) {
+		nextTopWeight -= 1
+		weights[feedID] = nextTopWeight
+		save()
+	}
+
 	/// 源换了容器 → 忘掉它的位置(理由见文件头第 3 条)。
 	func forgetOrder(forFeedIDs feedIDs: [String]) {
 		guard !feedIDs.isEmpty else { return }

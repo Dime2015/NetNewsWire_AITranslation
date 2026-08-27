@@ -335,9 +335,13 @@ import os
 			self.subscribingURLs.remove(result.feedURL)
 
 			switch createResult {
-			case .success:
+			case .success(let feed):
 				self.subscribedURLs.insert(result.feedURL)
 				self.tableView.reloadData()
+				// [管理] 2026-08-12:新订阅的源排到列表最上面(用户要求)。
+				// 这一步和下面"不发 .UserDidAddFeed"没有冲突——那条通知管的是
+				// "要不要导航跳过去",这里管的是"排在哪",两件事分开做。
+				FeedOrderStore.shared.placeNewFeedAtTop(feedID: feed.feedID)
 				// ⚠️ 这里刻意**不发** .UserDidAddFeed(2026-07-29 用户要求):
 				// 那个通知会被 SceneCoordinator 接住,带着导航跳进新源的文章列表 ——
 				// 而用户订阅完想留在本页继续挑。首页列表的刷新不靠它:
