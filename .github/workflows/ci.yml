@@ -20,16 +20,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install SwiftLint
         run: brew install swiftlint
 
       - name: Run SwiftLint
-        run: swiftlint lint --strict --reporter github-actions-logging
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            comparison="origin/${GITHUB_BASE_REF}...HEAD"
+          else
+            comparison="${BEFORE_SHA}...HEAD"
+          fi
+
+          changed_files="${RUNNER_TEMP}/changed-swift-files"
+          git diff --name-only --diff-filter=ACMR -z "${comparison}" -- '*.swift' > "${changed_files}"
+
+          if [[ ! -s "${changed_files}" ]]; then
+            echo "No changed Swift files to lint."
+            exit 0
+          fi
+
+          xargs -0 swiftlint lint --strict --no-cache --reporter github-actions-logging < "${changed_files}"
 
   macos-tests:
     name: macOS Tests
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -39,8 +61,23 @@ jobs:
       - name: Generate Secrets Sources
         run: PROJECT_DIR="$GITHUB_WORKSPACE" ./buildscripts/updateSecrets.sh
 
-      - name: Select Xcode 26.3
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify Xcode 27
+        run: xcodebuild -version | grep -E '^Xcode 27([.]|$)'
+
+      - name: Run Project Logic Checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          swift tools/check-js-syntax.swift
+          swiftc -o "${RUNNER_TEMP}/sim-dropzone" iOS/FolderManager/DropZoneResolver.swift tools/sim-dropzone.swift
+          "${RUNNER_TEMP}/sim-dropzone"
+          swiftc -o "${RUNNER_TEMP}/sim-feedorder" iOS/FeedListEdit/NNWFeedOrderMath.swift tools/sim-feedorder.swift
+          "${RUNNER_TEMP}/sim-feedorder"
+          swiftc -o "${RUNNER_TEMP}/sim-readingmode" iOS/ReadingMode/ReadingModeRules.swift tools/sim-readingmode.swift
+          "${RUNNER_TEMP}/sim-readingmode"
+          swiftc -o "${RUNNER_TEMP}/sim-sse" Shared/Translation/SSEStreamParser.swift tools/sim-sse.swift
+          "${RUNNER_TEMP}/sim-sse"
 
       - name: Run macOS Test Plan
         shell: bash
@@ -74,7 +111,7 @@ jobs:
 
   ios-simulator-tests:
     name: iOS Simulator Tests
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -84,8 +121,8 @@ jobs:
       - name: Generate Secrets Sources
         run: PROJECT_DIR="$GITHUB_WORKSPACE" ./buildscripts/updateSecrets.sh
 
-      - name: Select Xcode 26.3
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify Xcode 27
+        run: xcodebuild -version | grep -E '^Xcode 27([.]|$)'
 
       - name: Run iOS Test Plan
         shell: bash
@@ -102,7 +139,7 @@ jobs:
             -scheme NetNewsWire-iOS \
             -testPlan NetNewsWire-iOS \
             -xcconfig .github/ios-ci-no-signing.xcconfig \
-            -destination "platform=iOS Simulator,name=iPhone 17" \
+            -destination "platform=iOS Simulator,name=iPhone 17,OS=latest" \
             OTHER_SWIFT_FLAGS='$(inherited) -DDEBUG -DSKIP_APP_GROUP_ACCESS' \
             -resultBundlePath "$result_bundle" \
             test 2>&1 | tee "$build_log" | xcbeautify --renderer github-actions

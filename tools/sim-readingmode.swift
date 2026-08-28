@@ -33,11 +33,13 @@ struct SimReadingMode {
 		{ mode in mode != .starred || starredEnabled }
 	}
 
-	static func check(_ label: String,
-					  from: NNWReadingMode,
-					  forward: Bool,
-					  starredEnabled: Bool,
-					  expect: NNWReadingMode?) {
+	static func check(
+		_ label: String,
+		from: NNWReadingMode,
+		forward: Bool,
+		starredEnabled: Bool,
+		expect: NNWReadingMode?
+	) {
 
 		let result = NNWReadingMode.neighbour(after: from, forward: forward,
 											  isAvailable: availability(starredEnabled: starredEnabled))

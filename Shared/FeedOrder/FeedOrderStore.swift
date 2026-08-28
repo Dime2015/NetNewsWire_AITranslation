@@ -134,8 +134,12 @@ import RSTree
 	}
 
 	/// 排序规则的唯一出处:**排过的在前(按权重),没排过的在后(按名字)**。
-	private func compare(_ leftWeight: Double?, _ leftName: String,
-						 _ rightWeight: Double?, _ rightName: String) -> Bool {
+	private func compare(
+		_ leftWeight: Double?,
+		_ leftName: String,
+		_ rightWeight: Double?,
+		_ rightName: String
+	) -> Bool {
 		switch (leftWeight, rightWeight) {
 		case (let l?, let r?):
 			return l == r ? leftName.localizedStandardCompare(rightName) == .orderedAscending : l < r

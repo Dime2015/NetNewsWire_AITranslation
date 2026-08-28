@@ -36,8 +36,12 @@ static func main() {
 	var failures = 0
 	var checks = 0
 
-	func expect(_ actual: DropResolution, _ expectedTarget: DropTarget, _ expectedInsertInto: Bool,
-				_ what: String) {
+	func expect(
+		_ actual: DropResolution,
+		_ expectedTarget: DropTarget,
+		_ expectedInsertInto: Bool,
+		_ what: String
+	) {
 		checks += 1
 		let expected = DropResolution(target: expectedTarget, isInsertInto: expectedInsertInto)
 		if actual != expected {
@@ -70,8 +74,12 @@ static func main() {
 	let xRight: CGFloat = 200
 	let xLeft: CGFloat = 30
 
-	func resolve(_ anchor: DropAnchorKind, y: CGFloat, x: CGFloat = xRight,
-				 draggingFolder: Bool = false) -> DropResolution {
+	func resolve(
+		_ anchor: DropAnchorKind,
+		y: CGFloat,
+		x: CGFloat = xRight,
+		draggingFolder: Bool = false
+	) -> DropResolution {
 		DropZoneResolver.resolve(anchor: anchor,
 								 band: DropZoneResolver.band(of: CGPoint(x: x, y: y), in: row),
 								 pointX: x,
