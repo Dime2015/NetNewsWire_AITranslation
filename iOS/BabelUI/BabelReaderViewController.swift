@@ -35,23 +35,13 @@ final class BabelReaderViewController: UIViewController {
 		title = article.feed?.nameForDisplay
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close, target: self, action: #selector(closeReader)
+            image: UIImage(systemName: "chevron.left"), style: .plain,
+            target: self, action: #selector(closeReader)
         )
-        navigationItem.rightBarButtonItems = [
-            UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), style: .plain,
-                            target: self, action: #selector(openOriginal)),
-            UIBarButtonItem(image: UIImage(systemName: "ellipsis"), style: .plain,
-                            target: self, action: #selector(showActions))
-        ]
-
-		if article.preferredURL != nil {
-			navigationItem.rightBarButtonItem = UIBarButtonItem(
-				image: UIImage(systemName: "safari"),
-				style: .plain,
-				target: self,
-				action: #selector(openOriginal)
-			)
-		}
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis"), style: .plain,
+            target: self, action: #selector(showActions)
+        )
 
 		webView.isOpaque = false
 		webView.backgroundColor = .clear
@@ -86,13 +76,10 @@ final class BabelReaderViewController: UIViewController {
                                 ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")].enumerated() {
             var config = UIButton.Configuration.plain()
             config.image = UIImage(systemName: item.0)
-            config.imagePlacement = .top
-            config.imagePadding = 3
             config.baseForegroundColor = BabelPalette.mutedInk
-            config.attributedTitle = AttributedString(item.1, attributes: AttributeContainer([
-                .font: UIFont.systemFont(ofSize: 9)
-            ]))
             let button = UIButton(configuration: config)
+            button.accessibilityLabel = item.1
+            button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
             if index == 0 { button.addTarget(self, action: #selector(toggleRead), for: .touchUpInside) }
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }

@@ -144,14 +144,11 @@ final class BabelHomeViewController: UIViewController {
     private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
         var configuration = UIButton.Configuration.plain()
         configuration.image = UIImage(systemName: symbol)
-        configuration.imagePlacement = .top
-        configuration.imagePadding = 3
+        configuration.imagePlacement = .all
         configuration.baseForegroundColor = BabelPalette.mutedInk
-        configuration.attributedTitle = AttributedString(label, attributes: AttributeContainer([
-            .font: UIFont.systemFont(ofSize: 10)
-        ]))
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = label
+        button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
         return button
     }
 

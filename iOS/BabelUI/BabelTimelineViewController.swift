@@ -107,13 +107,11 @@ final class BabelTimelineViewController: UIViewController {
                                 ("circle.fill", "未读"), ("magnifyingglass", "搜索")] {
             var config = UIButton.Configuration.plain()
             config.image = UIImage(systemName: symbol)
-            config.imagePlacement = .top
-            config.imagePadding = 2
             config.baseForegroundColor = BabelPalette.mutedInk
-            config.attributedTitle = AttributedString(label, attributes: AttributeContainer([
-                .font: UIFont.systemFont(ofSize: 10)
-            ]))
-            bottom.addArrangedSubview(UIButton(configuration: config))
+            let button = UIButton(configuration: config)
+            button.accessibilityLabel = label
+            button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)
+            bottom.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
             bottom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
