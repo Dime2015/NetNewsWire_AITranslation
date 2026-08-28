@@ -109,10 +109,7 @@ import Images
 		}
 
 		#if targetEnvironment(simulator)
-		// Keep the development shell unobstructed by the system permission sheet.
-		if !ProcessInfo.processInfo.arguments.contains("-BabelShell") {
-			Self.requestNotificationAuthorization()
-		}
+		// Keep Simulator visual checks unobstructed by the system permission sheet.
 		#else
 		Self.requestNotificationAuthorization()
 		#endif

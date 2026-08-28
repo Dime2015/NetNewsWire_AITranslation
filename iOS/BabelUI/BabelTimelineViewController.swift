@@ -26,6 +26,7 @@ final class BabelTimelineViewController: UIViewController {
 	private let tableView = UITableView(frame: .zero, style: .plain)
 	private let emptyLabel = UILabel()
 	private var articles = [Article]()
+	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
 
 	init(section: BabelLibrarySection) {
@@ -160,28 +161,53 @@ final class BabelTimelineViewController: UIViewController {
 			}
 			guard !Task.isCancelled else { return }
 			articles = loaded
+			let calendar = Calendar.current
+			let grouped = Dictionary(grouping: loaded) { calendar.startOfDay(for: $0.logicalDatePublished) }
+			daySections = grouped.keys.sorted(by: >).map { date in
+				(date: date, articles: grouped[date] ?? [])
+			}
 			tableView.reloadData()
 			tableView.refreshControl?.endRefreshing()
 			emptyLabel.isHidden = !loaded.isEmpty
 		}
 	}
+
+	private static let dayFormatter: DateFormatter = {
+		let formatter = DateFormatter()
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		formatter.dateFormat = "EEEE, MMMM d, yyyy"
+		return formatter
+	}()
 }
 
 extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegate {
 
+	func numberOfSections(in tableView: UITableView) -> Int { daySections.count }
+
 	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-		articles.count
+		daySections[section].articles.count
+	}
+
+	func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+		Self.dayFormatter.string(from: daySections[section].date).uppercased()
 	}
 
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: BabelTimelineCell.reuseIdentifier, for: indexPath) as! BabelTimelineCell
-		cell.configure(article: articles[indexPath.row])
+		cell.configure(article: daySections[indexPath.section].articles[indexPath.row])
 		return cell
 	}
 
 	func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
 		tableView.deselectRow(at: indexPath, animated: true)
-		navigationController?.pushViewController(BabelReaderViewController(article: articles[indexPath.row]), animated: true)
+		navigationController?.pushViewController(BabelReaderViewController(article: daySections[indexPath.section].articles[indexPath.row]), animated: true)
+	}
+
+	func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
+		guard let header = view as? UITableViewHeaderFooterView else { return }
+		header.textLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+		header.textLabel?.textColor = BabelPalette.ink
+		header.contentView.backgroundColor = BabelPalette.background
 	}
 }
 
@@ -272,7 +298,7 @@ private final class BabelTimelineCell: UITableViewCell {
 
 	func configure(article: Article) {
 		feedLabel.text = (article.feed?.nameForDisplay ?? "订阅文章").uppercased()
-		dateLabel.text = Self.relativeFormatter.localizedString(for: article.logicalDatePublished, relativeTo: Date())
+		dateLabel.text = Self.timeFormatter.string(from: article.logicalDatePublished)
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
@@ -288,5 +314,9 @@ private final class BabelTimelineCell: UITableViewCell {
 		accessibilityLabel = "\(feedLabel.text ?? "")，\(titleLabel.text ?? "")，\(dateLabel.text ?? "")"
 	}
 
-	private static let relativeFormatter = RelativeDateTimeFormatter()
+	private static let timeFormatter: DateFormatter = {
+		let formatter = DateFormatter()
+		formatter.dateFormat = "H:mm"
+		return formatter
+	}()
 }
