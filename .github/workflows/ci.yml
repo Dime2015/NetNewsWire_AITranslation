@@ -20,12 +20,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install SwiftLint
         run: brew install swiftlint
 
       - name: Run SwiftLint
-        run: swiftlint lint --strict --reporter github-actions-logging
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            comparison="origin/${GITHUB_BASE_REF}...HEAD"
+          else
+            comparison="${BEFORE_SHA}...HEAD"
+          fi
+
+          changed_files="${RUNNER_TEMP}/changed-swift-files"
+          git diff --name-only --diff-filter=ACMR -z "${comparison}" -- '*.swift' > "${changed_files}"
+
+          if [[ ! -s "${changed_files}" ]]; then
+            echo "No changed Swift files to lint."
+            exit 0
+          fi
+
+          xargs -0 swiftlint lint --strict --no-cache --reporter github-actions-logging < "${changed_files}"
 
   macos-tests:
     name: macOS Tests

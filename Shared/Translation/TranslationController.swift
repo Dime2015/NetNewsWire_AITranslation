@@ -892,9 +892,11 @@ enum TranslationScript {
 	///   ② 这一组混进了英文原文 —— 模型做了中英对照
 	///
 	/// 只查一轮。查两轮的收益很小,却可能在模型持续不听话时反复烧钱。
-	private func recheckAndRetranslate(service: TranslationService,
-									   context: TranslationContext,
-									   webViewController: any NNWArticlePageHost) async -> Int {
+	private func recheckAndRetranslate(
+		service: TranslationService,
+		context: TranslationContext,
+		webViewController: any NNWArticlePageHost
+	) async -> Int {
 
 		guard let json = try? await webViewController.nnwTranslationFindGroupsNeedingRetranslation(),
 			  let bad = try? JSONDecoder().decode([TranslationChunk].self, from: Data(json.utf8)),
@@ -937,11 +939,13 @@ enum TranslationScript {
 	///
 	/// 顺序安全:冠军是**单独一条**顺序读取的流,每个增量都 await 完 onWinnerDelta
 	/// 才读下一行 —— 上屏天然按序,不需要额外去重/排序。
-	nonisolated private func racedStreamingTranslate(htmlChunk: String,
-													 context: TranslationContext,
-													 service: StreamingTranslationService,
-													 copies: Int,
-													 onWinnerDelta: @Sendable @escaping (String) async -> Void) async -> String? {
+	nonisolated private func racedStreamingTranslate(
+		htmlChunk: String,
+		context: TranslationContext,
+		service: StreamingTranslationService,
+		copies: Int,
+		onWinnerDelta: @Sendable @escaping (String) async -> Void
+	) async -> String? {
 
 		let gate = StreamWinnerGate()
 
@@ -974,10 +978,12 @@ enum TranslationScript {
 	///
 	/// 和下面 hedgedTranslate 的区别:对冲是"慢了才补一份"(省钱,给普通组用),
 	/// 赛跑是"一开始就全发"(费一点小钱,换关键路径的最低延迟,只给先导块用)。
-	nonisolated private func racedTranslate(htmlChunk: String,
-											context: TranslationContext,
-											service: TranslationService,
-											copies: Int) async -> String? {
+	nonisolated private func racedTranslate(
+		htmlChunk: String,
+		context: TranslationContext,
+		service: TranslationService,
+		copies: Int
+	) async -> String? {
 
 		await withTaskGroup(of: String?.self) { group in
 			for _ in 0..<max(copies, 1) {
@@ -999,10 +1005,12 @@ enum TranslationScript {
 	}
 
 	/// nonisolated:只用到入参、不碰实例状态,这样它能在并发任务里直接跑,不必回主线程。
-	nonisolated private func hedgedTranslate(htmlChunk: String,
-											 context: TranslationContext,
-											 service: TranslationService,
-											 delay: TimeInterval) async -> String? {
+	nonisolated private func hedgedTranslate(
+		htmlChunk: String,
+		context: TranslationContext,
+		service: TranslationService,
+		delay: TimeInterval
+	) async -> String? {
 
 		await withTaskGroup(of: TranslationHedgeSignal.self) { group in
 
@@ -1057,10 +1065,12 @@ enum TranslationScript {
 	///
 	/// 失败的段会**自动重试一次**。之前没有重试,导致偶发的限流/超时
 	/// 直接表现为"某几段没翻",而且不告诉用户。
-	private func translateInParallel(_ items: [TranslationWorkItem],
-									 service: TranslationService,
-									 context: TranslationContext,
-									 webViewController: any NNWArticlePageHost) async -> Int {
+	private func translateInParallel(
+		_ items: [TranslationWorkItem],
+		service: TranslationService,
+		context: TranslationContext,
+		webViewController: any NNWArticlePageHost
+	) async -> Int {
 
 		var failureCount = 0
 		var pending = items
