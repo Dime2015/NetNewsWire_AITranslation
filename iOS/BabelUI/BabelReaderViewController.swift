@@ -82,17 +82,21 @@ final class BabelReaderViewController: UIViewController {
         bottomToolbar.backgroundColor = BabelPalette.background
         bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottomToolbar)
-        for (symbol, label) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
-                                ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")] {
+        for (index, item) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
+                                ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")].enumerated() {
             var config = UIButton.Configuration.plain()
-            config.image = UIImage(systemName: symbol)
+            config.image = UIImage(systemName: item.0)
             config.imagePlacement = .top
             config.imagePadding = 3
             config.baseForegroundColor = BabelPalette.mutedInk
-            config.attributedTitle = AttributedString(label, attributes: AttributeContainer([
+            config.attributedTitle = AttributedString(item.1, attributes: AttributeContainer([
                 .font: UIFont.systemFont(ofSize: 9)
             ]))
-            bottomToolbar.addArrangedSubview(UIButton(configuration: config))
+            let button = UIButton(configuration: config)
+            if index == 0 { button.addTarget(self, action: #selector(toggleRead), for: .touchUpInside) }
+            if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
+            if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
+            bottomToolbar.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
             bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -192,4 +196,13 @@ final class BabelReaderViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)
     }
+
+	private func updateStatus(_ key: ArticleStatus.Key, flag: Bool) {
+		guard let account = article.account else { return }
+		Task { try? await account.markArticles(articleIDs: [article.articleID], statusKey: key, flag: flag) }
+	}
+
+	@objc private func toggleRead() { updateStatus(.read, flag: !article.status.read) }
+	@objc private func toggleStar() { updateStatus(.starred, flag: !article.status.starred) }
+	@objc private func showNextArticle() { navigationController?.popViewController(animated: true) }
 }

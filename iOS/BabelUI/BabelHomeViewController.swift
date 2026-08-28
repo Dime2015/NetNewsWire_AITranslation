@@ -65,9 +65,7 @@ final class BabelHomeViewController: UIViewController {
             content.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
         ])
 
-        let logo = UIImageView(image: UIImage(systemName: "cube"))
-        logo.tintColor = BabelPalette.ink
-        logo.contentMode = .scaleAspectFit
+        let logo = BabelCubeView()
         logo.heightAnchor.constraint(equalToConstant: 150).isActive = true
         content.addArrangedSubview(logo)
 
@@ -180,4 +178,49 @@ final class BabelHomeViewController: UIViewController {
     @objc private func openUnread() { onSelectSection?(.unread) }
     @objc private func openSaved() { onSelectSection?(.saved) }
     @objc private func openGenesisV2() { onOpenGenesisV2?() }
+}
+
+private final class BabelCubeView: UIView {
+	private let cubeLayer = CAShapeLayer()
+	private let starLayer = CAShapeLayer()
+
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+		isUserInteractionEnabled = false
+		layer.addSublayer(cubeLayer)
+		layer.addSublayer(starLayer)
+	}
+	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		let side = min(bounds.width, bounds.height) * 0.34
+		let center = CGPoint(x: bounds.midX, y: bounds.midY + 2)
+		let top = CGPoint(x: center.x, y: center.y - side * 0.58)
+		let left = CGPoint(x: center.x - side * 0.88, y: center.y - side * 0.10)
+		let right = CGPoint(x: center.x + side * 0.88, y: center.y - side * 0.10)
+		let bottom = CGPoint(x: center.x, y: center.y + side * 0.52)
+		let leftBottom = CGPoint(x: left.x + 2, y: left.y + side * 0.94)
+		let rightBottom = CGPoint(x: right.x - 2, y: right.y + side * 0.94)
+
+		let path = UIBezierPath()
+		path.move(to: top); path.addLine(to: right); path.addLine(to: rightBottom)
+		path.addLine(to: bottom); path.addLine(to: leftBottom); path.addLine(to: left); path.close()
+		cubeLayer.path = path.cgPath
+		cubeLayer.fillColor = BabelPalette.ink.cgColor
+		cubeLayer.strokeColor = BabelPalette.background.cgColor
+		cubeLayer.lineWidth = 2
+
+		let star = UIBezierPath()
+		let starCenter = CGPoint(x: center.x - side * 0.42, y: center.y + side * 0.25)
+		for i in 0..<10 {
+			let angle = CGFloat(i) * .pi / 5 - .pi / 2
+			let radius = i.isMultiple(of: 2) ? side * 0.26 : side * 0.11
+			let point = CGPoint(x: starCenter.x + cos(angle) * radius, y: starCenter.y + sin(angle) * radius)
+			if i == 0 { star.move(to: point) } else { star.addLine(to: point) }
+		}
+		star.close()
+		starLayer.path = star.cgPath
+		starLayer.fillColor = BabelPalette.background.cgColor
+	}
 }
