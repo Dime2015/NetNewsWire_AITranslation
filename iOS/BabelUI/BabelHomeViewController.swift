@@ -9,6 +9,7 @@ import Articles
 final class BabelHomeViewController: UIViewController {
     var onSelectSection: ((BabelLibrarySection) -> Void)?
     var onSelectArticle: ((Article) -> Void)?
+    var onOpenFeeds: (() -> Void)?
     var onOpenGenesisV2: (() -> Void)?
 
     private let countLabel = UILabel()
@@ -175,7 +176,7 @@ final class BabelHomeViewController: UIViewController {
         }
     }
 
-    @objc private func openFeeds() { onSelectSection?(.unread) }
+    @objc private func openFeeds() { onOpenFeeds?() }
     @objc private func openUnread() { onSelectSection?(.unread) }
     @objc private func openSaved() { onSelectSection?(.saved) }
     @objc private func openGenesisV2() { onOpenGenesisV2?() }

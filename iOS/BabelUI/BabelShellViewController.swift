@@ -40,6 +40,13 @@ final class BabelShellViewController: UINavigationController {
 		homeViewController.onSelectSection = { [weak self] section in
 			self?.pushViewController(BabelTimelineViewController(section: section), animated: true)
 		}
+		homeViewController.onOpenFeeds = { [weak self] in
+			let feedsViewController = BabelFeedsViewController()
+			feedsViewController.onSelectUnread = { [weak self] in
+				self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
+			}
+			self?.pushViewController(feedsViewController, animated: true)
+		}
 		homeViewController.onSelectArticle = { [weak self] article in
 			self?.pushViewController(BabelReaderViewController(article: article), animated: true)
 		}
