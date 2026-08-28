@@ -25,6 +25,8 @@ final class BabelTimelineViewController: UIViewController {
 	private let source: Source
 	private let tableView = UITableView(frame: .zero, style: .plain)
 	private let emptyLabel = UILabel()
+	private let navTitleLabel = UILabel()
+	private let navSubtitleLabel = UILabel()
 	private var articles = [Article]()
 	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
@@ -64,6 +66,19 @@ final class BabelTimelineViewController: UIViewController {
 		title = source.title
 		view.backgroundColor = BabelPalette.background
         navigationItem.largeTitleDisplayMode = .never
+		navTitleLabel.text = source.title
+		navTitleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+		navTitleLabel.textColor = BabelPalette.ink
+		navTitleLabel.textAlignment = .center
+		navSubtitleLabel.text = ""
+		navSubtitleLabel.font = UIFont.systemFont(ofSize: 12, weight: .regular)
+		navSubtitleLabel.textColor = BabelPalette.mutedInk
+		navSubtitleLabel.textAlignment = .center
+		let navTitleStack = UIStackView(arrangedSubviews: [navTitleLabel, navSubtitleLabel])
+		navTitleStack.axis = .vertical
+		navTitleStack.alignment = .center
+		navTitleStack.spacing = 0
+		navigationItem.titleView = navTitleStack
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "ellipsis"),
             style: .plain, target: self, action: #selector(showActions)
@@ -182,6 +197,7 @@ final class BabelTimelineViewController: UIViewController {
 			}
 			guard !Task.isCancelled else { return }
 			articles = loaded
+			navSubtitleLabel.text = "\(loaded.filter { !$0.status.read }.count) Unread Items"
 			let calendar = Calendar.current
 			let grouped = Dictionary(grouping: loaded) { calendar.startOfDay(for: $0.logicalDatePublished) }
 			daySections = grouped.keys.sorted(by: >).map { date in
