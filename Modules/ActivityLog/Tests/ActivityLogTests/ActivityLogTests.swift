@@ -85,11 +85,11 @@ import Foundation
 		#expect(activity.formattedDuration == nil)
 	}
 
-	@Test func logActivityReturnsResultAndCompletesWithMessage() async {
+	@Test func logActivityReturnsResultAndCompletesWithMessage() {
 		let activityLog = ActivityLog()
 		let owner = ActivityOwner.account(accountID: "account1", displayName: "Account One")
 
-		let result = await activityLog.logActivity(owner: owner, kind: .sendArticleStatuses, successMessage: { "sent \($0)" }, {
+		let result = activityLog.logActivity(owner: owner, kind: .sendArticleStatuses, successMessage: { "sent \($0)" }, {
 			42
 		})
 
@@ -113,6 +113,7 @@ import Foundation
 
 		await #expect(throws: TestError.self) {
 			try await activityLog.logActivity(owner: owner, kind: .refreshFeedList) {
+				await Task.yield()
 				throw TestError()
 			}
 		}
@@ -123,11 +124,11 @@ import Foundation
 		#expect(activityLog.completedActivities[0].error != nil)
 	}
 
-	@Test func logActivitySuppressesDurationWhenNotSignificant() async {
+	@Test func logActivitySuppressesDurationWhenNotSignificant() {
 		let activityLog = ActivityLog()
 		let owner = ActivityOwner.account(accountID: "account1", displayName: "Account One")
 
-		await activityLog.logActivity(owner: owner, kind: .sendArticleStatuses, durationIsSignificant: { _ in false }, {
+		activityLog.logActivity(owner: owner, kind: .sendArticleStatuses, durationIsSignificant: { _ in false }, {
 		})
 
 		let activity = activityLog.completedActivities[0]
