@@ -12,7 +12,8 @@ final class BabelReaderViewController: UIViewController {
 	private let article: Article
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
-    private let bottomToolbar = UIStackView()
+	private let bottomToolbar = UIStackView()
+	private var readerMode = false
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -83,6 +84,7 @@ final class BabelReaderViewController: UIViewController {
             if index == 0 { button.addTarget(self, action: #selector(toggleRead), for: .touchUpInside) }
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
+            if index == 3 { button.addTarget(self, action: #selector(toggleReaderMode), for: .touchUpInside) }
             bottomToolbar.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
@@ -120,10 +122,10 @@ final class BabelReaderViewController: UIViewController {
 				background: transparent !important;
 				color: #1a1916;
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-				font-size: 17px;
-				line-height: 1.55;
+				font-size: \(readerMode ? 19 : 17)px;
+				line-height: \(readerMode ? 1.72 : 1.55);
 				margin: 0 auto;
-				max-width: 680px;
+				max-width: \(readerMode ? 560 : 680)px;
 				padding: 34px 25px 80px;
 			}
 			.headerContainer { margin-bottom: 30px; }
@@ -201,5 +203,10 @@ final class BabelReaderViewController: UIViewController {
 
 	@objc private func toggleRead() { updateStatus(.read, flag: !article.status.read) }
 	@objc private func toggleStar() { updateStatus(.starred, flag: !article.status.starred) }
-	@objc private func showNextArticle() { navigationController?.popViewController(animated: true) }
+    @objc private func showNextArticle() { navigationController?.popViewController(animated: true) }
+
+	@objc private func toggleReaderMode() {
+		readerMode.toggle()
+		renderArticle()
+	}
 }

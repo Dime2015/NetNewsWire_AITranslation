@@ -34,6 +34,9 @@ final class BabelFeedsViewController: UITableViewController {
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
+        let refresh = UIRefreshControl()
+        refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
+        tableView.refreshControl = refresh
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .AccountDidDownloadArticles, object: nil)
@@ -54,6 +57,13 @@ final class BabelFeedsViewController: UITableViewController {
     }
 
     @objc private func rebuild() { rebuildRows() }
+
+    @objc private func refreshFeeds() {
+        AccountManager.shared.refreshAllWithoutWaiting(errorHandler: ErrorHandler.log)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.tableView.refreshControl?.endRefreshing()
+        }
+    }
 
     @objc private func showSubscribe() {
         let alert = UIAlertController(title: "Subscribe", message: "订阅发现功能仍由创世版本 2 处理。", preferredStyle: .alert)
