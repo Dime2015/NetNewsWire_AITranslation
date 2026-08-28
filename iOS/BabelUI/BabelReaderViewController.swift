@@ -178,8 +178,18 @@ final class BabelReaderViewController: UIViewController {
 
     @objc private func showActions() {
         let alert = UIAlertController(title: "文章操作", message: nil, preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "标记已读", style: .default))
-        alert.addAction(UIAlertAction(title: "分享", style: .default))
+        alert.addAction(UIAlertAction(title: article.status.read ? "标记未读" : "标记已读", style: .default) { [weak self] _ in
+			self?.updateStatus(.read, flag: !(self?.article.status.read ?? false))
+		})
+		if article.preferredURL != nil {
+			alert.addAction(UIAlertAction(title: "在浏览器中打开", style: .default) { [weak self] _ in self?.openOriginal() })
+		}
+        alert.addAction(UIAlertAction(title: "分享", style: .default) { [weak self] _ in
+			guard let self else { return }
+			let items: [Any] = [BabelLibrary.displayTitle(for: article), article.preferredURL as Any].compactMap { $0 }
+			let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+			self.present(controller, animated: true)
+		})
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)
     }

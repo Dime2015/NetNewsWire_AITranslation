@@ -152,10 +152,23 @@ final class BabelTimelineViewController: UIViewController {
 
     @objc private func showActions() {
 		let alert = UIAlertController(title: source.title, message: nil, preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "标记全部已读", style: .default))
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        present(alert, animated: true)
+		alert.addAction(UIAlertAction(title: "标记全部已读", style: .default) { [weak self] _ in
+			self?.markAllRead()
+		})
+		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+		present(alert, animated: true)
     }
+
+	private func markAllRead() {
+		let unread = articles.filter { !$0.status.read }
+		let grouped = Dictionary(grouping: unread, by: { $0.accountID })
+		Task { @MainActor in
+			for (accountID, accountArticles) in grouped {
+				guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
+				try? await account.markArticles(articleIDs: Set(accountArticles.map(\.articleID)), statusKey: .read, flag: true)
+			}
+		}
+	}
 
 	private func reloadArticles() {
 		loadTask?.cancel()
