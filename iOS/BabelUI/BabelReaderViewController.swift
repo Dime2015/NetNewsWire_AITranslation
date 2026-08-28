@@ -31,6 +31,11 @@ final class BabelReaderViewController: UIViewController {
 		renderArticle()
 	}
 
+	override func viewDidAppear(_ animated: Bool) {
+		super.viewDidAppear(animated)
+		if !article.status.read { updateStatus(.read, flag: true) }
+	}
+
 	private func configureView() {
 		view.backgroundColor = BabelPalette.background
 		title = article.feed?.nameForDisplay
