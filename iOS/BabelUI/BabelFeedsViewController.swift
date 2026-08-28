@@ -70,6 +70,10 @@ final class BabelFeedsViewController: UITableViewController {
         content.textProperties.color = BabelPalette.ink
         content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
         content.secondaryTextProperties.color = BabelPalette.mutedInk
+        content.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 22, bottom: 0, trailing: 22)
+        content.imageProperties.maximumSize = CGSize(width: 34, height: 34)
+        content.imageProperties.reservedLayoutSize = CGSize(width: 42, height: 34)
+        content.textProperties.adjustsFontForContentSizeCategory = true
         switch rows[indexPath.row] {
         case .unread:
             content.text = "Unread"
