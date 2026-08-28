@@ -14,6 +14,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	var window: UIWindow?
 	var coordinator: SceneCoordinator!
+	private var genesisV2RootViewController: RootSplitViewController?
 
 	// UIWindowScene delegate
 
@@ -24,6 +25,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 		NNWAccentTint.install(in: window!)
 
 		let rootViewController = window!.rootViewController as! RootSplitViewController
+		genesisV2RootViewController = rootViewController
 		rootViewController.presentsWithGesture = true
 		rootViewController.showsSecondaryOnlyButton = true
 		rootViewController.preferredDisplayMode = UISplitViewController.DisplayMode(rawValue: AppDefaults.shared.splitViewPreferredDisplayMode) ?? .oneBesideSecondary
@@ -40,6 +42,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 		coordinator.restoreWindowState(activity: session.stateRestorationActivity)
 
 		updateUserInterfaceStyle()
+		installBabelShellIfRequested()
 
 		NotificationCenter.default.addObserver(self, selector: #selector(handleUserInterfaceColorPaletteDidUpdate(_:)), name: .userInterfaceColorPaletteDidUpdate, object: AppDefaults.self)
 
@@ -54,6 +57,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 		}
 
 		if let notificationResponse = connectionOptions.notificationResponse {
+			showGenesisV2Interface()
 			coordinator.handle(notificationResponse)
 			return
 		}
@@ -61,6 +65,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 		// Handle activities from external sources (Handoff, Spotlight, Siri Shortcuts).
 		// Skip handling session.stateRestorationActivity since UserDefaults now handles state restoration.
 		if let userActivity = connectionOptions.userActivities.first {
+			showGenesisV2Interface()
 			coordinator.handle(userActivity)
 		}
 	}
@@ -73,6 +78,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
 		appDelegate.resumeIfNecessary()
+		showGenesisV2Interface()
 		coordinator.handle(userActivity)
 	}
 
@@ -95,6 +101,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	func handle(_ response: UNNotificationResponse) {
 		appDelegate.resumeIfNecessary()
+		showGenesisV2Interface()
 		coordinator.handle(response)
 	}
 
@@ -110,6 +117,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	func scene(_ scene: UIScene, openURLContexts urlContexts: Set<UIOpenURLContext>) {
 		guard let context = urlContexts.first else { return }
+		showGenesisV2Interface()
 
 		DispatchQueue.main.async {
 
@@ -227,7 +235,29 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 private extension SceneDelegate {
 
+	func installBabelShellIfRequested() {
+		guard BabelShellConfiguration.isEnabled else { return }
+
+		let shellViewController = BabelShellViewController()
+		shellViewController.onOpenGenesisV2 = { [weak self] in
+			self?.showGenesisV2Interface()
+		}
+		window?.rootViewController = shellViewController
+		window?.makeKeyAndVisible()
+	}
+
+	func showGenesisV2Interface() {
+		guard let genesisV2RootViewController,
+			  window?.rootViewController !== genesisV2RootViewController else {
+			return
+		}
+
+		window?.rootViewController = genesisV2RootViewController
+		window?.makeKeyAndVisible()
+	}
+
 	func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) {
+		showGenesisV2Interface()
 		switch shortcutItem.type {
 		case "com.ranchero.NetNewsWire.FirstUnread":
 			coordinator.selectFirstUnreadInAllUnread()
