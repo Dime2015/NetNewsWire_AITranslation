@@ -31,6 +31,8 @@ final class BabelFeedsViewController: UITableViewController {
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
         tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 56, right: 0)
+        tableView.rowHeight = 64
+        tableView.estimatedRowHeight = 64
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "feed")
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
@@ -71,16 +73,19 @@ final class BabelFeedsViewController: UITableViewController {
         switch rows[indexPath.row] {
         case .unread:
             content.text = "Unread"
-            content.secondaryText = "(AccountManager.shared.unreadCount)"
+            content.secondaryText = "\(AccountManager.shared.unreadCount)"
             content.image = UIImage(systemName: "circle.fill")
+            cell.indentationLevel = 0
         case .folder(let folder):
             content.text = folder.nameForDisplay
-            content.secondaryText = "(folder.unreadCount)"
+            content.secondaryText = "\(folder.unreadCount)"
             content.image = UIImage(systemName: "chevron.down")
+            cell.indentationLevel = 0
         case .feed(let feed):
             content.text = feed.nameForDisplay
-            content.secondaryText = "(feed.unreadCount)"
-            content.image = UIImage(systemName: "square")
+            content.secondaryText = "\(feed.unreadCount)"
+            content.image = UIImage(systemName: "square.fill")
+            cell.indentationLevel = 1
         }
         content.imageProperties.tintColor = BabelPalette.mutedInk
         cell.contentConfiguration = content
