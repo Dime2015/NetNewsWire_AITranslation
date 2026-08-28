@@ -76,11 +76,20 @@ final class SettingsViewController: UITableViewController {
 		translationModelRowIndex + 1
 	}
 
+	/// [发现] 本 fork 新增:「订阅发现 API Key」排在「翻译 API Key」后面。
+	private var discoveryAPIKeysRowIndex: Int {
+		translationAPIKeyRowIndex + 1
+	}
+
 	/// [翻译] 本 fork 新增:「界面语言」这一行排在 Appearance 分区最后。
 	/// 索引取自 Storyboard 里该分区的静态行数,所以上游增删行也不会错位。
 	private var interfaceLanguageRowIndex: Int {
 		super.tableView(tableView, numberOfRowsInSection: Section.appearance.rawValue)
 	}
+
+	/// [外观] 本 fork 新增:「强调色」排在「界面语言」后面。
+	/// 换色影响全 app 走 `NNWSoftMaterial.accent` 的所有地方,见 NNWAccentPalette。
+	private var accentColorRowIndex: Int { interfaceLanguageRowIndex + 1 }
 
 	private weak var opmlAccount: Account?
 
@@ -216,8 +225,8 @@ final class SettingsViewController: UITableViewController {
 			return defaultNumberOfRows
 		case .articles:
 			// The Full Screen Articles row is iPhone-only.
-			// [翻译] 本 fork 新增:末尾多两行(翻译模型、翻译 API Key),所以 + 2
-			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 2
+			// [翻译] 本 fork 新增:末尾多三行(翻译模型、翻译 API Key、订阅发现 API Key),所以 + 3
+			return (traitCollection.userInterfaceIdiom == .phone ? ArticlesRow.allCases.count : ArticlesRow.allCases.count - 1) + 3
 		case .timeline:
 			// [界面] 藏掉最后一行「文章列表布局」(图标大小 / 行数两个滑块)。
 			// 本 fork 的列表改成了固定布局:favicon 固定小尺寸、标题+正文固定共 4 行,
@@ -225,8 +234,8 @@ final class SettingsViewController: UITableViewController {
 			// 它正好是 TimelineRow 的最后一行(rawValue = 4),所以减 1 即可,不需要重排索引。
 			return super.tableView(tableView, numberOfRowsInSection: section) - 1
 		case .appearance:
-			// [翻译] 本 fork 新增:末尾多一行「界面语言」
-			return super.tableView(tableView, numberOfRowsInSection: section) + 1
+			// [翻译] 末尾多一行「界面语言」;[外观] 再多一行「强调色」
+			return super.tableView(tableView, numberOfRowsInSection: section) + 2
 		case .troubleshooting:
 			let defaultNumberOfRows = super.tableView(tableView, numberOfRowsInSection: section)
 			if !AccountManager.shared.hasiCloudAccount {
@@ -270,10 +279,25 @@ final class SettingsViewController: UITableViewController {
 			// 原来只看 key 有没有值,服务地址被写成乱码时也报「已设置」,是在骗人。
 			cell.detailTextLabel?.text = TranslationConfigStore.isFullyConfigured ? "已设置" : "未设置"
 			cell.accessoryType = .disclosureIndicator
+		case .articles where indexPath.row == discoveryAPIKeysRowIndex:
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "订阅发现 API Key"
+			// [发现] Reddit 要两个字段都填才算数,YouTube 一个就够——两条都没配也叫"未设置"。
+			let configuredCount = [FeedDiscoveryKeychain.hasRedditCredentials, FeedDiscoveryKeychain.hasYouTubeCredentials]
+				.filter { $0 }.count
+			cell.detailTextLabel?.text = configuredCount == 0 ? "未设置" : "已设置 \(configuredCount)/2"
+			cell.accessoryType = .disclosureIndicator
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
 			cell.textLabel?.text = "界面语言"
 			cell.detailTextLabel?.text = AppLanguageController.currentDisplayName
+			cell.accessoryType = .disclosureIndicator
+		case .appearance where indexPath.row == accentColorRowIndex:
+			// [外观] 强调色:一键换掉全 app 的橙(2026-08-05 用户要求做成设置项)
+			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
+			cell.textLabel?.text = "强调色"
+			cell.detailTextLabel?.text = NNWAccentPalette.choice.displayName
+			cell.detailTextLabel?.textColor = NNWSoftMaterial.accent
 			cell.accessoryType = .disclosureIndicator
 		default:
 			cell = super.tableView(tableView, cellForRowAt: indexPath)
@@ -337,9 +361,14 @@ final class SettingsViewController: UITableViewController {
 		case .articles where indexPath.row == translationAPIKeyRowIndex:
 			let keyEditor = TranslationAPIKeyViewController(style: .insetGrouped)
 			self.navigationController?.pushViewController(keyEditor, animated: true)
+		case .articles where indexPath.row == discoveryAPIKeysRowIndex:
+			let keyEditor = DiscoveryAPIKeysViewController(style: .insetGrouped)
+			self.navigationController?.pushViewController(keyEditor, animated: true)
 		case .appearance where indexPath.row == interfaceLanguageRowIndex:
 			let picker = AppLanguagePickerViewController(style: .insetGrouped)
 			self.navigationController?.pushViewController(picker, animated: true)
+		case .appearance where indexPath.row == accentColorRowIndex:
+			nnwShowAccentColorPicker(from: indexPath)
 		case .articles:
 			switch ArticlesRow(rawValue: indexPath.row) {
 			case .theme:

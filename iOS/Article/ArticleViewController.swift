@@ -45,7 +45,7 @@ final class ArticleViewController: UIViewController {
 		button.frame = CGRect(x: 0, y: 0, width: 44.0, height: 44.0)
 		button.setImage(Assets.Images.articleExtractorOff, for: .normal)
 		if #unavailable(iOS 26) {
-			button.tintColor = Assets.Colors.primaryAccent
+			button.tintColor = NNWAccentPalette.live
 		} else {
 			button.tintColor = .label
 		}
@@ -65,6 +65,11 @@ final class ArticleViewController: UIViewController {
 	var article: Article? {
 		didSet {
 			Self.logger.debug("ArticleViewController: article didSet: \(self.article?.accountID ?? "nil") \(self.article?.articleID ?? "nil") \(self.article?.title ?? "nil")")
+
+			// [阅读] 趁列表还认得这篇文章,先把「列表里排在它前面的那一篇」记下来。
+			// 「全部未读」只装未读文章 —— 你一打开它就被标为已读,列表下次重拉时它就没了,
+			// 之后再问"我在第几行"永远是"找不到"。实现在 NNWArticlePaging.swift。
+			nnwRememberListNeighbor()
 
 			if let controller = currentWebViewController, controller.article != article {
 				controller.setArticle(article)
@@ -86,6 +91,12 @@ final class ArticleViewController: UIViewController {
 						}
 					}
 				}
+			} else if nnwIsShowingNoMoreArticlesPage, let article {
+				// [阅读] 加一行(2026-08-09,修用户报的 bug):**彩蛋页占着位置时,
+				// `currentWebViewController` 是 nil,上面那个分支进不去** ——
+				// 于是从列表点任何一篇文章都换不掉它,每篇都显示「没有下一篇啦!」。
+				// 彩蛋页成了单向的死胡同。实现在 NNWArticlePaging.swift。
+				nnwReplaceEasterEggPage(with: article)
 			}
 			// [翻译] 本 fork 新增:换文章时重置翻译按钮图标。
 			// 挂在这里是因为**所有**切换文章的入口(手指滑动、右上角上下箭头、
@@ -166,8 +177,17 @@ final class ArticleViewController: UIViewController {
 		}
 
 		installTranslationButton()	// [翻译] 本 fork 新增
+		nnwInstallReadingGestures()	// [阅读] 本 fork 新增:右滑回列表 / 左滑开原文 / 到头再拽翻篇(实现在 NNWArticlePaging.swift)
 
-		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
+		// [阅读] 2026-08-09 一处换一处:`.horizontal` → **`.vertical`**(用户:「上下翻页的动画很生硬,
+		// 能否上下整体翻页、垂直地自然过渡」)。翻篇改由 `nnwTurnPage` 用
+		// `setViewControllers(animated: true)` 驱动,竖向的容器给出来的就是**竖向的整页推移**。
+		//
+		// ⚠️ **改朝向不会影响手势**:本 fork 的 `viewControllerBefore/After` **恒返回 nil**
+		// (翻页早就改由我们自己的手势触发了),所以这个容器里**永远只有一页** ——
+		// 它内部那个滚动视图的 contentSize 等于自身大小、根本滚不动,
+		// 不会和正文的竖向滚动抢触摸。横向那会儿也是同一个道理。
+		pageViewController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .vertical, options: [:])
 		pageViewController.delegate = self
 		pageViewController.dataSource = self
 
@@ -226,6 +246,7 @@ final class ArticleViewController: UIViewController {
 		// 原来这里按持久的全屏状态,上次退出时藏着的话一进来就藏 —— 那是"点击切全屏"时代的语义;
 		// 现在改成滚动驱动,一进来该看到标题栏和工具栏,往下读才沉浸。
 		currentWebViewController?.showBars()
+		nnwUseFloatingToolbar(true)		// [外观] dock 浮起来:抹掉系统工具栏的底(离开时还原)
 		super.viewWillAppear(animated)
 	}
 
@@ -243,6 +264,7 @@ final class ArticleViewController: UIViewController {
 	}
 
 	override func viewWillDisappear(_ animated: Bool) {
+		nnwUseFloatingToolbar(false)	// [外观] 工具栏是整个导航栈共用的,必须还原
 		super.viewWillDisappear(animated)
 		if searchBar != nil && !searchBar.isHidden {
 			endFind()
@@ -256,6 +278,8 @@ final class ArticleViewController: UIViewController {
 	override func viewSafeAreaInsetsDidChange() {
 		// This will animate if the show/hide bars animation is happening.
 		view.layoutIfNeeded()
+		nnwUpdateFloatingDockPosition()	// [外观] 浮动 dock 按真安全区重新贴底
+		nnwSyncFloatingDockVisibility()	// [外观] 浮动 dock 跟着栏一起藏/现
 	}
 
 	func updateUI() {
@@ -466,6 +490,7 @@ extension ArticleViewController {
 	@objc func beginFind(_ _: Any? = nil) {
 		searchBar.isHidden = false
 		navigationController?.setToolbarHidden(true, animated: true)
+		nnwSyncFloatingDockVisibility()	// [外观] 只藏工具栏不藏导航栏 → 安全区不变、回调不来,得显式叫一次
 		currentWebViewController?.additionalSafeAreaInsets.bottom = searchBar.frame.height
 		searchBar.becomeFirstResponder()
 	}
@@ -474,6 +499,7 @@ extension ArticleViewController {
 		searchBar.resignFirstResponder()
 		searchBar.isHidden = true
 		navigationController?.setToolbarHidden(false, animated: true)
+		nnwSyncFloatingDockVisibility()	// [外观] 同上,查找结束把 dock 放回来
 		currentWebViewController?.additionalSafeAreaInsets.bottom = 0
 		currentWebViewController?.endSearch()
 	}
@@ -513,21 +539,22 @@ extension ArticleViewController: WebViewControllerDelegate {
 extension ArticleViewController: UIPageViewControllerDataSource {
 
 	func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-		guard let webViewController = viewController as? WebViewController,
-			let currentArticle = webViewController.article,
-			let article = coordinator.findPrevArticle(currentArticle) else {
-			return nil
-		}
-		return createWebViewController(article)
+		// [阅读] 一行换一行(用户 2026-08-08 第 4 件):**永远没有前一页**。
+		// 右滑不再翻上一篇,而是交给「右滑回列表」那个手势(见 NNWArticlePaging.swift)。
+		// 上一篇的入口没丢:底部 dock 的箭头和键盘快捷键照旧。
+		return nil
 	}
 
 	func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-		guard let webViewController = viewController as? WebViewController,
-			let currentArticle = webViewController.article,
-			let article = coordinator.findNextArticle(currentArticle) else {
-			return nil
-		}
-		return createWebViewController(article)
+		// [阅读] 一行换一行。**2026-08-09 起也永远没有后一页。**
+		//
+		// 2026-08-08 这里是「后一页 = 下一篇未读」(左滑翻页)。
+		// 用户 2026-08-09 把左滑改成了「打开原文」,「下一篇未读」搬到
+		// **「已经在底部、再用力上拽」**上 —— 两者不能并存:左滑既翻页又开链接必然打架。
+		//
+		// ⚠️ 那套逻辑一行没丢,只是换了触发方式:`nnwGoToNextUnread()`(含彩蛋页)
+		// 在 NNWArticlePaging.swift 里,仍然只在当前列表内找、找不到就露彩蛋页。
+		return nil
 	}
 
 }
@@ -542,6 +569,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 
 	func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
 		isPageTransitionInProgress = false
+		nnwSyncFloatingDockVisibility()	// [阅读] 加一行:翻到/翻离彩蛋页时 dock 跟着收放(翻页不改安全区,那条回调不会来)
 
 		if let pending = pendingSetViewController {
 			pendingSetViewController = nil
@@ -664,13 +692,20 @@ extension ArticleViewController {
 		// 一被换出数组就释放,上游 updateUI 往空按钮写状态会当场崩(2026-07-25 启动闪退)。
 		board.legacyItemsKeptAlive = toolbarItems ?? []
 
-		let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-		toolbarItems = [flex(), UIBarButtonItem(customView: board), flex()]
+		// [外观] 2026-08-05:dock **不再是工具栏里的一个按钮项**,改成浮在正文之上的视图。
+		// 理由(iOS 26/27 的死结:内容穿过栏底 与 单层胶囊 不可兼得)详见
+		// `NNWFloatingDock.swift` 的文件头 + NOTES-todo T40/T42。
+		//
+		// ⚠️ 工具栏这个**壳子留着不动**:它撑起底部安全区,沉浸阅读藏栏/现栏那一整套
+		// (L73/L80~L84 的雷区)因此完全不受影响 —— 我们只是把内容物挪到它上面去画。
+		// 数组清空(老的 6 个按钮已由 board 收养,见上面 legacyItemsKeptAlive)。
+		toolbarItems = []
+		nnwInstallFloatingDock(board)
 	}
 
-	/// [外观] 控件板的查找(扩展里不能存属性,从工具栏里现找,只有一项是它,开销可忽略)。
+	/// [外观] 控件板的查找。dock 搬出工具栏后从关联对象取(见 NNWFloatingDock.swift)。
 	private var nnwControlBoard: NNWArticleControlBoard? {
-		toolbarItems?.lazy.compactMap { $0.customView as? NNWArticleControlBoard }.first
+		nnwFloatingDock
 	}
 
 	/// [外观] 把当前文章状态整包送进控件板。**只允许 updateUI 调用**(单一入口,见 L74)。
@@ -694,22 +729,31 @@ extension ArticleViewController {
 	}
 
 	/// [翻译] item②:长按翻译键的处理。
-	/// 只在这篇**有完整译文缓存**时弹确认框;没有缓存则静默不作任何事
-	/// (与需求一致 —— 重翻只对「已经翻过整篇」的文章才有意义)。
+	///
+	/// 🔴 2026-08-12:判据从「有完整缓存」放宽到「有任何译文痕迹」(用户要求) ——
+	/// **翻到一半停下**恰恰是最想重来的时刻(翻砸了 / 中途取消 / 部分组失败),
+	/// 原来那时候长按毫无反应,像按键坏了。详见 `canOfferRetranslate`。
+	/// 从来没翻过的文章仍然静默不响应 —— 那种情况直接点一下翻就行,不需要"重新"。
 	@objc func handleTranslationLongPress(_ recognizer: UILongPressGestureRecognizer) {
 		guard recognizer.state == .began else { return }
 		Task { [weak self] in
 			guard let self else { return }
-			guard await self.translationController.hasFullCache() else { return }
+			guard await self.translationController.canOfferRetranslate() else { return }
 
 			// 长按确实触发了,给一下轻微触感反馈(没缓存的情况上面已提前返回,不会震)。
 			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
 			// 🎛 2026-07-24 深夜:系统动作单换成自绘品牌选单,从翻译按钮头顶弹出。
 			// 覆盖缓存是破坏性操作 → 红色 + 保留明确的「取消」行(点选单外面也能取消)。
+			// 文案要跟状态走:半途停下时说"已有完整译文"是错的,会让人以为已经翻完了
+			let hasFull = await self.translationController.hasFullCache()
+			let message = hasFull
+				? "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。"
+				: "这篇只翻到一半。重新翻译整篇吗?这会丢掉已翻好的部分,从头再翻一遍。"
+
 			NNWMenu.show(in: self, anchor: .view(self.translationController.button),
 						 title: "重新翻译整篇",
-						 message: "这篇已有完整译文。重新翻译整篇吗?这会覆盖当前缓存的译文。",
+						 message: message,
 						 sections: [
 							[NNWMenu.Item(title: "重新翻译全文", icon: "arrow.clockwise", isDestructive: true) { [weak self] in
 								self?.translationController.forceRetranslate()

@@ -38,6 +38,8 @@ extension MainFeedCollectionViewController {
 	private static var nnwGesturesKey: UInt8 = 0
 	private static var nnwRenderedModeKey: UInt8 = 0
 	private static var nnwStarredObserverKey: UInt8 = 0
+	/// [外观] 「切深浅色要重画工具栏那两颗圆钮」的观察者只注册一次
+	private static var nnwToolbarTraitObserverKey: UInt8 = 0
 
 	/// 装好的两个切档手势。
 	///
@@ -80,6 +82,7 @@ extension MainFeedCollectionViewController {
 			nnwInstallGlobalSearchButton()
 		}
 
+		collectionView.nnwEnableSoftBottomEdgeFade()	// [外观] 补回被拍平的那道边缘渐隐
 		nnwInstallModeBarIfNeeded()
 		nnwInstallSwipeGesturesIfNeeded()
 		nnwObserveStarredIndexIfNeeded()
@@ -101,25 +104,26 @@ extension MainFeedCollectionViewController {
 
 	// MARK: - 装控件
 
+	/// [阅读档][外观] 2026-08-05:**控件不再插进工具栏,改成浮在页面之上。**
+	///
+	/// 为什么搬(用户报的「内圈比外圈小很多」+ T43 陀螺仪的前置条件)、
+	/// 以及位置是怎么算的,全写在 `NNWFloatingModeBar.swift` 的文件头。
+	///
+	/// ⚠️ 顺带的好处:`toolbarItems` 回到故事板原样的 3 项 ——
+	/// 原来我们往里插了 [控件][空白] 两项,把 `expectedItemCount == 3` 那条守卫撑破了
+	/// (那时是靠"排在上游那句之后"绕开的)。现在连绕都不用绕。
 	private func nnwInstallModeBarIfNeeded() {
 
-		// [编辑] 编辑模式期间工具栏是 [移动到…][删除],**别往里插阅读档控件** ——
-		// 退出编辑时会把原来那套整个还原回去(见 nnwSavedToolbarItems),这里插了反而会打乱。
-		if nnwIsEditingFeeds { return }
-
-		var items = toolbarItems ?? []
-		guard items.count >= 2 else { return }		// 故事板里至少有 [设置][空白][+]
-
-		// 已经在工具栏里了就什么都不用做(控件自己盯着通知换外观)
-		if let bar = nnwReadingModeBar, items.contains(where: { $0.customView === bar }) { return }
-
-		let barItem = nnwReadingModeBarItem { [weak self] mode in
-			self?.nnwSelectReadingMode(mode)
+		// [编辑] 编辑模式下工具栏整条换成 [新建文件夹][移动到…][删除],浮层要收起来
+		if nnwIsEditingFeeds {
+			nnwSetFloatingModeBarHidden(true)
+			return
 		}
 
-		// 插在**最后一项(+)之前**,并补一个可伸缩空白 → 控件被两侧空白挤到正中
-		items.insert(contentsOf: [barItem, UIBarButtonItem.flexibleSpace()], at: items.count - 1)
-		toolbarItems = items
+		nnwInstallFloatingModeBar { [weak self] mode in
+			self?.nnwSelectReadingMode(mode)
+		}
+		nnwSetFloatingModeBarHidden(false)
 	}
 
 	// MARK: - 右上角的全局搜索
@@ -149,25 +153,121 @@ extension MainFeedCollectionViewController {
 		if nnwIsEditingFeeds { return }
 
 		// 已经装过就别重造(viewWillAppear 会调很多次)
-		if navigationItem.rightBarButtonItems?.first?.action == #selector(nnwGlobalSearchTapped) { return }
+		// ⚠️ 判据从「第一项的 action 是不是放大镜」改成「第一项是不是我们的控件」——
+		// 2026-08-04 改成 customView 之后 `item.action` 恒为 nil,老判据会永远判"没装过",
+		// 每次 viewWillAppear 都重造一对按钮。
+		// ⚠️ 2026-08-08 合成一颗胶囊之后,这里的类型也得跟着换 ——
+		// 忘了换就等于把上面那个 bug 原样放回来(每次进页面重造一遍)。
+		if navigationItem.rightBarButtonItems?.first?.customView is NNWSoftGlassDualButton { return }
 
-		let search = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
-									 style: .plain, target: self, action: #selector(nnwGlobalSearchTapped))
-		search.accessibilityLabel = "搜索全部订阅源"
+		// [外观] 2026-08-08(用户看截图后要求):**编辑 + 搜索合成一颗双图标胶囊**,
+		// 和文章列表页那颗(齿轮 + 放大镜)同一个控件。
+		//
+		// ⚠️ **这一条推翻了 T51 里「首页保持两颗独立圆钮」那句** —— 那句当时的理由是
+		// "两个页面范围不同,别顺手一起改";现在是用户看过成品之后主动要求统一,理由消失了。
+		//
+		// ⚠️ **仍然是我们自己画的,不是让系统去合并**(L121:要么全归系统,要么全归我们)。
+		// 系统合并出来的是系统材质,26/27 上是两副样子,2026-08-05 绕了一整轮才统一,别退回去。
+		//
+		// ⚠️ 这颗压在**头图**上,所以底必须是真磨砂 —— `NNWSoftGlassDualButton` 用的就是
+		// 和圆钮同一套(磨砂 + 整圈亮边),不是工具栏那种烘焙的不透明圆盘(试过,是贴纸)。
+		//
+		// 左右分工照旧:**搜索在右**(用得更勤,占最右),**编辑在左**。
+		//
+		// 编辑那个图标 2026-07-28 已经三版定案:光秃秃的 pencil → pencil.circle.fill(用户说丑)
+		// → **square.and.pencil**(方框 + 从右上角伸出的铅笔,用户指定)。别再换(L110)。
+		// 它点开的是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
+		// 页面标题叫「编辑订阅」,心智上 = 本列表的编辑模式(2026-07-25 用户拍板的方案乙)。
+		let dual = NNWSoftGlassDualButton(
+			leftIcon: Self.nnwNavSymbol("square.and.pencil"), leftLabel: "编辑订阅",
+			rightIcon: Self.nnwNavSymbol("magnifyingglass"), rightLabel: "搜索全部订阅源")
+		dual.addLeftTarget(self, action: #selector(nnwEditSubscriptionsTapped))
+		dual.addRightTarget(self, action: #selector(nnwGlobalSearchTapped))
 
-		// [管理] 「编辑订阅」入口(2026-07-25 用户拍板的方案乙):
-		// 原来藏在右下角 + 的第二层选单里,不直觉 —— 提到导航栏,和放大镜并排。
-		// 点开的就是文件夹管理页(批量移动/删除、建改删文件夹、拖拽重排都在那),
-		// 页面标题已改叫「编辑订阅」,心智上 = 本列表的编辑模式。
-		// 方框 + 从右上角伸出来的铅笔(2026-07-28 用户指定的样子,第三版才对)。
-		// 先试过光秃秃的 `pencil`,又试过实心圆的 `pencil.circle.fill`(用户说丑),
-		// 最后定在这个 —— 它也是 iOS 各处"编辑/撰写"的通用图标,辨识度最高。
-		let edit = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"),
-								   style: .plain, target: self, action: #selector(nnwEditSubscriptionsTapped))
-		edit.accessibilityLabel = "编辑订阅"
+		let item = UIBarButtonItem(customView: dual)
+		item.nnwHideSystemGlassCapsule()
+		navigationItem.rightBarButtonItems = [item]
+	}
 
-		// 数组第一个在最右:搜索用得更勤,占最右;编辑在它左边
-		navigationItem.rightBarButtonItems = [search, edit]
+	/// [外观] 导航栏圆钮里的系统符号。
+	/// 字号读全 app 唯一真源 `NNWSoftMaterial.iconPointSize`(= 直径的 45%),
+	/// 这样以后改 `controlDiameter`,图标会自己按比例变。
+	/// ⚠️ 2026-08-09 前这里自己写着 `* 0.45` —— 同一条规则有两个出处,
+	/// 别处想跟这个比例走时无从引用。已收进真源,**别再在这里算一遍**。
+	static func nnwNavSymbol(_ name: String) -> UIImage {
+		let config = UIImage.SymbolConfiguration(pointSize: NNWSoftMaterial.iconPointSize, weight: .medium)
+		return UIImage(systemName: name, withConfiguration: config) ?? UIImage()
+	}
+
+	// ⚠️ 这里原来有个 `nnwGlassButton(icon:action:label:)`,造首页右上角那**两颗独立圆钮**用的。
+	// 2026-08-08 两颗合成一颗双图标胶囊之后没人调它了,**已删**,免得留一份死代码
+	// 让下一个人以为首页还是两颗。要单颗圆钮直接 `NNWSoftGlassButton(icon:)`,
+	// 文章列表页的智能源/文件夹页就是那么用的。
+
+	/// [外观] 2026-08-04:把底部工具栏那两个系统图标(设置齿轮、加号)换成手绘橙图标。
+	///
+	/// ⚠️ **只换 image 和 tintColor,不碰 toolbarItems 的结构** ——
+	/// 那个数组有两个硬约束:① `configureToolbarWithProgressView` 里
+	/// `expectedItemCount == 3` 的守卫(数量一变刷新进度条就永久装不上,L19 那一族);
+	/// ② `addNewItemButton` 是 storyboard 的 IBOutlet,别处还往它身上挂 menu 和 isEnabled。
+	/// 换整个 item 会同时踩这两条。
+	///
+	/// [外观] 2026-08-04 二版:这两个键也换成**软面板圆钮**,和底栏中间那条三档同一套材质。
+	///
+	/// [外观] **2026-08-09 三版:从"画进图片"改成"真玻璃控件"**(用户报各控件质感不一致)。
+	///
+	/// ⚠️ 上一版那句「这里只有 image 这一条通道可走,换 customView 会把加号身上的 `menu` 弄丢」
+	/// **只对"换掉整个 UIBarButtonItem 对象"成立**。现在走的是另一条路:
+	/// **对象不换,只设 `customView`,再把 `menu` / `isEnabled` 转发过去** ——
+	/// `toolbarItems` 结构、`addNewItemButton` 这个 IBOutlet 都原封不动。
+	/// 完整理由与那两处"加一行"的挂点见 `NNWSoftGlassBarButton.swift`。
+	///
+	/// 换来的好处:图片装不下磨砂,而 customView 装得下 ——
+	/// 这两颗从此和顶部胶囊、三档轨道**共用同一块玻璃**,深色下不再是两块实心灰盘。
+	func nnwRestyleToolbarIcons() {
+
+		nnwObserveStyleChangesForToolbarIcons()
+
+		guard let items = toolbarItems else { return }
+
+		for item in items {
+			guard let action = item.action else { continue }
+			switch action {
+			case #selector(MainFeedCollectionViewController.add(_:)):
+				item.nnwUseSoftGlassButton(icon: NNWDockIcons.plus())
+			case #selector(MainFeedCollectionViewController.settings(_:)):
+				item.nnwUseSoftGlassButton(icon: NNWDockIcons.gear())
+			default:
+				break
+			}
+		}
+	}
+
+	/// [外观] 切深浅色 / 换强调色时把这两颗圆钮重画一遍。
+	///
+	/// 📌 **2026-08-09 起,这两件事的必要性不一样了**(改成真玻璃控件之后):
+	/// - **深浅色**:已经不需要人管了 —— 玻璃是真材质,`NNWSoftPanel` 会在排版时按
+	///   当时的 traits 重画。留着这个监听是**无害的冗余**(重画一次结果一样),不删是因为
+	///   删一个已验证可用的保险,风险大于留着它。
+	/// - **换强调色**:**仍然必须**。`NNWSoftMaterial.accent` 取的是
+	///   `NNWAccentPalette.current` 这个**静态值**,不是动态色,换色之后不会自己刷新,
+	///   得有人来重设一次 tintColor(L105 第 2 条那一族)。
+	///
+	/// ⚠️ 历史(别再走):烘焙成图片的年代试过用 `UIImageAsset` 登记浅/深两张让 UIKit 自己挑,
+	/// **实测不生效** —— `UIBarButtonItem.image` 这条路不会去重新解析 asset。
+	private func nnwObserveStyleChangesForToolbarIcons() {
+		guard objc_getAssociatedObject(self, &Self.nnwToolbarTraitObserverKey) == nil else { return }
+		objc_setAssociatedObject(self, &Self.nnwToolbarTraitObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (controller: MainFeedCollectionViewController, _) in
+			controller.nnwRestyleToolbarIcons()
+		}
+		// [外观] 换强调色之后同样要重画(理由完全一样:面板是烘焙进图片的)
+		nnwObserveAccentChanges { [weak self] in
+			self?.nnwRestyleToolbarIcons()
+			self?.nnwReinstallDefaultRightBarButtons()
+			// 分组头与文件夹行的三角色是**配装 cell 时**写进去的,不重画就还是旧颜色
+			self?.collectionView.reloadData()
+		}
 	}
 
 	/// [编辑] 退出编辑模式时**显式**把右上角装回去。

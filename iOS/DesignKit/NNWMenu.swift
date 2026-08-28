@@ -54,10 +54,22 @@
 import UIKit
 import os
 
+/// [外观] 选单的尺寸定数。**全部来自对参考图 IMG_2442 的逐像素测量**
+/// (比例尺 4.94 px/pt,定法见 NNWSoftMaterial.rimWidth)。
+enum NNWMenuMetrics {
+	/// 文字左边距 / 图标右边距 / 分隔线内缩:实测 167px ÷ 4.94 = **33.8pt**。
+	/// ⚠️ 原来是 18pt —— **不到实测的一半**,卡片因此显得挤。
+	/// 用户 2026-08-05 的原话:「为什么和这个效果看起来还是差了不少」,差的主要就是这个。
+	static let sidePadding: CGFloat = 34
+	/// 顶部图标行两端的内缩:实测三个图标横跨 862…1669,卡片 635…1890 → ≈46pt
+	static let quickRowInset: CGFloat = 46
+}
+
 /// [外观] 自绘品牌选单的对外入口(菜单项、锚点、show 方法都在这个命名空间下)。
 enum NNWMenu {
 
-	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "NNW选单")
+	// fileprivate:同文件里的浮层本体(NNWMenuViewController)也要往这条日志里写兜底记录
+	fileprivate static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "NNW选单")
 
 
 	/// 一行菜单项:图标 + 文字 + 点了做什么。
@@ -65,15 +77,43 @@ enum NNWMenu {
 		let title: String
 		/// SF Symbol 图标名;nil = 这行不带图标
 		let icon: String?
+		/// 直接给一张图(从系统 `UIAction` 桥接过来时走这条 —— `UIAction.image` 是
+		/// `UIImage` 而不是符号名)。和 `icon` 二选一,两个都有时以 `image` 为准。
+		let image: UIImage?
 		/// 危险项(删除类),红色显示
 		let isDestructive: Bool
+		/// 置灰不可点(系统菜单里 `.disabled` 的项桥接过来是这个)
+		let isEnabled: Bool
 		let handler: () -> Void
 
 		init(title: String, icon: String?, isDestructive: Bool = false, handler: @escaping () -> Void) {
+			self.init(title: title, icon: icon, image: nil,
+					  isDestructive: isDestructive, isEnabled: true, handler: handler)
+		}
+
+		init(title: String, icon: String? = nil, image: UIImage?,
+			 isDestructive: Bool = false, isEnabled: Bool = true, handler: @escaping () -> Void) {
 			self.title = title
 			self.icon = icon
+			self.image = image
 			self.isDestructive = isDestructive
+			self.isEnabled = isEnabled
 			self.handler = handler
+		}
+
+		/// 这一项最终显示哪张图(符号名和现成的图统一到这里,行控件只认它)。
+		///
+		/// [外观] 2026-08-05:统一加粗到 **17pt / semibold**。
+		/// 实测参考图 IMG_2442 的行图标是 85×85px、笔画 10px ——
+		/// 换算成 **17.2pt 见方、笔画 2.0pt**,笔画占比 11.5%。
+		/// SF Symbols 在 `.regular` 下只有约 6%、`.medium` 约 7%,摆在那张卡里明显"太秀气";
+		/// `.semibold` 约 8.5%、`.bold` 约 10.5% —— **用 bold**,是系统符号能给到的最接近值。
+		///(真要 11.5% 得整套手绘,那是另一件事,已记进 NOTES-todo。)
+		@MainActor var resolvedImage: UIImage? {
+			let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .bold)
+			if let image { return image.applyingSymbolConfiguration(config) ?? image }
+			guard let icon else { return nil }
+			return UIImage(systemName: icon, withConfiguration: config)
 		}
 	}
 
@@ -99,11 +139,79 @@ enum NNWMenu {
 	/// title / message 可选:填了就在卡片顶部显示一块钉住的说明区(列表滚动时它不动)。
 	/// onCancel:用户**没选任何项**就关掉选单时(点外面 / VoiceOver 退出 / 转屏)回调 ——
 	/// 有些调用方要在"用户放弃了"时收尾(比如把滑开的行收回去),没有就不传。
+	/// - Parameter quickActions: 顶部那一排**只有图标**的快捷键(照参考图 IMG_2442:
+	///   一排图标 → 分隔线 → 下面才是文字行)。空数组 = 不显示这一排。
 	@MainActor
 	static func show(in host: UIViewController, anchor: Anchor,
 					 title: String? = nil, message: String? = nil,
-					 sections: [[Item]], onCancel: (() -> Void)? = nil) {
-		guard sections.contains(where: { !$0.isEmpty }) else { return }
+					 quickActions: [Item] = [],
+					 sections: [[Item]], onCancel: (() -> Void)? = nil,
+					 nnwRetriesRemaining: Int = 20) {
+		guard !quickActions.isEmpty || sections.contains(where: { !$0.isEmpty }) else { return }
+
+		// 🔴 2026-08-12「点进一个失效的源就整页卡死」的时序守卫。**第二版**。
+		//
+		// ## 第一版错在哪(留着,别再走一遍)
+		// 第一版守的是 `host.view.window != nil && bounds.width > 0`,想拦"还没上屏就弹"。
+		// 它**一次都没拦下过**(三轮真机日志里那条"迟迟没挂进窗口"从未出现)——
+		// 因为 push 转场**一开始**,新页的 view 就已经被塞进转场容器、而容器本身就在 window 里,
+		// 所以从转场第一帧起这两个条件就是真的。这条守卫在物理上不可能触发。
+		//
+		// ## 真正的病根:**转场还在放的时候 present 模态**
+		// `FeedPreviewViewController.load()` 抓 feed 失败常常几十毫秒就回来,
+		// 远快于 push 的约 350ms 转场。于是 `present` 发生在转场中途,UIKit 的
+		// 出场/入场回调会错乱 —— 被弹出的选单**可能收不到 `viewDidAppear`**,
+		// 于是永远停在 `viewDidLayoutSubviews` 里设的 `alpha = 0`(见下面那个类):
+		// 卡片和压暗层都是隐形的,但浮层的**根视图仍然铺满全屏、照样吃掉所有触摸**。
+		// 用户看到的就是"页面还在、但点什么都没用,连下拉刷新都拽不动";
+		// 而点「好」只有按钮自己的高亮反馈,`dismiss` 也一并失灵,永远关不掉。
+		//
+		// ## 正确的等法:问 UIKit 要 transitionCoordinator
+		// 有转场在跑就挂到它的完成回调上,跑完再弹。导航容器的转场归 navigationController,
+		// 所以三处都要问(自己 / 导航 / 标签)。
+		if let coordinator = host.transitionCoordinator
+			?? host.navigationController?.transitionCoordinator
+			?? host.tabBarController?.transitionCoordinator {
+
+			guard nnwRetriesRemaining > 0 else {
+				logger.error("NNW选单 · 转场迟迟不结束,放弃弹出(弹出者=\(String(describing: type(of: host)), privacy: .public))")
+				onCancel?()
+				return
+			}
+			logger.notice("NNW选单 · 转场还在放,等它结束再弹(剩余重试 \(nnwRetriesRemaining, privacy: .public))")
+
+			// animate 注册失败(返回 false)时完成回调不会来,退回定时重试兜底
+			let registered = coordinator.animate(alongsideTransition: nil) { _ in
+				show(in: host, anchor: anchor, title: title, message: message,
+					 quickActions: quickActions, sections: sections, onCancel: onCancel,
+					 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+			}
+			if !registered {
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+					show(in: host, anchor: anchor, title: title, message: message,
+						 quickActions: quickActions, sections: sections, onCancel: onCancel,
+						 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+				}
+			}
+			return
+		}
+
+		// host 自己正在被弹出/收起的途中同理:等一拍再说。
+		// (window 这一条留着当兜底 —— 拦不到转场,但能拦住"这页根本还没上屏"的调用点。)
+		guard host.view.window != nil, host.view.bounds.width > 0,
+			  !host.isBeingPresented, !host.isBeingDismissed else {
+			guard nnwRetriesRemaining > 0 else {
+				logger.error("NNW选单 · host 迟迟没能安定下来,放弃弹出(弹出者=\(String(describing: type(of: host)), privacy: .public))")
+				onCancel?()
+				return
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+				show(in: host, anchor: anchor, title: title, message: message,
+					 quickActions: quickActions, sections: sections, onCancel: onCancel,
+					 nnwRetriesRemaining: nnwRetriesRemaining - 1)
+			}
+			return
+		}
 
 		// ⚠️ **从最顶上那一层弹,不能直接用 host**(2026-07-28 用户报"发现页选不了文件夹")。
 		//
@@ -131,7 +239,7 @@ enum NNWMenu {
 		// 是被挡在了哪儿,不用再靠猜。(问题定性之后可以删。)
 		Self.logger.notice("NNW选单 · 从第\(depth, privacy: .public)层弹出,弹出者=\(String(describing: type(of: presenter)), privacy: .public)")
 
-		let menu = NNWMenuViewController(sections: sections, anchor: anchor,
+		let menu = NNWMenuViewController(sections: sections, quickActions: quickActions, anchor: anchor,
 										 headerTitle: title, headerMessage: message,
 										 hostView: host.view, onCancel: onCancel)
 		menu.modalPresentationStyle = .overFullScreen
@@ -144,13 +252,19 @@ enum NNWMenu {
 private final class NNWMenuViewController: UIViewController {
 
 	// 样式定数(想调样式改这里)
-	private static let cardWidth: CGFloat = 250
-	private static let cardCornerRadius: CGFloat = 22
+	// [外观] 2026-08-05 第三轮:**按参考图 IMG_2442 逐像素量出来的值**,不再是估的。
+	// 比例尺 4.94 px/pt 的定法见 NNWSoftMaterial.rimWidth 的注释(用 17pt 正文当锚点)。
+	//   卡片宽  1255px ÷ 4.94 = 254pt(前一版 268 偏宽,把行显得松)
+	//   圆角    实测左上角曲线解出 ≈167px ÷ 4.94 = 34pt(前一版 26 偏方)
+	private static let cardWidth: CGFloat = 254
+	private static let cardCornerRadius: CGFloat = 34
 	private static let screenMargin: CGFloat = 12		// 卡片距屏幕安全区的最小边距
 	private static let anchorGap: CGFloat = 10			// 卡片和触发点之间留的缝
 	private static let dimAlpha: CGFloat = 0.2			// 背景压暗程度
 
 	private let sections: [[NNWMenu.Item]]
+	/// [外观] 顶部那一排只有图标的快捷键(参考图 IMG_2442 的结构)
+	private let quickActions: [NNWMenu.Item]
 	private let anchor: NNWMenu.Anchor
 	private let headerTitle: String?
 	private let headerMessage: String?
@@ -160,9 +274,16 @@ private final class NNWMenuViewController: UIViewController {
 	private let dim = UIView()
 	private let shadowHost = UIView()					// 只负责投影 + 弹出动画(不裁切)
 	private let card = UIView()							// 负责圆角裁切(裁切层画不了阴影,见文件头)
+	/// [外观] 卡片的软面板材质(和 dock / 三档同一套)
+	/// [外观] 2026-08-05:**真磨砂** —— 选单压在整页内容上,这是最能体现玻璃的位置
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
 	private let scrollView = UIScrollView()				// 选项列表;超高时在这里面滚
 	private var placed = false							// 位置只算一次(见文件头 L73 那条)
 	private var isClosing = false
+	/// 已经真正露面(动画放过、交互打开)。兜底逻辑靠它判断"是不是卡在隐形态了"。
+	private var revealed = false
+	/// 收场只走一次(onCancel / handler 不能被调两遍)
+	private var didFinish = false
 
 	/// 居中弹出(错误提示这类)时动画柔一点:不从角上弹,轻轻放大浮现即可
 	private var isCentered: Bool {
@@ -170,10 +291,11 @@ private final class NNWMenuViewController: UIViewController {
 		return false
 	}
 
-	init(sections: [[NNWMenu.Item]], anchor: NNWMenu.Anchor,
+	init(sections: [[NNWMenu.Item]], quickActions: [NNWMenu.Item], anchor: NNWMenu.Anchor,
 		 headerTitle: String?, headerMessage: String?, hostView: UIView?,
 		 onCancel: (() -> Void)?) {
 		self.sections = sections
+		self.quickActions = quickActions
 		self.anchor = anchor
 		self.headerTitle = headerTitle
 		self.headerMessage = headerMessage
@@ -190,6 +312,26 @@ private final class NNWMenuViewController: UIViewController {
 		super.viewDidLoad()
 		view.backgroundColor = .clear
 
+		// 🔴 2026-08-12 兜底一:**没真正露面之前,这一层不吃任何触摸**。
+		// 万一入场回调错乱、`viewDidAppear` 没被调到(见 NNWMenu.show 里的长注释),
+		// 这张浮层会永远停在 alpha=0 的隐形态 —— 隐形的子视图不参与命中测试,
+		// 但**根视图自己 alpha 是 1**,照样把整屏触摸全吃掉,下面那页就彻底死了。
+		// 关掉交互 = 命中测试直接穿过去,最坏情况下用户还能正常操作下面的页面。
+		// 真正露面时(reveal)再打开。
+		view.isUserInteractionEnabled = false
+
+		// 🔴 2026-08-12 兜底二:等不到入场回调就自己收场,绝不留一张关不掉的浮层。
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self, !self.revealed else { return }
+			if self.view.window != nil, self.view.bounds.width > 0 {
+				NNWMenu.logger.error("NNW选单 · 没等到 viewDidAppear,兜底直接显示")
+				self.reveal(animated: false)
+			} else {
+				NNWMenu.logger.error("NNW选单 · 始终没能正常上屏,自行退场")
+				self.dismiss(animated: false) { self.finish(cancelled: true, handler: nil) }
+			}
+		}
+
 		// 压暗层:点它任意处 = 取消
 		dim.backgroundColor = UIColor.black.withAlphaComponent(Self.dimAlpha)
 		dim.frame = view.bounds
@@ -202,20 +344,45 @@ private final class NNWMenuViewController: UIViewController {
 		view.addSubview(dim)
 
 		// 投影层(阴影画在这层;圆角裁切在里面的 card 上,两者不能是同一层)
+		//
+		// [外观] 2026-08-04:阴影从「0.22 / 24 / 8」收到参考图 IMG_2442 的量级。
+		// 原来那组是"要把卡片从页面上狠狠抬起来"的思路,和这一轮定下的软面板语言冲突
+		//(dock 那边贴边只暗 6–7 级)。选单浮在压暗层上,比 dock 略重一点点即可。
 		shadowHost.layer.shadowColor = UIColor.black.cgColor
-		shadowHost.layer.shadowOpacity = 0.22
-		shadowHost.layer.shadowRadius = 24
-		shadowHost.layer.shadowOffset = CGSize(width: 0, height: 8)
+		shadowHost.layer.shadowOpacity = 0.14
+		shadowHost.layer.shadowRadius = 14
+		shadowHost.layer.shadowOffset = CGSize(width: 0, height: 4)
+		// 🔴 2026-08-12:先给一个像样的初始尺寸,别让第一次布局在"宽=0"上求解。
+		//
+		// `card` / `shadowHost` 是**手摆 frame** 的(placeCard),它们的子视图却用的是真约束。
+		// 而 placeCard 要等到 `viewDidLayoutSubviews` 才跑 —— 在那之前 UIKit 已经先解过一轮,
+		// 那一轮里 card.frame 还是 .zero,隐式的"宽=0"和子视图那些要求真实宽度的约束打架,
+		// 就是真机日志里那一串 `unable to simultaneously satisfy constraints`。
+		// 给个初值,第一轮就在正确宽度上求解,警告消失,量出来的高度也才是可信的。
+		//
+		// ⚠️ **不要**用 `translatesAutoresizingMaskIntoConstraints = false` 去"修"这串警告:
+		// 这两层压根没有描述自己位置的约束,关掉隐式约束等于让它们彻底失去尺寸 ——
+		// 那才会真的做出一张看不见的卡片。它们是 frame 派,保持 true 是对的。
+		shadowHost.frame = CGRect(x: 0, y: 0, width: Self.cardWidth, height: 320)
 		view.addSubview(shadowHost)
 
 		// 卡片
-		card.backgroundColor = AppAppearance.menuCardBackground
+		// [外观] 2026-08-04:底改成和 dock / 三档**同一套软面板材质**
+		//(上暗下亮的极淡渐变 + 整圈纯白亮边)。参考图 IMG_2442 实测:
+		// 卡片填充比背景暗 2 级、上缘亮边 5px 纯白 —— 和那条 dock 轨道是同一种东西。
+		// ⚠️ 材质装在 card 上,阴影仍归外面的 shadowHost —— card 要 clipsToBounds
+		//(列表滚动时内容不能穿出圆角),而裁切的层画不了阴影(见文件头)。
 		card.layer.cornerRadius = Self.cardCornerRadius
 		card.layer.cornerCurve = .continuous
 		card.clipsToBounds = true		// 列表滚动时内容不能穿出圆角
-		// 极淡描边:浅色下几乎看不见,深色下把卡片从压暗的背景里衬出来(阴影在深色里不管用)
-		card.layer.borderWidth = 1.0 / max(view.traitCollection.displayScale, 1)
-		card.layer.borderColor = AppAppearance.menuSeparator.cgColor
+		card.frame = shadowHost.bounds	// 同上:第一次布局就有真实宽度可用
+		if NNWSoftMaterial.isEnabled {
+			softPanel.install(in: card)
+		} else {
+			card.backgroundColor = AppAppearance.menuCardBackground
+			card.layer.borderWidth = 1.0 / max(view.traitCollection.displayScale, 1)
+			card.layer.borderColor = AppAppearance.menuSeparator.cgColor
+		}
 		shadowHost.addSubview(card)
 
 		// 顶部说明区(可选,钉在卡片顶上,列表滚动时不动)
@@ -260,7 +427,13 @@ private final class NNWMenuViewController: UIViewController {
 			stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
 		])
 
+		// [外观] 顶部那一排只有图标的快捷键(参考图 IMG_2442 的结构:一排图标 → 分隔线 → 文字行)
 		let groups = sections.filter { !$0.isEmpty }
+		if !quickActions.isEmpty {
+			stack.addArrangedSubview(makeQuickRow(quickActions))
+			if !groups.isEmpty { stack.addArrangedSubview(makeSeparator()) }
+		}
+
 		for (index, group) in groups.enumerated() {
 			if index > 0 { stack.addArrangedSubview(makeSeparator()) }
 			for item in group {
@@ -269,6 +442,25 @@ private final class NNWMenuViewController: UIViewController {
 				stack.addArrangedSubview(row)
 			}
 		}
+	}
+
+	/// 顶部快捷图标行:几个图标等分排开,没有文字(参考图里的 ⊕ / ♡ / 👥 那一排)。
+	private func makeQuickRow(_ items: [NNWMenu.Item]) -> UIView {
+		let row = UIStackView()
+		row.axis = .horizontal
+		row.distribution = .fillEqually
+		row.alignment = .fill
+		row.isLayoutMarginsRelativeArrangement = true
+		// 实测参考图:三个图标横跨 862…1669,卡片 635…1890 → 两端各内缩 ≈46pt
+		row.layoutMargins = UIEdgeInsets(top: 6, left: NNWMenuMetrics.quickRowInset,
+										 bottom: 6, right: NNWMenuMetrics.quickRowInset)
+		for item in items {
+			let button = NNWMenuRowControl(item: item, iconOnly: true)
+			button.addTarget(self, action: #selector(rowTapped(_:)), for: .touchUpInside)
+			row.addArrangedSubview(button)
+		}
+		row.heightAnchor.constraint(equalToConstant: 52).isActive = true
+		return row
 	}
 
 	/// 顶部说明区:标题(粗一点的墨色)+ 可选的说明句(小一号的浅墨),底下一条细线。
@@ -333,16 +525,29 @@ private final class NNWMenuViewController: UIViewController {
 	private func makeSeparator() -> UIView {
 		let container = UIView()
 		let line = UIView()
-		line.backgroundColor = AppAppearance.menuSeparator
+		// [外观] 2026-08-05:实测参考图的分隔线是 **6px(=1.2pt)、比卡片底暗 21 级**,
+		// 不是一根发丝线。原来那根 1 像素的极淡线在暖纸上基本看不见,
+		// 卡片因此显得"平"—— 这是用户说"没有质感"的原因之一。
+		let useSoft = NNWSoftMaterial.isEnabled
+		line.backgroundColor = useSoft
+			? NNWSoftMaterial.menuSeparatorColor(for: view.traitCollection)
+			: AppAppearance.menuSeparator
 		line.translatesAutoresizingMaskIntoConstraints = false
 		container.addSubview(line)
-		let hairline = 1.0 / max(view.traitCollection.displayScale, 1)
+		let hairline = useSoft
+			? NNWSoftMaterial.menuSeparatorWidth
+			: 1.0 / max(view.traitCollection.displayScale, 1)
 		NSLayoutConstraint.activate([
 			container.heightAnchor.constraint(equalToConstant: 12),
 			line.heightAnchor.constraint(equalToConstant: hairline),
 			line.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-			line.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-			line.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+			// [外观] 2026-08-05:分隔线**左右内缩**,不通栏。
+			// 实测参考图 IMG_2442:线从 x=799 到 1727,而卡片是 635…1890 ——
+			// 两端各内缩 164px ÷ 4.94 = 33pt,和文字的左边距对齐。
+			line.leadingAnchor.constraint(equalTo: container.leadingAnchor,
+										  constant: NNWMenuMetrics.sidePadding),
+			line.trailingAnchor.constraint(equalTo: container.trailingAnchor,
+										   constant: -NNWMenuMetrics.sidePadding)
 		])
 		return container
 	}
@@ -351,12 +556,18 @@ private final class NNWMenuViewController: UIViewController {
 
 	override func viewDidLayoutSubviews() {
 		super.viewDidLayoutSubviews()
-		guard !placed else { return }
-		placed = true
-		placeCard()
-		// 摆好后先藏起来,等 viewDidAppear 里做弹出动画
-		shadowHost.alpha = 0
-		dim.alpha = 0
+		if !placed {
+			placed = true
+			placeCard()
+			// 摆好后先藏起来,等 viewDidAppear 里做弹出动画
+			shadowHost.alpha = 0
+			dim.alpha = 0
+		}
+		// [外观] 材质要按 card 的**实际**尺寸重画 —— 摆完位置才知道它多大
+		//(L103 第 2 条的同一个道理:读尺寸之前要先让它被算出来)
+		if NNWSoftMaterial.isEnabled {
+			softPanel.layout(in: card, cornerRadius: Self.cardCornerRadius)
+		}
 	}
 
 	private func placeCard() {
@@ -449,21 +660,43 @@ private final class NNWMenuViewController: UIViewController {
 
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
-		UIImpactFeedbackGenerator(style: .light).impactOccurred()
-		if UIAccessibility.isReduceMotionEnabled {
-			// 用户关掉了动态效果:只淡入
-			UIView.animate(withDuration: 0.2) { self.shadowHost.alpha = 1; self.dim.alpha = 1 }
-		} else {
-			// 角上弹出的从小弹开;居中的(错误提示)轻轻放大浮现,别太跳
-			let startScale: CGFloat = isCentered ? 0.9 : 0.25
-			shadowHost.transform = CGAffineTransform(scaleX: startScale, y: startScale)
-			UIView.animate(withDuration: 0.32, delay: 0,
-						   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
-				self.shadowHost.transform = .identity
-				self.shadowHost.alpha = 1
-				self.dim.alpha = 1
+		reveal(animated: true)
+	}
+
+	/// 真正露面:放弹出动画、打开交互。
+	/// 正常走 `viewDidAppear`;入场回调没来时由 viewDidLoad 里那个兜底定时器补调
+	/// (`animated: false` —— 那时候动画早就不合时宜了,直接摆到位)。
+	private func reveal(animated: Bool) {
+		guard !revealed else { return }
+		revealed = true
+		view.isUserInteractionEnabled = true		// 从这一刻起才允许它吃触摸
+
+		guard animated, !UIAccessibility.isReduceMotionEnabled else {
+			// 用户关掉了动态效果 / 兜底补显:只淡入(兜底那次连淡入都几乎看不见,无妨)
+			UIView.animate(withDuration: animated ? 0.2 : 0) {
+				self.shadowHost.alpha = 1; self.dim.alpha = 1
 			}
+			return
 		}
+
+		UIImpactFeedbackGenerator(style: .light).impactOccurred()
+		// 角上弹出的从小弹开;居中的(错误提示)轻轻放大浮现,别太跳
+		let startScale: CGFloat = isCentered ? 0.9 : 0.25
+		shadowHost.transform = CGAffineTransform(scaleX: startScale, y: startScale)
+		UIView.animate(withDuration: 0.32, delay: 0,
+					   usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4) {
+			self.shadowHost.transform = .identity
+			self.shadowHost.alpha = 1
+			self.dim.alpha = 1
+		}
+	}
+
+	/// 收场:回调只走一次(兜底路径和正常路径可能都会跑到这儿)
+	private func finish(cancelled: Bool, handler: (() -> Void)?) {
+		guard !didFinish else { return }
+		didFinish = true
+		if cancelled { onCancel?() }
+		handler?()
 	}
 
 	/// 收起(动画完了再执行选中项的动作,不让菜单收起和页面跳转互相打架)。
@@ -480,8 +713,19 @@ private final class NNWMenuViewController: UIViewController {
 			}
 		} completion: { _ in
 			self.dismiss(animated: false) {
-				if cancelled { self.onCancel?() }
-				handler?()
+				self.finish(cancelled: cancelled, handler: handler)
+			}
+			// 🔴 2026-08-12 兜底三:present 被转场搅坏时 `dismiss` 会**静默失灵** ——
+			// 表现正是用户报的"点「好」按钮自己有高亮反馈,但卡片关不掉、整页也点不动"。
+			// 那就自己把浮层拆下来,绝不允许一张关不掉的全屏浮层留在屏幕上。
+			// ⚠️ 这里**不能写 `[weak self]`**:外层 `completion:` 已经隐式强捕获了 self,
+			// 内层再声明弱捕获,Swift 会报"捕获语义和外层不一致"直接编译不过。
+			// 强捕获在这里也没有循环引用的风险 —— 只是把浮层多留 0.3 秒。
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+				guard !self.didFinish else { return }
+				NNWMenu.logger.error("NNW选单 · dismiss 没生效,强制拆掉浮层(弹出者的 present 已被转场搅坏)")
+				self.view.removeFromSuperview()
+				self.finish(cancelled: cancelled, handler: handler)
 			}
 		}
 	}
@@ -514,9 +758,12 @@ private final class NNWMenuRowControl: UIControl {
 
 	let item: NNWMenu.Item
 	private let pill = UIView()		// 按下时的高亮垫(和全 app 的药丸选中态同款观感)
+	/// true = 顶部快捷行那种"只有图标、居中"的样子
+	private let iconOnly: Bool
 
-	init(item: NNWMenu.Item) {
+	init(item: NNWMenu.Item, iconOnly: Bool = false) {
 		self.item = item
+		self.iconOnly = iconOnly
 		super.init(frame: .zero)
 
 		// 高亮垫(默认藏着,按下才显示)
@@ -527,25 +774,54 @@ private final class NNWMenuRowControl: UIControl {
 		pill.isUserInteractionEnabled = false
 		addSubview(pill)
 
-		let tint: UIColor = item.isDestructive ? .systemRed : AppAppearance.inkPrimary
+		// [外观] 2026-08-05:字色改用 **近纯黑**(实测参考图 #0A0A0A,亮度 10)。
+		// 原来用的 AppAppearance.inkPrimary 是 #2C2823、亮度 40 —— 浅了四倍,
+		// 正是用户说的「黑色不够深不够通透」。
+		let ink = NNWSoftMaterial.isEnabled ? NNWSoftMaterial.menuInk : AppAppearance.inkPrimary
+		let tint: UIColor = item.isDestructive ? .systemRed : ink
 
-		// 图标列固定 26pt 宽,有无图标文字都对得齐
-		var labelLeading: CGFloat = 18
-		if let iconName = item.icon {
-			let config = UIImage.SymbolConfiguration(textStyle: .body)
-				.applying(UIImage.SymbolConfiguration(weight: .medium))
-			let iconView = UIImageView(image: UIImage(systemName: iconName, withConfiguration: config))
+		// —— 顶部快捷行:只有一个居中的图标,没有文字 ——
+		if iconOnly {
+			let iconView = UIImageView(image: item.resolvedImage)
+			// [外观] 2026-08-05:顶部这排是**主要动作**,用强调色。
+			// 参考图 IMG_2442 里也正是用橙色标出那一项最想让人点的
+			//(那张图是「More like this」那行的图标是橙的)。
+			// 颜色走 NNWAccentPalette,设置里换色这里跟着变。
+			iconView.tintColor = item.isDestructive ? .systemRed
+				: (NNWSoftMaterial.isEnabled ? NNWSoftMaterial.accent : tint)
+			iconView.contentMode = .center
+			iconView.translatesAutoresizingMaskIntoConstraints = false
+			iconView.isUserInteractionEnabled = false
+			addSubview(iconView)
+			NSLayoutConstraint.activate([
+				iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+				iconView.centerYAnchor.constraint(equalTo: centerYAnchor)
+			])
+			isEnabled = item.isEnabled
+			alpha = item.isEnabled ? 1 : 0.35
+			isAccessibilityElement = true
+			accessibilityLabel = item.title
+			accessibilityTraits = item.isEnabled ? .button : [.button, .notEnabled]
+			return
+		}
+
+		// [外观] 2026-08-04:改成**文字在左、图标在右**(照参考图 IMG_2442)。
+		// 原来是"图标在左、文字在右"的系统菜单排法;参考图那套把图标推到行尾,
+		// 于是一列文字左对齐、一列图标右对齐,两条竖直的视觉线,比系统菜单更整齐。
+		var labelTrailing: CGFloat = 18
+		if let icon = item.resolvedImage {
+			let iconView = UIImageView(image: icon)
 			iconView.tintColor = tint
 			iconView.contentMode = .center
 			iconView.translatesAutoresizingMaskIntoConstraints = false
 			iconView.isUserInteractionEnabled = false
 			addSubview(iconView)
 			NSLayoutConstraint.activate([
-				iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+				iconView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -NNWMenuMetrics.sidePadding),
 				iconView.widthAnchor.constraint(equalToConstant: 26),
 				iconView.centerYAnchor.constraint(equalTo: centerYAnchor)
 			])
-			labelLeading = 18 + 26 + 10
+			labelTrailing = NNWMenuMetrics.sidePadding + 26 + 10
 		}
 
 		let label = UILabel()
@@ -553,28 +829,40 @@ private final class NNWMenuRowControl: UIControl {
 		label.font = .preferredFont(forTextStyle: .body)
 		label.adjustsFontForContentSizeCategory = true		// 跟随系统字号
 		label.textColor = tint
-		label.numberOfLines = 1
+		// [外观] 2026-08-04:允许折到两行。系统菜单本来就会折,而我们原来钉死一行 ——
+		// 「将"Marginal Revolution"标记为已读」这种长标题会被截成「将"Marginal Revolu…」,
+		// 读不出是什么操作。这是换掉系统菜单**必须补上**的一课(不是可选的美化)。
+		label.numberOfLines = 2
+		// 文字长了先压缩自己,别把右边的图标顶出去
+		label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 		label.translatesAutoresizingMaskIntoConstraints = false
 		label.isUserInteractionEnabled = false
 		addSubview(label)
 		NSLayoutConstraint.activate([
-			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: labelLeading),
-			label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
+			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: NNWMenuMetrics.sidePadding),
+			label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -labelTrailing),
 			// 行高由文字撑:上下各 13pt,系统字号变大行自动变高
-			label.topAnchor.constraint(equalTo: topAnchor, constant: 13),
-			label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -13)
+			// [外观] 2026-08-05:上下内边距 13 → 10.5。
+			// 实测参考图的行距是 204.7px ÷ 4.94 = **41.4pt**;
+			// 17pt 正文的行高约 20.3pt,余下 21.1pt 上下各分一半。
+			label.topAnchor.constraint(equalTo: topAnchor, constant: 10.5),
+			label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10.5)
 		])
+
+		// 置灰项:整行变淡且点不动(系统菜单里 .disabled 的项桥接过来就是它)
+		isEnabled = item.isEnabled
+		alpha = item.isEnabled ? 1 : 0.35
 
 		isAccessibilityElement = true
 		accessibilityLabel = item.title
-		accessibilityTraits = .button
+		accessibilityTraits = item.isEnabled ? .button : [.button, .notEnabled]
 	}
 
 	required init?(coder: NSCoder) { fatalError("不走 storyboard") }
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		pill.frame = bounds.insetBy(dx: 8, dy: 3)
+		pill.frame = iconOnly ? bounds.insetBy(dx: 4, dy: 4) : bounds.insetBy(dx: 8, dy: 3)
 	}
 
 	// 手指按上去 → 显示药丸;抬起/划出 → 收掉。isHighlighted 是 UIControl 自己维护的

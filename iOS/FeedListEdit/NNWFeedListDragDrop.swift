@@ -355,7 +355,7 @@ extension UICollectionViewCell {
 
 		let overlay = UIView()
 		overlay.translatesAutoresizingMaskIntoConstraints = false
-		overlay.backgroundColor = Assets.Colors.primaryAccent.withAlphaComponent(0.22)
+		overlay.backgroundColor = NNWAccentPalette.live.withAlphaComponent(0.22)
 		overlay.layer.cornerRadius = 8
 		overlay.isUserInteractionEnabled = false
 		// ⚠️ 插在 **contentView 底下**,不是"所有子视图的最底层"(2026-07-28 审查抓到):

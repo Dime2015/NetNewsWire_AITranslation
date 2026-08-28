@@ -106,6 +106,13 @@ import os
 
 		/// 飞完这么长的距离(pt)就算完全冻结。越小越"跟手",越大越舒缓。
 		static let flightDistance: CGFloat = 120
+
+		/// 网页还在装载时,滚动偏移要**超过静止位这么多**才算"用户真的在滑"。
+		///
+		/// WebKit 装载中会自己把滚动位置重置回静止位附近,那种抖动不该让头区跟着飞;
+		/// 而用户真的用手指滑动时,一下就远超这个值。取小一点,让头区跟手不迟钝。
+		/// 详见 `layoutAndApply` 里 `contentSettled == false` 那一段。
+		static let settleGrace: CGFloat = 8
 		/// 交接:飞到这个进度之后,大标题淡出、冻结标题淡入
 		static let swapStart: CGFloat = 0.45
 		/// 毛玻璃底从这个进度开始现
@@ -132,7 +139,9 @@ import os
 	private let scrimView = UIVisualEffectView(effect: nil)
 	// 可点的部件用「按下有反馈」的子类(2026-07-24,让用户知道这里能点,见文件末尾两个小类)
 	private let iconView = NNWTappableImageView()
-	private let ringLayer = CAShapeLayer()
+	/// 进度环。[外观] 2026-08-11 改成一个真正的 UIView(层类型是 CAShapeLayer)——
+	/// 见 `applyProgressRing` 的详细注释:让它和 `iconView` 走**完全相同**的几何提交路径。
+	private let ringView = NNWProgressRingView()
 	/// 停在顶部时的大标题(多行、衬线)。点 = 开原文
 	private let restTitleLabel = NNWTappableLabel()
 	/// 冻结在顶栏里的小标题(单行)。点 = 开原文
@@ -178,6 +187,78 @@ import os
 	/// 安全区自愈请求是否已在路上(T24,防止每帧都发一次)
 	private var pendingSafeAreaNudge = false
 
+	/// ⚠️ 临时探针(2026-08-09 第五轮,查完就删):上一次打出来的「让路」状态。
+	///
+	/// 排版每帧都跑,所以**只在状态翻转时打一行**,不刷屏。
+	/// 用途是补上 L124/L132 定死的那条硬规矩 ——
+	/// **带条件的钩子,交付前必须有一次"它被走到了"的证据**,而不是读代码推断。
+	/// 下面那个「拽的时候让路」的口子已经被我写错过两次(`host as?` 恒为 nil),
+	/// 这一次要有正面证据才算数。
+	private var nnwLoggedPullProbe: String?
+
+	/// ⚠️ 临时探针(2026-08-09 第七轮,查完就删):一次翻页动画期间,
+	/// 排版被叫了多少次,以及**它读到的每一个会变的量各自扫过多大范围**。翻完打一行。
+	///
+	/// 第六轮只量了安全区,结果是 `116→116`(一动不动)—— 假设被推翻,
+	/// 可 `排版=51 次` 说明**高频重排本身是真的**,只是驱动它的是别的量。
+	/// 📌 判据:**推翻一个假设之后,别急着换一个假设去改代码 ——
+	/// 先把"这个函数里所有会变的量"一次全量出来,让数字自己指认。**
+	/// 最近一次**在可信几何下**算出来的飞行进度。翻页动画期间拿它顶着,不再跟着中间态跳。
+	/// 新页从来没记过 → 0 → 大标题态,正是它该有的样子。见 `layoutAndApply` 里的说明。
+	private var nnwLastGoodFlight: CGFloat = 0
+
+	/// ⚠️ 临时探针(2026-08-09 第十三轮,查完就删):盯住这一页的 `contentInset` 被谁改。
+	/// 装卸和另外两条观察一样(`bind` 里装、`detach` 里摘),只读不写。
+	private var insetObservation: NSKeyValueObservation?
+	/// 上一次记过的 `inset上`,用来只打"真的变了"的那些(KVO 会因别的字段变动重复响)。
+	private var nnwLastLoggedInsetTop: CGFloat = .greatestFiniteMagnitude
+	/// 这一页已经抓过几次调用栈(抓栈不便宜,每页封顶 8 次,别让探针自己拖慢现场)。
+	private var nnwInsetStackDumps = 0
+
+	private var nnwTurnLayoutCount = 0
+	private var nnwTurnFlight = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnOffset = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnInset = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnContentH = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	/// 第十三轮补量:翻页期间**阅读栏自己的几何**动没动(安全区、头区容器高)。
+	private var nnwTurnSafeTop = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+	private var nnwTurnContainerH = (min: CGFloat.greatestFiniteMagnitude, max: -CGFloat.greatestFiniteMagnitude)
+
+	/// ⚠️ 临时探针(2026-08-09 第十五轮,查完就删):记一个量在**一次翻页里**的
+	/// 「首帧 / 末帧 / 最小 / 最大」。
+	///
+	/// 🔴 **必须有首末,不能只有 min→max**:上一轮打的 `安全区 62→116` 是范围,
+	/// **看不出方向** —— 而"从 62 涨到 116"(新页还没接上导航栏)和
+	/// "从 116 掉到 62"(它被摘掉了)是完全不同的两件事,修法也完全相反。
+	/// 📌 判据:**一个"范围"回答不了"先后",而先后往往就是因果。**
+	private struct NNWTurnTrace {
+		var first: CGFloat = .nan
+		var last: CGFloat = .nan
+		var low: CGFloat = .greatestFiniteMagnitude
+		var high: CGFloat = -.greatestFiniteMagnitude
+		mutating func add(_ value: CGFloat) {
+			if first.isNaN { first = value }
+			last = value
+			low = Swift.min(low, value)
+			high = Swift.max(high, value)
+		}
+		var text: String { String(format: "首%.0f→末%.0f(%.0f~%.0f)", first, last, low, high) }
+	}
+
+	/// 翻页期间三个"安全区候选来源"各自的走势 —— 下一轮要挑一个**稳定**的当基准。
+	private var nnwTurnHostSafe = NNWTurnTrace()			// 宿主(WebViewController)的
+	private var nnwTurnPageSafe = NNWTurnTrace()			// 文章页(ArticleViewController)的
+	private var nnwTurnWindowSafe = NNWTurnTrace()			// 窗口的
+
+	/// 🔴 **滚动视图自己的安全区** —— 用户 2026-08-09「翻成了就一定抖」那句话之后锁定的头号嫌疑。
+	/// 它和 `offset` 一起看:安全区涨了 116 而 offset 没跟着走,正文就真的跳了 116pt。
+	private var nnwTurnScrollSafe = NNWTurnTrace()
+	/// offset 的**首末**(上面那个 `nnwTurnOffset` 只有 min/max,看不出它有没有跟着安全区走)。
+	private var nnwTurnOffsetTrace = NNWTurnTrace()
+	/// 🎯 第十七轮的验收量:**夹后的顶部总量**(我们写的 + 系统的安全区)。
+	/// 修好之后它必须全程恒定 —— 这是"正文不再跳"的数字版说法。
+	private var nnwTurnAdjustedTrace = NNWTurnTrace()
+
 	/// 网页装载完了没(false = 还在装)。
 	///
 	/// ⚠️ **装载期间 WebKit 会自己重置滚动位置**,那一瞬的 contentOffset 不可信 ——
@@ -218,12 +299,15 @@ import os
 		iconView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openFeedHomePage)))
 		container.addSubview(iconView)
 
-		// 进度环:画在图标外面一圈
-		ringLayer.fillColor = UIColor.clear.cgColor
-		ringLayer.lineCap = .round
-		ringLayer.strokeEnd = 0
-		ringLayer.opacity = 0
-		container.layer.addSublayer(ringLayer)
+		// 进度环:画在图标外面一圈。
+		// ⚠️ 不接触摸——它和 iconView 有重叠,不禁用会挡住图标的点击(开源站主页)。
+		ringView.isUserInteractionEnabled = false
+		ringView.backgroundColor = .clear
+		ringView.shapeLayer.fillColor = UIColor.clear.cgColor
+		ringView.shapeLayer.lineCap = .round
+		ringView.shapeLayer.strokeEnd = 0
+		ringView.shapeLayer.opacity = 0
+		container.addSubview(ringView)
 
 		restTitleLabel.numberOfLines = Style.restTitleMaxLines
 		restTitleLabel.textColor = .label
@@ -385,6 +469,59 @@ import os
 				self.layoutAndApply()
 			}
 		}
+
+		// ⚠️ 临时探针(2026-08-09 第十三轮,查完就删):**任何人**改这一页的 contentInset 都记一行。
+		//
+		// 为什么不能只盯着我们自己那两处:上游 `WebViewController.loadWebView()` 里有一行
+		// `webView.scrollView.contentInset = UIEdgeInsets(top: 0, left: -1, bottom: 0, right: 0)`
+		// (修 iPad 横向橡皮筋的老 hack),而**网页是从池子里复用的** ——
+		// 它会把整条 inset 连同我们加的那一段**一起抹平**,而 `appliedInset` 还记着旧数,
+		// 之后的加减法就全错了。这条 KVO 谁写都拦得到,不用去改上游那一行。
+		//
+		// ⚠️ **只观察、不改任何东西**,所以不会引起递归重排(L63 那条硬约束的射程内)。
+		// 📌 沉默要有含义:下面装完先无条件打一行"探针已装" ——
+		// 万一 UIEdgeInsets 这种非对象类型 KVO 不响,日志里一行都没有时才分得清
+		// 是"没人改过"还是"仪器根本没通电"(第五轮那条探针纪律)。
+		nnwInsetStackDumps = 0
+		nnwLastLoggedInsetTop = scrollView.contentInset.top
+		insetObservation = scrollView.observe(\.contentInset, options: []) { [weak self] view, _ in
+			MainActor.assumeIsolated { self?.nnwLogInsetChanged(view) }
+		}
+		let bindTag = UInt(bitPattern: ObjectIdentifier(scrollView).hashValue) % 9973
+		NNWArticlePagingLog.logger.info("""
+			[拽] 内边距探针已装 页=\(bindTag, privacy: .public) \
+			| 此刻 inset上=\(scrollView.contentInset.top, privacy: .public) \
+			| 我们共加过=\(self.appliedInset, privacy: .public)
+			""")
+	}
+
+	/// ⚠️ 临时探针(第十三轮,查完就删):这一页的 contentInset 被**任何人**改了。
+	///
+	/// 翻页动画期间还会顺带抓一小段调用栈 —— 「谁改的」这个问题,读代码是猜,栈是答案。
+	/// ⚠️ 抓栈本身不便宜,所以**只在翻页期间、且改动超过 1pt 时抓,每次翻页最多 8 条**:
+	/// 探针把机器拖慢,量到的就不是原来那个现场了。
+	private func nnwLogInsetChanged(_ scrollView: UIScrollView) {
+		let top = scrollView.contentInset.top
+		guard abs(top - nnwLastLoggedInsetTop) > 0.5 else { return }
+		let previous = nnwLastLoggedInsetTop
+		nnwLastLoggedInsetTop = top
+
+		let articleHost = nnwArticleHost
+		let turning = articleHost?.nnwIsTurningPage ?? false
+		let stage = turning ? "翻页中" : ((articleHost?.nnwIsPullingToTurnPage ?? false) ? "拽中" : "平时")
+		let pageTag = UInt(bitPattern: ObjectIdentifier(scrollView).hashValue) % 9973
+		NNWArticlePagingLog.logger.info("""
+			[拽] inset被改 \(stage, privacy: .public) \
+			| \(previous, privacy: .public)→\(top, privacy: .public) \
+			| 我们共加过=\(self.appliedInset, privacy: .public) \
+			| offset=\(scrollView.contentOffset.y, privacy: .public) | 页=\(pageTag, privacy: .public)
+			""")
+
+		if turning, abs(top - previous) > 1, nnwInsetStackDumps < 8 {
+			nnwInsetStackDumps += 1
+			let frames = Thread.callStackSymbols.dropFirst(1).prefix(7).joined(separator: "\n")
+			NNWArticlePagingLog.logger.info("[拽] inset被改 · 谁改的:\n\(frames, privacy: .public)")
+		}
 	}
 
 	/// 把当前这一页的 contentInset 还回去(换页、卸载都要做)。
@@ -393,6 +530,8 @@ import os
 			let offsetBefore = scrollView.contentOffset.y
 			scrollView.contentInset.top -= appliedInset
 			scrollView.contentOffset.y = offsetBefore + appliedInset	// 理由同 syncInset
+			nnwLogInsetWrite("还旧页", delta: -appliedInset, scrollView: scrollView,
+							 offsetBefore: offsetBefore, offsetAfter: scrollView.contentOffset.y)
 		}
 		appliedInset = 0
 	}
@@ -401,6 +540,7 @@ import os
 	func detach() {
 		offsetObservation = nil
 		sizeObservation = nil
+		insetObservation = nil		// ⚠️ 第十三轮的临时探针,和上面两条同生共死
 		releaseInset()
 		scrollView = nil
 		installedArticleID = nil
@@ -455,8 +595,66 @@ import os
 		//    网页内容的 adjustedContentInset 也随之复位,整体自愈。
 		let hostSafeTop = host.view.safeAreaInsets.top
 		let windowSafeTop = container.window?.safeAreaInsets.top ?? 0
+		// 🔴 **正在"拽过头翻页"时,这条自愈必须让路**(2026-08-09,用户报"标题和正文一直抖动")。
+		//
+		// 那个手势会给翻页容器加一个 `transform` 平移(把正文推开、给箭头让位),
+		// 而**平移一个视图会真的改变它的安全区** —— 视图往下挪了,压在状态栏底下的部分就少了,
+		// `safeAreaInsets.top` 从 62 掉到 44。
+		// 这条自愈的前提是"host < window 一定是系统没传播",而现在**多了一个合法原因**,
+		// 于是它每帧请求一次重排、重排又触发下一帧 —— 真机日志里刷了 150 多条,那就是抖动本身。
+		//
+		// 📌 判据(L122 的又一次):**一条"异常检测"要连着它的适用范围一起记。**
+		// T24 当初若写成「**在没人主动位移这一层的前提下**,host < window 就是没传播」,
+		// 这次加位移时就会立刻想到要给它开个口子。
+		//
+		// ⚠️ 让路是安全的:上面 `safeTop` 取的是 `max(host, window)`,拽的过程中它恒等于
+		// window 那个值(稳定、正确),**排版不受影响**,只是不再徒劳地请求重排。
+		// 🔴 **必须往上找,`host` 不是 `ArticleViewController`**(2026-08-09,第二次才修对):
+		// 这条栏的 `host` 是 `WebViewController`(见 `WebViewController+ReadingBar.swift` 的调用),
+		// 上一版写成 `host as? ArticleViewController` —— **恒为 nil,这个口子从来没打开过**,
+		// 用户报的抖动一次都没被治到。又一次 L124:**钩子挂在了一个不成立的分支上。**
+		// 判据:**写 `as?` 之前,先去调用方确认那个参数到底是什么类型。**
+		//(这段"往上找"已抽成 `nnwArticleHost` —— 第十三轮那两条内边距探针要用同一份,
+		// 抄第二份迟早会和这份走岔。行为与原来逐字相同。)
+		let articleHost = nnwArticleHost
+		let isPullingToTurnPage = articleHost?.nnwIsPullingToTurnPage ?? false
+		let isTurningPage = articleHost?.nnwIsTurningPage ?? false
+
+		// 🔴🔴 **2026-08-09 第七轮:这里曾经改成"翻页期间用窗口的安全区",那是错的,已回退。**
+		//
+		// 当时的假设:滑进来的那一页有一截在窗口顶边外,它自己的安全区每帧都不一样。
+		// **探针一量就推翻了**:`宿主安全区 从=116 到=116`,整个动画期间**一动不动**。
+		//
+		// 而且那一改**当场制造了一个新 bug**:`host=116`(状态栏 62 + 导航栏 54),
+		// `window=62` —— 改成用窗口值等于**凭空砍掉导航栏那 54pt**,
+		// 标题直接顶到导航栏底下,用户报的"标题和顶部控件重叠"就是这么来的。
+		//
+		// 📌 两条判据(都是老账的新一遍):
+		// 1. **`max(host, window)` 里 host 更大是常态,不是异常** ——
+		//    宿主视图在导航控制器里,它的安全区本来就含导航栏。
+		//    动它之前先问"这两个值平时到底谁大"(L123:我量到了 ≠ 我量的是它)。
+		// 2. **猜到病根就动刀,是把"假设"当成"结论"。** 这一轮的正确顺序是
+		//    先埋探针跑一次、看见 116→116,再决定改什么。**探针救了这一刀,但它本不该挨这一刀。**
 		let safeTop = max(hostSafeTop, windowSafeTop)
-		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge {
+
+		// ⚠️ 临时探针(2026-08-09 第五轮,查完就删):证明上面那条 `articleHost` **真的被走到了**。
+		//
+		// ⚠️ **必须连"有没有找到宿主"一起打** —— 只打让路状态是不够的:
+		// 万一 parent 链断了,`articleHost` 恒为 nil、这个值恒为 false、**一次都不会翻转**,
+		// 于是日志一片空白 —— 而"没有日志"根本分不清是**口子没生效**还是**用户没拽**。
+		// 📌 判据(L132 那三次栽跟头的形状):**探针的"沉默"必须是有含义的,
+		// 否则它证明不了任何事。** 所以第一次排版就先把"找没找到宿主"打出来。
+		let pullProbe = (articleHost == nil ? "🔴没找到ArticleViewController" : "找到宿主")
+			+ (isPullingToTurnPage ? " / 让路中" : " / 不让路")
+			+ (isTurningPage ? " / 翻页中" : "")
+		if pullProbe != nnwLoggedPullProbe {
+			nnwLoggedPullProbe = pullProbe
+			NNWArticlePagingLog.logger.info("[拽] 让路探针:\(pullProbe, privacy: .public)")
+		}
+
+		// ⚠️ 翻页动画期间这条自愈也要让路:此刻 host 比 window **大**(不是小),
+		// 条件本来就不成立;但万一滑到某一帧反过来了,重排只会给动画添乱。
+		if hostSafeTop + 0.5 < windowSafeTop, !pendingSafeAreaNudge, !isPullingToTurnPage, !isTurningPage {
 			pendingSafeAreaNudge = true
 			Self.logger.info("[外观] 阅读栏:宿主安全区疑似未传播(host=\(hostSafeTop, privacy: .public), window=\(windowSafeTop, privacy: .public)),已请求重排自愈(T24)")
 			DispatchQueue.main.async { [weak self] in
@@ -481,23 +679,223 @@ import os
 				+ titleHeight(width: textWidth) + Style.sourceTitleGap + sourceSize.height + Style.bottomPadding
 			syncInset()
 		}
+		// 🔴🔴 **2026-08-09 第十七轮:这里曾经改成"每次排版都问一次 syncInset(带安全区补偿)",
+		// 结果真机白屏假死,已全部回退。** 来龙去脉见 NOTES-todo「第十八轮」和 **L137**。
+		// ⚠️ 本文件开头那条硬约束("绝不在滚动回调里碰 contentInset / safeArea",L63 的
+		// 28000 层递归)**就是在说这件事** —— 我加了「不足 0.5pt 不落笔」的守卫就以为安全了,
+		// 但那个守卫只在"目标值稳定"时才成立;补偿量本身依赖 `safeAreaInsets`,
+		// 而 `safeAreaInsets` 会被 inset 的写入反过来影响 → 目标值来回跳 → 每帧都写 → 卡死。
+		// **别再把 `syncInset` 挪进每帧的路径。**
 
 		container.frame = CGRect(x: 0, y: 0, width: width, height: safeTop + measuredHeight)
 
 		// —— 飞行进度(0 = 停在顶部,1 = 完全冻结)——
 		// ⚠️ 网页还没装载完时偏移不可信(WebKit 装载中会自己重置滚动位置),
 		// 一律按"停在顶部"画;didFinish 之后才用真实偏移(见 contentSettled 的说明)。
+		let restY = -scrollView.adjustedContentInset.top
+		let travelled = scrollView.contentOffset.y - restY
+		let measuredFlight = min(max(travelled / Style.flightDistance, 0), 1)
+
+		// ⚠️ 临时探针(第十三轮):**解冻那一下跳了多大**,必须在下面这段把它覆盖掉之前抓住。
+		let frozenFlightBefore = nnwLastGoodFlight
+
 		let flight: CGFloat
-		if contentSettled {
-			let restY = -scrollView.adjustedContentInset.top
-			let travelled = scrollView.contentOffset.y - restY
-			flight = min(max(travelled / Style.flightDistance, 0), 1)
+		if isTurningPage {
+			// 🔴 **翻页动画期间,把飞行进度冻住**(2026-08-09 第八轮,探针指认的病根)。
+			//
+			// 实测五次翻页,**每一次 `飞行进度` 都扫遍 0→1 的全程**:
+			// ```
+			// 排版=49 次 | 飞行进度 0→1 | offset -291.33→0 | inset上 175.33→291.33 | contentH 271.33→874
+			// ```
+			// 飞行进度 0 = 大标题在头图上,1 = 完全冻结成顶栏小标题 ——
+			// **一次翻页的 45~61 帧里,标题在这两个极端之间来回跑。那就是抖动本身。**
+			//
+			// 为什么会乱跳:飞行进度 = `(contentOffset − 静止位) / 飞行距离`,
+			// 而静止位来自 `adjustedContentInset.top`。新页刚建出来时**内边距还没装好**
+			// (探针实测一次翻页里 `inset上` 变了 116pt、`offset` 变了 291pt,
+			// 网页还在长:`contentH 0→874`)。
+			// 📌 判据:**一个比值,分子和分母都还在装的时候,它算出来的不是"进度",是噪声。**
+			//
+			// 冻成"上一个可信值"而不是一律归 0:
+			// - **新页**从来没记过 → 默认 0 → 大标题态 ✅ 它本来就是停在顶部
+			// - **旧页**保持翻页开始前的样子 → 滑出去的过程里纹丝不动 ✅
+			//   (一律归 0 的话,读到一半、已经是小标题的那一页会在滑走时**突然变回大标题**,
+			//   那是把一种抖动换成另一种。)
+			//
+			// ⚠️ 动画结束后 `nnwTurnPage` 的 completion 会主动叫一次排版,用真实几何重算。
+			flight = nnwLastGoodFlight
+		} else if contentSettled {
+			flight = measuredFlight
+			nnwLastGoodFlight = flight
 		} else {
-			flight = 0
+			// ⚠️ **装载期间不能一律钉死 0**(2026-08-08 修,用户报的第二个现象)。
+			//
+			// 原来这里无条件 `flight = 0`,理由是"WebKit 装载中会自己重置滚动位置,偏移不可信"。
+			// 那条防护本身没错,但它有个没考虑到的副作用:**用户此时其实已经能滚了**。
+			// 一滚,内容跟着手指上移、头区却纹丝不动 —— 屏幕上就是
+			// **大标题压在正文上、和正文叠在一起**(用户 2026-08-08 的截图 2);
+			// 直到 `didFinish` 把 contentSettled 翻成 true,下一帧才突然算出真值 ——
+			// 也就是用户说的"等一会会**突然**变成正常的毛玻璃和大小,还有位置"。
+			//
+			// 折中:WebKit 的自动重置总是把偏移放回**静止位附近**,不会明显超过它;
+			// 而用户真的在滑时会明显超过。所以只认"明显超过"的那一部分。
+			flight = travelled > Style.settleGrace ? measuredFlight : 0
+			nnwLastGoodFlight = flight
 		}
 
-		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop)
-		applyProgressRing(scrollView: scrollView, flight: flight)
+		// ⚠️ 临时探针(2026-08-09 第七轮,查完就删):翻页动画期间,
+		// **这个函数读到的每一个会变的量,各自扫过多大范围。**
+		// 第六轮量了安全区 → 116→116,假设被推翻;可 `排版=51 次` 说明高频重排是真的。
+		// 所以这次把候选一次全摆上,让数字自己指认是谁在抖:
+		// `flight`(飞行进度,标题从大变小那条)、`offset`/`inset上`(它俩算出 flight)、
+		// `contentH`(网页装载中会一直长,长一次就重排一次)。
+		if isTurningPage {
+			nnwTurnLayoutCount += 1
+			nnwTurnFlight = (min(nnwTurnFlight.min, flight), max(nnwTurnFlight.max, flight))
+			nnwTurnOffset = (min(nnwTurnOffset.min, scrollView.contentOffset.y),
+							 max(nnwTurnOffset.max, scrollView.contentOffset.y))
+			nnwTurnInset = (min(nnwTurnInset.min, scrollView.adjustedContentInset.top),
+							max(nnwTurnInset.max, scrollView.adjustedContentInset.top))
+			nnwTurnContentH = (min(nnwTurnContentH.min, scrollView.contentSize.height),
+							   max(nnwTurnContentH.max, scrollView.contentSize.height))
+			// 第十三轮补两个:阅读栏**自己的几何**在翻页期间动没动。
+			// 上一轮把 `inset上` 当成了嫌疑人,结果那读的是"夹后"的值(含安全区),
+			// 我们写进去的原始 inset 一次都没变过 —— 所以这次直接量"决定标题块位置的那两个量"。
+			nnwTurnSafeTop = (min(nnwTurnSafeTop.min, safeTop), max(nnwTurnSafeTop.max, safeTop))
+			nnwTurnContainerH = (min(nnwTurnContainerH.min, safeTop + measuredHeight),
+								 max(nnwTurnContainerH.max, safeTop + measuredHeight))
+			// 第十五轮:三个候选来源分开记,并且**带首末**(方向就是因果,见 NNWTurnTrace)。
+			nnwTurnHostSafe.add(hostSafeTop)
+			nnwTurnPageSafe.add(articleHost?.view.safeAreaInsets.top ?? -1)
+			nnwTurnWindowSafe.add(windowSafeTop)
+			nnwTurnScrollSafe.add(scrollView.safeAreaInsets.top)
+			nnwTurnOffsetTrace.add(scrollView.contentOffset.y)
+			nnwTurnAdjustedTrace.add(scrollView.adjustedContentInset.top)
+		} else if nnwTurnLayoutCount > 0 {
+			NNWArticlePagingLog.logger.info("""
+				[拽] 翻页期间 排版=\(self.nnwTurnLayoutCount, privacy: .public) 次 \
+				| 飞行进度 \(self.nnwTurnFlight.min, privacy: .public)→\(self.nnwTurnFlight.max, privacy: .public) \
+				| offset \(self.nnwTurnOffset.min, privacy: .public)→\(self.nnwTurnOffset.max, privacy: .public) \
+				| inset上 \(self.nnwTurnInset.min, privacy: .public)→\(self.nnwTurnInset.max, privacy: .public) \
+				| contentH \(self.nnwTurnContentH.min, privacy: .public)→\(self.nnwTurnContentH.max, privacy: .public) \
+				| 装载完=\(self.contentSettled, privacy: .public) \
+				| 文章=\(self.installedArticleID.map { String($0.prefix(8)) } ?? "无", privacy: .public)
+				""")
+			nnwTurnLayoutCount = 0
+			nnwTurnFlight = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnOffset = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnInset = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnContentH = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+
+			// 🔴 **第十三轮真正要量的那一下:解冻的瞬间,标题跳了多大。**
+			//
+			// 上一轮的结论是「冻结飞行进度」没治好抖动(`飞行进度 0→0` 全程稳定,用户说照旧抖)。
+			// 但那一行只证明了**冻结期间不抖** —— 它**量不到冻结解除的那一帧**。
+			// 而恰恰在那一帧,标题要从"冻住的旧值"一步跳到"真实值":
+			// 新页冻的是 0(大标题态),而真实值可能已经是 1(完全停靠)——
+			// 那就是一次**满量程的突变**,发生在动画刚停、用户眼睛正盯着的时候。
+			//
+			// ⚠️ 走"超时兜底"那几次更糟:冻结要多持续将近 0.9 秒
+			//(上一份真机日志 6 次翻页里**有 3 次走的兜底**),
+			// 期间用户已经能滚了(其中一次 offset 在冻结窗口内走了 800pt),
+			// 标题却纹丝不动,直到兜底触发才猛地归位。
+			//
+			// 📌 **这一轮仍然只量不改。** 判读:
+			// - `跳变` 接近 0 → 解冻很平顺,抖动另有来源,继续量别乱改
+			// - `跳变` 到 0.5~1 → 病根就是它,下一轮改的是**"怎么解冻"**(而不是要不要冻)
+			// - `安全区` / `头区容器高` 有摆动 → 阅读栏自己的几何在动,那是另一条线索
+			NNWArticlePagingLog.logger.info("""
+				[拽] 解冻 冻结值=\(frozenFlightBefore, privacy: .public) \
+				→ 真实值=\(flight, privacy: .public) \
+				| 跳变=\(abs(flight - frozenFlightBefore), privacy: .public) \
+				| 安全区 \(self.nnwTurnSafeTop.min, privacy: .public)→\(self.nnwTurnSafeTop.max, privacy: .public) \
+				| 头区容器高 \(self.nnwTurnContainerH.min, privacy: .public)→\(self.nnwTurnContainerH.max, privacy: .public)
+				""")
+			// 🔴 **第十五轮要回答的最后一个问题:哪个来源在翻页期间是稳的。**
+			//
+			// 上一轮的数据把病灶指到了这里:9 次翻页里有 3 次 `安全区 62→116`,
+			// 而 116 − 62 = 54 = **导航栏的高度**;`头区容器高` 跟着摆同样的 54pt。
+			// 也就是说**新页的宿主视图一开始还没拿到导航栏那一段安全区**,
+			// 我们就拿这个偏小的值排了几十帧的版,等它补上再跳回去 ——
+			// 标题块整体上下窜 54pt,正文的静止位也跟着变。**那就是抖动。**
+			//
+            // ⚠️ 但**不要急着改成"用文章页的安全区"** —— 第八轮就是这么栽的:
+			// 当时假设"滑进来的页安全区每帧在变",直接改用窗口值,结果凭空砍掉导航栏 54pt,
+			// 制造了"标题压住正文"。这一次先把三个候选一起量出来再挑。
+			//
+			// 判读:**谁的 `首→末` 不变、而且等于 116,谁就是那个稳定基准。**
+			// - 文章页(ArticleViewController)稳定 116 → 下一轮用它兜底,一行的事
+			// - 三个都在动 → 没有稳定来源,得改成"翻页期间冻住上一次的好值"
+			NNWArticlePagingLog.logger.info("""
+				[拽] 安全区来源 宿主 \(self.nnwTurnHostSafe.text, privacy: .public) \
+				| 文章页 \(self.nnwTurnPageSafe.text, privacy: .public) \
+				| 窗口 \(self.nnwTurnWindowSafe.text, privacy: .public)
+				""")
+
+			// 🔴🔴 **这一行是第十六轮真正要看的**(用户 2026-08-09:「翻成了就一定抖,不抖就是没翻成」)。
+			//
+			// 那句话把范围一下子收死了:**抖动和"翻页成功"是同一件事**,
+			// 所以病因必须是**每一次成功翻页都发生**的东西 —— 上一轮那个「安全区 62→116」
+			// 只在 20 次里出现 5 次,**不符合**,不能是它(至少不只是它)。
+			//
+			// 而日志里真正每次都成立的不变量是这个(从减法推出来的):
+			// 写 inset 的那一刻 `夹后 == 原始`(滚动视图的安全区**还是 0**),
+			// 翻页结束时 `夹后 = 原始 + 116`。也就是说
+			// **新页的滚动视图在动画期间才拿到那 116pt 安全区**,
+			// 于是"滚到顶"的基准位置中途挪了 116pt —— 正文就是在这时候跳的。
+			//
+			// 📌 判据:**"每次都抖"这种全称说法,只能由"每次都发生"的量来解释。
+			// 一个只在 1/4 的情况里出现的现象,再显眼也不是它。**
+			//
+			// ✅ **答案已经拿到(2026-08-09 第十六轮真机,12 次翻页 11 次同一形状)**:
+			// ```
+			// 滚动视图安全区 首0→末116 | offset 首-175→末-291
+			// ```
+			// 安全区 +116,offset 正好 −116。
+			// ⚠️ **这不是"系统替我们补偿了"** —— 我原来在这里写反了。
+			// offset 跟着走 −116,意思是"滚动位置仍然是顶",
+			// 但**"顶"这个位置本身往下移了 116pt**(内容原点的屏幕位置 = −offset)。
+			// 所以**正文确实在动画中途整体掉下去 116pt**,病根坐实。
+			// 📌 判据:**`offset` 和"内容看起来在哪"不是一回事;
+			// 判断有没有视觉位移,要看 `−offset`,不是看 offset 有没有变。**
+			//
+			// ⬇️ 第十七轮加的验收行:总量 = 我们写的 + 系统的安全区。
+			// 修好之后它必须**全程恒定**(首 == 末);还在变就说明补偿没接上。
+			NNWArticlePagingLog.logger.info("""
+				[拽] 滚动视图安全区 \(self.nnwTurnScrollSafe.text, privacy: .public) \
+				| offset \(self.nnwTurnOffsetTrace.text, privacy: .public) \
+				| 🎯夹后总量 \(self.nnwTurnAdjustedTrace.text, privacy: .public)
+				""")
+
+			nnwTurnSafeTop = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnContainerH = (.greatestFiniteMagnitude, -.greatestFiniteMagnitude)
+			nnwTurnHostSafe = NNWTurnTrace()
+			nnwTurnPageSafe = NNWTurnTrace()
+			nnwTurnWindowSafe = NNWTurnTrace()
+			nnwTurnScrollSafe = NNWTurnTrace()
+			nnwTurnOffsetTrace = NNWTurnTrace()
+			nnwTurnAdjustedTrace = NNWTurnTrace()
+		}
+
+		// [外观] 2026-08-11:图标的尺寸/圆心只在这算**一次**,图标和进度环都直接用这份数,
+		// 不再各自算一遍(下面两个函数原来都各自重算 iconSize,进度环还要反过来读
+		// `iconView.center`——等于隔着一次"写完再读"才对齐)。
+		// 理由见 `applyProgressRing` 那边的详细注释:快速滑动时用户反馈图标和进度环会脱位、
+		// 环总慢一拍;根源不必是哪次具体的动画,只要两者是"各自独立算出来、凑巧数字相同",
+		// 就永远存在"某一帧算出来不完全一样"的空间。改成**同一份数字喂给两边**,
+		// 脱位在结构上就不可能发生。
+		let iconGeometry = Self.iconGeometry(flight: flight, safeTop: safeTop, dockBand: dockBand)
+		applyGeometry(flight: flight, width: width, dockBand: dockBand, safeTop: safeTop, iconGeometry: iconGeometry)
+		applyProgressRing(scrollView: scrollView, flight: flight, iconGeometry: iconGeometry)
+	}
+
+	/// 图标此刻的尺寸和圆心。**图标本身和进度环都从这一份数字来**,见调用处的注释。
+	private static func iconGeometry(flight: CGFloat, safeTop: CGFloat, dockBand: CGRect) -> (size: CGFloat, center: CGPoint) {
+		let size = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
+		let restCenterY = safeTop + Style.topPadding + Style.restIconSize / 2
+		let centerY = restCenterY + (dockBand.midY - restCenterY) * flight
+		let centerX = Style.iconLeading + size / 2
+		return (size, CGPoint(x: centerX, y: centerY))
 	}
 
 	/// 内容往下让出头区的高度。**只在高度变了时做一次,绝不在每帧做**(L63)。
@@ -514,14 +912,70 @@ import os
 	///
 	/// 补上这一行之后,视觉位置在改 inset 前后**完全不动**,"顶"仍然是"顶"。
 	/// (先记下改之前的偏移再算,而不是相信系统会不会自己调 —— 那个行为随场景而变,不可靠。)
+	/// 🔴🔴 **2026-08-09 第十七轮在这里加过一项"安全区补偿",真机白屏假死,已回退。**
+	///
+	/// 那次的诊断本身是对的(真机 12 次翻页 11 次 `滚动视图安全区 首0→末116`,
+	/// 正文在动画中途整体掉 116pt),**错的是修法**:
+	/// 补偿量 = `expectedSafeTop − scrollView.safeAreaInsets.top`,
+	/// 它**依赖一个会被自己的写入反过来影响的量**,于是目标值来回跳、每帧都落笔 → 卡死。
+	/// 详见 NOTES-todo「第十八轮」与 **L137**。**下次要治这个,不能再往每帧路径上加写操作。**
 	private func syncInset() {
 		guard let scrollView else { return }
 		let delta = measuredHeight - appliedInset
-		guard abs(delta) > 0.5 else { return }
+		guard abs(delta) > 0.5 else {
+			// ⚠️ **"没改"也要打一行**:这一轮要回答的是"翻页期间这里被叫了几次、各改了多少",
+			// 只打改成功的那些,就分不清"没被调用"和"调用了但判定无需改"(第五轮那条探针纪律)。
+			nnwLogInsetWrite("推新页(delta 太小,跳过)", delta: delta, scrollView: scrollView,
+							 offsetBefore: scrollView.contentOffset.y, offsetAfter: scrollView.contentOffset.y)
+			return
+		}
 		let offsetBefore = scrollView.contentOffset.y
 		scrollView.contentInset.top += delta
 		scrollView.contentOffset.y = offsetBefore - delta
 		appliedInset = measuredHeight
+		nnwLogInsetWrite("推新页", delta: delta, scrollView: scrollView,
+						 offsetBefore: offsetBefore, offsetAfter: scrollView.contentOffset.y)
+	}
+
+	// MARK: - ⚠️ 临时探针(2026-08-09 第十三轮,查完就删)
+
+	/// 沿 `parent` 链往上找 `ArticleViewController`(**`host` 是 `WebViewController`,不是它**)。
+	/// 详细来龙去脉见 `layoutAndApply` 里那段注释(L124/L132:钩子挂在不成立的分支上,栽过三次)。
+	private var nnwArticleHost: ArticleViewController? {
+		var current: UIViewController? = host
+		while let vc = current {
+			if let article = vc as? ArticleViewController { return article }
+			current = vc.parent
+		}
+		return nil
+	}
+
+	/// 记一行「我们自己动了正文的内边距和偏移」。
+	///
+	/// **为什么这一轮要量这个**:第十二轮的数据把嫌疑指到这里 ——
+	/// 一次翻页里 `inset上` 摆动整整 116pt(= 一个安全区)、`offset` 摆动 300+pt。
+	/// 而全项目只有两处会**同时**写 `contentInset.top` 和 `contentOffset.y`:
+	/// `syncInset()`(推新页)和 `releaseInset()`(还旧页)—— 那正是"正文在动"的直接嫌疑人。
+	///
+	/// 📌 **这一轮只量不改。** 第十二轮我两次"数据指认 → 直接动刀",两次都把事情弄得更糟
+	/// (一次制造了标题压正文,一次把隐藏缺陷升级成永久锁死翻页)。
+	/// 要回答三个问题:①翻页动画期间被调用了几次(预期各一次,若是几十次则病根坐实);
+	/// ②每次改了多少(delta 是不是那 116);③改的是哪一页(`页=` 那个短号区分新旧两页)。
+	private func nnwLogInsetWrite(_ what: String, delta: CGFloat, scrollView: UIScrollView,
+								  offsetBefore: CGFloat, offsetAfter: CGFloat) {
+		let articleHost = nnwArticleHost
+		let stage = (articleHost?.nnwIsTurningPage ?? false) ? "翻页中"
+			: ((articleHost?.nnwIsPullingToTurnPage ?? false) ? "拽中" : "平时")
+		let pageTag = UInt(bitPattern: ObjectIdentifier(scrollView).hashValue) % 9973
+		let articleTag = installedArticleID.map { String($0.prefix(8)) } ?? "无"
+		NNWArticlePagingLog.logger.info("""
+			[拽] 改内边距 \(what, privacy: .public) \(stage, privacy: .public) \
+			| delta=\(delta, privacy: .public) | 我们共加过=\(self.appliedInset, privacy: .public) \
+			| offset \(offsetBefore, privacy: .public)→\(offsetAfter, privacy: .public) \
+			| inset上=\(scrollView.contentInset.top, privacy: .public) \
+			| 夹后inset上=\(scrollView.adjustedContentInset.top, privacy: .public) \
+			| 页=\(pageTag, privacy: .public) | 文章=\(articleTag, privacy: .public)
+			""")
 	}
 
 	/// 量标题真正要占多高。
@@ -537,16 +991,15 @@ import os
 											limitedToNumberOfLines: Style.restTitleMaxLines).height)
 	}
 
-	private func applyGeometry(flight: CGFloat, width: CGFloat, dockBand: CGRect, safeTop: CGFloat) {
+	private func applyGeometry(flight: CGFloat, width: CGFloat, dockBand: CGRect, safeTop: CGFloat,
+							   iconGeometry: (size: CGFloat, center: CGPoint)) {
 
 		// —— 图标:从头区里的大图标,竖直飞到停靠区,同时缩小 ——
-		let iconSize = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
-		let restIconCenterY = safeTop + Style.topPadding + Style.restIconSize / 2
-		let iconCenterY = restIconCenterY + (dockBand.midY - restIconCenterY) * flight
-		let iconCenterX = Style.iconLeading + iconSize / 2
-
+		// [外观] 2026-08-11:尺寸/圆心由调用方统一算好传进来(见 `iconGeometry(flight:safeTop:dockBand:)`),
+		// 这里不再自己重算一遍。
+		let iconSize = iconGeometry.size
 		iconView.bounds = CGRect(x: 0, y: 0, width: iconSize, height: iconSize)
-		iconView.center = CGPoint(x: iconCenterX, y: iconCenterY)
+		iconView.center = iconGeometry.center
 		iconView.layer.cornerRadius = iconSize / 2	// 正圆 —— 环要紧贴它当描边(见 ringWidth 的说明)
 
 		// —— 两个标题的交接 ——
@@ -606,25 +1059,51 @@ import os
 
 	// MARK: - 进度环
 
-	private func applyProgressRing(scrollView: UIScrollView, flight: CGFloat) {
+	private func applyProgressRing(scrollView: UIScrollView, flight: CGFloat,
+									iconGeometry: (size: CGFloat, center: CGPoint)) {
 
-		// 环画在图标外面一圈,跟着图标一起飞
-		let iconSize = Style.restIconSize + (Style.dockedIconSize - Style.restIconSize) * flight
-		// 圆心距 = 图标半径 + 线宽的一半 → 描边正好压在图标边缘上,图标填满环的内部
-		let radius = iconSize / 2 + Style.ringWidth / 2
-		let center = iconView.center
-		let path = UIBezierPath(arcCenter: center, radius: radius,
+		// 环画在图标外面一圈,跟着图标一起飞。
+		//
+		// [外观] 2026-08-11 两轮修:
+		//
+		// 第一轮只是把圆心/半径的**数字**改成和图标共用同一份 `iconGeometry`
+		// (不再读 `iconView.center`)—— 用户反馈"还是慢几帧"。
+		// 说明问题不(只)在数字算得是否一致,而是**环和图标压根是两种不同的东西**:
+		// 图标是 `UIView`,几何变化走 UIKit 的 `bounds`/`center` 赋值(默认不产生隐式动画、
+		// 提交路径由 UIKit 统一管理);环原来是 `container.layer` 上一个裸 `CAShapeLayer`,
+		// 几何变化靠手动写 `path`,提交路径完全是另一套(纯 Core Animation,没有 UIKit 介入)。
+		// **两条不同的路径,没有任何东西保证它们一定同帧提交** ——
+		// 平时看不出来,快速滚动、掉帧压力大时才会露出"谁快谁慢"。
+		//
+		// 第二轮(这次):把环也包成一个真正的 `UIView`(`NNWProgressRingView`,
+		// 层类型是 `CAShapeLayer`),**位置/尺寸用 `bounds`/`center` 赋值**——
+		// 和 `iconView` 一模一样的写法、一模一样的提交路径。剩下真正"画什么样"的
+		// 那部分(path 的形状、颜色、进度)仍然是 CAShapeLayer 的活,继续关掉隐式动画。
+		let side = iconGeometry.size + Style.ringWidth
+		ringView.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+		ringView.center = iconGeometry.center
+
+		// 圆心距 = 图标半径 + 线宽的一半 → 描边正好压在图标边缘上,图标填满环的内部。
+		// 注意这里的圆心是 `ringView` **自己坐标系里**的中心(即上面 side/2),
+		// 不是 `iconGeometry.center`——那是 `container` 坐标系里的,两者不是同一回事。
+		let radius = iconGeometry.size / 2 + Style.ringWidth / 2
+		let localCenter = CGPoint(x: side / 2, y: side / 2)
+		let path = UIBezierPath(arcCenter: localCenter, radius: radius,
 								startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true)
 
 		// ⚠️ 关掉 CALayer 的隐式动画 —— 否则每帧的 path/strokeEnd 变化都会被排成
 		// 一段 0.25 秒的动画,环就跟不上手指了。
 		CATransaction.begin()
 		CATransaction.setDisableActions(true)
-		ringLayer.path = path.cgPath
-		ringLayer.lineWidth = Style.ringWidth
-		ringLayer.strokeColor = Assets.Colors.primaryAccent.cgColor
-		ringLayer.opacity = Float(flight)	// 和冻结同步现身:停在顶部时不需要它
-		ringLayer.strokeEnd = readingProgress(in: scrollView)
+		ringView.shapeLayer.path = path.cgPath
+		ringView.shapeLayer.lineWidth = Style.ringWidth
+		// [外观] 2026-08-05:一行换一行 —— 走调色板,不走 xcassets 的静态色板。
+		// 原来写死 `Assets.Colors.primaryAccent`,所以在设置里换强调色时**这圈进度环跟不上**。
+		// ⚠️ `CGColor` 不会自己跟随深浅色,所以必须**按当前 traits 解析一次**再取 cgColor
+		// (这个方法每次滚动都跑,深浅色变了下一帧就会带上新值)。
+		ringView.shapeLayer.strokeColor = NNWSoftMaterial.accent.resolvedColor(with: iconView.traitCollection).cgColor
+		ringView.shapeLayer.opacity = Float(flight)	// 和冻结同步现身:停在顶部时不需要它
+		ringView.shapeLayer.strokeEnd = readingProgress(in: scrollView)
 		CATransaction.commit()
 	}
 
@@ -778,6 +1257,15 @@ import os
 		super.touchesCancelled(touches, with: event)
 		UIView.animate(withDuration: 0.15) { self.alpha = 1 }
 	}
+}
+
+/// [外观] 2026-08-11 新增。承载图标外面那圈阅读进度环的容器 ——
+/// 一个**普通 UIView**,只是把它的层类型换成 `CAShapeLayer`。
+/// 目的见 `applyProgressRing` 的注释:让进度环的位置/尺寸和 `iconView` 走
+/// 完全相同的几何提交路径(`bounds`/`center` 赋值),而不是手动挂一个裸 CALayer。
+@MainActor final class NNWProgressRingView: UIView {
+	override class var layerClass: AnyClass { CAShapeLayer.self }
+	var shapeLayer: CAShapeLayer { layer as! CAShapeLayer }
 }
 
 #endif

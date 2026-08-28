@@ -290,7 +290,8 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 			label.isUserInteractionEnabled = ((coordinator?.timelineFeed as? PseudoFeed) == nil)
 			label.sizeToFit()
 		}
-		nnwUpdateFeedHeader()	// [外观] 单源页顶部头部区(实现在 TimelineFeedHeader.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
+		nnwUpdateFeedHeader()	// [外观] 单源页顶部头部区
+		nnwTimelineTopBarDidUpdate()	// [外观][阅读位置] 加一行:夹住标题宽度 + 装「点顶栏回顶/回原位」(实现在 +NNWTimelineExtras)(实现在 TimelineFeedHeader.swift)。挂这里因为:viewWillAppear 和 SceneCoordinator 切源都汇到本方法,是唯一必经之地
 	}
 
 	func updateNavigationBarSubtitle(_ text: String) {
@@ -308,6 +309,7 @@ final class MainTimelineModernViewController: UIViewController, UndoableCommandR
 		}
 		resetUI(resetScroll: resetScroll)
 		restoreSelectionIfNecessary(adjustScroll: false)
+		nnwRestoreFeedScrollPositionIfNeeded(resetScroll: resetScroll)	// [阅读位置] 加一行:换源时回到这个源上次停的那一篇(实现在 +NNWTimelineExtras)
 	}
 
 	func reloadArticles(animated: Bool) {
@@ -537,6 +539,9 @@ extension MainTimelineModernViewController: UICollectionViewDelegate {
 			if let action = self.markAllInFeedAsReadAction(article, indexPath: firstIndex) {
 				secondaryActions.append(action)
 			}
+			if let action = self.nnwFeedSettingsAction(article) {	// [管理] 加三行:进这个源的设置页(实现在 +NNWTimelineExtras)
+				secondaryActions.append(action)
+			}
 			if !secondaryActions.isEmpty {
 				menuElements.append(UIMenu(title: "", options: .displayInline, children: secondaryActions))
 			}
@@ -560,7 +565,12 @@ extension MainTimelineModernViewController: UICollectionViewDelegate {
 				menuElements.append(UIMenu(title: "", options: .displayInline, children: [action]))
 			}
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行只放头两项(已读 / 星标)—— 后面的「标记以上为已读」这类
+			// 摘掉文字就认不出来了,必须留在文字行里。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: firstIndex),
+									quickActionCount: 2)
 
 		})
 	}
@@ -780,7 +790,7 @@ private extension MainTimelineModernViewController {
 			}
 
 			readAction.image = article.status.read ? Assets.Images.circleClosed : Assets.Images.circleOpen
-			readAction.backgroundColor = Assets.Colors.primaryAccent
+			readAction.backgroundColor = NNWAccentPalette.live
 			actions.append(readAction)
 
 			let config = UISwipeActionsConfiguration(actions: actions)
@@ -834,9 +844,12 @@ private extension MainTimelineModernViewController {
 		let showFeedNames = coordinator?.showFeedNames ?? ShowFeedName.none
 		let showIcon = showIcons && iconImage != nil
 		// [界面] 多传一个正文首图的缩略图;取不到就是 nil,列表会把文字铺满。
+		// 2026-08-11:`hasThumbnail` 单独问一次 —— 只扫 HTML(有缓存,不等网络),
+		// 图片真正下载完成之前就能知道要不要占位,布局靠它避免"图下载完文字才跳"。
+		let hasThumbnail = ArticleThumbnail.shared.hasImage(for: article)
 		let thumbnail = ArticleThumbnail.shared.thumbnail(for: article)
 		// [翻译] 标题可能换成中文译文(开了「标题翻译」的源;实现见 NNWTitleTranslationController)
-		let cellData = MainTimelineCellData(article: NNWTitleTranslationController.shared.displayArticle(for: article), showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, thumbnail: thumbnail)
+		let cellData = MainTimelineCellData(article: NNWTitleTranslationController.shared.displayArticle(for: article), showFeedName: showFeedNames, feedName: article.feed?.nameForDisplay, byline: article.byline(), iconImage: iconImage, showIcon: showIcon, numberOfLines: numberOfTextLines, iconSize: iconSize, hasThumbnail: hasThumbnail, thumbnail: thumbnail)
 		return cellData
 	}
 
@@ -877,6 +890,7 @@ private extension MainTimelineModernViewController {
 			}
 		}
 		updateToolbarProgressView()
+		nnwRestyleTimelineToolbarIcons()	// [外观] 加一行:两颗工具栏键换软面板圆钮(实现在 +ReadingMode 扩展)
 	}
 
 	func resetUI(resetScroll: Bool) {
@@ -888,7 +902,7 @@ private extension MainTimelineModernViewController {
 		navigationItem.rightBarButtonItems = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? [filterButton] : nnwNavBarButtonItems()
 
 		if isReadArticlesFiltered {
-			filterButton.tintColor = Assets.Colors.primaryAccent
+			filterButton.tintColor = NNWAccentPalette.live
 			filterButton.accLabelText = NSLocalizedString("Selected - Filter Read Articles", comment: "Selected - Filter Read Articles")
 		} else {
 			filterButton.tintColor = .label
@@ -912,6 +926,7 @@ private extension MainTimelineModernViewController {
 	func updateToolbar() {
 		markAllAsReadButton?.isEnabled = isTimelineUnreadAvailable
 		nextUnreadButton.isEnabled = coordinator?.isNextUnreadAvailable ?? false
+		nnwSyncSoftGlassToolbarButtons()	// [外观] 加一行:上面写的 isEnabled 要搬到玻璃圆钮上(UIKit 不会自己传给 customView)
 		if #unavailable(iOS 26) {
 			rebuildToolbarItems()
 		}

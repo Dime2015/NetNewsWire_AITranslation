@@ -44,9 +44,12 @@ final class NNWArticleControlBoard: UIView {
 
 	// MARK: 尺寸定数(想调整改这里)
 
-	private static let slotSize: CGFloat = 44		// 每键的格子边长
+	private static let slotSize: CGFloat = 44		// 每键的格子边长(点按区,苹果最小标准)
 	/// 总宽定死(L78)。7 键共 308,余下的宽度由 equalSpacing 平均分给 6 个间隔。
-	private static let boardWidth: CGFloat = 330
+	/// ⚠️ 临时:v1 档收窄,试「窄一点是不是更像浮起来的胶囊」。挑定后删。
+	private static var boardWidth: CGFloat { NNWSoftMaterial.variant == "v1" ? 288 : 342 }
+	/// [外观] dock 总高。比格子高一圈,让图标四周有呼吸 —— 参考图里 dock 明显高于图标。
+	private static let boardHeight: CGFloat = 54
 
 	// MARK: 状态(唯一入口,见文件头)
 
@@ -89,14 +92,32 @@ final class NNWArticleControlBoard: UIView {
 	/// 所以换数组**之前**要把旧按钮原样存进来"续命"。删这个属性 = app 秒崩。
 	var legacyItemsKeptAlive: [UIBarButtonItem] = []
 
+	/// [外观] 2026-08-04:dock 的「软面板」材质(渐变 + 上缘 hairline + 极淡阴影)。
+	/// 数值来自对参考图逐像素采样,见 NNWSoftMaterial 的文件头。
+	// [外观] 2026-08-05:改成**真磨砂**,正文从 dock 底下透上来
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
+
+	/// [外观] 板子做成一颗完整的胶囊(参考图里的 dock 是全圆角)
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		// [外观] 2026-08-05:dock 已从工具栏搬出来当浮层(见 NNWFloatingDock.swift),
+		// 系统不再给它垫胶囊 —— 所以两个系统版本上都**照旧画我们自己的面板**。
+		softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+	}
+
 	/// - Parameters:
 	///   - readerButton: 上游的「阅读视图」按钮实例(状态机自理,整个注入)
 	///   - translationButton: 翻译层的「翻译」按钮实例(同上)
 	init(readerButton: UIView, translationButton: UIView) {
 		super.init(frame: .zero)
 
-		// 图标统一暖墨色(星标点亮时单独换色,在 apply 里)
-		tintColor = AppAppearance.inkPrimary
+		// 图标统一墨色(星标点亮时单独换色,在 apply 里)。
+		// [外观] 软材质档用实测的 #262626 —— 参考图的图标不是纯黑,也不是暖墨。
+		tintColor = NNWSoftMaterial.isEnabled ? NNWSoftMaterial.ink : AppAppearance.inkPrimary
+
+		// [外观] 把 dock 变成一块浮起的软面板。⚠️ 不能开 clipsToBounds,会把阴影裁掉。
+		// dock 已搬出工具栏(见 NNWFloatingDock.swift),不存在系统胶囊套娃的问题,照旧画。
+		softPanel.install(in: self)
 
 		// [外观] 统一图标尺寸(2026-07-25 用户指出:最后两键看着偏大 —— 不是错觉):
 		// 注入的阅读视图按钮用的是系统默认符号尺寸,比板上其他键的 17pt 大一圈,
@@ -113,11 +134,17 @@ final class NNWArticleControlBoard: UIView {
 		longImageButton.addTarget(self, action: #selector(longImageTapped), for: .touchUpInside)
 		shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
 
-		nextUnreadButton.setSymbol("chevron.down.circle")	// 和上游故事板同一个图标
+		nextUnreadButton.setImage(NNWDockIcons.nextUnread())	// [外观] 手绘,和整套 dock 同一套笔画
 		nextUnreadButton.accessibilityLabel = NSLocalizedString("Next Unread Article", comment: "Next Unread Article")
-		longImageButton.setImage(NNWIcons.longImageShare())	// 自绘图标(竖长卡片 + 分享箭头)
+		// [外观] 2026-08-05 **改回上一版**(用户:「分享/长图/翻译这三个太丑了」)。
+		//
+		// ⚠️ 2026-08-04 那轮"7 个图标全部手绘"顺手把这两个也换了 —— 但**长图那个
+		// 用户在 2026-07-25 已经验收过四版**(见 NNWIcons.longImageShare 的注释:
+		// 虚线选取框 + 相机,是截图工具的通用语法)。把签过字的东西换掉是我的错。
+		// 判据:**重绘一整套之前,先查这套里有没有已经单独定过案的** —— 那些要留。
+		longImageButton.setImage(NNWIcons.longImageShare())	// 自绘:虚线选取框 + 相机(2026-07-25 定案)
 		longImageButton.accessibilityLabel = "分享长图"
-		shareButton.setSymbol("square.and.arrow.up")
+		shareButton.setSymbol("square.and.arrow.up")		// 系统符号,和 iOS 各处的"分享"一致
 		shareButton.accessibilityLabel = NSLocalizedString("Share", comment: "Share")
 
 		// 7 键平均间隔,顺序即用户拍板的布局(2026-07-25 二版:去分隔线)
@@ -142,22 +169,23 @@ final class NNWArticleControlBoard: UIView {
 
 	/// 定死的整体尺寸(工具栏按这个摆它,永远不需要重新问 —— L78)
 	override var intrinsicContentSize: CGSize {
-		CGSize(width: Self.boardWidth, height: Self.slotSize)
+		CGSize(width: Self.boardWidth, height: Self.boardHeight)
 	}
 
 	/// 刷新 5 个自有键。**这是板子唯一的状态入口**(见文件头)。
 	func apply(_ state: State) {
 
 		// 已读:空心圈 = 已读(点了标回未读),实心圈 = 未读(点了标已读)。图标与上游一致。
-		readButton.setSymbol(state.isRead ? "circle" : "largecircle.fill.circle")
+		readButton.setImage(NNWDockIcons.read(isRead: state.isRead))	// [外观] 手绘
 		readButton.isEnabled = state.hasArticle && (state.isRead ? state.canMarkUnread : true)
 		readButton.accessibilityLabel = state.isRead
 			? NSLocalizedString("Mark Article Unread", comment: "Mark Article Unread")
 			: NSLocalizedString("Selected - Mark Article Unread", comment: "Selected - Mark Article Unread")
 
 		// 星标:点亮时用 app 的星色,平时和别的键一样是暖墨
-		starButton.setSymbol(state.isStarred ? "star.fill" : "star")
-		starButton.iconTint = state.isStarred ? Assets.Colors.star : nil
+		starButton.setImage(NNWDockIcons.star(filled: state.isStarred))	// [外观] 手绘
+		// [外观] 点亮用强调橙 —— 参考图里"当前/已激活"一律是橙色实心
+		starButton.iconTint = state.isStarred ? NNWSoftMaterial.accent : nil
 		starButton.isEnabled = state.hasArticle
 		starButton.accessibilityLabel = state.isStarred
 			? NSLocalizedString("Selected - Star Article", comment: "Selected - Star Article")

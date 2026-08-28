@@ -10,6 +10,13 @@ import Foundation
 @testable import ActivityLog
 
 @Suite @MainActor struct ActivityLogTests {
+	private func localized(_ key: String) -> String {
+		NSLocalizedString(key, bundle: .module, comment: "")
+	}
+
+	private func localized(_ key: String, argument: String) -> String {
+		String(format: localized(key), argument)
+	}
 
 	@Test func createActivityAssignsIncrementingIDs() {
 		let activityLog = ActivityLog()
@@ -362,17 +369,17 @@ import Foundation
 	}
 
 	@Test func kindDisplayNameForSimpleKind() {
-		#expect(ActivityKind.refreshAll.displayName(detail: nil) == "Refresh all")
+		#expect(ActivityKind.refreshAll.displayName(detail: nil) == localized("Refresh all"))
 	}
 
 	@Test func kindDisplayNameUsesDetailForFeedContent() {
 		let kind = ActivityKind.refreshFeedContent(feedURL: "https://example.com/feed.json")
-		#expect(kind.displayName(detail: "My Feed") == "Refreshing feed: My Feed")
-		#expect(kind.displayName(detail: nil) == "Refreshing feed: https://example.com/feed.json")
+		#expect(kind.displayName(detail: "My Feed") == localized("Refreshing feed: %@", argument: "My Feed"))
+		#expect(kind.displayName(detail: nil) == localized("Refreshing feed: %@", argument: "https://example.com/feed.json"))
 	}
 
 	@Test func kindDisplayNameForURLKind() {
-		#expect(ActivityKind.findFeed(urlString: "https://example.com").displayName(detail: nil) == "Finding feed https://example.com")
+		#expect(ActivityKind.findFeed(urlString: "https://example.com").displayName(detail: nil) == localized("Finding feed %@", argument: "https://example.com"))
 	}
 
 	@Test func formattedDurationUnderTenSecondsHasTwoDecimals() {

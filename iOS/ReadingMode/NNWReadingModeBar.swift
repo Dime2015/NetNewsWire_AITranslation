@@ -46,26 +46,85 @@ import UIKit
 	private static let expandedWidth: CGFloat = 84
 	/// 收起的那两格(只有一个图标)
 	private static let collapsedWidth: CGFloat = 44
-	private static let barHeight: CGFloat = 34
+	/// 三档图标的字号。
+	///
+	/// [外观] 2026-08-09:13 → **15**(用户报「各控件质感不一致」)。
+	/// 全 app 别处的控件图标统一走 `NNWSoftMaterial.iconPointSize`(18pt),
+	/// **这一格是唯一的例外**:展开那格里图标要和「未读」两个汉字并排,
+	/// 拉到 18 会挤,而且 `expandedWidth` 是写死的(见文件头),改大要连带调宽。
+	/// 15 是"明显不再是全屏最小的那个图标"和"不挤"之间的折中。
+	/// ⚠️ 字重保持 `.semibold`:SF Symbol 的笔画随字号走,15pt semibold 的**绝对笔画**
+	/// 才和别处 18pt medium 接近 —— 统一的是**看起来的粗细**,不是那个枚举值。
+	private static let iconPointSize: CGFloat = 15
+	/// 高度 —— **读全 app 的唯一真源**,别在这里写死(用户 2026-08-05:「以后都一直保持一样」)。
+	///
+	/// ⚠️ **量圆的直径要横扫取最宽处,别竖扫**:竖扫如果没扫在圆心上,
+	/// 量到的是**弦**不是直径,会低估(L109 —— 当天就是这个错让我一路改反了方向)。
+	private static var barHeight: CGFloat { NNWSoftMaterial.controlDiameter }
 	private static let buttonSpacing: CGFloat = 2
+	/// 选中胶囊比它那一格四周各收多少(实测参考图 ≈3.2pt,取 3.5 让"小一点"更明确)
+	private static let capsuleInset: CGFloat = 3.5
 
 	/// 总宽恒定 —— 这是整个设计的地基,别改成"按内容算"
 	private static var totalWidth: CGFloat {
 		expandedWidth + collapsedWidth * 2 + buttonSpacing * 2
 	}
 
+	/// **外圈那条轨道归谁画。**
+	///
+	/// - `false`(默认,住在系统工具栏里):跟着 `NNWSoftMaterial.systemDrawsBarCapsule` 走 ——
+	///   那个开关**现在恒为 `false`**(2026-08-05 晚已把版本分叉去掉),所以实际上也是我们画。
+	///   ⚠️ 保留这条判断的意义:万一哪天把那个开关翻回 `true`(重新让系统画栏里的胶囊),
+	///   栏里这条要跟着跳过,否则就是套娃。
+	/// - `true`(已搬出工具栏,浮在页面上):**不管那个开关怎么设,浮层永远得自己画** ——
+	///   系统不给浮层垫任何东西。
+	///
+	/// 📌 用户 2026-08-05 报过的「真机上内圈比外圈小很多」曾经就是这里的病根:
+	/// 那时 27 上外圈是**系统**画的(实测 48pt、自带内边距)、内圈是**我们**按自己的高度算的(40pt),
+	/// 两把尺子不是同一把。**现在外圈内圈都归我们,这个差从根上没有了**(判据见 L121)。
+	let drawsOwnTrack: Bool
+
+	/// 外圈到底画不画。
+	private var showsOwnPanel: Bool { drawsOwnTrack || !NNWSoftMaterial.systemDrawsBarCapsule }
+
 	private let stack = UIStackView()
+
+	/// [外观] 2026-08-04:整条做成软面板,当前档是一颗浮起的胶囊(参考图里的 Chat|History)
+	// [外观] 2026-08-05:改成**真磨砂** —— 这一条浮在文章列表上方,
+	// 底下是滚动的文章。不透明的话等于把唯一有内容可透的地方盖死了。
+	private let softPanel = NNWSoftPanel(kind: .panel, translucent: true)
+	private let capsule = UIView()
+	// [外观] 2026-08-09:选中那一格也改成**半透明**(`translucent: true`)。
+	// 原来是实心色,坐在一条真磨砂的轨道上 —— 一实一虚,深色下最扎眼。
+	// ⚠️ 半透明的 `.capsule` 档**不会**再垫一块自己的磨砂(否则玻璃套玻璃),
+	// 它只是在轨道那块玻璃上压一层更浓的白。见 `NNWSoftPanel.needsOwnBlur`。
+	private let capsuleMaterial = NNWSoftPanel(kind: .capsule, translucent: true)
 	private var buttons: [NNWReadingMode: UIButton] = [:]
 	/// 每一格的宽度约束,换档时只改这三条的常数(总和不变)
 	private var widthConstraints: [NNWReadingMode: NSLayoutConstraint] = [:]
+	/// [外观] 当前档 —— 胶囊要对准它(layoutSubviews 用)
+	private var currentMode: NNWReadingMode = NNWReadingModeStore.shared.mode
 
-	override init(frame: CGRect) {
-		super.init(frame: frame)
+	/// - Parameter drawsOwnTrack: 外圈归不归我们画,见该属性的说明。
+	init(drawsOwnTrack: Bool = false) {
+		self.drawsOwnTrack = drawsOwnTrack
+		super.init(frame: .zero)
 
 		stack.axis = .horizontal
 		stack.alignment = .center
 		stack.distribution = .fill
 		stack.spacing = Self.buttonSpacing
+		// [外观] 面板 + 胶囊要垫在按钮**下面**,先加它们。
+		// ⚠️ iOS 27+ 跳过**外面这层面板**(那里由系统的液态玻璃画,再画就是套娃),
+		// 但下面那个 `capsuleMaterial` **要留着** —— 它是"当前选中哪一档"的指示器,
+		// 不是栏的背景,系统不会替我们画。见 NNWSoftMaterial.systemDrawsBarCapsule
+		if showsOwnPanel {
+			softPanel.install(in: self)
+		}
+		capsule.isUserInteractionEnabled = false
+		addSubview(capsule)
+		capsuleMaterial.install(in: capsule)
+
 		stack.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(stack)
 		NSLayoutConstraint.activate([
@@ -97,6 +156,10 @@ import UIKit
 		// 所以每条都自己盯着通知,不用谁去挨个通知谁。
 		NotificationCenter.default.addObserver(self, selector: #selector(modeDidChange),
 											   name: NNWReadingModeStore.didChangeNotification, object: nil)
+		// [外观] 换强调色之后当前档的字色要跟着变 —— 颜色是在 makeConfiguration 里
+		// 一次性写进 UIButton.Configuration 的,不会自己刷新,必须重跑一遍。
+		NotificationCenter.default.addObserver(self, selector: #selector(modeDidChange),
+											   name: NNWAccentPalette.didChangeNotification, object: nil)
 
 		apply(mode: NNWReadingModeStore.shared.mode)
 	}
@@ -110,6 +173,8 @@ import UIKit
 
 	/// 把外观切到某一档。**三格宽度的总和永远不变**,所以外层不用重新排版。
 	func apply(mode current: NNWReadingMode) {
+		currentMode = current
+		setNeedsLayout()			// [外观] 胶囊要跟着换位置
 		for mode in NNWReadingMode.allCases {
 			guard let button = buttons[mode] else { continue }
 			let isCurrent = mode == current
@@ -125,7 +190,7 @@ import UIKit
 
 		var config = UIButton.Configuration.plain()
 		config.image = UIImage(systemName: mode.symbolName,
-							   withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+							   withConfiguration: UIImage.SymbolConfiguration(pointSize: iconPointSize, weight: .semibold))
 		config.imagePadding = 5
 		// ⚠️ 内边距一律给 0:每一格的宽度已经由约束钉死,再叠内边距只会把内容往里挤
 		//(第二版就是内边距 + 自适应宽度一起作用,才把文字挤没的)。内容自己会居中。
@@ -142,9 +207,10 @@ import UIKit
 			// **是整屏饱和度最高的东西** —— 视觉重心被拽到了底部的导航控件上,
 			// 而那里并不是内容。参考物 Reeder 的当前档也是「浅灰底 + 深色字」,
 			// 高饱和的红只留给「开关」这类真正表达状态的控件。
-			config.baseForegroundColor = AppAppearance.inkPrimary
-			config.background.backgroundColor = pillBackground
-			config.background.cornerRadius = barHeight / 2
+			// [外观] 2026-08-04:当前档改为「橙字 + 浮起的胶囊」(参考图的做法)。
+			// 胶囊由 capsule 视图画(软材质),这里的 background 一律留空,免得两层叠。
+			config.baseForegroundColor = NNWSoftMaterial.accent
+			config.background.backgroundColor = .clear
 		} else {
 			config.attributedTitle = nil
 			config.background.backgroundColor = .clear
@@ -166,6 +232,37 @@ import UIKit
 
 	override var intrinsicContentSize: CGSize {
 		CGSize(width: Self.totalWidth, height: Self.barHeight)
+	}
+
+	/// [外观] 面板与胶囊按当前档重画。胶囊对准当前那一格。
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		// 还住在栏里时,iOS 27+ 的外层面板由系统画,这里跳过;搬出来之后永远自己画。
+		// 不管画不画,下面的选中胶囊照旧要排版。
+		if showsOwnPanel {
+			softPanel.layout(in: self, cornerRadius: bounds.height / 2)
+		}
+
+		// ⚠️ **必须先让 stack 排完版再读按钮的 frame**(2026-08-04 用户报"遮罩错位"):
+		// 换档时改的是每格的宽度约束,而 super.layoutSubviews() 只排到 stack 这一层,
+		// stack 内部给三个按钮定位是**之后**才发生的 —— 这时读到的还是上一档的旧宽度,
+		// 胶囊就画到了错的位置。layoutIfNeeded 把内层排版提前逼出来。
+		stack.layoutIfNeeded()
+
+		guard let currentButton = buttons[currentMode], currentButton.bounds.width > 0 else {
+			capsule.isHidden = true
+			return
+		}
+		capsule.isHidden = false
+		// 胶囊比它那一格四周都收一圈 —— 参考图里胶囊是"嵌在槽里"的,四边都留缝。
+		//
+		// ⚠️ **左右也要收**(2026-08-05,用户报"在框体边缘时看不出内外的区别")。
+		// 原来写的是 `dx: 0` —— 只收了上下。选中格在**最左或最右**时,
+		// 胶囊的边就直接贴上轨道的亮边,两层叠在一起,间隔完全消失。
+		// 实测参考图 IMG_2440:胶囊左缘 x=680、轨道左缘 x=664 → 缝 16px ÷ 4.94 = **3.2pt**。
+		capsule.frame = convert(currentButton.bounds, from: currentButton)
+			.insetBy(dx: Self.capsuleInset, dy: Self.capsuleInset)
+		capsuleMaterial.layout(in: capsule, cornerRadius: capsule.bounds.height / 2)
 	}
 }
 

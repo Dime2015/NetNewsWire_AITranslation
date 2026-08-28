@@ -56,6 +56,10 @@ extension Notification.Name {
 	private var inFlight: Set<String> = []
 	/// 本次运行里翻失败的,别反复撞同一堵墙
 	private var failedThisRun: Set<String> = []
+	/// 内容类失败后的对半重试次数(按文章计)。见 drain() 里的分流。
+	private var retryCounts: [String: Int] = [:]
+	/// 同一条标题最多被内容类错误重试几次 —— 40 条对半拆到 1 条需要 6 次,给到 8 次够用
+	private static let maxContentRetries = 8
 	private var drainScheduled = false
 	private var draining = false
 
@@ -144,12 +148,21 @@ extension Notification.Name {
 			return article
 		}
 		// 本来就是中文的标题不翻 —— 中文源被顺手打开开关时,一分钱都不花
-		guard !Self.looksChinese(title) else { return article }
+		guard !Self.looksChinese(title) else {
+			Self.explainSkip(article, reason: "判定为已经是中文")
+			return article
+		}
 
 		let model = TranslationConfigStore.selectedModel
 		if let translated = NNWTitleTranslationCache.shared.translation(articleID: article.articleID,
 																		title: title,
 																		model: model) {
+			if translated == title {
+				// ⚠️ 模型把原文原样还了回来。这条**会被缓存下来**,于是这个标题
+				// 从此永远显示原文、而且重启也不会变 —— 用户报的"某些源标题永远不翻、
+				// 又找不出共同点",这是最可能的一种(2026-08-12 加这条日志来确认)。
+				Self.explainSkip(article, reason: "缓存里的译文和原文一模一样(模型原样返回)")
+			}
 			return translated == title ? article : article.nnwReplacingTitle(translated)
 		}
 
@@ -247,9 +260,44 @@ extension Notification.Name {
 				Self.logger.info("[翻译] 标题批量翻译成功:\(ids.count) 条(模型 \(model, privacy: .public))")
 				NotificationCenter.default.post(name: .nnwTitleTranslationDidUpdate, object: nil)
 			} catch {
-				// 一批失败,剩下的批也别发了 —— 断网时逐批撞 60 秒超时是连环无效请求
-				// (独立审查建议 4)。全部记入失败名单,等切源/回前台/改配置时再放行。
 				inFlight.subtract(ids)
+
+				// 🔴 2026-08-12:**把两类失败分开处理**(用户报"某些源的标题永远翻不出来")。
+				//
+				// 旧版不管什么错都"整批作废 + 把剩下所有待翻也一起打成失败"。
+				// 对断网是对的(逐批撞超时确实是连环无效请求),
+				// 但对 `invalidResponse` 就**错得很**:那是**这一批的内容**让模型没守约
+				// (条数对不上 / 输出不是合法 JSON 数组)—— 比如某个标题里带引号、
+				// 方括号、全角符号,把数组结构带歪了。一条坏标题会拖垮**整批 40 条**,
+				// 而且顺手把队列里其它源的标题也判死。用户看到的就是
+				// "有些源永远不翻,但找不出这些源的共同点" —— 共同点根本不在源上,
+				// 在**谁和谁被分到了同一批**。
+				//
+				// 现在:内容类错误 → **对半拆**再试(坏标题会被隔离到越来越小的批里,
+				// 最后单独失败,不连累别人);传输类错误 → 维持老策略(停手,等回前台再说)。
+				let isContentFailure = (error as? TranslationError).map {
+					if case .invalidResponse = $0 { return true } else { return false }
+				} ?? false
+
+				if isContentFailure, batch.count > 1 {
+					let mid = batch.count / 2
+					for article in batch {
+						// 拆分后的重试次数有上限,免得一直对半拆下去
+						let tries = (retryCounts[article.articleID] ?? 0) + 1
+						retryCounts[article.articleID] = tries
+						if tries > Self.maxContentRetries {
+							failedThisRun.insert(article.articleID)
+						} else {
+							pending[article.articleID] = article
+						}
+					}
+					Self.logger.error("""
+						[翻译] 标题批量翻译内容出错,拆成两半重试:\(ids.count, privacy: .public) 条 \
+						→ \(mid, privacy: .public) + \(ids.count - mid, privacy: .public)
+						""")
+					continue	// 不 break:剩下的照常轮转,别株连
+				}
+
 				failedThisRun.formUnion(ids)
 				failedThisRun.formUnion(pending.keys)
 				pending.removeAll()
@@ -257,6 +305,23 @@ extension Notification.Name {
 				break
 			}
 		}
+	}
+
+	/// 🔎 2026-08-12:标题没被翻译时,说清楚是哪一条分支挡下的。
+	///
+	/// 用户报过"某些源开了开关也不翻,但找不出这些源的共同点"。装配是热路径(滚一屏几十次),
+	/// 所以**按「源 + 原因」限流,每个组合整个运行期只说一次** —— 够定位,不刷屏。
+	private static var explainedSkips: Set<String> = []
+
+	private static func explainSkip(_ article: Article, reason: String) {
+		let key = "\(article.feedID)|\(reason)"
+		guard !explainedSkips.contains(key) else { return }
+		explainedSkips.insert(key)
+		logger.notice("""
+			[翻译] 标题没翻:\(reason, privacy: .public) \
+			| 源=\(article.feedID, privacy: .public) \
+			| 标题=\(article.title ?? "", privacy: .public)
+			""")
 	}
 
 	/// 粗判"已经是中文":CJK 字符占比超过三成就不用翻了。

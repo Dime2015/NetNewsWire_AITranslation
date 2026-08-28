@@ -34,6 +34,14 @@ import Images
 		if let smartFeed = SmartFeedsController.shared.find(by: feedID) {
 			return imageForFeed(smartFeed)
 		}
+		#if os(iOS)
+		// [外文] 加四行:上面那句 `find(by:)` 住在 A 级禁区(Shared/SmartFeeds/),
+		// 认不出本 fork 运行时追加的「外文」智能源 —— 于是它在侧栏**没有图标**
+		// (2026-08-08 装机截图发现的)。在这儿补一句认领,禁区一行未动。
+		if let foreignFeed = NNWForeignSmartFeed.feed, foreignFeed.sidebarItemID == feedID {
+			return imageForFeed(foreignFeed)
+		}
+		#endif
 		if let feed = AccountManager.shared.existingFeed(with: feedID) {
 			return imageForFeed(feed)
 		}

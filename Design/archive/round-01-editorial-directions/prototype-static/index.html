@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Babel · 第一轮设计评审</title>
+    <meta
+      name="description"
+      content="Babel 跨语言阅读器第一轮高保真设计方向与状态评审。"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="review-shell">
+      <aside class="review-panel" aria-label="设计评审控制台">
+        <div class="review-brand">
+          <span class="review-brand__mark">B</span>
+          <div>
+            <p>BABEL / DESIGN 01</p>
+            <h1>第一轮设计评审</h1>
+          </div>
+        </div>
+
+        <section class="control-group">
+          <h2>方向</h2>
+          <div class="segmented segmented--stack" id="directionControl">
+            <button data-value="a" class="is-active">
+              <b>A</b><span>安静的编辑排版</span>
+            </button>
+            <button data-value="b">
+              <b>B</b><span>图像只留在门口</span>
+            </button>
+            <button data-value="c">
+              <b>C</b><span>译者的校样桌</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>页面</h2>
+          <select id="screenControl">
+            <option value="home">主页</option>
+            <option value="list">文章列表</option>
+            <option value="article">文章内容</option>
+            <option value="settings">设置主页</option>
+            <option value="language">翻译与语言</option>
+            <option value="feed">单个订阅源设置</option>
+            <option value="longimage">长图导出</option>
+            <option value="icons">App 图标</option>
+            <option value="stress">压力测试</option>
+          </select>
+        </section>
+
+        <section class="control-group">
+          <h2>状态</h2>
+          <div class="field-row">
+            <label for="modeControl">内容状态</label>
+            <select id="modeControl">
+              <option value="default">默认</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label>外观</label>
+            <div class="segmented" id="themeControl">
+              <button data-value="light" class="is-active">浅色</button>
+              <button data-value="dark">深色</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>A/B 判断</h2>
+          <label class="toggle-row">
+            <span>
+              <b>重复订阅源名</b>
+              <small>单源文章列表中显示 / 隐藏</small>
+            </span>
+            <input id="repeatSource" type="checkbox" checked />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <b>目标语言文章</b>
+              <small>弱化翻译键 / 保持常规</small>
+            </span>
+            <input id="softTranslate" type="checkbox" checked />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <b>放大字号</b>
+              <small>模拟动态字体 +2 档</small>
+            </span>
+            <input id="largeType" type="checkbox" />
+          </label>
+        </section>
+
+        <section class="decision-note">
+          <p class="eyebrow">当前建议</p>
+          <h2 id="recommendationTitle">C · 译者的校样桌</h2>
+          <p id="recommendationText">
+            它最能把“跨语言阅读”变成产品自己的结构，而不是附着在 RSS 阅读器上的翻译按钮。
+          </p>
+        </section>
+
+        <p class="keyboard-hint">快捷键：A / B / C 切方向，D 切深色，← → 切状态</p>
+      </aside>
+
+      <main class="review-stage">
+        <header class="stage-header">
+          <div>
+            <p class="eyebrow" id="directionCode">方向 A</p>
+            <h2 id="directionTitle">安静的编辑排版</h2>
+            <p id="directionSummary">
+              不靠插图做品牌，用排版秩序、纸张层次和克制的陶土色建立识别。
+            </p>
+          </div>
+          <div class="stage-meta">
+            <span>402 × 874 pt</span>
+            <span>iOS / Light + Dark</span>
+          </div>
+        </header>
+
+        <section class="device-zone" aria-live="polite">
+          <div class="device-frame">
+            <div class="device-screen" id="deviceScreen"></div>
+          </div>
+          <aside class="screen-notes" id="screenNotes"></aside>
+        </section>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

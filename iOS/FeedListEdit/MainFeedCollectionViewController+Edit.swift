@@ -247,6 +247,10 @@ extension MainFeedCollectionViewController {
 
 	private func nnwUpdateEditingChrome() {
 
+		// [阅读档] 三档控件 2026-08-05 从工具栏搬成了浮层,不再随 toolbarItems 一起被换掉,
+		// 所以进出编辑模式要显式收起 / 放回来(见 NNWFloatingModeBar.swift)。
+		nnwSetFloatingModeBarHidden(nnwIsEditingFeeds)
+
 		if nnwIsEditingFeeds {
 
 			// 右上角:换成「完成」。左上角原本没东西,不用动。
@@ -258,14 +262,19 @@ extension MainFeedCollectionViewController {
 			if nnwSavedToolbarItems == nil {
 				nnwSavedToolbarItems = toolbarItems
 			}
-			let count = nnwSelectedNodes().count
+			let selected = nnwSelectedNodes()
+			let count = selected.count
+			// [措辞] 2026-08-12:选中的全是订阅源时,这颗红按钮说「取消订阅」;
+			// 一旦掺进文件夹,那一步真的是删除,就还叫「删除」。
+			let allFeeds = count > 0 && selected.allSatisfy { $0.representedObject is Feed }
+			let deleteWord = allFeeds ? "取消订阅" : "删除"
 			// [编辑] 新建文件夹(2026-07-30,T29 的尾巴):编辑模式补上这最后一件事,
 			// 旧「编辑订阅」页(FolderManagerViewController)就完全冗余,已整个删除。
 			let newFolder = UIBarButtonItem(title: "新建文件夹", style: .plain,
 											target: self, action: #selector(nnwNewFolderTapped))
 			let move = UIBarButtonItem(title: "移动到…", style: .plain,
 									   target: self, action: #selector(nnwMoveSelectedTapped))
-			let delete = UIBarButtonItem(title: count > 0 ? "删除(\(count))" : "删除",
+			let delete = UIBarButtonItem(title: count > 0 ? "\(deleteWord)(\(count))" : deleteWord,
 										 style: .plain, target: self, action: #selector(nnwDeleteSelectedTapped))
 			delete.tintColor = .systemRed
 			move.isEnabled = count > 0
@@ -406,13 +415,15 @@ extension MainFeedCollectionViewController {
 			return
 		}
 
-		let what: String
+		// [措辞] 2026-08-12:全是源 → 说「取消订阅」;掺了文件夹 → 那一步确实是删除,
+		// 措辞跟着实际动作走,别为了统一说法把"删文件夹"也说成"取消订阅"。
 		if folders.isEmpty {
-			what = "这 \(feedCount) 个订阅源"
+			nnwConfirmDelete(message: "确定取消订阅这 \(feedCount) 个源吗?",
+							 confirmTitle: "取消订阅", nodes: nodes)
 		} else {
-			what = "选中的 \(nodes.count) 项(含 \(folders.count) 个文件夹,文件夹里的源会一并删除)"
+			nnwConfirmDelete(message: "确定删除选中的 \(nodes.count) 项吗?(含 \(folders.count) 个文件夹,文件夹里的源会一并取消订阅)",
+							 confirmTitle: "删除", nodes: nodes)
 		}
-		nnwConfirmDelete(message: "确定删除\(what)吗?", nodes: nodes)
 	}
 
 	/// 删单个文件夹时给两条路:把里面的源放到顶层,或者连里面的源一起删。
@@ -435,7 +446,7 @@ extension MainFeedCollectionViewController {
 		alert.addAction(UIAlertAction(title: "把源移到最外层,只删文件夹", style: .default) { [weak self] _ in
 			self?.nnwReleaseFeedsThenDelete(folder: folder, node: node)
 		})
-		alert.addAction(UIAlertAction(title: "连里面的源一起删", style: .destructive) { [weak self] _ in
+		alert.addAction(UIAlertAction(title: "连里面的源一起取消订阅", style: .destructive) { [weak self] _ in
 			self?.nnwPerformDelete(nodes: [node])
 		})
 		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -484,13 +495,16 @@ extension MainFeedCollectionViewController {
 		}
 	}
 
-	func nnwConfirmDeletePublic(message: String, nodes: [Node]) {
-		nnwConfirmDelete(message: message, nodes: nodes, exitEditingAfterwards: false)
+	func nnwConfirmDeletePublic(message: String, confirmTitle: String = "删除", nodes: [Node]) {
+		nnwConfirmDelete(message: message, confirmTitle: confirmTitle, nodes: nodes, exitEditingAfterwards: false)
 	}
 
-	private func nnwConfirmDelete(message: String, nodes: [Node], exitEditingAfterwards: Bool = true) {
+	/// - Parameter confirmTitle: 那颗红按钮上的字。[措辞] 2026-08-12 加的参数 ——
+	///   删的是**源**就说「取消订阅」,是文件夹(或混选)才说「删除」。
+	private func nnwConfirmDelete(message: String, confirmTitle: String = "删除",
+								  nodes: [Node], exitEditingAfterwards: Bool = true) {
 		let alert = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
-		alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+		alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { [weak self] _ in
 			self?.nnwPerformDelete(nodes: nodes, exitEditingAfterwards: exitEditingAfterwards)
 		})
 		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -861,12 +875,15 @@ extension MainFeedCollectionViewController {
 			})
 		}
 
-		alert.addAction(UIAlertAction(title: "删除…", style: .destructive) { [weak self] _ in
+		// [措辞] 2026-08-12:源说「取消订阅」,文件夹才说「删除」
+		let isFolder = node.representedObject is Folder
+		alert.addAction(UIAlertAction(title: isFolder ? "删除…" : "取消订阅…", style: .destructive) { [weak self] _ in
 			guard let self else { return }
 			if let folder = node.representedObject as? Folder {
 				self.nnwAskHowToDeleteFolderPublic(folder, node: node)
 			} else {
-				self.nnwConfirmDeletePublic(message: "确定删除「\(name)」吗?", nodes: [node])
+				self.nnwConfirmDeletePublic(message: "确定取消订阅「\(name)」吗?",
+											confirmTitle: "取消订阅", nodes: [node])
 			}
 		})
 

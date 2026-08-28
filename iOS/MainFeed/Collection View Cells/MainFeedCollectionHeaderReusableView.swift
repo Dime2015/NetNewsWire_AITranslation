@@ -60,8 +60,15 @@ final class MainFeedCollectionHeaderReusableView: UICollectionReusableView {
 		}
 	}
 
+	/// [外观] 展开三角跟着主题色走。
+	///
+	/// ⚠️ **不能写在 IBOutlet 的 `didSet` 里**(2026-08-05 用户报"换了主题色三角还是橙的"):
+	/// 那个 didSet 只在 **nib 加载时跑一次**,而分组头是**复用**的 ——
+	/// 换色后没有人再去走它,颜色就永远停在旧值。
+	/// 挪到每次配装都会跑的地方(`disclosureExpanded` 的 didSet)才跟得上。
 	var disclosureExpanded = true {
 		didSet {
+			disclosureIndicator?.tintColor = NNWSoftMaterial.accent	// [外观] 每次配装都刷一遍,换色才跟得上
 			updateExpandedState(animate: true)
 			updateUnreadCount()
 		}

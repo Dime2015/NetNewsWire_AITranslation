@@ -43,8 +43,21 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			// [外观] 与订阅源 cell 保持同一条处理链路(见 NNWFeedIconStyle)。
 			// 文件夹目前用的是 SF Symbol 图标,会被那边直接原样放行 ——
 			// 这里加上是为了两个 cell 的写法一致,免得以后有人以为只处理了一半。
-			faviconView.iconImage = NNWFeedIconStyle.styled(iconImage)
-			faviconView.tintColor = iconImage?.preferredColor ?? Assets.Colors.secondaryAccent
+			// [外观] 2026-08-05:一行换一行 —— 换成本 fork 重画的文件夹图标
+			// (照用户给的参考图,粗线 + 圆头,和整套 dock 图标同一套笔画)。
+			// ⚠️ `isSymbol: true` 是关键:这样 NNWFeedIconStyle 不会把它转成位图,
+			// 颜色继续由下面那行的 tintColor 决定 —— 用户要求的"随主题色变色"就靠这个。
+			// ⚠️ `isBackgroundSuppressed: true`:不加的话宿主会自己在图标后面垫一块底,
+			// 浅色下几乎看不见,**深色下是一块显眼的方板**(2026-08-05 用户在深色下发现)。
+			faviconView.iconImage = IconImage(NNWDockIcons.folder(), isSymbol: true,
+											  isBackgroundSuppressed: true)
+			// [外观] 2026-08-05:一行换一行 —— 文件夹图标改用**调色板**的强调色。
+			// 原来走 `Assets.Colors.secondaryAccent`(xcassets 静态色板),
+			// 换强调色时它跟不上,和全 app 脱节。见 NNWAccentPalette。
+			// ⚠️ **不能再走 `iconImage?.preferredColor`**:上游那个 IconImage 自带一个
+			// 偏暗的陶土色,会压过强调色(2026-08-05 实测:图标画出来是棕的,不是橙的)。
+			// 上面既然已经不用它的图了,它的颜色也不该再参与 —— 直接用调色板。
+			faviconView.tintColor = NNWSoftMaterial.accent
 		}
 	}
 
@@ -64,6 +77,7 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			faviconView.isAccessibilityElement = false
 			disclosureButton.isAccessibilityElement = false
 			disclosureButton.addInteraction(UIPointerInteraction())
+			disclosureButton.tintColor = NNWSoftMaterial.accent	// [外观] 2026-08-04:三角跟着这一页的橙色走
 
 			// [外观] 收紧行高、放大图标,并把展开三角从最右挪到最左
 			//(让未读数顶到右边缘,和智能组那几个数字对齐)。实现见 FeedListMetrics。
@@ -169,13 +183,18 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 		switch (state.isHighlighted || state.isSelected || state.isFocused, traitCollection.userInterfaceIdiom) {
 		case (true, .pad):
 			backgroundConfig.backgroundColor = .tertiarySystemFill
-			folderTitle.textColor = Assets.Colors.primaryAccent
+			folderTitle.textColor = NNWAccentPalette.live
 			folderTitle.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
-			unreadCountLabel.textColor = Assets.Colors.primaryAccent
+			unreadCountLabel.textColor = NNWAccentPalette.live
 			unreadCountLabel.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
 		default:
 			folderTitle.textColor = .label
-			faviconView.tintColor = Assets.Colors.primaryAccent
+			// [外观] 一行换一行:走调色板,不走 xcassets 的静态色板。
+			// ⚠️ **这是 faviconView.tintColor 的第二个写入点**,而且它在 iconImage 的
+			// didSet **之后**跑 —— 2026-08-05 只改了 didSet 那处,颜色纹丝不动
+			// (画出来是陶土色不是橙色),就是被这行覆盖的。典型的 L74:
+			// 一个显示值有 N 个写入点,只改一个等于没改。
+			faviconView.tintColor = NNWSoftMaterial.accent
 			folderTitle.font = UIFont.preferredFont(forTextStyle: .body)
 			unreadCountLabel.textColor = .secondaryLabel
 			unreadCountLabel.font = UIFont.preferredFont(forTextStyle: .body)

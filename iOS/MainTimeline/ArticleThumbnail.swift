@@ -60,6 +60,15 @@ private let minimumUsefulDimension = 64
 		imageURLCache.removeAll()
 	}
 
+	/// 这篇文章「正文里有没有图」——不管图下没下载好。
+	///
+	/// [界面] 2026-08-11 新增,给列表布局占位用:`firstImageURL` 只需要解析 HTML(有缓存,
+	/// 很快),不用等网络。布局可以在图片真正下载完成**之前**就知道要不要留出缩略图的位置,
+	/// 避免"图下载完,文字才跟着重新排版"那种跳动(见 `MainTimelineCellData.hasThumbnail`)。
+	func hasImage(for article: Article) -> Bool {
+		firstImageURL(for: article) != nil
+	}
+
 	/// 这篇文章的缩略图。没有图、或图还没下载好,都返回 nil。
 	///
 	/// 图下载完成后 `ImageDownloader` 会发 `.imageDidBecomeAvailable` 通知,

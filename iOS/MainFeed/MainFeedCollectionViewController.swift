@@ -93,6 +93,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		// (iPhone 上这个开关本来就默认关着,只有 iPad 默认开 —— 这里把意图写死。)
 		collectionView.dragInteractionEnabled = false
 		becomeFirstResponder()
+		nnwRestyleToolbarIcons()	// [外观] 齿轮 / 加号换手绘橙图标(实现在 +ReadingMode 扩展)
     }
 
 	func configureCurrentActivityButton() {
@@ -121,7 +122,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 	func updateCurrentActivityButtonState() {
 		let hasCurrentActivity = !ActivityLog.shared.runningActivities.isEmpty || !ActivityLog.shared.pendingActivities.isEmpty
-		currentActivityButton?.tintColor = hasCurrentActivity ? Assets.Colors.primaryAccent : .label
+		currentActivityButton?.tintColor = hasCurrentActivity ? NNWAccentPalette.live : .label
 	}
 
 	override func viewWillAppear(_ animated: Bool) {
@@ -164,6 +165,15 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		self.deselectIfNeccessary()
+	}
+
+	// [阅读档] 三档控件 2026-08-05 从工具栏搬成了浮层,而浮层挂在**导航控制器的 view** 上
+	// (不那样挂就拿不到触摸,见 NNWFloatingModeBar.swift 的文件头)——
+	// 那是整个导航栈共用的一层,所以离开本页必须收起来,否则它会浮在文章列表页上,
+	// 和那一页自己的那条撞车。和文章页 `nnwUseFloatingToolbar(false)` 是同一个位置、同一个理由。
+	override func viewWillDisappear(_ animated: Bool) {
+		nnwSetFloatingModeBarHidden(true)
+		super.viewWillDisappear(animated)
 	}
 
 	func deselectIfNeccessary() {
@@ -241,7 +251,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			var actions = [UIContextualAction]()
 
 			// Set up the delete action
-			let deleteTitle = NSLocalizedString("Delete", comment: "Delete button")
+			// [措辞] 2026-08-12:这颗滑动按钮只有图标没有文字,但 VoiceOver 读的是这个标签 ——
+			// 源要读成「取消订阅」,文件夹才读「删除」
+			let isFolder = self.dataSource.itemIdentifier(for: indexPath)?.node.representedObject is Folder
+			let deleteTitle = isFolder
+				? NSLocalizedString("Delete", comment: "Delete button")
+				: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 			let deleteAction = UIContextualAction(style: .destructive, title: nil) { [weak self] _, _, completion in
 				self?.delete(indexPath: indexPath)
 				completion(true)
@@ -596,7 +611,23 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		}
 		addNewItemButton?.isEnabled = !AccountManager.shared.activeAccounts.isEmpty
 
-		configureContextMenu()
+		// [发现] 2026-08-11 注释掉:这是上游原版「+ 弹添加订阅/添加文件夹二选一」的菜单。
+		// 本 fork 早在 2026-07-25 就把「+」改成了单一职责——直接进
+		// `FeedDiscoveryViewController`(分类的发现页,见
+		// `Shared/Discovery/MainFeedCollectionViewController+Discovery.swift`),
+		// 「添加文件夹」也已经并入编辑模式,不再需要这个菜单。
+		//
+		// 这一行本来是死代码级别的残留(`addNewItemButton.menu` 设了但没人用它),
+		// **直到 2026-08-09 加了玻璃圆钮**(`NNWSoftGlassBarButton.swift`)——
+		// 那次改动为了照顾"别的按钮身上真的挂了菜单"这种情况,
+		// 统一把 `item.menu` 转发成玻璃圆钮的主动作(`showsMenuAsPrimaryAction = true`)。
+		// 这一转发是通用、正确的逻辑,但它意外地把这里这个"没人指望它生效"的旧菜单
+		// 重新激活了——点击「+」从此走的是这个菜单(添加订阅/添加文件夹),
+		// 而不是 `add(_:)` 里那一行本该调用的 `showFeedDiscovery()`。
+		// 📌 判据:一个"设了但没人用"的状态,一旦被下游的通用机制读取,
+		// 就会变成"有人用了"——加转发逻辑时要连它会激活哪些旧状态一起想到。
+		// configureContextMenu()
+		nnwSyncSoftGlassToolbarButtons()	// [外观] 加一行:上面写的 isEnabled 与菜单要搬到玻璃圆钮上(UIKit 不会自己传给 customView)
 	}
 
 	func updateFeedSelection(animations: Animations) {
@@ -799,7 +830,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func setFilterButtonToActive() {
-		filterButton.tintColor = Assets.Colors.primaryAccent
+		filterButton.tintColor = NNWAccentPalette.live
 		filterButton?.accLabelText = NSLocalizedString("Selected - Filter Read Feeds", comment: "Selected - Filter Read Feeds")
 	}
 
@@ -1017,7 +1048,9 @@ extension MainFeedCollectionViewController: UIContextMenuInteractionDelegate {
 
 			menuElements.append(UIMenu(title: "", options: .displayInline, children: [self.deactivateAccountAction(account: account)]))
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(atPoint: location, in: interaction.view))
 		}
 	}
 
@@ -1074,7 +1107,11 @@ extension MainFeedCollectionViewController {
 										   ]))
 			}
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行放头两项(显示简介 / 打开主页)—— 只有这两个摘掉文字还认得出。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: indexPath),
+									quickActionCount: 2)
 		})
 	}
 
@@ -1098,7 +1135,9 @@ extension MainFeedCollectionViewController {
 										self.deleteAction(indexPath: indexPath)
 									   ]))
 
-			return UIMenu(title: "", children: menuElements)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现
+			return self.nnwSoftMenu(UIMenu(title: "", children: menuElements),
+									anchor: self.nnwMenuAnchor(for: indexPath))
 
 		})
 	}
@@ -1108,8 +1147,11 @@ extension MainFeedCollectionViewController {
 			return nil
 		}
 
-		return UIContextMenuConfiguration(identifier: MainFeedRowIdentifier(indexPath: indexPath), previewProvider: nil, actionProvider: { _ in
-			return UIMenu(title: "", children: [markAllAction])
+		return UIContextMenuConfiguration(identifier: MainFeedRowIdentifier(indexPath: indexPath), previewProvider: nil, actionProvider: { [weak self] _ in
+			// [外观] 一行换一行:同上。只有一项,不提顶部图标行
+			guard let self else { return UIMenu(title: "", children: [markAllAction]) }
+			return self.nnwSoftMenu(UIMenu(title: "", children: [markAllAction]),
+									anchor: self.nnwMenuAnchor(for: indexPath), quickActionCount: 0)
 		})
 	}
 
@@ -1224,7 +1266,14 @@ extension MainFeedCollectionViewController {
 	}
 
 	func deleteAction(indexPath: IndexPath) -> UIAction {
-		let title = NSLocalizedString("Delete", comment: "Delete button")
+		// [措辞] 2026-08-12:订阅源说「取消订阅」,文件夹才说「删除」。
+		// 这个方法同时供源和文件夹的长按菜单调用(见 makeFeedContextMenu / makeFolderContextMenu),
+		// 所以按当前行代表的对象分流。复用上游已有的 "Delete Feed" 键(中文已译成「取消订阅」),
+		// 不新造键 —— 英文版仍然读得通。
+		let isFolder = dataSource.itemIdentifier(for: indexPath)?.node.representedObject is Folder
+		let title = isFolder
+			? NSLocalizedString("Delete", comment: "Delete button")
+			: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 
 		let action = UIAction(title: title, image: Assets.Images.trash, attributes: .destructive) { [weak self] _ in
 			self?.delete(indexPath: indexPath)
@@ -1407,7 +1456,10 @@ extension MainFeedCollectionViewController {
 		let cancelTitle = NSLocalizedString("Cancel", comment: "Cancel button")
 		alertController.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
 
-		let deleteTitle = NSLocalizedString("Delete", comment: "Delete button")
+		// [措辞] 2026-08-12:确认框上那颗红按钮同理 —— 源说「取消订阅」,文件夹说「删除」
+		let deleteTitle = sidebarItem is Folder
+			? NSLocalizedString("Delete", comment: "Delete button")
+			: NSLocalizedString("Delete Feed", comment: "Delete Feed")
 		let deleteAction = UIAlertAction(title: deleteTitle, style: .destructive) { [weak self] _ in
 			self?.performDelete(indexPath: indexPath)
 		}

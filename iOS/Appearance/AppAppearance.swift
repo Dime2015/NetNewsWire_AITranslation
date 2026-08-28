@@ -96,25 +96,93 @@ enum AppAppearance {
 		}
 	}
 
+	// MARK: - ⚗️ 中性玻璃画布(2026-08-05 试验,一处开关)
+
+	/// **把 app 的基底材质从「暖纸」换成「中性玻璃」。`false` = 完全回到暖纸。**
+	///
+	/// ## 为什么会有这一档(量出来的,不是审美主张)
+	///
+	/// 用户连着三轮说"玻璃感不够"。逐像素量完参考图才找到病根:
+	///
+	/// | | 参考图 | 暖纸档 |
+	/// |---|---|---|
+	/// | app 自身表面 | **#EAEAEA(234,精确中性 R=G=B)** | #F3F0EB(243,偏暖 8 级) |
+	/// | 亮边 vs 画布 | 255−234 = **Δ21** | 253−243 = **Δ10** |
+	/// | 面板 vs 画布 | 232−234 = **Δ−2** | 235−243 = **Δ−8** |
+	///
+	/// **白色是亮度的天花板**:画布越亮,那道纯白亮边越"发不出光"。
+	/// 我们只有参考图一半的边缘对比度 —— 这才是"边缘没有反光"的真因,
+	/// 不是亮边画细了(那个上一轮已经改对)。
+	/// 而且参考图的面板与背景几乎同色(Δ2),层次**全靠那道边**撑;
+	/// 我们反而把面板压暗 8 级去做层次,方向是反的(L101 那条只走了一半)。
+	///
+	/// 结论:**「暖纸」和「中性玻璃」是两种互斥的材质**,在纸上打磨不出玻璃。
+	///
+	/// ⚠️ 这一档等于「全局换肤」—— 用户 2026-08-04 明确否过一次。
+	/// 现在重新提出来,是因为量化之后确认它是玻璃质感的**唯一**入口,
+	/// 且做成了一行开关,不满意改回 `false` 即可。
+	///
+	/// 🔴 2026-08-11:用户反馈浅色模式下这套中性玻璃色"有点灰",要求改回暖纸——关掉。
+	static let isGlassCanvas = false
+
+	private enum Glass {
+		/// 精确取自参考图三张图的 app 表面:**#EAEAEA**
+		static let paperLight = rgb(0xEAEAEA)
+		/// 深色:同样去掉暖味,明度沿用暖纸档的 0.118
+		static let paperDark  = rgb(0x1E1E1E)
+		static let selectionLight = rgb(0xDEDEDE)
+		static let selectionDark  = rgb(0x2E2E2E)
+		static let menuCardLight = rgb(0xF0F0F0)
+		static let menuCardDark  = rgb(0x2A2A2A)
+		static let menuSeparatorLight = rgb(0xD6D6D6)
+		static let menuSeparatorDark  = rgb(0x3A3A3A)
+		/// 参考图的文字实测 #0A0A0A —— 近纯黑,不是暖墨
+		static let inkLight = rgb(0x0E0E0E)
+		static let inkDark  = rgb(0xEDEDED)
+		static let inkSecondaryLight = rgb(0x8A8A8A)
+		static let inkSecondaryDark  = rgb(0x9A9A9A)
+
+		/// `Palette.rgb` 是 Palette 私有的,兄弟类型看不见 —— 这里自带一份,
+		/// 免得为了共用去放宽 Palette 的访问级别(那是改上游风格的既有代码)。
+		private static func rgb(_ hex: UInt32) -> UIColor {
+			UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255,
+					green: CGFloat((hex >> 8) & 0xFF) / 255,
+					blue: CGFloat(hex & 0xFF) / 255,
+					alpha: 1)
+		}
+	}
+
 	// MARK: - 语义色(界面代码用这些,不直接碰色号)
 
-	/// 暖色纸张背景,自动跟随系统浅色 / 深色。
-	static let paperBackground = dynamic(light: Palette.paperLight, dark: Palette.paperDark)
+	/// 背景,自动跟随系统浅色 / 深色。玻璃档 = 中性,暖纸档 = 暖。
+	static let paperBackground = isGlassCanvas
+		? dynamic(light: Glass.paperLight, dark: Glass.paperDark)
+		: dynamic(light: Palette.paperLight, dark: Palette.paperDark)
 
-	/// 表格 cell 选中时的淡暖色高亮(取代系统蓝)。
-	static let selectionHighlight = dynamic(light: Palette.selectionLight, dark: Palette.selectionDark)
+	/// 表格 cell 选中时的淡色高亮(取代系统蓝)。
+	static let selectionHighlight = isGlassCanvas
+		? dynamic(light: Glass.selectionLight, dark: Glass.selectionDark)
+		: dynamic(light: Palette.selectionLight, dark: Palette.selectionDark)
 
 	/// 自绘选单(NNWMenu)的卡片底色。
-	static let menuCardBackground = dynamic(light: Palette.menuCardLight, dark: Palette.menuCardDark)
+	static let menuCardBackground = isGlassCanvas
+		? dynamic(light: Glass.menuCardLight, dark: Glass.menuCardDark)
+		: dynamic(light: Palette.menuCardLight, dark: Palette.menuCardDark)
 
 	/// 自绘选单的分隔线 / 描边色。
-	static let menuSeparator = dynamic(light: Palette.menuSeparatorLight, dark: Palette.menuSeparatorDark)
+	static let menuSeparator = isGlassCanvas
+		? dynamic(light: Glass.menuSeparatorLight, dark: Glass.menuSeparatorDark)
+		: dynamic(light: Palette.menuSeparatorLight, dark: Palette.menuSeparatorDark)
 
-	/// 暖墨文字色(自绘控件的文字与图标用,别直接用 .label)。
-	static let inkPrimary = dynamic(light: Palette.inkLight, dark: Palette.inkDark)
+	/// 主文字色(自绘控件的文字与图标用,别直接用 .label)。
+	static let inkPrimary = isGlassCanvas
+		? dynamic(light: Glass.inkLight, dark: Glass.inkDark)
+		: dynamic(light: Palette.inkLight, dark: Palette.inkDark)
 
-	/// 次要暖墨(自绘控件里的说明文字用,别直接用 .secondaryLabel)。
-	static let inkSecondary = dynamic(light: Palette.inkSecondaryLight, dark: Palette.inkSecondaryDark)
+	/// 次要文字(自绘控件里的说明文字用,别直接用 .secondaryLabel)。
+	static let inkSecondary = isGlassCanvas
+		? dynamic(light: Glass.inkSecondaryLight, dark: Glass.inkSecondaryDark)
+		: dynamic(light: Palette.inkSecondaryLight, dark: Palette.inkSecondaryDark)
 
 	// MARK: - 复用:把「分组表格」类页面(设置等)刷成暖纸风
 

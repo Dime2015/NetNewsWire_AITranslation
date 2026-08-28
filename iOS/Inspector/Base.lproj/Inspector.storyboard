@@ -78,7 +78,6 @@
                                                 </label>
                                                 <switch opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" contentHorizontalAlignment="center" contentVerticalAlignment="center" on="YES" translatesAutoresizingMaskIntoConstraints="NO" id="6YV-K0-yPS">
                                                     <rect key="frame" x="293" y="11.5" width="63" height="28"/>
-                                                    <color key="onTintColor" name="primaryAccentColor"/>
                                                 </switch>
                                             </subviews>
                                             <constraints>
@@ -180,7 +179,6 @@
                                                 </label>
                                                 <switch opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" contentHorizontalAlignment="center" contentVerticalAlignment="center" on="YES" translatesAutoresizingMaskIntoConstraints="NO" id="syncContent-switch-id">
                                                     <rect key="frame" x="293" y="11.5" width="63" height="28"/>
-                                                    <color key="onTintColor" name="primaryAccentColor"/>
                                                     <connections>
                                                         <action selector="syncContentSwitchDidChange:" destination="1m3-fZ-n7g" eventType="valueChanged" id="syncContent-action-id"/>
                                                     </connections>
@@ -262,7 +260,6 @@
                                                 </label>
                                                 <switch opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" contentHorizontalAlignment="center" contentVerticalAlignment="center" on="YES" translatesAutoresizingMaskIntoConstraints="NO" id="g39-wK-xUs">
                                                     <rect key="frame" x="293" y="11.5" width="63" height="28"/>
-                                                    <color key="onTintColor" name="primaryAccentColor"/>
                                                     <connections>
                                                         <action selector="newArticleNotificationsEnabledChanged:" destination="lEH-bG-pQW" eventType="valueChanged" id="1Mv-Im-H5v"/>
                                                     </connections>
@@ -292,7 +289,6 @@
                                                 </label>
                                                 <switch opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" contentHorizontalAlignment="center" contentVerticalAlignment="center" on="YES" translatesAutoresizingMaskIntoConstraints="NO" id="fUd-JB-UMK">
                                                     <rect key="frame" x="293" y="11.5" width="63" height="28"/>
-                                                    <color key="onTintColor" name="primaryAccentColor"/>
                                                     <connections>
                                                         <action selector="readerViewAlwaysEnabledChanged:" destination="lEH-bG-pQW" eventType="valueChanged" id="grg-EM-T3u"/>
                                                     </connections>
@@ -326,7 +322,6 @@
                                                 </label>
                                                 <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="safari" catalog="system" translatesAutoresizingMaskIntoConstraints="NO" id="p82-kn-lfh">
                                                     <rect key="frame" x="329" y="3.5" width="25" height="24"/>
-                                                    <color key="tintColor" name="primaryAccentColor"/>
                                                     <constraints>
                                                         <constraint firstAttribute="width" constant="25" id="Suu-bu-Lar"/>
                                                         <constraint firstAttribute="height" constant="25" id="gD0-zu-2pr"/>

@@ -357,14 +357,41 @@ enum TranslationScript {
 	}
 
 	/// [翻译] item②:当前文章本地有没有**完整**译文缓存。
-	/// 长按翻译键前用它判断要不要弹「重新翻译全文」。纯本地检查,不发请求。
-	/// 语义与按钮上的实心角标一致(只看有没有完整缓存条目,不校验指纹)。
+	/// 纯本地检查,不发请求。语义与按钮上的实心角标一致(只看有没有完整缓存条目,不校验指纹)。
 	func hasFullCache() async -> Bool {
 		guard let article = currentWebViewController()?.nnwHostArticle else {
 			return false
 		}
 		let (_, entry) = await Self.lookupCache(for: article, model: TranslationConfigStore.selectedModel)
 		return entry?.bodyHTML != nil
+	}
+
+	/// 长按翻译键该不该弹「重新翻译」。
+	///
+	/// 🔴 2026-08-12(用户要求):原来的判据是 `hasFullCache()` —— **只有整篇翻完过**
+	/// 才让重翻。可"翻到一半停下"恰恰是最想重来的时刻(翻砸了、中途取消、部分组失败),
+	/// 那时候长按却毫无反应,像按键坏了。
+	///
+	/// 现在只要**这篇有任何译文痕迹**就给重翻的口子:
+	/// - 有完整缓存(整篇翻好过)
+	/// - 有未完成缓存(上次翻到一半)
+	/// - 或者此刻按钮就处在"翻过/翻砸了/有缓存"的状态
+	///
+	/// 仍然排除的只有一种:**从来没翻过、也没有任何缓存** —— 那种情况重翻没有意义,
+	/// 直接点一下翻就是了。
+	func canOfferRetranslate() async -> Bool {
+		switch state {
+		case .translated, .failed, .cachedAvailable, .partialCacheAvailable:
+			return true
+		case .working, .original:
+			break
+		}
+		guard let article = currentWebViewController()?.nnwHostArticle else {
+			return false
+		}
+		let (_, entry) = await Self.lookupCache(for: article, model: TranslationConfigStore.selectedModel)
+		// bodyHTML = 整篇;groups = 翻到一半存下的那些组。有任何一样就算"有痕迹"。
+		return entry?.bodyHTML != nil || !(entry?.groups?.isEmpty ?? true)
 	}
 
 	// MARK: - [翻译] 译文缓存的键(2026-07-30 起**不带账户前缀**)
@@ -404,6 +431,21 @@ enum TranslationScript {
 	///
 	/// 用户的选择:没有可用缓存时**不**自动联网重翻,保持原文、等用户点 ——
 	/// 免得打开较老文章时悄悄花钱。
+	///
+	/// 🔴 2026-08-12 重做:用户报「图标显示有缓存(实心点),点翻译却重新翻译」。
+	///
+	/// 病根:`refreshCacheHint()` 只看"这篇有没有一条完整缓存记录"就点亮实心点,
+	/// **从来没有核对过缓存里的原文指纹和当前页面对不对得上**——那个核对只有真
+	/// 点了翻译按钮、走到 `performToggle` 时才做。指纹一旦对不上(哪怕原因不明,
+	/// 比如网页脚本异步改了正文文字),实心点已经点亮在前、`performToggle`
+	/// 在后发现对不上、只能整篇重翻——图标等于开了一张兑现不了的空头支票。
+	///
+	/// 现在把"核对指纹"提前到这里(网页刚加载完、指纹第一次量得到的时刻),
+	/// **不管这篇上次是不是"看着译文离开的"都会核对**:
+	/// - 指纹对不上 → 老实收回图标的承诺,退回"未翻译"(不再显示实心点)
+	/// - 指纹对得上、只有未完成缓存 → 空心点(可断点续翻)
+	/// - 指纹对得上、有完整缓存,但这篇不是"上次看着译文离开的" → 实心点(能点亮到"秒开",不自动显示)
+	/// - 指纹对得上、有完整缓存,且上次正在看译文 → 照旧自动秒显
 	func autoApplyTranslationFromCacheIfNeeded() {
 
 		// 正在翻译时别插手
@@ -411,9 +453,9 @@ enum TranslationScript {
 		guard let webViewController = currentWebViewController(),
 			  let article = webViewController.nnwHostArticle else { return }
 
-		// 「上次翻译过」的记忆仍按账户记(和阅读模式记忆同一个 store,格式不动)
-		guard ArticleReadingStateStore.state(for: article.accountID + "|" + article.articleID).translated else { return }
-
+		// 「上次翻译过」只决定"要不要自动秒显",不再决定"要不要核对指纹"——
+		// 后者对所有文章都该做,不然图标的承诺就是看运气。
+		let shouldAutoShowTranslation = ArticleReadingStateStore.state(for: article.accountID + "|" + article.articleID).translated
 		let model = TranslationConfigStore.selectedModel
 
 		runningTask?.cancel()
@@ -424,22 +466,34 @@ enum TranslationScript {
 			//(页面此刻显示的是原文,fingerprint 取的正是原文的纯文字)。
 			guard let fingerprint = try? await webViewController.nnwTranslationBodyFingerprint() else { return }
 			let bodyHash = TranslationCache.contentHash(fingerprint)
-
 			let (_, cachedEntry) = await Self.lookupCache(for: article, model: model)
-			guard let cached = cachedEntry,
-				  cached.bodyHash == bodyHash,
-				  let fullBody = cached.bodyHTML else {
-				// 没有可用的完整缓存 → 按用户选择不自动联网重翻;
-				// 顺手把按钮刷成「有缓存可点」的提示(若有未完成缓存)。
-				self.refreshCacheHint()
-				return
-			}
 
 			// 异步回来后复核:用户可能已经切走文章、或自己点了翻译
 			guard self.state != .working,
 				  let current = self.currentWebViewController(),
 				  current === webViewController,
 				  current.nnwHostArticle?.articleID == article.articleID else {
+				return
+			}
+
+			guard let cached = cachedEntry, cached.bodyHash == bodyHash else {
+				// 没有缓存,或者缓存和当前内容对不上 —— 老实显示"未翻译",
+				// 不能让图标说"有缓存"却点不出效果。
+				self.state = .original
+				return
+			}
+
+			guard let fullBody = cached.bodyHTML else {
+				// 未完成缓存、指纹对得上:提示空心点,点了能接着上次继续翻
+				self.state = .partialCacheAvailable
+				return
+			}
+
+			guard shouldAutoShowTranslation else {
+				// 完整缓存、指纹对得上,但这篇不是"上次看着译文离开的"——
+				// 遵照"没可用缓存不自动联网重翻"的同一条原则:图标点亮成"点一下秒开",
+				// 但不替用户做主动显示译文这个决定。
+				self.state = .cachedAvailable
 				return
 			}
 
@@ -520,10 +574,17 @@ enum TranslationScript {
 			}
 		}
 
-		// [翻译] item④:点翻译即滚到文章顶部,方便从头读译文。
-		// 上面「切回原文」的分支已经 return,所以这里只在「要显示译文」时执行;
-		// 之后无论是走缓存秒开、断点续翻,还是全新翻译,都从顶部开始。
-		_ = try? await webViewController.nnwTranslationScrollToTop()
+		// 🪦 [翻译] item④「点翻译即滚到文章顶部」**整条去掉**(2026-08-12,用户两次反馈)。
+		//
+		// 第一版:无条件 `scrollTo(0,0)` —— 长文读到一半点翻译会被拽回顶部。
+		// 第二版:只在"距页首 120px 内"才回顶 —— 还是会跳,因为**从 y=80 跳到 y=0 本身
+		// 就是几行的位移**,用户看到的就是"页面跳了一下"。判定线怎么调都躲不开:
+		// 只要还会滚,就一定有一段区间是"跳一点点"。
+		//
+		// 现在:**点翻译不动页面,一个像素都不动**。译文是就地替换的,
+		// 用户本来在读哪儿,翻完还在哪儿 —— 这才是没有惊吓的行为。
+		// (item④ 当初的用意是"方便从头读译文",但那是在没有流式、没有骨架色条的年代;
+		// 现在第一段就地流式出现,根本不需要把人送回顶部。)
 
 		state = .working
 
@@ -597,6 +658,10 @@ enum TranslationScript {
 			let sizeSummary = chunks.map { "组\($0.group)=\($0.html.count)字符" }.joined(separator: " ")
 			Self.logger.debug("[翻译] 切分完成:\(sizeSummary, privacy: .public)")
 
+			// [外观] 2026-08-12:把还没翻的段落先变成淡色条(文字透明、占位不变),
+			// 每组译文落地时再从左往右"填"进去。失败/取消路径在下面的 defer 里统一拆掉。
+			_ = try? await webViewController.nnwTranslationMarkPending()
+
 			var context = TranslationContext.initial(
 				articleTitle: webViewController.nnwHostArticle?.title,
 				articleURL: webViewController.nnwHostArticle?.preferredLink
@@ -606,35 +671,49 @@ enum TranslationScript {
 			//    标题最短、回得最快,最先变成中文 —— 让人立刻感觉到"开始了"。
 			//    (之前标题排在所有正文组后面,并发槽一旦占满就轮不到它,
 			//     表现为"标题很靠后才被翻译"。)
-			if let cachedTitle = partialEntry?.titleHTML {
+			//
+			// 🔴 2026-08-12 修:三条路原来是"用了就算数"——`nnwTranslationApplyTitle`
+			// 的返回值被 `_ = try?` 直接丢掉,哪怕它**没有真的应用成功**(比如那一刻
+			// 网页里还没找到标题元素),代码也照样认为标题"处理过了",
+			// 不会再走下一条路,标题就停在原文——用户报的"标题被遗漏翻译"正是这个。
+			// 现在每一条免费路径都要看**真的应用成功了没有**,没成功就退到下一条,
+			// 最后兜底交给真的翻译,而不是"以为处理过了"就算了。
+			if let cachedTitle = partialEntry?.titleHTML,
+			   (try? await webViewController.nnwTranslationApplyTitle(cachedTitle)) == true {
 				// 标题上次已经翻过了,直接用,零请求
-				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 				runTitleTranslation = cachedTitle
-			} else if let article = webViewController.nnwHostArticle,
-					  let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
-				// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
-				// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
-				let escaped = listTitle
-					.replacingOccurrences(of: "&", with: "&amp;")
-					.replacingOccurrences(of: "<", with: "&lt;")
-					.replacingOccurrences(of: ">", with: "&gt;")
-				_ = try? await webViewController.nnwTranslationApplyTitle(escaped)
-				runTitleTranslation = escaped
-			} else if let titleHTML = try await webViewController.nnwTranslationReadTitle(),
-			   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-				let titleContext = context
-				titleTask = Task { [weak webViewController] in
-					// 失败自动重试一次,和正文组同等待遇
-					var translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
-					if translated == nil, !Task.isCancelled {
-						try? await Task.sleep(for: .milliseconds(600))
-						translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+			} else {
+				var appliedFromListTitleCache = false
+				if let article = webViewController.nnwHostArticle,
+				   let listTitle = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article) {
+					// [翻译] 列表那套「标题翻译」已经翻过这条(2026-07-29 用户要求):
+					// 直接复用,标题这一步零请求。译文是纯文本,塞进 innerHTML 前要转义。
+					let escaped = listTitle
+						.replacingOccurrences(of: "&", with: "&amp;")
+						.replacingOccurrences(of: "<", with: "&lt;")
+						.replacingOccurrences(of: ">", with: "&gt;")
+					if (try? await webViewController.nnwTranslationApplyTitle(escaped)) == true {
+						runTitleTranslation = escaped
+						appliedFromListTitleCache = true
 					}
-					guard !Task.isCancelled, let translated, let webViewController else {
-						return nil
+				}
+				if !appliedFromListTitleCache,
+				   let titleHTML = try await webViewController.nnwTranslationReadTitle(),
+				   !titleHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+					let titleContext = context
+					titleTask = Task { [weak webViewController] in
+						// 失败自动重试一次,和正文组同等待遇
+						var translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+						if translated == nil, !Task.isCancelled {
+							try? await Task.sleep(for: .milliseconds(600))
+							translated = try? await service.translate(htmlChunk: titleHTML, context: titleContext)
+						}
+						guard !Task.isCancelled, let translated, let webViewController else {
+							return nil
+						}
+						_ = try? await webViewController.nnwTranslationApplyTitle(translated)
+						return translated
 					}
-					_ = try? await webViewController.nnwTranslationApplyTitle(translated)
-					return translated
 				}
 			}
 
@@ -764,11 +843,16 @@ enum TranslationScript {
 				}
 			}
 
+			// [外观] 骨架收尾(正常结束这一条)。三条退出路径都要拆,
+			// 漏掉任何一条 = 剩下的段落一直透明 = 正文看不见。
+			_ = try? await webViewController.nnwTranslationClearPending()
+
 		} catch is CancellationError {
 			// 用户翻页/中途取消。已翻好的组存成"未完成缓存",
 			// 下次打开这篇文章可以接着翻,已花的钱不浪费。
 			Self.logger.debug("[翻译] 已取消,保存未完成进度")
 			savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
+			_ = try? await webViewController.nnwTranslationClearPending()	// [外观] 骨架收尾(取消)
 		} catch {
 			Self.logger.error("[翻译] 失败:\(error.localizedDescription, privacy: .public)")
 			lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -776,6 +860,7 @@ enum TranslationScript {
 			// [翻译] 把失败原因弹给用户,别只留一个静默的感叹号。
 			// 未配置(如强制重翻时 key 被清了)用引导语,其它用错误说明。
 			// performToggle 只由用户点击/长按触发,所以这里弹窗一定是用户发起的。
+			_ = try? await webViewController.nnwTranslationClearPending()	// [外观] 骨架收尾(失败)
 			presentError?(configurationPromptIfNeeded() ?? lastErrorMessage ?? "翻译失败,请稍后重试。")
 		}
 	}

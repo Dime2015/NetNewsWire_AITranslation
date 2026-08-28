@@ -56,8 +56,10 @@ enum TranslationCache {
 	/// 3=指纹从 HTML 改为纯文字,旧指纹全部无效(2026-07-19,见 L18);
 	/// 4=提示词 v2(重写式翻译 + 反翻译腔指令 + 示范)+ 温度 0.45(2026-07-24);
 	/// 5=先导块 500→750,组边界全部挪动 —— 旧的按组存的未完成缓存套到新边界会丢内容(2026-07-24);
-	/// 6=切分器学会剥单子元素的壳(阅读模式整篇一组的 bug)—— 阅读模式文章的组边界全变(2026-07-24)。
-	private nonisolated static let promptGeneration = "6"
+	/// 6=切分器学会剥单子元素的壳(阅读模式整篇一组的 bug)—— 阅读模式文章的组边界全变(2026-07-24);
+	/// 7=切分器学会在图片前后强制断组(图文顺序错乱的 bug,详见 translation.js `boundaryBefore`)
+	///   —— 旧缓存里图文错位的译文不会自动修好,靠这一位让它们过期重翻(2026-08-11)。
+	private nonisolated static let promptGeneration = "7"
 
 	/// 磁盘上最多留多少篇。超了删最旧的。
 	private nonisolated static let maxEntries = 50

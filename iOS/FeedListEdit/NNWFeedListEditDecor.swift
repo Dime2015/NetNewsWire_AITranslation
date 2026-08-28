@@ -128,7 +128,7 @@ extension UICollectionViewCell {
 		circle.isHidden = !editing
 		if editing {
 			circle.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
-			circle.tintColor = selected ? Assets.Colors.primaryAccent : .tertiaryLabel
+			circle.tintColor = selected ? NNWAccentPalette.live : .tertiaryLabel
 		}
 
 		// ①b 标题早一点换行,别顶到行尾那支铅笔上(2026-07-28 用户反馈)。

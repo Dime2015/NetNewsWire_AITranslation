@@ -42,6 +42,8 @@ import Account	// [翻译] 齿轮按钮要判断"当前时间线是不是单一�
 
 extension MainTimelineModernViewController {
 
+	private static var nnwTimelineIconObserverKey: UInt8 = 0
+
 	/// 造本页那条三档控件的工具栏项。**由上游 `configureToolbar()` 里"一行换一行"调用**
 	///(原来那行是 `navigationItem.searchBarPlacementBarButtonItem`)。
 	@objc func nnwReadingModeToolbarItem() -> UIBarButtonItem {
@@ -85,21 +87,92 @@ extension MainTimelineModernViewController {
 	/// 数组顺序 = 从右往左:放大镜保持最右(老位置、老习惯),齿轮挨在它左边。
 	/// 齿轮 = 这个源的设置页(2026-07-29 用户要求,取代初版头图上的 info 圆钮)。
 	@objc func nnwNavBarButtonItems() -> [UIBarButtonItem] {
-		var items = [nnwSearchBarButtonItem()]
+
+		// [外观] 2026-08-08(用户第 10 件):单源页原来是**两颗独立圆钮**(齿轮 + 放大镜),
+		// 加起来 ≈ 96pt,源名一长(如 "Conversable Economist")标题就伸到齿轮底下去了。
+		// 改成**一颗双图标胶囊**(≈ 68pt),省下的 ≈ 28pt 直接还给标题;
+		// 标题那头还有夹宽度那道保险(见 nnwClampNavigationTitleWidth)。
+		//
+		// ⚠️ 只有这一页合并。**首页那两颗(搜索/编辑)保持独立**,用户已经验收过了 ——
+		// 两个页面范围不同,别顺手一起改(T51 里专门标了这一条)。
 		if coordinator?.timelineFeed is Feed {
-			let gear = UIBarButtonItem(image: UIImage(systemName: "gearshape"),
-									   style: .plain, target: self, action: #selector(nnwFeedSettingsTapped))
-			gear.accessibilityLabel = "源信息与设置"
-			items.append(gear)
+			let dual = NNWSoftGlassDualButton(
+				leftIcon: MainFeedCollectionViewController.nnwNavSymbol("gearshape"), leftLabel: "源信息与设置",
+				rightIcon: MainFeedCollectionViewController.nnwNavSymbol("magnifyingglass"), rightLabel: "搜索文章")
+			dual.addLeftTarget(self, action: #selector(nnwFeedSettingsTapped))
+			dual.addRightTarget(self, action: #selector(nnwSearchTapped))
+			let item = UIBarButtonItem(customView: dual)
+			item.nnwHideSystemGlassCapsule()
+			return [item]
 		}
-		return items
+
+		// 智能源 / 文件夹页没有「源设置」可进,还是一颗放大镜
+		return [nnwSearchBarButtonItem()]
 	}
 
 	@objc func nnwSearchBarButtonItem() -> UIBarButtonItem {
-		let item = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"),
-								   style: .plain, target: self, action: #selector(nnwSearchTapped))
+		let button = NNWSoftGlassButton(icon: MainFeedCollectionViewController.nnwNavSymbol("magnifyingglass"))
+		button.addTarget(self, action: #selector(nnwSearchTapped), for: .touchUpInside)
+		button.accessibilityLabel = "搜索文章"
+		let item = UIBarButtonItem(customView: button)
+		item.nnwHideSystemGlassCapsule()
 		item.accessibilityLabel = "搜索文章"
 		return item
+	}
+
+	/// [外观] 2026-08-05:把本页底部工具栏那两颗(标记全部已读 / 下一篇未读)
+	/// 换成和首页齿轮、加号同一套的**软面板圆钮**。
+	///
+	/// [外观] **2026-08-09 二版:从"画进图片"改成"真玻璃控件"**(用户报各控件质感不一致)。
+	/// 对象一个都不换,只设 `customView`,再把 `isEnabled` 转发过去 ——
+	/// `markAllAsRead` 这个 storyboard 项、`nextUnreadButton` 这个上游还在写 `isEnabled` 的项
+	/// 都原封不动。完整理由见 `NNWSoftGlassBarButton.swift`。
+	///
+	/// 📌 **上一版那个"自己吃自己"的坑就此消失**:原来是
+	/// `roundButtonImage(icon: item.image …)`,而 `item.image` 正是这个函数上一次的输出 ——
+	/// 被深浅色/换色观察者再触发几次就把圆钮当图标层层嵌套,糊成一块纯色
+	/// (2026-08-05 用户报"底部两个控件变成纯色了")。现在**根本不写 `item.image`**,
+	/// 图标每次都从 `Assets.Images` 的原图现配,跑一百遍结果都一样。
+	/// 判据仍然值得记住:**任何"就地改写自己读的那个字段"的函数,都要问"跑第二遍会怎样"。**
+	@objc func nnwRestyleTimelineToolbarIcons() {
+		guard NNWSoftMaterial.isEnabled else { return }
+		nnwObserveStyleChangesForTimelineIcons()
+
+		// 图标字号走全 app 唯一真源(18pt),原来这里写死 20pt —— 比顶部胶囊那两个大一圈,
+		// 正是用户说的"质感不一致"里最实的一条。见 NNWSoftMaterial.iconPointSize
+		let config = UIImage.SymbolConfiguration(pointSize: NNWSoftMaterial.iconPointSize, weight: .medium)
+		let markAll = #selector(MainTimelineModernViewController.markAllAsRead(_:)
+								as (MainTimelineModernViewController) -> (Any?) -> Void)
+
+		for item in toolbarItems ?? [] {
+			guard let action = item.action else { continue }
+			let source: UIImage?
+			switch action {
+			case markAll:	source = Assets.Images.markAllAsRead
+			case #selector(MainTimelineModernViewController.nextUnread(_:)):	source = Assets.Images.nextUnread
+			default:		continue
+			}
+			guard let base = source?.applyingSymbolConfiguration(config) ?? source else { continue }
+			item.nnwUseSoftGlassButton(icon: base)
+		}
+	}
+
+	/// [外观] 切深浅色 / 换强调色时把这两颗圆钮重画。
+	///
+	/// 📌 **2026-08-09 起两件事的必要性不一样了**(改成真玻璃控件之后):
+	/// **深浅色**已经不需要人管(玻璃会自己按当时的 traits 重画),留着是无害的冗余;
+	/// **换强调色**仍然必须 —— `NNWSoftMaterial.accent` 是静态值不是动态色,
+	/// 得有人来重设一次图标的 tintColor(L105 第 2 条那一族)。
+	///
+	/// ⚠️ 历史:烘焙成图片的年代这两件事**都**必须自己盯着,而这一页当初漏了
+	/// (2026-08-05 用户在深色下发现这一页的圆钮还是浅色那张,白得刺眼)。
+	private func nnwObserveStyleChangesForTimelineIcons() {
+		guard objc_getAssociatedObject(self, &Self.nnwTimelineIconObserverKey) == nil else { return }
+		objc_setAssociatedObject(self, &Self.nnwTimelineIconObserverKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (vc: MainTimelineModernViewController, _) in
+			vc.nnwRestyleTimelineToolbarIcons()
+		}
+		nnwObserveAccentChanges { [weak self] in self?.nnwRestyleTimelineToolbarIcons() }
 	}
 
 	@objc private func nnwSearchTapped() {

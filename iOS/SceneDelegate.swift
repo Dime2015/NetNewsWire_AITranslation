@@ -19,7 +19,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
 
-		window!.tintColor = Assets.Colors.primaryAccent
+		// [外观] 一行换一行:窗口的 tint 改走调色板,并且**换色时会重设**
+		// (原来这里设一次静态色板就不管了 —— 用户第 9 件的病根之一)。见 NNWAccentTint。
+		NNWAccentTint.install(in: window!)
 
 		let rootViewController = window!.rootViewController as! RootSplitViewController
 		rootViewController.presentsWithGesture = true

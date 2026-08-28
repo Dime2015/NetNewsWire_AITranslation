@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import os
 @preconcurrency import WebKit
 import RSCore
 import RSWeb
@@ -82,6 +83,9 @@ final class WebViewController: UIViewController {
 			}
 		}
 	}
+	/// [阅读视图] 2026-08-12 加的探针用(见 nnwResetScrollForExtractorToggle)
+	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "WebViewController")
+
 	private var restoreWindowScrollY: Int?
 
 	override func viewDidLoad() {
@@ -281,6 +285,20 @@ final class WebViewController: UIViewController {
 			return
 		}
 
+		// 🔴 2026-08-12(用户报"点阅读模式后页面总往下跑几行"):
+		//
+		// 病根在 `page.html` 里那句 `window.scrollTo(0, [[windowScrollY]])` ——
+		// 它会把**原始排版下量到的像素位置**,还原到**阅读模式这个完全不同的排版**上。
+		// 两套排版的段落宽度、字号、图片尺寸、有没有头图全都不一样,
+		// 同一个 Y 值落在两边根本不是同一段文字,于是每次切都漂几行。
+		// 像素位置在换排版时是没有意义的量。
+		//
+		// 改成:**切换阅读模式一律回到顶部**。和 Safari 阅读器的行为一致,
+		// 而且是可预期的 —— 漂移这件事从构造上就没有了。
+		// ⚠️ 代价:长文读到一半再切阅读模式,会回到开头。
+		// 真要保住位置,得按"段落锚点"而不是像素来记(现在没有这套东西)。
+		nnwResetScrollForExtractorToggle()
+
 		guard articleExtractor?.state != .processing else {
 			stopArticleExtractor()
 			loadWebView()
@@ -304,6 +322,18 @@ final class WebViewController: UIViewController {
 			startArticleExtractor()
 		}
 
+	}
+
+	/// 切阅读模式前把滚动位置清零(理由见 `toggleArticleExtractor`)。
+	/// 顺带留一条探针:万一真机上还在漂,看这两行就知道是"我们没清干净"
+	/// 还是"清了但页面加载完之后又被别的东西挪走了"。
+	private func nnwResetScrollForExtractorToggle() {
+		Self.logger.info("""
+			[阅读视图] 切换前的滚动位置 windowScrollY=\(self.windowScrollY, privacy: .public) \
+			→ 归零(阅读模式和原始排版的像素位置不通用)
+			""")
+		windowScrollY = 0
+		restoreWindowScrollY = nil
 	}
 
 	func stopArticleExtractorIfProcessing() {
@@ -395,7 +425,11 @@ extension WebViewController: UIContextMenuInteractionDelegate {
 			menus.append(UIMenu(title: "", options: .displayInline, children: [self.toggleArticleExtractorAction()]))
 			menus.append(UIMenu(title: "", options: .displayInline, children: [self.shareAction()]))
 
-			return UIMenu(title: "", children: menus)
+			// [外观] 一行换一行:长按弹本 fork 自绘的软面板选单,返回 nil 让系统菜单不出现。
+			// 顶部图标行放头两项(上一篇 / 下一篇)—— 箭头是最不需要文字的一类图标。
+			return self.nnwSoftMenu(UIMenu(title: "", children: menus),
+									anchor: self.nnwMenuAnchor(atPoint: location, in: interaction.view),
+									quickActionCount: 2)
         }
     }
 
@@ -1388,6 +1422,14 @@ extension WebViewController {
 		webView.scrollView.backgroundColor = .clear
 		webView.underPageBackgroundColor = .clear	// 橡皮筋区域也交给 UIKit,纸色只留一个来源
 		view.backgroundColor = AppAppearance.paperBackground	// ← 纸色的唯一来源(动态色,自适应深浅)
+
+		// ⚠️ 2026-08-05 更正:这一行**在本页什么都没做**(实测:反过来强制关掉它,
+		// 画面逐像素不变 —— `bottomEdgeEffect` 对 WKWebView 不起作用)。
+		// 原来写在这里的那套"拍平工具栏把渐隐一起拍掉了"的解释**是错的,已证伪**。
+		// 真正的病根是 `hidesSharedBackground`,修在 `nnwHideSystemGlassCapsule` 里。
+		// 留着它只是因为无害;详见 NNWSoftMaterial 里该函数的注释与 NOTES-todo T41。
+		webView.scrollView.nnwEnableSoftBottomEdgeFade()
+
 	}
 
 	/// 告诉导航栏「请盯着本页的滚动视图」,这样系统才肯给出「顶部透明 / 滚动毛玻璃」两态。

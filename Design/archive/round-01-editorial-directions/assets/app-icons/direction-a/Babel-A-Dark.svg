@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="228" fill="#22211E"/>
+  <rect x="78" y="78" width="868" height="868" rx="184" fill="none" stroke="#3D3934" stroke-width="12"/>
+  <text x="455" y="668" text-anchor="middle" fill="#EEE8DC" font-family="Iowan Old Style, Georgia, serif" font-size="548" font-weight="600">B</text>
+  <line x1="670" y1="280" x2="670" y2="744" stroke="#E2785D" stroke-width="18"/>
+  <text x="764" y="694" text-anchor="middle" fill="#E2785D" font-family="Songti SC, Noto Serif CJK SC, serif" font-size="190" font-weight="600">译</text>
+</svg>
