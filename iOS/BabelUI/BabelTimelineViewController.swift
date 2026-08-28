@@ -108,6 +108,16 @@ final class BabelTimelineViewController: UIViewController {
             var config = UIButton.Configuration.plain()
             config.image = UIImage(systemName: symbol)
             config.baseForegroundColor = BabelPalette.mutedInk
+            if label == "未读" {
+                config.imagePlacement = .leading
+                config.imagePadding = 8
+                config.attributedTitle = AttributedString("UNREAD", attributes: AttributeContainer([
+                    .font: UIFont.systemFont(ofSize: 13, weight: .semibold)
+                ]))
+                config.background = .listPlainCell()
+                config.background.backgroundColor = BabelPalette.raisedBackground
+                config.background.cornerRadius = 24
+            }
             let button = UIButton(configuration: config)
             button.accessibilityLabel = label
             button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)

@@ -146,6 +146,16 @@ final class BabelHomeViewController: UIViewController {
         configuration.image = UIImage(systemName: symbol)
         configuration.imagePlacement = .all
         configuration.baseForegroundColor = BabelPalette.mutedInk
+        if label == "未读" {
+            configuration.imagePlacement = .leading
+            configuration.imagePadding = 8
+            configuration.attributedTitle = AttributedString("UNREAD", attributes: AttributeContainer([
+                .font: UIFont.systemFont(ofSize: 13, weight: .semibold)
+            ]))
+            configuration.background = .listPlainCell()
+            configuration.background.backgroundColor = BabelPalette.raisedBackground
+            configuration.background.cornerRadius = 28
+        }
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = label
         button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
