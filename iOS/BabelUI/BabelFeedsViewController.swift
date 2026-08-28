@@ -33,7 +33,7 @@ final class BabelFeedsViewController: UITableViewController {
         tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 56, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "feed")
+        tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .AccountDidDownloadArticles, object: nil)
@@ -64,36 +64,15 @@ final class BabelFeedsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "feed", for: indexPath)
-        var content = cell.defaultContentConfiguration()
-        content.textProperties.font = BabelTypography.title(size: 16)
-        content.textProperties.color = BabelPalette.ink
-        content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
-        content.secondaryTextProperties.color = BabelPalette.mutedInk
-        content.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 22, bottom: 0, trailing: 22)
-        content.imageProperties.maximumSize = CGSize(width: 34, height: 34)
-        content.imageProperties.reservedLayoutSize = CGSize(width: 42, height: 34)
-        content.textProperties.adjustsFontForContentSizeCategory = true
+        let cell = tableView.dequeueReusableCell(withIdentifier: BabelFeedCell.reuseIdentifier, for: indexPath) as! BabelFeedCell
         switch rows[indexPath.row] {
         case .unread:
-            content.text = "Unread"
-            content.secondaryText = "\(AccountManager.shared.unreadCount)"
-            content.image = UIImage(systemName: "circle.fill")
-            cell.indentationLevel = 0
+            cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
         case .folder(let folder):
-            content.text = folder.nameForDisplay
-            content.secondaryText = "\(folder.unreadCount)"
-            content.image = UIImage(systemName: "chevron.down")
-            cell.indentationLevel = 0
+            cell.configure(title: folder.nameForDisplay, count: folder.unreadCount, image: UIImage(systemName: "chevron.down"), indent: 0, isFolder: true)
         case .feed(let feed):
-            content.text = feed.nameForDisplay
-            content.secondaryText = "\(feed.unreadCount)"
-            content.image = UIImage(systemName: "square.fill")
-            cell.indentationLevel = 1
+            cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: UIImage(systemName: "square.fill"), indent: 1, isFolder: false)
         }
-        content.imageProperties.tintColor = BabelPalette.mutedInk
-        cell.contentConfiguration = content
-        cell.backgroundColor = .clear
         return cell
     }
 
@@ -105,4 +84,51 @@ final class BabelFeedsViewController: UITableViewController {
         case .feed(let feed): onSelectFeed?(feed)
         }
     }
+}
+
+private final class BabelFeedCell: UITableViewCell {
+	static let reuseIdentifier = "BabelFeedCell"
+	private let iconView = UIImageView()
+	private let titleLabel = UILabel()
+	private let countLabel = UILabel()
+
+	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+		super.init(style: style, reuseIdentifier: reuseIdentifier)
+		backgroundColor = .clear
+		selectedBackgroundView = UIView()
+		selectedBackgroundView?.backgroundColor = BabelPalette.raisedBackground
+		iconView.contentMode = .scaleAspectFit
+		iconView.tintColor = BabelPalette.mutedInk
+		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
+		titleLabel.textColor = BabelPalette.ink
+		titleLabel.lineBreakMode = .byTruncatingTail
+		countLabel.font = BabelTypography.title(size: 16, weight: .regular)
+		countLabel.textColor = BabelPalette.mutedInk
+		countLabel.textAlignment = .right
+		for subview in [iconView, titleLabel, countLabel] {
+			subview.translatesAutoresizingMaskIntoConstraints = false
+			contentView.addSubview(subview)
+		}
+	}
+	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+	func configure(title: String, count: Int, image: UIImage?, indent: Int, isFolder: Bool) {
+		iconView.image = image
+		titleLabel.text = title
+		countLabel.text = count.formatted()
+		let leading: CGFloat = indent == 0 ? 22 : 58
+		NSLayoutConstraint.deactivate(contentView.constraints)
+		NSLayoutConstraint.activate([
+			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
+			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			iconView.widthAnchor.constraint(equalToConstant: 28),
+			iconView.heightAnchor.constraint(equalToConstant: 28),
+			titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
+			countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -22),
+			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 52)
+		])
+	}
 }
