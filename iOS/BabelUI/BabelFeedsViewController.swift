@@ -17,6 +17,8 @@ final class BabelFeedsViewController: UITableViewController {
     }
 
     var onSelectUnread: (() -> Void)?
+    var onSelectFeed: ((Feed) -> Void)?
+    var onSelectFolder: ((Folder) -> Void)?
     private var rows = [Row]()
 
     override func viewDidLoad() {
@@ -88,6 +90,10 @@ final class BabelFeedsViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if case .unread = rows[indexPath.row] { onSelectUnread?() }
+        switch rows[indexPath.row] {
+        case .unread: onSelectUnread?()
+        case .folder(let folder): onSelectFolder?(folder)
+        case .feed(let feed): onSelectFeed?(feed)
+        }
     }
 }

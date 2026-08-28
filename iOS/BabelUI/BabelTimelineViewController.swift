@@ -4,18 +4,42 @@
 //
 
 import UIKit
+import Account
 import Articles
 
 final class BabelTimelineViewController: UIViewController {
+	@MainActor enum Source {
+		case section(BabelLibrarySection)
+		case folder(Folder)
+		case feed(Feed)
 
-	private let section: BabelLibrarySection
+		var title: String {
+			switch self {
+			case .section(let section): section.title
+			case .folder(let folder): folder.nameForDisplay
+			case .feed(let feed): feed.nameForDisplay
+			}
+		}
+	}
+
+	private let source: Source
 	private let tableView = UITableView(frame: .zero, style: .plain)
 	private let emptyLabel = UILabel()
 	private var articles = [Article]()
 	private var loadTask: Task<Void, Never>?
 
 	init(section: BabelLibrarySection) {
-		self.section = section
+		self.source = .section(section)
+		super.init(nibName: nil, bundle: nil)
+	}
+
+	init(feed: Feed) {
+		self.source = .feed(feed)
+		super.init(nibName: nil, bundle: nil)
+	}
+
+	init(folder: Folder) {
+		self.source = .folder(folder)
 		super.init(nibName: nil, bundle: nil)
 	}
 
@@ -36,7 +60,7 @@ final class BabelTimelineViewController: UIViewController {
 	}
 
 	private func configureView() {
-		title = section.title
+		title = source.title
 		view.backgroundColor = BabelPalette.background
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = UIBarButtonItem(
@@ -118,7 +142,7 @@ final class BabelTimelineViewController: UIViewController {
     }
 
     @objc private func showActions() {
-        let alert = UIAlertController(title: section.title, message: nil, preferredStyle: .actionSheet)
+		let alert = UIAlertController(title: source.title, message: nil, preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "标记全部已读", style: .default))
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)
@@ -128,7 +152,12 @@ final class BabelTimelineViewController: UIViewController {
 		loadTask?.cancel()
 		loadTask = Task { [weak self] in
 			guard let self else { return }
-			let loaded = await BabelLibrary.loadArticles(for: section)
+			let loaded: [Article]
+			switch source {
+			case .section(let section): loaded = await BabelLibrary.loadArticles(for: section)
+			case .folder(let folder): loaded = await BabelLibrary.loadArticles(for: .folder(folder, true))
+			case .feed(let feed): loaded = await BabelLibrary.loadArticles(for: .feed(feed))
+			}
 			guard !Task.isCancelled else { return }
 			articles = loaded
 			tableView.reloadData()

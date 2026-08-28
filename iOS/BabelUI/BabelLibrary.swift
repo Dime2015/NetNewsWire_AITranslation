@@ -83,6 +83,14 @@ struct BabelHomeSnapshot {
 		}
 	}
 
+	static func loadArticles(for fetchType: FetchType) async -> [Article] {
+		let articles = await AccountManager.shared.fetchArticlesAsync(fetchType)
+		return articles.sorted {
+			if $0.logicalDatePublished == $1.logicalDatePublished { return $0.articleID < $1.articleID }
+			return $0.logicalDatePublished > $1.logicalDatePublished
+		}
+	}
+
 	static func displayTitle(for article: Article) -> String {
 		NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article)
 			?? article.title?.trimmingCharacters(in: .whitespacesAndNewlines)
