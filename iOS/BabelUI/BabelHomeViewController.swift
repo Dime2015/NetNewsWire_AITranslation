@@ -32,6 +32,10 @@ final class BabelHomeViewController: UIViewController {
     private func configureView() {
         view.backgroundColor = BabelPalette.background
         navigationItem.largeTitleDisplayMode = .never
+        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
+        switcher.selectedSegmentIndex = 0
+        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
+        navigationItem.titleView = switcher
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "eye.slash"),
             style: .plain, target: self, action: #selector(openGenesisV2)
@@ -185,6 +189,10 @@ final class BabelHomeViewController: UIViewController {
     @objc private func openUnread() { onSelectSection?(.unread) }
     @objc private func openSaved() { onSelectSection?(.saved) }
     @objc private func openGenesisV2() { onOpenGenesisV2?() }
+
+    @objc private func switchInterface(_ sender: UISegmentedControl) {
+        if sender.selectedSegmentIndex == 1 { onOpenGenesisV2?() }
+    }
 }
 
 private final class BabelCubeView: UIView {

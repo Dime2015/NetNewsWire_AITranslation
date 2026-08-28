@@ -15,6 +15,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 	var window: UIWindow?
 	var coordinator: SceneCoordinator!
 	private var genesisV2RootViewController: RootSplitViewController?
+	private weak var babelShellViewController: BabelShellViewController?
+	private var legacyToggleButton: UIButton?
 
 	// UIWindowScene delegate
 
@@ -242,6 +244,7 @@ private extension SceneDelegate {
 		shellViewController.onOpenGenesisV2 = { [weak self] in
 			self?.showGenesisV2Interface()
 		}
+		babelShellViewController = shellViewController
 		window?.rootViewController = shellViewController
 		window?.makeKeyAndVisible()
 	}
@@ -253,6 +256,28 @@ private extension SceneDelegate {
 		}
 
 		window?.rootViewController = genesisV2RootViewController
+		window?.makeKeyAndVisible()
+		let button = UIButton(type: .system)
+		button.setTitle("Babel", for: .normal)
+		button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+		button.backgroundColor = .secondarySystemBackground
+		button.layer.cornerRadius = 16
+		button.addTarget(self, action: #selector(showBabelInterface), for: .touchUpInside)
+		button.translatesAutoresizingMaskIntoConstraints = false
+		genesisV2RootViewController.view.addSubview(button)
+		NSLayoutConstraint.activate([
+			button.trailingAnchor.constraint(equalTo: genesisV2RootViewController.view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+			button.topAnchor.constraint(equalTo: genesisV2RootViewController.view.safeAreaLayoutGuide.topAnchor, constant: 8),
+			button.widthAnchor.constraint(equalToConstant: 62), button.heightAnchor.constraint(equalToConstant: 32)
+		])
+		legacyToggleButton = button
+	}
+
+	@objc private func showBabelInterface() {
+		legacyToggleButton?.removeFromSuperview()
+		legacyToggleButton = nil
+		guard let babelShellViewController else { return }
+		window?.rootViewController = babelShellViewController
 		window?.makeKeyAndVisible()
 	}
 
