@@ -17,7 +17,7 @@ enum BabelShellConfiguration {
 		return resolve(
 			arguments: ProcessInfo.processInfo.arguments,
 			environment: ProcessInfo.processInfo.environment,
-			storedValue: UserDefaults.standard.bool(forKey: defaultsKey)
+			storedValue: true
 		)
 #else
 		return false
