@@ -194,6 +194,7 @@ private final class BabelTimelineCell: UITableViewCell {
 	private let dateLabel = UILabel()
 	private let titleLabel = UILabel()
 	private let summaryLabel = UILabel()
+	private let thumbnailView = UIImageView()
 	private let separator = UIView()
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -226,6 +227,13 @@ private final class BabelTimelineCell: UITableViewCell {
 		summaryLabel.textColor = BabelPalette.mutedInk
 		summaryLabel.numberOfLines = 2
 
+		thumbnailView.contentMode = .scaleAspectFill
+		thumbnailView.clipsToBounds = true
+		thumbnailView.layer.cornerRadius = 5
+		thumbnailView.backgroundColor = BabelPalette.raisedBackground
+		thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(thumbnailView)
+
 		let metaRow = UIStackView(arrangedSubviews: [unreadDot, feedLabel, UIView(), dateLabel])
 		metaRow.alignment = .center
 		metaRow.spacing = 8
@@ -244,13 +252,17 @@ private final class BabelTimelineCell: UITableViewCell {
 			unreadDot.widthAnchor.constraint(equalToConstant: 6),
 			unreadDot.heightAnchor.constraint(equalToConstant: 6),
             stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+			stack.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -12),
             separator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			separator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+			,thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+			thumbnailView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			thumbnailView.widthAnchor.constraint(equalToConstant: 132),
+			thumbnailView.heightAnchor.constraint(equalToConstant: 82)
 		])
 	}
 
@@ -264,6 +276,14 @@ private final class BabelTimelineCell: UITableViewCell {
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
+		thumbnailView.image = nil
+		if let imageLink = article.rawImageLink, let url = URL(string: imageLink) {
+			Task { [weak self] in
+				guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
+				guard !Task.isCancelled else { return }
+				await MainActor.run { self?.thumbnailView.image = image }
+			}
+		}
 		unreadDot.isHidden = article.status.read
 		accessibilityLabel = "\(feedLabel.text ?? "")，\(titleLabel.text ?? "")，\(dateLabel.text ?? "")"
 	}
