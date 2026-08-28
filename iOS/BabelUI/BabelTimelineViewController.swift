@@ -230,6 +230,27 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		header.textLabel?.textColor = BabelPalette.ink
 		header.contentView.backgroundColor = BabelPalette.background
 	}
+
+	func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+		let article = daySections[indexPath.section].articles[indexPath.row]
+		let star = UIContextualAction(style: .normal, title: article.status.starred ? "取消星标" : "星标") { [weak self] _, _, completion in
+			guard let account = article.account else { completion(false); return }
+			Task {
+				try? await account.markArticles(articleIDs: [article.articleID], statusKey: .starred, flag: !article.status.starred)
+				await MainActor.run { completion(true); self?.reloadArticles() }
+			}
+		}
+		star.backgroundColor = BabelPalette.accent
+		let read = UIContextualAction(style: .normal, title: article.status.read ? "未读" : "已读") { [weak self] _, _, completion in
+			guard let account = article.account else { completion(false); return }
+			Task {
+				try? await account.markArticles(articleIDs: [article.articleID], statusKey: .read, flag: !article.status.read)
+				await MainActor.run { completion(true); self?.reloadArticles() }
+			}
+		}
+		read.backgroundColor = BabelPalette.mutedInk
+		return UISwipeActionsConfiguration(actions: [star, read])
+	}
 }
 
 private final class BabelTimelineCell: UITableViewCell {
