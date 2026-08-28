@@ -38,11 +38,15 @@ final class BabelTimelineViewController: UIViewController {
 	private func configureView() {
 		title = section.title
 		view.backgroundColor = BabelPalette.background
-		navigationItem.largeTitleDisplayMode = .always
+        navigationItem.largeTitleDisplayMode = .never
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis"),
+            style: .plain, target: self, action: #selector(showActions)
+        )
 
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
-		tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 40, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
@@ -65,7 +69,33 @@ final class BabelTimelineViewController: UIViewController {
 
 		let refreshControl = UIRefreshControl()
 		refreshControl.addTarget(self, action: #selector(refreshFromControl), for: .valueChanged)
-		tableView.refreshControl = refreshControl
+        tableView.refreshControl = refreshControl
+
+        let bottom = UIStackView()
+        bottom.axis = .horizontal
+        bottom.distribution = .equalCentering
+        bottom.alignment = .center
+        bottom.backgroundColor = BabelPalette.background
+        bottom.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottom)
+        for (symbol, label) in [("checkmark.circle", "已读"), ("star", "星标"),
+                                ("circle.fill", "未读"), ("magnifyingglass", "搜索")] {
+            var config = UIButton.Configuration.plain()
+            config.image = UIImage(systemName: symbol)
+            config.imagePlacement = .top
+            config.imagePadding = 2
+            config.baseForegroundColor = BabelPalette.mutedInk
+            config.attributedTitle = AttributedString(label, attributes: AttributeContainer([
+                .font: UIFont.systemFont(ofSize: 10)
+            ]))
+            bottom.addArrangedSubview(UIButton(configuration: config))
+        }
+        NSLayoutConstraint.activate([
+            bottom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            bottom.heightAnchor.constraint(equalToConstant: 54)
+        ])
 	}
 
 	private func startObserving() {
@@ -83,9 +113,16 @@ final class BabelTimelineViewController: UIViewController {
 		reloadArticles()
 	}
 
-	@objc private func refreshFromControl() {
-		reloadArticles()
-	}
+    @objc private func refreshFromControl() {
+        reloadArticles()
+    }
+
+    @objc private func showActions() {
+        let alert = UIAlertController(title: section.title, message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "标记全部已读", style: .default))
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
+    }
 
 	private func reloadArticles() {
 		loadTask?.cancel()
@@ -143,7 +180,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		unreadDot.layer.cornerRadius = 3
 		unreadDot.translatesAutoresizingMaskIntoConstraints = false
 
-		feedLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        feedLabel.font = .systemFont(ofSize: 11, weight: .semibold)
 		feedLabel.textColor = BabelPalette.mutedInk
 		feedLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -152,11 +189,11 @@ private final class BabelTimelineCell: UITableViewCell {
 		dateLabel.textAlignment = .right
 		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-		titleLabel.font = BabelTypography.title(size: 20)
+        titleLabel.font = BabelTypography.title(size: 17)
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 3
 
-		summaryLabel.font = .preferredFont(forTextStyle: .subheadline)
+        summaryLabel.font = .systemFont(ofSize: 12)
 		summaryLabel.textColor = BabelPalette.mutedInk
 		summaryLabel.numberOfLines = 2
 
@@ -177,12 +214,12 @@ private final class BabelTimelineCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			unreadDot.widthAnchor.constraint(equalToConstant: 6),
 			unreadDot.heightAnchor.constraint(equalToConstant: 6),
-			stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-			stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-			stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 18),
-			stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -18),
-			separator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-			separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -12),
+            separator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			separator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
 		])

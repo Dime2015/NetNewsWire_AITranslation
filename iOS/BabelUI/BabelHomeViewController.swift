@@ -7,343 +7,176 @@ import UIKit
 import Articles
 
 final class BabelHomeViewController: UIViewController {
+    var onSelectSection: ((BabelLibrarySection) -> Void)?
+    var onSelectArticle: ((Article) -> Void)?
+    var onOpenGenesisV2: (() -> Void)?
 
-	var onSelectSection: ((BabelLibrarySection) -> Void)?
-	var onSelectArticle: ((Article) -> Void)?
-	var onOpenGenesisV2: (() -> Void)?
+    private let countLabel = UILabel()
+    private let statusLabel = UILabel()
+    private let feedsButton = UIControl()
+    private var loadTask: Task<Void, Never>?
 
-	private let scrollView = UIScrollView()
-	private let contentStack = UIStackView()
-	private let libraryStack = UIStackView()
-	private let contextLabel = UILabel()
-	private let latestButton = BabelLatestArticleButton()
-	private var queueRows = [BabelLibrarySection: BabelQueueRow]()
-	private var latestArticle: Article?
-	private var loadTask: Task<Void, Never>?
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        configureView()
+        startObserving()
+        reloadSnapshot()
+    }
 
-	override func viewDidLoad() {
-		super.viewDidLoad()
-		configureView()
-		startObserving()
-		reloadSnapshot()
-	}
+    deinit {
+        loadTask?.cancel()
+        NotificationCenter.default.removeObserver(self)
+    }
 
-	deinit {
-		loadTask?.cancel()
-		NotificationCenter.default.removeObserver(self)
-	}
+    private func configureView() {
+        view.backgroundColor = BabelPalette.background
+        navigationItem.largeTitleDisplayMode = .never
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "eye.slash"),
+            style: .plain, target: self, action: #selector(openGenesisV2)
+        )
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .add, target: self, action: #selector(openGenesisV2)
+        )
 
-	private func configureView() {
-		view.backgroundColor = BabelPalette.background
+        let scroll = UIScrollView()
+        scroll.alwaysBounceVertical = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
 
-		navigationItem.largeTitleDisplayMode = .never
-		navigationItem.rightBarButtonItem = UIBarButtonItem(
-			image: UIImage(systemName: "clock.arrow.circlepath"),
-			style: .plain,
-			target: self,
-			action: #selector(openGenesisV2)
-		)
-		navigationItem.rightBarButtonItem?.accessibilityLabel = "打开创世版本 2"
+        let content = UIStackView()
+        content.axis = .vertical
+        content.alignment = .fill
+        content.spacing = 0
+        content.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            content.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            content.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            content.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+        ])
 
-		scrollView.alwaysBounceVertical = true
-		scrollView.backgroundColor = BabelPalette.background
-		view.addSubview(scrollView)
-		scrollView.babelPinToEdges(of: view)
+        let logo = UIImageView(image: UIImage(systemName: "cube"))
+        logo.tintColor = BabelPalette.ink
+        logo.contentMode = .scaleAspectFit
+        logo.heightAnchor.constraint(equalToConstant: 150).isActive = true
+        content.addArrangedSubview(logo)
 
-		contentStack.axis = .vertical
-		contentStack.spacing = 0
-		contentStack.translatesAutoresizingMaskIntoConstraints = false
-		scrollView.addSubview(contentStack)
+        feedsButton.backgroundColor = BabelPalette.raisedBackground
+        feedsButton.layer.cornerRadius = 12
+        feedsButton.translatesAutoresizingMaskIntoConstraints = false
+        feedsButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
+        content.addArrangedSubview(feedsButton)
+        NSLayoutConstraint.activate([
+            feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            feedsButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            feedsButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 118)
+        ])
 
-		NSLayoutConstraint.activate([
-			contentStack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 24),
-			contentStack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -24),
-			contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 16),
-			contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -48),
-			contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -48)
-		])
+        let icon = UIImageView(image: UIImage(systemName: "cloud"))
+        icon.tintColor = BabelPalette.ink
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 52).isActive = true
 
-		let dateLabel = UILabel()
-		dateLabel.text = Self.dateFormatter.string(from: Date()).uppercased()
-		dateLabel.font = .preferredFont(forTextStyle: .caption1)
-		dateLabel.textColor = BabelPalette.mutedInk
-		contentStack.addArrangedSubview(dateLabel)
-		contentStack.setCustomSpacing(12, after: dateLabel)
+        let title = UILabel()
+        title.text = "Feeds"
+        title.font = BabelTypography.title(size: 24)
+        title.textColor = BabelPalette.ink
+        let today = UILabel()
+        today.text = "Today"
+        today.font = BabelTypography.title(size: 17, weight: .regular)
+        today.textColor = BabelPalette.mutedInk
+        countLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        countLabel.textColor = BabelPalette.mutedInk
+        let labels = UIStackView(arrangedSubviews: [title, today, countLabel])
+        labels.axis = .vertical
+        labels.spacing = 1
+        labels.alignment = .leading
 
-		let titleLabel = UILabel()
-		titleLabel.text = Self.greeting
-		titleLabel.font = BabelTypography.display(size: 44)
-		titleLabel.textColor = BabelPalette.ink
-		titleLabel.numberOfLines = 0
-		titleLabel.adjustsFontForContentSizeCategory = true
-		contentStack.addArrangedSubview(titleLabel)
+        let row = UIStackView(arrangedSubviews: [icon, labels])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 16
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        feedsButton.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 18),
+            row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -18),
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 16),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -16)
+        ])
 
-		let introductionLabel = UILabel()
-		introductionLabel.text = "让值得读的内容，安静地排到眼前。"
-		introductionLabel.font = .preferredFont(forTextStyle: .body)
-		introductionLabel.textColor = BabelPalette.mutedInk
-		introductionLabel.numberOfLines = 0
-		contentStack.addArrangedSubview(introductionLabel)
-		contentStack.setCustomSpacing(42, after: introductionLabel)
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 2
+        statusLabel.font = UIFont.systemFont(ofSize: 11)
+        statusLabel.textColor = BabelPalette.mutedInk
+        content.addArrangedSubview(statusLabel)
+        content.setCustomSpacing(44, after: feedsButton)
+        content.setCustomSpacing(14, after: logo)
 
-		contentStack.addArrangedSubview(makeSectionLabel("接下来读"))
-		contentStack.setCustomSpacing(12, after: contentStack.arrangedSubviews.last!)
+        let bottom = UIStackView()
+        bottom.axis = .horizontal
+        bottom.distribution = .equalCentering
+        bottom.alignment = .center
+        bottom.layoutMargins = UIEdgeInsets(top: 12, left: 56, bottom: 18, right: 56)
+        bottom.isLayoutMarginsRelativeArrangement = true
+        let star = makeBottomButton("star", label: "已收藏")
+        let unread = makeBottomButton("circle.fill", label: "未读")
+        let all = makeBottomButton("list.bullet", label: "全部")
+        bottom.addArrangedSubview(star)
+        bottom.addArrangedSubview(unread)
+        bottom.addArrangedSubview(all)
+        content.addArrangedSubview(bottom)
+        star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
+        unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
+        all.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
+    }
 
-		latestButton.isHidden = true
-		latestButton.addTarget(self, action: #selector(openLatestArticle), for: .touchUpInside)
-		contentStack.addArrangedSubview(latestButton)
-		contentStack.setCustomSpacing(38, after: latestButton)
+    private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: symbol)
+        configuration.imagePlacement = .top
+        configuration.imagePadding = 3
+        configuration.baseForegroundColor = BabelPalette.mutedInk
+        configuration.attributedTitle = AttributedString(label, attributes: AttributeContainer([
+            .font: UIFont.systemFont(ofSize: 10)
+        ]))
+        let button = UIButton(configuration: configuration)
+        button.accessibilityLabel = label
+        return button
+    }
 
-		contentStack.addArrangedSubview(makeSectionLabel("阅读队列"))
-		contentStack.setCustomSpacing(10, after: contentStack.arrangedSubviews.last!)
+    private func startObserving() {
+        for name in [Notification.Name.UnreadCountDidChange, .AccountDidDownloadArticles,
+                     .UserDidAddAccount, .UserDidDeleteAccount, .nnwTitleTranslationDidUpdate] {
+            NotificationCenter.default.addObserver(self, selector: #selector(dataDidChange), name: name, object: nil)
+        }
+    }
 
-		libraryStack.axis = .vertical
-		libraryStack.spacing = 0
-		libraryStack.layer.cornerRadius = 18
-		libraryStack.layer.cornerCurve = .continuous
-		libraryStack.clipsToBounds = true
-		libraryStack.backgroundColor = BabelPalette.raisedBackground
-		contentStack.addArrangedSubview(libraryStack)
+    @objc private func dataDidChange() { reloadSnapshot() }
 
-		for (index, section) in BabelLibrarySection.allCases.enumerated() {
-			let row = BabelQueueRow(section: section)
-			row.tag = index
-			row.addTarget(self, action: #selector(openQueue(_:)), for: .touchUpInside)
-			queueRows[section] = row
-			libraryStack.addArrangedSubview(row)
+    private func reloadSnapshot() {
+        loadTask?.cancel()
+        loadTask = Task { [weak self] in
+            let snapshot = await BabelLibrary.loadHomeSnapshot()
+            guard !Task.isCancelled else { return }
+            self?.countLabel.text = "\(snapshot.counts[.unread] ?? 0) Unread Items"
+            self?.statusLabel.text = "\(snapshot.accountCount) 个账户 · \(snapshot.feedCount) 个订阅源"
+        }
+    }
 
-			if index < BabelLibrarySection.allCases.count - 1 {
-				let separator = UIView()
-				separator.backgroundColor = BabelPalette.hairline
-				separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
-				libraryStack.addArrangedSubview(separator)
-			}
-		}
-
-		contextLabel.font = .preferredFont(forTextStyle: .footnote)
-		contextLabel.textColor = BabelPalette.mutedInk
-		contextLabel.numberOfLines = 0
-		contextLabel.textAlignment = .center
-		contextLabel.text = "正在读取本地资料库…"
-		contentStack.setCustomSpacing(18, after: libraryStack)
-		contentStack.addArrangedSubview(contextLabel)
-	}
-
-	private func makeSectionLabel(_ title: String) -> UILabel {
-		let label = UILabel()
-		label.text = title
-		label.font = .systemFont(ofSize: 13, weight: .semibold)
-		label.textColor = BabelPalette.mutedInk
-		return label
-	}
-
-	private func startObserving() {
-		let names: [Notification.Name] = [
-			.UnreadCountDidChange,
-			.AccountDidDownloadArticles,
-			.UserDidAddAccount,
-			.UserDidDeleteAccount,
-			.nnwTitleTranslationDidUpdate
-		]
-		for name in names {
-			NotificationCenter.default.addObserver(self, selector: #selector(dataDidChange), name: name, object: nil)
-		}
-	}
-
-	@objc private func dataDidChange() {
-		reloadSnapshot()
-	}
-
-	private func reloadSnapshot() {
-		loadTask?.cancel()
-		loadTask = Task { [weak self] in
-			let snapshot = await BabelLibrary.loadHomeSnapshot()
-			guard !Task.isCancelled else { return }
-			self?.apply(snapshot)
-		}
-	}
-
-	private func apply(_ snapshot: BabelHomeSnapshot) {
-		for section in BabelLibrarySection.allCases {
-			queueRows[section]?.setCount(snapshot.counts[section] ?? 0)
-		}
-
-		contextLabel.text = "\(snapshot.accountCount) 个账户 · \(snapshot.feedCount) 个订阅源 · 只读预览"
-
-		latestArticle = snapshot.latestUnreadArticle
-		if let article = snapshot.latestUnreadArticle {
-			latestButton.configure(
-				feed: article.feed?.nameForDisplay ?? "订阅文章",
-				title: BabelLibrary.displayTitle(for: article),
-				date: Self.relativeFormatter.localizedString(for: article.logicalDatePublished, relativeTo: Date())
-			)
-			latestButton.isHidden = false
-		} else {
-			latestButton.isHidden = true
-		}
-	}
-
-	@objc private func openQueue(_ sender: BabelQueueRow) {
-		guard BabelLibrarySection.allCases.indices.contains(sender.tag) else { return }
-		onSelectSection?(BabelLibrarySection.allCases[sender.tag])
-	}
-
-	@objc private func openLatestArticle() {
-		guard let latestArticle else { return }
-		onSelectArticle?(latestArticle)
-	}
-
-	@objc private func openGenesisV2() {
-		onOpenGenesisV2?()
-	}
-
-	private static let dateFormatter: DateFormatter = {
-		let formatter = DateFormatter()
-		formatter.locale = .current
-		formatter.setLocalizedDateFormatFromTemplate("EEEE, MMMM d")
-		return formatter
-	}()
-
-	private static let relativeFormatter = RelativeDateTimeFormatter()
-
-	private static var greeting: String {
-		switch Calendar.current.component(.hour, from: Date()) {
-		case 5..<12: "早上好。"
-		case 12..<18: "下午好。"
-		default: "晚上好。"
-		}
-	}
-}
-
-private final class BabelQueueRow: UIControl {
-
-	private let countLabel = UILabel()
-
-	init(section: BabelLibrarySection) {
-		super.init(frame: .zero)
-		backgroundColor = .clear
-		accessibilityTraits = .button
-
-		let icon = UIImageView(image: UIImage(systemName: section.symbolName))
-		icon.tintColor = BabelPalette.accent
-		icon.contentMode = .scaleAspectFit
-		icon.translatesAutoresizingMaskIntoConstraints = false
-		icon.widthAnchor.constraint(equalToConstant: 22).isActive = true
-
-		let titleLabel = UILabel()
-		titleLabel.text = section.title
-		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-		titleLabel.textColor = BabelPalette.ink
-
-		let subtitleLabel = UILabel()
-		subtitleLabel.text = section.subtitle
-		subtitleLabel.font = .preferredFont(forTextStyle: .caption1)
-		subtitleLabel.textColor = BabelPalette.mutedInk
-
-		let labels = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
-		labels.axis = .vertical
-		labels.spacing = 3
-
-		countLabel.text = "—"
-		countLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .medium)
-		countLabel.textColor = BabelPalette.ink
-		countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-		let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-		chevron.tintColor = BabelPalette.mutedInk
-		chevron.contentMode = .scaleAspectFit
-
-		let row = UIStackView(arrangedSubviews: [icon, labels, countLabel, chevron])
-		row.alignment = .center
-		row.spacing = 14
-		row.isUserInteractionEnabled = false
-		row.translatesAutoresizingMaskIntoConstraints = false
-		addSubview(row)
-
-		NSLayoutConstraint.activate([
-			row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-			row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-			row.topAnchor.constraint(equalTo: topAnchor, constant: 17),
-			row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -17)
-		])
-	}
-
-	required init?(coder: NSCoder) {
-		fatalError("init(coder:) has not been implemented")
-	}
-
-	func setCount(_ count: Int) {
-		countLabel.text = count.formatted()
-		accessibilityValue = "\(count)"
-	}
-
-	override var isHighlighted: Bool {
-		didSet {
-			alpha = isHighlighted ? 0.55 : 1
-		}
-	}
-}
-
-private final class BabelLatestArticleButton: UIControl {
-
-	private let feedLabel = UILabel()
-	private let titleLabel = UILabel()
-	private let dateLabel = UILabel()
-
-	override init(frame: CGRect) {
-		super.init(frame: frame)
-		backgroundColor = BabelPalette.raisedBackground
-		layer.cornerRadius = 22
-		layer.cornerCurve = .continuous
-		accessibilityTraits = .button
-
-		feedLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-		feedLabel.textColor = BabelPalette.accent
-
-		titleLabel.font = BabelTypography.title(size: 23)
-		titleLabel.textColor = BabelPalette.ink
-		titleLabel.numberOfLines = 3
-
-		dateLabel.font = .preferredFont(forTextStyle: .caption1)
-		dateLabel.textColor = BabelPalette.mutedInk
-
-		let arrow = UIImageView(image: UIImage(systemName: "arrow.up.right"))
-		arrow.tintColor = BabelPalette.mutedInk
-		arrow.setContentHuggingPriority(.required, for: .horizontal)
-
-		let topRow = UIStackView(arrangedSubviews: [feedLabel, UIView(), arrow])
-		topRow.alignment = .center
-
-		let stack = UIStackView(arrangedSubviews: [topRow, titleLabel, dateLabel])
-		stack.axis = .vertical
-		stack.spacing = 12
-		stack.isUserInteractionEnabled = false
-		stack.translatesAutoresizingMaskIntoConstraints = false
-		addSubview(stack)
-
-		NSLayoutConstraint.activate([
-			stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-			stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-			stack.topAnchor.constraint(equalTo: topAnchor, constant: 18),
-			stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18)
-		])
-	}
-
-	required init?(coder: NSCoder) {
-		fatalError("init(coder:) has not been implemented")
-	}
-
-	func configure(feed: String, title: String, date: String) {
-		feedLabel.text = feed.uppercased()
-		titleLabel.text = title
-		dateLabel.text = date
-		accessibilityLabel = "\(feed)，\(title)，\(date)"
-	}
-
-	override var isHighlighted: Bool {
-		didSet {
-			transform = isHighlighted ? CGAffineTransform(scaleX: 0.985, y: 0.985) : .identity
-			alpha = isHighlighted ? 0.7 : 1
-		}
-	}
+    @objc private func openFeeds() { onSelectSection?(.unread) }
+    @objc private func openUnread() { onSelectSection?(.unread) }
+    @objc private func openSaved() { onSelectSection?(.saved) }
+    @objc private func openGenesisV2() { onOpenGenesisV2?() }
 }

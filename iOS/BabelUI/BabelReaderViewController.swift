@@ -10,8 +10,9 @@ import Articles
 final class BabelReaderViewController: UIViewController {
 
 	private let article: Article
-	private let webView = WKWebView(frame: .zero)
-	private let progressView = UIProgressView(progressViewStyle: .bar)
+    private let webView = WKWebView(frame: .zero)
+    private let progressView = UIProgressView(progressViewStyle: .bar)
+    private let bottomToolbar = UIStackView()
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -32,7 +33,16 @@ final class BabelReaderViewController: UIViewController {
 	private func configureView() {
 		view.backgroundColor = BabelPalette.background
 		title = article.feed?.nameForDisplay
-		navigationItem.largeTitleDisplayMode = .never
+        navigationItem.largeTitleDisplayMode = .never
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .close, target: self, action: #selector(closeReader)
+        )
+        navigationItem.rightBarButtonItems = [
+            UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), style: .plain,
+                            target: self, action: #selector(openOriginal)),
+            UIBarButtonItem(image: UIImage(systemName: "ellipsis"), style: .plain,
+                            target: self, action: #selector(showActions))
+        ]
 
 		if article.preferredURL != nil {
 			navigationItem.rightBarButtonItem = UIBarButtonItem(
@@ -47,18 +57,49 @@ final class BabelReaderViewController: UIViewController {
 		webView.backgroundColor = .clear
 		webView.scrollView.backgroundColor = BabelPalette.background
 		webView.allowsBackForwardNavigationGestures = false
-		view.addSubview(webView)
-		webView.babelPinToEdges(of: view)
+        view.addSubview(webView)
+        webView.translatesAutoresizingMaskIntoConstraints = false
 
 		progressView.tintColor = BabelPalette.accent
 		progressView.trackTintColor = .clear
 		progressView.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(progressView)
-		NSLayoutConstraint.activate([
-			progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
+            progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
-		])
+        ])
+
+        bottomToolbar.axis = .horizontal
+        bottomToolbar.distribution = .equalCentering
+        bottomToolbar.alignment = .center
+        bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 20, bottom: 8, right: 20)
+        bottomToolbar.isLayoutMarginsRelativeArrangement = true
+        bottomToolbar.backgroundColor = BabelPalette.background
+        bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottomToolbar)
+        for (symbol, label) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
+                                ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")] {
+            var config = UIButton.Configuration.plain()
+            config.image = UIImage(systemName: symbol)
+            config.imagePlacement = .top
+            config.imagePadding = 3
+            config.baseForegroundColor = BabelPalette.mutedInk
+            config.attributedTitle = AttributedString(label, attributes: AttributeContainer([
+                .font: UIFont.systemFont(ofSize: 9)
+            ]))
+            bottomToolbar.addArrangedSubview(UIButton(configuration: config))
+        }
+        NSLayoutConstraint.activate([
+            bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            bottomToolbar.heightAnchor.constraint(equalToConstant: 58)
+        ])
 
 		progressObservation = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
 			Task { @MainActor in
@@ -87,9 +128,9 @@ final class BabelReaderViewController: UIViewController {
 			body {
 				background: transparent !important;
 				color: #1a1916;
-				font-family: ui-serif, Georgia, serif;
-				font-size: 19px;
-				line-height: 1.68;
+				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+				font-size: 17px;
+				line-height: 1.55;
 				margin: 0 auto;
 				max-width: 680px;
 				padding: 34px 25px 80px;
@@ -102,8 +143,8 @@ final class BabelReaderViewController: UIViewController {
 				font-size: 12px !important;
 			}
 			.articleTitle h1 {
-				font-family: ui-serif, Georgia, serif !important;
-				font-size: 36px !important;
+				font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
+				font-size: 28px !important;
 				font-weight: 650 !important;
 				line-height: 1.08 !important;
 				letter-spacing: -0.02em;
@@ -135,8 +176,20 @@ final class BabelReaderViewController: UIViewController {
 		webView.loadHTMLString(html, baseURL: baseURL)
 	}
 
-	@objc private func openOriginal() {
-		guard let url = article.preferredURL else { return }
-		UIApplication.shared.open(url)
-	}
+    @objc private func openOriginal() {
+        guard let url = article.preferredURL else { return }
+        UIApplication.shared.open(url)
+    }
+
+    @objc private func closeReader() {
+        navigationController?.popViewController(animated: true)
+    }
+
+    @objc private func showActions() {
+        let alert = UIAlertController(title: "文章操作", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "标记已读", style: .default))
+        alert.addAction(UIAlertAction(title: "分享", style: .default))
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
+    }
 }
