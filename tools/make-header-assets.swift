@@ -326,8 +326,12 @@ func deriveDark(_ pixels: [Double]) -> [Double] {
 /// 来自 `TimelineFeedHeader.composite(layer:size:paper:strength:)`:
 /// 先铺纸色,再以 strength 的透明度画素材,然后用一道竖直渐变从 fadeStart 往下
 /// 把素材逐渐擦掉。于是每一行的素材占比 = strength × (1 - 擦除比例)。
-func makeCompositePreview(_ pixels: [Double], width: Int, height: Int,
-						  paper: (r: Double, g: Double, b: Double)) -> [Double] {
+func makeCompositePreview(
+	_ pixels: [Double],
+	width: Int,
+	height: Int,
+	paper: (r: Double, g: Double, b: Double)
+) -> [Double] {
 	var out = pixels
 	let fadeStartY = Double(height) * previewFadeStart
 	for y in 0..<height {

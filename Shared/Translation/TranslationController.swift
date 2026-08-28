@@ -463,7 +463,7 @@ enum TranslationScript {
 			guard let self else { return }
 
 			// 复核内容指纹:只有缓存里的原文和现在页面的原文对得上才拿来用
-			//(页面此刻显示的是原文,fingerprint 取的正是原文的纯文字)。
+			// (页面此刻显示的是原文,fingerprint 取的正是原文的纯文字)。
 			guard let fingerprint = try? await webViewController.nnwTranslationBodyFingerprint() else { return }
 			let bodyHash = TranslationCache.contentHash(fingerprint)
 			let (_, cachedEntry) = await Self.lookupCache(for: article, model: model)
@@ -602,7 +602,7 @@ enum TranslationScript {
 
 			// 标题的翻译任务句柄。声明在这里、配合 defer,确保中途取消或出错时
 			// 这个游离的小任务一定会被叫停 —— 不会在翻页之后把标题译文安到下一篇文章头上。
-			var titleTask: Task<String?, Never>? = nil
+			var titleTask: Task<String?, Never>?
 			defer { titleTask?.cancel() }
 
 			// 0. 先查本地缓存。两种命中:
