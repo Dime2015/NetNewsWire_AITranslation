@@ -22,6 +22,15 @@ import Images
 
 @main
 @MainActor final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, UnreadCountProvider {
+	private static func requestNotificationAuthorization() {
+		UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .sound, .alert]) { granted, _ in
+			if granted {
+				DispatchQueue.main.async {
+					UIApplication.shared.registerForRemoteNotifications()
+				}
+			}
+		}
+	}
 
 	private let backgroundTaskDispatchQueue = DispatchQueue.init(label: "BGTaskScheduler")
 
@@ -99,13 +108,14 @@ import Images
 			NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
 		}
 
-		UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .sound, .alert]) { (granted, _) in
-			if granted {
-				DispatchQueue.main.async {
-					UIApplication.shared.registerForRemoteNotifications()
-				}
-			}
+		#if targetEnvironment(simulator)
+		// Keep the development shell unobstructed by the system permission sheet.
+		if !ProcessInfo.processInfo.arguments.contains("-BabelShell") {
+			Self.requestNotificationAuthorization()
 		}
+		#else
+		Self.requestNotificationAuthorization()
+		#endif
 
 		UNUserNotificationCenter.current().delegate = self
 		UserNotificationManager.shared.start()
