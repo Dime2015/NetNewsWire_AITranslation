@@ -34,6 +34,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let customHeader = UIView()
     private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
     private var didApplyInitialOffset = false
+    private var hasAppeared = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -110,11 +111,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Apply after UITableView has performed its safe-area/content-size
-        // adjustment; doing this during reloadData is clamped by UIKit.
-        guard !didApplyInitialOffset else { return }
-        didApplyInitialOffset = true
-        tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
+        hasAppeared = true
+        applyInitialOffsetIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -311,6 +309,19 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         emptyLabel.isHidden = rows.contains { row in
             if case .feed = row { return true }
             return false
+        }
+        // A fresh install can receive the account snapshot after the view has
+        // appeared. Apply the initial Reeder scroll position only after rows
+        // exist, otherwise UIKit clamps the offset against the empty table.
+        applyInitialOffsetIfNeeded()
+    }
+
+    private func applyInitialOffsetIfNeeded() {
+        guard hasAppeared, !didApplyInitialOffset,
+              rows.contains(where: { if case .feed = $0 { return true }; return false }) else { return }
+        didApplyInitialOffset = true
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
         }
     }
 
