@@ -163,6 +163,10 @@ final class BabelTimelineViewController: UIViewController {
         bottom.backgroundColor = BabelPalette.background
         bottom.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottom)
+        let bottomSeparator = UIView()
+        bottomSeparator.backgroundColor = BabelPalette.hairline
+        bottomSeparator.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottomSeparator)
         for (symbol, label) in [("checkmark.circle.fill", "已读"), ("star.fill", "星标"),
                                 ("circle.fill", "未读"), ("list.bullet", "列表"),
                                 ("magnifyingglass", "搜索")] {
@@ -184,6 +188,12 @@ final class BabelTimelineViewController: UIViewController {
             bottom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottom.heightAnchor.constraint(equalToConstant: 90)
+        ])
+        NSLayoutConstraint.activate([
+            bottomSeparator.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomSeparator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomSeparator.bottomAnchor.constraint(equalTo: bottom.topAnchor),
+            bottomSeparator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
         ])
 		// Keep article content above the persistent toolbar instead of drawing
 		// underneath it. This matters when a larger Reeder-style preview wraps
