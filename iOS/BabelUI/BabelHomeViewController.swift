@@ -116,7 +116,7 @@ final class BabelHomeViewController: UIViewController {
         ])
         feedsButton.layer.cornerRadius = 10
 
-        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 44, weight: .regular)
+        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 42, weight: .bold)
         let icon = UIImageView(image: UIImage(systemName: "cloud", withConfiguration: cloudConfiguration))
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
