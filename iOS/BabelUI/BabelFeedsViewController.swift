@@ -435,7 +435,7 @@ private final class BabelFeedCell: UITableViewCell {
 		selectedBackgroundView = selection
 		iconView.contentMode = .scaleAspectFit
 		iconView.tintColor = BabelPalette.mutedInk
-        titleLabel.font = BabelTypography.title(size: 16, weight: .regular)
+		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
         countLabel.font = BabelTypography.title(size: 15, weight: .regular)
@@ -459,7 +459,7 @@ private final class BabelFeedCell: UITableViewCell {
 	func configure(title: String, count: Int?, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, sectionHeader: Bool = false, toggleFolder: (() -> Void)? = nil) {
 		iconView.image = image
 		iconView.isHidden = sectionHeader
-		titleLabel.font = sectionHeader ? BabelTypography.title(size: 18, weight: .semibold) : BabelTypography.title(size: 16, weight: .regular)
+		titleLabel.font = sectionHeader ? BabelTypography.title(size: 18, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
 		self.toggleFolder = toggleFolder
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
