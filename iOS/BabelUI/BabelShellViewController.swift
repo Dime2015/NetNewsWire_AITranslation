@@ -77,6 +77,13 @@ final class BabelShellViewController: UINavigationController {
 		pushViewController(BabelTimelineViewController(section: .unread), animated: false)
 	}
 
+	func openReaderForDebug() {
+		guard viewControllers.count == 1 else { return }
+		let timeline = BabelTimelineViewController(section: .unread)
+		pushViewController(timeline, animated: false)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { timeline.openFirstArticleForDebug() }
+	}
+
 	private func makeFeedsViewController() -> BabelFeedsViewController {
 		let feedsViewController = BabelFeedsViewController()
 		feedsViewController.onOpenSubscribe = { [weak self] in self?.onOpenSubscribe?() }
