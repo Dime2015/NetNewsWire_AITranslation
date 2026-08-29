@@ -646,7 +646,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		dateLabel.textAlignment = .right
 		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        titleLabel.font = BabelTypography.title(size: 17)
+        titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 3
 
