@@ -133,11 +133,11 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
 		for (index, item) in [("circle", "已读", CGFloat(12)), ("star", "星标", CGFloat(15)), ("chevron.down", "下一篇", CGFloat(16)),
-								("character.book.closed", "AI翻译", CGFloat(16))].enumerated() {
+								("text.justify.left", "更多", CGFloat(16)), ("character.book.closed", "AI翻译", CGFloat(16))].enumerated() {
 			let button = UIButton(type: .custom)
 			button.accessibilityIdentifier = "babel.reader.toolbar.\(item.1)"
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
-			if index == 3 {
+			if index == 4 {
 				button.setTitle("AI", for: .normal)
 				button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
 				button.setTitleColor(BabelPalette.ink, for: .normal)
@@ -152,7 +152,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
             if index == 0 { button.addTarget(self, action: #selector(toggleRead), for: .touchUpInside) }
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
-			if index == 3 { button.addTarget(self, action: #selector(requestTranslation), for: .touchUpInside) }
+			if index == 3 { button.addTarget(self, action: #selector(showActions), for: .touchUpInside) }
+			if index == 4 { button.addTarget(self, action: #selector(requestTranslation), for: .touchUpInside) }
 			if index == 0 { readButton = button }
 			if index == 1 { starButton = button }
 			bottomToolbar.addArrangedSubview(button)
