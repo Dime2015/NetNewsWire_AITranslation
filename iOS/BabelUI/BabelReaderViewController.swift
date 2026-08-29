@@ -433,6 +433,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			self.present(controller, animated: true)
 		})
 		alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+		if let popover = alert.popoverPresentationController {
+			popover.sourceView = view
+			popover.sourceRect = CGRect(x: view.bounds.midX, y: view.safeAreaInsets.top + 24, width: 1, height: 1)
+		}
         present(alert, animated: true)
     }
 
