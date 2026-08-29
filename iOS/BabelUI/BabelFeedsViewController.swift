@@ -77,8 +77,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         // Keep the first data row below the custom Reeder header. The header is
         // layered above the table, so a small inset would hide the Unread row.
         // The table's automatic safe-area adjustment adds the status/header
-        // space.  217pt places the Unread row on the same baseline as Reeder.
-        tableView.contentInset = UIEdgeInsets(top: 178, left: 0, bottom: 88, right: 0)
+        // space.  186pt places the Unread row on the same baseline as Reeder.
+        tableView.contentInset = UIEdgeInsets(top: 186, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 44
         tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
