@@ -167,7 +167,7 @@ final class BabelHomeViewController: UIViewController {
         if label != "未读" {
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
-            let glyph = symbol == "star" ? "★" : "☷"
+            let glyph = symbol == "star" ? "☆" : "☷"
             button.setTitle(glyph, for: .normal)
             button.titleLabel?.font = UIFont.systemFont(ofSize: 28, weight: .regular)
             button.tintColor = BabelPalette.mutedInk
@@ -181,9 +181,9 @@ final class BabelHomeViewController: UIViewController {
         configuration.baseForegroundColor = BabelPalette.mutedInk
         if label == "未读" {
             configuration.imagePlacement = .leading
-            configuration.imagePadding = 8
+            configuration.imagePadding = 4
             configuration.attributedTitle = AttributedString("UNREAD", attributes: AttributeContainer([
-                .font: UIFont.systemFont(ofSize: 13, weight: .semibold)
+                .font: UIFont.systemFont(ofSize: 12, weight: .semibold)
             ]))
             configuration.background = .listPlainCell()
             configuration.background.backgroundColor = BabelPalette.raisedBackground
@@ -192,7 +192,7 @@ final class BabelHomeViewController: UIViewController {
         let button = UIButton(configuration: configuration)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
-        button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
+        button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 6, bottom: 10, trailing: 6)
         return button
     }
 
