@@ -10,6 +10,7 @@ import Articles
 final class BabelReaderViewController: UIViewController {
 
 	private let article: Article
+	var nextArticle: (() -> Article?)?
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
 	private let bottomToolbar = UIStackView()
@@ -212,7 +213,12 @@ final class BabelReaderViewController: UIViewController {
 
 	@objc private func toggleRead() { updateStatus(.read, flag: !article.status.read) }
 	@objc private func toggleStar() { updateStatus(.starred, flag: !article.status.starred) }
-    @objc private func showNextArticle() { navigationController?.popViewController(animated: true) }
+    @objc private func showNextArticle() {
+		guard let next = nextArticle?() else { return }
+		let reader = BabelReaderViewController(article: next)
+		reader.nextArticle = nextArticle
+		navigationController?.pushViewController(reader, animated: true)
+	}
 
 	@objc private func toggleReaderMode() {
 		readerMode.toggle()
