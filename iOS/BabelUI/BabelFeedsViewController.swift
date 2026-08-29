@@ -220,7 +220,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         let progress = max(0, min(1, (220 - offset) / 220))
         headerTitleTopConstraint?.constant = 8 + (52 * progress)
         headerSubtitleTopConstraint?.constant = 1 + (2 * progress)
-        headerTitleLabel.font = .systemFont(ofSize: 20 + (26 * progress), weight: progress > 0.5 ? .semibold : .regular)
+        // Expanded Reeder title is about 36 pt on the iPhone 17 capture;
+        // 46 pt made the wordmark visibly wider and pushed the subtitle down.
+        headerTitleLabel.font = .systemFont(ofSize: 20 + (16 * progress), weight: progress > 0.5 ? .semibold : .regular)
         headerSubtitleLabel.font = .systemFont(ofSize: 14 + (2 * progress), weight: .regular)
         customHeader.layoutIfNeeded()
     }
