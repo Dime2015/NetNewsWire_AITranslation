@@ -192,7 +192,12 @@ final class BabelHomeViewController: UIViewController {
 
     private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
         var configuration = UIButton.Configuration.plain()
-        configuration.baseForegroundColor = BabelPalette.mutedInk
+        let bottomBarInk = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.78, alpha: 1)
+                : UIColor(white: 0.43, alpha: 1)
+        }
+        configuration.baseForegroundColor = bottomBarInk
         let button = UIButton(configuration: configuration)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
@@ -204,13 +209,13 @@ final class BabelHomeViewController: UIViewController {
 
             let dot = UIView()
             dot.translatesAutoresizingMaskIntoConstraints = false
-            dot.backgroundColor = BabelPalette.mutedInk
+            dot.backgroundColor = bottomBarInk
             dot.layer.cornerRadius = 5
             button.addSubview(dot)
             let title = UILabel()
             title.translatesAutoresizingMaskIntoConstraints = false
             title.text = "UNREAD"
-            title.textColor = BabelPalette.mutedInk
+            title.textColor = bottomBarInk
             title.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
             title.adjustsFontSizeToFitWidth = true
             title.minimumScaleFactor = 0.8
@@ -229,7 +234,7 @@ final class BabelHomeViewController: UIViewController {
                 var listConfiguration = configuration
                 // Reeder's compact list glyph is visibly smaller than the default
                 // UIButton image box on the 3x iPhone canvas.
-                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .regular))
+                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
                 button.configuration = listConfiguration
                 return button
             }
