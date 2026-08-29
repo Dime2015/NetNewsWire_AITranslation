@@ -358,6 +358,7 @@ private final class BabelTimelineCell: UITableViewCell {
 	private let summaryLabel = UILabel()
 	private let thumbnailView = UIImageView()
 	private let separator = UIView()
+	private var representedImageURL: URL?
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -439,11 +440,16 @@ private final class BabelTimelineCell: UITableViewCell {
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
 		thumbnailView.image = nil
+		representedImageURL = nil
 		if let imageLink = article.rawImageLink, let url = URL(string: imageLink) {
+			representedImageURL = url
 			Task { [weak self] in
 				guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
 				guard !Task.isCancelled else { return }
-				await MainActor.run { self?.thumbnailView.image = image }
+				await MainActor.run {
+					guard self?.representedImageURL == url else { return }
+					self?.thumbnailView.image = image
+				}
 			}
 		}
 		unreadDot.isHidden = article.status.read
