@@ -84,7 +84,16 @@ final class BabelTimelineViewController: UIViewController {
 		navTitleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
 		navTitleLabel.textColor = BabelPalette.ink
 		navTitleLabel.textAlignment = .center
-		navSubtitleLabel.text = ""
+		switch source {
+		case .section(.unread):
+			navSubtitleLabel.text = "\(AccountManager.shared.unreadCount.formatted()) Unread Items"
+		case .section:
+			navSubtitleLabel.text = ""
+		case .feed(let feed):
+			navSubtitleLabel.text = "\(feed.unreadCount.formatted()) Unread Items"
+		case .folder(let folder):
+			navSubtitleLabel.text = "\(folder.unreadCount.formatted()) Unread Items"
+		}
 		navSubtitleLabel.font = UIFont.systemFont(ofSize: 12, weight: .regular)
 		navSubtitleLabel.textColor = BabelPalette.mutedInk
 		navSubtitleLabel.textAlignment = .center
@@ -136,23 +145,10 @@ final class BabelTimelineViewController: UIViewController {
         bottom.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottom)
         for (symbol, label) in [("checkmark.circle", "已读"), ("star", "星标"),
-                                ("circle.fill", "未读"), ("magnifyingglass", "搜索")] {
-            var config = UIButton.Configuration.plain()
-            config.image = UIImage(systemName: symbol)
-            config.baseForegroundColor = BabelPalette.mutedInk
-            if label == "未读" {
-                config.imagePlacement = .leading
-                config.imagePadding = 8
-                config.attributedTitle = AttributedString("UNREAD", attributes: AttributeContainer([
-                    .font: UIFont.systemFont(ofSize: 13, weight: .semibold)
-                ]))
-                config.background = .listPlainCell()
-                config.background.backgroundColor = BabelPalette.raisedBackground
-                config.background.cornerRadius = 24
-            }
-            let button = UIButton(configuration: config)
+                                ("circle.fill", "未读"), ("line.3.horizontal", "列表"),
+                                ("magnifyingglass", "搜索")] {
+            let button = makeTimelineToolbarButton(symbol: symbol, label: label)
             button.accessibilityLabel = label
-            button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)
             switch label {
             case "已读": button.addTarget(self, action: #selector(markAllRead), for: .touchUpInside)
             case "星标": button.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
@@ -169,8 +165,52 @@ final class BabelTimelineViewController: UIViewController {
             bottom.heightAnchor.constraint(equalToConstant: 90)
         ])
 		view.bringSubviewToFront(bottom)
-		view.bringSubviewToFront(timelineHeader)
+        view.bringSubviewToFront(timelineHeader)
 	}
+
+    private func makeTimelineToolbarButton(symbol: String, label: String) -> UIButton {
+        if label == "未读" {
+            var config = UIButton.Configuration.plain()
+            config.baseForegroundColor = BabelPalette.mutedInk
+            config.background.backgroundColor = BabelPalette.raisedBackground
+            config.background.cornerRadius = 18
+            let button = UIButton(configuration: config)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            let dot = UIView()
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            dot.backgroundColor = BabelPalette.mutedInk
+            dot.layer.cornerRadius = 8
+            button.addSubview(dot)
+            let title = UILabel()
+            title.translatesAutoresizingMaskIntoConstraints = false
+            title.text = "UNREAD"
+            title.textColor = BabelPalette.mutedInk
+            title.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+            button.addSubview(title)
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: 76),
+                button.heightAnchor.constraint(equalToConstant: 36),
+                dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 10),
+                dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                dot.widthAnchor.constraint(equalToConstant: 16), dot.heightAnchor.constraint(equalToConstant: 16),
+                title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
+                title.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -4),
+                title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+            ])
+            return button
+        }
+        var config = UIButton.Configuration.plain()
+        config.baseForegroundColor = BabelPalette.mutedInk
+        config.image = UIImage(systemName: symbol)
+        let pointSize: CGFloat = label == "已读" || label == "搜索" ? 18 : (label == "列表" ? 10 : 14)
+        config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
+        let button = UIButton(configuration: config)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        return button
+    }
 
 	private func configureTimelineHeader() {
 		timelineHeader.translatesAutoresizingMaskIntoConstraints = false

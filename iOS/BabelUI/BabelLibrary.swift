@@ -14,9 +14,9 @@ enum BabelLibrarySection: String, CaseIterable, Hashable {
 
 	var title: String {
 		switch self {
-		case .today: "今天"
-		case .unread: "未读"
-		case .saved: "已收藏"
+		case .today: "Today"
+		case .unread: "Unread"
+		case .saved: "Starred"
 		}
 	}
 
