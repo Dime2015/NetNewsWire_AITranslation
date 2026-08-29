@@ -342,7 +342,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
 				font-size: 12px !important;
 			}
-			.articleTitle h1 {
+			.articleTitle h1, article .articleTitle h1 {
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
 				font-size: 28px !important;
 				font-weight: 650 !important;
@@ -350,8 +350,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 				letter-spacing: -0.02em;
 				margin: 12px 0 14px !important;
 				text-align: left !important;
+				width: 100% !important;
 			}
-			.articleTitle { text-align: left !important; }
+			.articleTitle, article .articleTitle { text-align: left !important; width: 100% !important; }
 			/* Reeder's reading hierarchy is date, title, then source/byline. */
 			article { display: flex; flex-direction: column; }
 			.articleDateline, .articleDatelineTitle { order: 1; }
