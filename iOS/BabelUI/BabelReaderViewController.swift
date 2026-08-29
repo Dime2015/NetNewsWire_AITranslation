@@ -375,6 +375,9 @@ final class BabelReaderViewController: UIViewController {
 
 	@objc private func toggleReaderMode() {
 		readerMode.toggle()
+		if let brButton = bottomToolbar.arrangedSubviews.last as? UIButton {
+			brButton.setTitleColor(readerMode ? BabelPalette.accent : BabelPalette.mutedInk, for: .normal)
+		}
 		renderArticle()
 	}
 
