@@ -333,7 +333,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 				/* Reeder starts the article metadata close below the reader chrome.
 				   The previous 90px reserve pushed the date/title block visibly
 				   below the reference layout on the iPhone canvas. */
-				padding: 28px 20px 80px;
+				padding: 70px 20px 80px;
 			}
 			.headerContainer { margin-bottom: 30px; }
 			.headerTable { width: 100%; }
