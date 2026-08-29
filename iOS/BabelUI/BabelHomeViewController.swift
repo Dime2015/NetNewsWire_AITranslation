@@ -109,12 +109,7 @@ final class BabelHomeViewController: UIViewController {
         let separatorContainer = UIView()
         separatorContainer.translatesAutoresizingMaskIntoConstraints = false
         content.addArrangedSubview(separatorContainer)
-        let separator = UIView()
-        separator.backgroundColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor.black.withAlphaComponent(0.18)
-                : UIColor.black.withAlphaComponent(0.07)
-        }
+        let separator = BabelHomeHairlineView()
         separator.translatesAutoresizingMaskIntoConstraints = false
         separatorContainer.addSubview(separator)
         NSLayoutConstraint.activate([
@@ -408,6 +403,33 @@ private final class BabelFeedCardControl: UIControl {
         let path = UIBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 10)
         BabelPalette.raisedBackground.setFill()
         path.fill()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            setNeedsDisplay()
+        }
+    }
+}
+
+private final class BabelHomeHairlineView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let color = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor.black.withAlphaComponent(0.18)
+                : UIColor.black.withAlphaComponent(0.07)
+        }
+        color.setFill()
+        UIRectFill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 1 / UIScreen.main.scale))
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
