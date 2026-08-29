@@ -160,15 +160,15 @@ final class BabelHomeViewController: UIViewController {
         let all = makeBottomButton("line.3.horizontal", label: "全部")
         [star, unread, all].forEach { view.addSubview($0) }
         NSLayoutConstraint.activate([
-            star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -110),
-            star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -38),
-            star.widthAnchor.constraint(equalToConstant: 64), star.heightAnchor.constraint(equalToConstant: 56),
+            star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -76),
+            star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
             unread.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             unread.centerYAnchor.constraint(equalTo: star.centerYAnchor),
-            unread.widthAnchor.constraint(equalToConstant: 96), unread.heightAnchor.constraint(equalToConstant: 56),
-            all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 110),
+            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 36),
+            all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 76),
             all.centerYAnchor.constraint(equalTo: star.centerYAnchor),
-            all.widthAnchor.constraint(equalToConstant: 64), all.heightAnchor.constraint(equalToConstant: 56)
+            all.widthAnchor.constraint(equalToConstant: 44), all.heightAnchor.constraint(equalToConstant: 36)
         ])
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
@@ -176,35 +176,50 @@ final class BabelHomeViewController: UIViewController {
     }
 
     private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
-        if label != "未读" {
-            let button = UIButton(type: .system)
-            button.translatesAutoresizingMaskIntoConstraints = false
-            let glyph = symbol == "star" ? "★" : "☷"
-            button.setTitle(glyph, for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 28, weight: .regular)
-            button.tintColor = BabelPalette.mutedInk
-            button.setTitleColor(BabelPalette.mutedInk, for: .normal)
-            button.accessibilityLabel = label
-            return button
-        }
         var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: symbol)
-        configuration.imagePlacement = .all
         configuration.baseForegroundColor = BabelPalette.mutedInk
-        if label == "未读" {
-            configuration.imagePlacement = .leading
-            configuration.imagePadding = 4
-            configuration.attributedTitle = AttributedString("UNREAD", attributes: AttributeContainer([
-                .font: UIFont.systemFont(ofSize: 12, weight: .semibold)
-            ]))
-            configuration.background = .listPlainCell()
-            configuration.background.backgroundColor = BabelPalette.raisedBackground
-            configuration.background.cornerRadius = 28
-        }
         let button = UIButton(configuration: configuration)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
-        button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 6, bottom: 10, trailing: 6)
+        if label == "未读" {
+            var unreadConfiguration = configuration
+            unreadConfiguration.background.backgroundColor = BabelPalette.raisedBackground
+            unreadConfiguration.background.cornerRadius = 18
+            button.configuration = unreadConfiguration
+
+            let dot = UIView()
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            dot.backgroundColor = BabelPalette.mutedInk
+            dot.layer.cornerRadius = 8
+            button.addSubview(dot)
+            let title = UILabel()
+            title.translatesAutoresizingMaskIntoConstraints = false
+            title.text = "UNREAD"
+            title.textColor = BabelPalette.mutedInk
+            title.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+            title.adjustsFontSizeToFitWidth = true
+            title.minimumScaleFactor = 0.8
+            button.addSubview(title)
+            NSLayoutConstraint.activate([
+                dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 10),
+                dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                dot.widthAnchor.constraint(equalToConstant: 16),
+                dot.heightAnchor.constraint(equalToConstant: 16),
+                title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
+                title.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -5),
+                title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+            ])
+        } else {
+            let glyph = symbol == "star" ? "★" : "☷"
+            var glyphConfiguration = configuration
+            glyphConfiguration.title = glyph
+            glyphConfiguration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                var outgoing = incoming
+                outgoing.font = UIFont.systemFont(ofSize: 18, weight: .regular)
+                return outgoing
+            }
+            button.configuration = glyphConfiguration
+        }
         return button
     }
 
@@ -283,12 +298,14 @@ private final class ReederLibraryToggle: UIView {
 
 private final class BabelCubeView: UIView {
 	private let cubeLayer = CAShapeLayer()
+	private let rightFaceLayer = CAShapeLayer()
 	private let starLayer = CAShapeLayer()
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
 		isUserInteractionEnabled = false
 		layer.addSublayer(cubeLayer)
+		layer.addSublayer(rightFaceLayer)
 		layer.addSublayer(starLayer)
 	}
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -296,11 +313,11 @@ private final class BabelCubeView: UIView {
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		let side = min(bounds.width, bounds.height) * 0.30
-		let center = CGPoint(x: bounds.midX, y: bounds.midY - 32)
+		let center = CGPoint(x: bounds.midX - 5, y: bounds.midY - 30)
 		let top = CGPoint(x: center.x, y: center.y - side * 0.58)
 		let left = CGPoint(x: center.x - side * 0.88, y: center.y - side * 0.10)
 		let right = CGPoint(x: center.x + side * 0.88, y: center.y - side * 0.10)
-		let bottom = CGPoint(x: center.x, y: center.y + side * 0.52)
+		let bottom = CGPoint(x: center.x, y: center.y + side * 1.24)
 		let leftBottom = CGPoint(x: left.x + 2, y: left.y + side * 0.94)
 		let rightBottom = CGPoint(x: right.x - 2, y: right.y + side * 0.94)
 		let seam = CGPoint(x: center.x, y: center.y + side * 0.12)
@@ -310,17 +327,28 @@ private final class BabelCubeView: UIView {
 		path.move(to: left); path.addLine(to: seam); path.addLine(to: bottom); path.addLine(to: leftBottom); path.close()
 		path.move(to: seam); path.addLine(to: right); path.addLine(to: rightBottom); path.addLine(to: bottom); path.close()
 		cubeLayer.path = path.cgPath
+		cubeLayer.fillRule = .evenOdd
 		cubeLayer.fillColor = UIColor { traits in
 			traits.userInterfaceStyle == .dark ? UIColor(white: 0.82, alpha: 1) : UIColor(white: 0.45, alpha: 1)
 		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
+		let rightFace = UIBezierPath()
+		rightFace.move(to: seam)
+		rightFace.addLine(to: right)
+		rightFace.addLine(to: rightBottom)
+		rightFace.addLine(to: bottom)
+		rightFace.close()
+		rightFaceLayer.path = rightFace.cgPath
+		rightFaceLayer.fillColor = UIColor(white: 0.82, alpha: 1).cgColor
+		rightFaceLayer.strokeColor = BabelPalette.background.cgColor
+		rightFaceLayer.lineWidth = 2
 
 		let star = UIBezierPath()
-		let starCenter = CGPoint(x: center.x - side * 0.42, y: center.y + side * 0.25)
+		let starCenter = CGPoint(x: center.x - side * 0.42, y: center.y + side * 0.40)
 		for i in 0..<10 {
 			let angle = CGFloat(i) * .pi / 5 - .pi / 2
-			let radius = i.isMultiple(of: 2) ? side * 0.26 : side * 0.11
+			let radius = i.isMultiple(of: 2) ? side * 0.22 : side * 0.09
 			let point = CGPoint(x: starCenter.x + cos(angle) * radius, y: starCenter.y + sin(angle) * radius)
 			if i == 0 { star.move(to: point) } else { star.addLine(to: point) }
 		}
