@@ -71,10 +71,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         // layered above the table, so a small inset would hide the Unread row.
         // The table's automatic safe-area adjustment adds the status/header
         // space.  217pt places the Unread row on the same baseline as Reeder.
-        // The custom header occupies the first 150pt. Reeder leaves roughly
-        // 98pt between its subtitle rule and the Unread row on the iPhone 17
-        // canvas; the previous 178pt inset left an oversized empty band.
-        tableView.contentInset = UIEdgeInsets(top: 98, left: 0, bottom: 88, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 178, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 44
         tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -117,7 +114,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         // adjustment; doing this during reloadData is clamped by UIKit.
         guard !didApplyInitialOffset else { return }
         didApplyInitialOffset = true
-        tableView.setContentOffset(CGPoint(x: 0, y: 390), animated: false)
+        tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -296,11 +293,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     private func rebuildRows() {
-        // Account data can arrive after the first layout and reload the table,
-        // which otherwise snaps the Feed screen back to its unscrolled state.
-        // Restore the calibrated opening position only when UIKit has actually
-        // reset the offset; user initiated scroll and folder toggles are kept.
-        let shouldRestoreOpeningOffset = didApplyInitialOffset && tableView.contentOffset.y < -100
         rows = [.unread, .sectionSpacing]
         rows.append(.foldersHeader)
         for account in AccountManager.shared.sortedActiveAccounts {
@@ -313,12 +305,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
         tableView.reloadData()
-        if shouldRestoreOpeningOffset {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.tableView.setContentOffset(CGPoint(x: 0, y: 390), animated: false)
-            }
-        }
         emptyLabel.isHidden = rows.contains { row in
             if case .feed = row { return true }
             return false
