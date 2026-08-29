@@ -174,7 +174,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             customHeader.heightAnchor.constraint(equalToConstant: 150),
-            back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
+            back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor),
             back.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             back.widthAnchor.constraint(equalToConstant: 44),
             back.heightAnchor.constraint(equalToConstant: 44),

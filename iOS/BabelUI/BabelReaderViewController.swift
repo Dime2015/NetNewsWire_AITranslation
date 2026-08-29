@@ -171,7 +171,7 @@ final class BabelReaderViewController: UIViewController {
 		NSLayoutConstraint.activate([
 			readerHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor), readerHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			readerHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), readerHeader.heightAnchor.constraint(equalToConstant: 58),
-			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor, constant: 16), back.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
+			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor), back.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
 			label.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), label.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
 			actions.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), actions.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
