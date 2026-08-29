@@ -19,6 +19,7 @@ final class BabelReaderViewController: UIViewController {
 	private weak var starButton: UIButton?
 	private var readerMode = false
 	private var didApplyDebugReaderMode = false
+	private var pendingScrollOffset: CGPoint?
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -321,6 +322,12 @@ final class BabelReaderViewController: UIViewController {
 		"""
 		let baseURL = URL(string: rendering.baseURL)
 		webView.loadHTMLString(html, baseURL: baseURL)
+		if let offset = pendingScrollOffset {
+			pendingScrollOffset = nil
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+				self?.webView.scrollView.setContentOffset(offset, animated: false)
+			}
+		}
 	}
 
     @objc private func openOriginal() {
@@ -383,6 +390,7 @@ final class BabelReaderViewController: UIViewController {
 	}
 
 	@objc private func toggleReaderMode() {
+		pendingScrollOffset = webView.scrollView.contentOffset
 		readerMode.toggle()
 		if let brButton = bottomToolbar.arrangedSubviews.last as? UIButton {
 			brButton.setTitleColor(readerMode ? BabelPalette.accent : BabelPalette.mutedInk, for: .normal)
