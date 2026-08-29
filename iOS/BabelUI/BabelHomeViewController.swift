@@ -46,8 +46,8 @@ final class BabelHomeViewController: UIViewController {
         topBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(topBar)
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
@@ -69,7 +69,7 @@ final class BabelHomeViewController: UIViewController {
             libraryButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             libraryButton.widthAnchor.constraint(equalToConstant: 44), libraryButton.heightAnchor.constraint(equalToConstant: 44),
             addButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor),
-            addButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            addButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor, constant: -2),
             addButton.widthAnchor.constraint(equalToConstant: 44), addButton.heightAnchor.constraint(equalToConstant: 44)
         ])
 
