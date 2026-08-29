@@ -9,7 +9,7 @@ import UIKit
 import Account
 import Images
 
-final class BabelFeedsViewController: UITableViewController {
+final class BabelFeedsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 
     private enum Row {
         case unread
@@ -25,6 +25,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onOpenSubscribe: (() -> Void)?
     private var rows = [Row]()
     private var collapsedFolders = Set<String>()
+    private let tableView = UITableView(frame: .zero, style: .plain)
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
@@ -76,6 +77,16 @@ final class BabelFeedsViewController: UITableViewController {
         let refresh = UIRefreshControl()
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
         tableView.refreshControl = refresh
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(tableView)
+        NSLayoutConstraint.activate([
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
         configureCustomHeader()
         configureBottomBar()
         rebuildRows()
@@ -250,9 +261,9 @@ final class BabelFeedsViewController: UITableViewController {
         onOpenGenesisV2?()
     }
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
 
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: BabelFeedCell.reuseIdentifier, for: indexPath) as! BabelFeedCell
         switch rows[indexPath.row] {
         case .unread:
@@ -267,7 +278,7 @@ final class BabelFeedsViewController: UITableViewController {
         return cell
     }
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
         case .unread: onSelectUnread?()
