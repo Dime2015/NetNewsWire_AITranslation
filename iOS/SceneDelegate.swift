@@ -254,6 +254,8 @@ private extension SceneDelegate {
 			  window?.rootViewController !== genesisV2RootViewController else {
 			return
 		}
+		legacyToggleButton?.removeFromSuperview()
+		legacyToggleButton = nil
 
 		window?.rootViewController = genesisV2RootViewController
 		window?.makeKeyAndVisible()
