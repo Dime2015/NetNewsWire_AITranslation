@@ -22,6 +22,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onOpenGenesisV2: (() -> Void)?
     private var rows = [Row]()
     private let emptyLabel = UILabel()
+    private let bottomBar = UIView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -36,7 +37,7 @@ final class BabelFeedsViewController: UITableViewController {
         )
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 56, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 92, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -49,12 +50,64 @@ final class BabelFeedsViewController: UITableViewController {
         let refresh = UIRefreshControl()
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
         tableView.refreshControl = refresh
+        configureBottomBar()
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .AccountDidDownloadArticles, object: nil)
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    private func configureBottomBar() {
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.backgroundColor = BabelPalette.background
+        bottomBar.layer.borderColor = BabelPalette.hairline.cgColor
+        bottomBar.layer.borderWidth = 0.5
+        view.addSubview(bottomBar)
+
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.distribution = .equalCentering
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.addSubview(stack)
+
+        let star = toolbarButton(image: UIImage(systemName: "star.fill"))
+        let unread = UIButton(type: .system)
+        var unreadConfiguration = UIButton.Configuration.plain()
+        unreadConfiguration.image = UIImage(systemName: "circle.fill")
+        unreadConfiguration.title = "UNREAD"
+        unreadConfiguration.imagePadding = 8
+        unreadConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 18)
+        unread.configuration = unreadConfiguration
+        unread.titleLabel?.font = BabelTypography.title(size: 14, weight: .semibold)
+        unread.tintColor = BabelPalette.ink
+        unread.setTitleColor(BabelPalette.ink, for: .normal)
+        unread.backgroundColor = BabelPalette.raisedBackground
+        unread.layer.cornerRadius = 22
+        let list = toolbarButton(image: UIImage(systemName: "list.bullet"))
+        stack.addArrangedSubview(star)
+        stack.addArrangedSubview(unread)
+        stack.addArrangedSubview(list)
+
+        NSLayoutConstraint.activate([
+            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bottomBar.heightAnchor.constraint(equalToConstant: 76),
+            stack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 52),
+            stack.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -52),
+            stack.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor, constant: -2)
+        ])
+    }
+
+    private func toolbarButton(image: UIImage?) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(image, for: .normal)
+        button.tintColor = BabelPalette.ink
+        button.frame.size = CGSize(width: 44, height: 44)
+        return button
+    }
 
     private func rebuildRows() {
         rows = [.unread]
