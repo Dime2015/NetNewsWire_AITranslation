@@ -195,7 +195,7 @@ final class BabelReaderViewController: UIViewController {
 			html { background: transparent !important; }
 			body {
 				background: transparent !important;
-				color: #1a1916;
+				color: #423f40;
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
 				font-size: \(readerMode ? 19 : 17)px;
 				line-height: \(readerMode ? 1.72 : 1.55);
@@ -232,21 +232,22 @@ final class BabelReaderViewController: UIViewController {
 			.articleDateline, .articleDatelineTitle { margin: 0 0 10px !important; }
 			.articleTitle h1 { margin: 0 0 16px !important; }
 			.externalLink { margin: 0 0 28px !important; }
-			a { color: inherit !important; text-decoration-color: #c14a28 !important; }
+			a { color: inherit !important; text-decoration-color: #44be9c !important; }
 			.articleBody { margin-top: 34px !important; }
 			.articleBody p { margin: 0 0 1.25em; }
 			.articleBody img, .articleBody video { border-radius: 10px; height: auto; max-width: 100%; }
 			(article.rawImageLink == nil ? ".headerTable img, .headerImage, .articleImage { display: none !important; }" : "")
 			blockquote {
-				border-left: 2px solid #c14a28;
-				color: #5d594f;
+				border-left: 2px solid #44be9c;
+				color: #6f6b6c;
 				margin-left: 0;
 				padding-left: 20px;
 			}
 			@media (prefers-color-scheme: dark) {
-				body { color: #efede5; }
+				body { color: #d8d8d8; }
 				.header, .articleDateline, .articleDatelineTitle, .externalLink { color: #9c988e !important; }
-				blockquote { color: #b5b0a5; }
+				a { text-decoration-color: #d64c46 !important; }
+				blockquote { border-left-color: #d64c46; color: #b5b0a5; }
 			}
 			</style>
 		</head>
