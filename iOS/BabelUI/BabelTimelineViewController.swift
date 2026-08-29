@@ -650,6 +650,7 @@ private final class BabelTimelineCell: UITableViewCell {
 	func configure(article: Article) {
 		feedLabel.text = (article.feed?.nameForDisplay ?? "订阅文章").uppercased()
 		feedIconView.image = article.feed.flatMap { FaviconDownloader.shared.faviconAsIcon(for: $0)?.image }
+		feedIconView.backgroundColor = feedIconView.image == nil ? .clear : BabelPalette.raisedBackground
 		dateLabel.text = Self.timeFormatter.string(from: article.logicalDatePublished)
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
