@@ -63,7 +63,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 36, left: 0, bottom: 88, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 100, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 52
         tableView.estimatedRowHeight = 52
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -119,7 +119,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -130,7 +130,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm"
         subtitle.text = "Today at \(formatter.string(from: Date()))"
-        subtitle.font = .systemFont(ofSize: 11, weight: .regular)
+        subtitle.font = .systemFont(ofSize: 14, weight: .regular)
         subtitle.textColor = BabelPalette.mutedInk
         subtitle.textAlignment = .center
         subtitle.translatesAutoresizingMaskIntoConstraints = false
@@ -156,13 +156,13 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            customHeader.heightAnchor.constraint(equalToConstant: 94),
+            customHeader.heightAnchor.constraint(equalToConstant: 150),
             back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
             back.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             back.widthAnchor.constraint(equalToConstant: 44),
             back.heightAnchor.constraint(equalToConstant: 44),
             titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8),
+            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 64),
             subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
             subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
             refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
