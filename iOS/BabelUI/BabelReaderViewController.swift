@@ -230,6 +230,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		back.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		back.tintColor = BabelPalette.ink
 		back.accessibilityLabel = "关闭文章"
+		back.accessibilityIdentifier = "babel.reader.header.close"
 		back.addTarget(self, action: #selector(closeReader), for: .touchUpInside)
 		back.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(back)
@@ -243,6 +244,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		actions.setImage(UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		actions.tintColor = BabelPalette.ink
 		actions.accessibilityLabel = "文章操作"
+		actions.accessibilityIdentifier = "babel.reader.header.actions"
 		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		actions.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(actions)
@@ -250,6 +252,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		tag.setImage(UIImage(systemName: "tag", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		tag.tintColor = BabelPalette.ink
 		tag.accessibilityLabel = "文章标签"
+		tag.accessibilityIdentifier = "babel.reader.header.tag"
 		tag.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		tag.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(tag)
@@ -257,6 +260,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		share.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		share.tintColor = BabelPalette.ink
 		share.accessibilityLabel = "分享文章"
+		share.accessibilityIdentifier = "babel.reader.header.share"
 		share.addTarget(self, action: #selector(shareArticle), for: .touchUpInside)
 		share.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(share)
