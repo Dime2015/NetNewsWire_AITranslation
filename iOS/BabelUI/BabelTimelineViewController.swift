@@ -499,6 +499,7 @@ private final class BabelArticleFilterViewController: UIViewController {
 			if index == selectedIndex {
 				button.setImage(UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)), for: .normal)
 				button.tintColor = BabelPalette.accent
+				button.accessibilityTraits.insert(.selected)
 			}
 			button.tag = index
 			button.addTarget(self, action: #selector(selected(_:)), for: .touchUpInside)
