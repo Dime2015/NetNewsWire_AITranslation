@@ -462,6 +462,7 @@ private final class BabelFeedIssuesViewController: UIViewController {
         let close = UIButton(type: .custom)
         close.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         close.tintColor = BabelPalette.ink
+        close.accessibilityIdentifier = "babel.feed-issues.close"
         close.addTarget(self, action: #selector(closeSheet), for: .touchUpInside)
         close.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(close)
@@ -479,6 +480,7 @@ private final class BabelFeedIssuesViewController: UIViewController {
         message.textColor = BabelPalette.mutedInk
         message.textAlignment = .left
         message.numberOfLines = 0
+        message.accessibilityIdentifier = "babel.feed-issues.message"
         message.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(message)
 
