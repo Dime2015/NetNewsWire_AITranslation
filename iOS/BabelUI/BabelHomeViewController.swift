@@ -165,8 +165,8 @@ final class BabelHomeViewController: UIViewController {
             row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 12),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
             // The card's content is vertically centered in Reeder's card.
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 6),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -14)
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 9),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -11)
         ])
 
         statusLabel.isHidden = true
