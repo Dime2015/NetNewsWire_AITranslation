@@ -64,8 +64,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorStyle = .none
         tableView.contentInset = UIEdgeInsets(top: 100, left: 0, bottom: 88, right: 0)
-        tableView.rowHeight = 52
-        tableView.estimatedRowHeight = 52
+        tableView.rowHeight = 44
+        tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
         emptyLabel.text = "No Feeds"
         emptyLabel.textColor = BabelPalette.mutedInk
@@ -381,8 +381,8 @@ private final class BabelFeedCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			iconView.widthAnchor.constraint(equalToConstant: 24),
-			iconView.heightAnchor.constraint(equalToConstant: 24),
+            iconView.widthAnchor.constraint(equalToConstant: 20),
+            iconView.heightAnchor.constraint(equalToConstant: 20),
 			titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
