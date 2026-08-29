@@ -33,6 +33,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let bottomBar = UIView()
     private let customHeader = UIView()
     private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
+    private var didApplyInitialOffset = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -111,6 +112,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         super.viewDidAppear(animated)
         // Apply after UITableView has performed its safe-area/content-size
         // adjustment; doing this during reloadData is clamped by UIKit.
+        guard !didApplyInitialOffset else { return }
+        didApplyInitialOffset = true
         tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
     }
 
@@ -302,9 +305,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
         tableView.reloadData()
-        // Match Reeder's initial scroll position: the header remains fixed
-        // while the first content row begins above the table's safe-area origin.
-        tableView.setContentOffset(CGPoint(x: 0, y: 107), animated: false)
         emptyLabel.isHidden = rows.contains { row in
             if case .feed = row { return true }
             return false
