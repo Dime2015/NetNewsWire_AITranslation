@@ -108,7 +108,10 @@ struct BabelHomeSnapshot {
 		if let html = article.contentHTML, let heading = html.range(of: #"(?s)<h[1-6][^>]*>.*?</h[1-6]>"#, options: .regularExpression) {
 			let raw = String(html[heading]).replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
 			let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-			if !text.isEmpty { return text.count > 80 ? String(text.prefix(77)) + "…" : text }
+			if !text.isEmpty {
+				let decoded = decodeHTMLText(text)
+				return decoded.count > 80 ? String(decoded.prefix(77)) + "…" : decoded
+			}
 		}
 		if let html = article.contentHTML {
 			let plain = html
@@ -118,7 +121,8 @@ struct BabelHomeSnapshot {
 				.trimmingCharacters(in: .whitespacesAndNewlines)
 			if !plain.isEmpty {
 				let text = plain.split(separator: ".", maxSplits: 1).first.map(String.init) ?? plain
-				return text.count > 80 ? String(text.prefix(77)) + "…" : text
+				let decoded = decodeHTMLText(text)
+				return decoded.count > 80 ? String(decoded.prefix(77)) + "…" : decoded
 			}
 		}
 		return "Untitled"
