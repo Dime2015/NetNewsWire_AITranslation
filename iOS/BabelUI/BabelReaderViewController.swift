@@ -301,6 +301,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		readerDateFormatter.locale = Locale(identifier: "en_US_POSIX")
 		readerDateFormatter.dateFormat = "EEEE, MMMM d, yyyy 'AT' H:mm"
 		let readerDate = readerDateFormatter.string(from: article.logicalDatePublished).uppercased()
+		let isDark = traitCollection.userInterfaceStyle == .dark
+		let readerBodyColor = isDark ? "#d8d8d8" : "#423f40"
+		let readerAccentColor = isDark ? "#d64c46" : "#44be9c"
 		var renderedHTML = rendering.html
 		let needsFallbackTitle = article.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
 		if needsFallbackTitle, let articleTag = renderedHTML.range(of: "<article"),
@@ -320,7 +323,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 			html { background: transparent !important; }
 			body {
 				background: transparent !important;
-				color: #423f40;
+				color: \(readerBodyColor);
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
 				font-size: \(readerMode ? 19 : 17)px;
 				font-weight: \(readerMode ? 500 : 400);
@@ -374,13 +377,13 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 			.articleDateline, .articleDatelineTitle { margin: 0 0 10px !important; }
 			.articleTitle h1 { margin: 0 0 16px !important; }
 			.externalLink { margin: 0 0 28px !important; }
-			a { color: inherit !important; text-decoration-color: #44be9c !important; }
+			a { color: inherit !important; text-decoration-color: \(readerAccentColor) !important; }
 			.articleBody { margin-top: 34px !important; }
 			.articleBody p { margin: 0 0 1.25em; }
 			.articleBody img, .articleBody video { border-radius: 10px; height: auto; max-width: 100%; }
 			(article.rawImageLink == nil ? ".headerTable img, .headerImage, .articleImage { display: none !important; }" : "")
 			blockquote {
-				border-left: 2px solid #44be9c;
+				border-left: 2px solid \(readerAccentColor);
 				color: #6f6b6c;
 				margin-left: 0;
 				padding-left: 20px;
