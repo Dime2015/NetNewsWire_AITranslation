@@ -116,6 +116,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		loadErrorLabel.textAlignment = .center
 		loadErrorLabel.numberOfLines = 0
 		loadErrorLabel.isHidden = true
+		loadErrorLabel.isUserInteractionEnabled = true
+		loadErrorLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(retryRender)))
 		loadErrorLabel.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(loadErrorLabel)
 		NSLayoutConstraint.activate([
@@ -426,12 +428,20 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 
 	func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
 		loadingIndicator.stopAnimating()
-		loadErrorLabel.text = "无法加载文章\n请稍后重试"
+		loadErrorLabel.text = "无法加载文章\n点击重试"
 		loadErrorLabel.isHidden = false
 	}
 
 	func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
 		self.webView(webView, didFail: navigation, withError: error)
+	}
+
+	@objc private func retryRender() {
+		loadErrorLabel.isHidden = true
+		loadingIndicator.startAnimating()
+		progressView.isHidden = false
+		progressView.setProgress(0, animated: false)
+		renderArticle()
 	}
 
     @objc private func openOriginal() {
