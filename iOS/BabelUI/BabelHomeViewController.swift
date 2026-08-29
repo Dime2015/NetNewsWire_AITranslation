@@ -143,7 +143,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: -2, y: 3).scaledBy(x: 1.1, y: 1.1)
+        icon.transform = CGAffineTransform(translationX: -2.7, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
         title.text = "Feeds"
@@ -159,7 +159,7 @@ final class BabelHomeViewController: UIViewController {
         labels.axis = .vertical
         labels.spacing = 1
         labels.alignment = .leading
-        labels.transform = CGAffineTransform(translationX: 0, y: 1.5)
+        labels.transform = CGAffineTransform(translationX: 0.7, y: 1.5)
 
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
@@ -172,8 +172,8 @@ final class BabelHomeViewController: UIViewController {
             row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 12),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
             // The card's content is vertically centered in Reeder's card.
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 9),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -11)
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 8),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -12)
         ])
 
         statusLabel.isHidden = true
