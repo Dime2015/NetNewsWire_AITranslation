@@ -402,7 +402,7 @@ private final class BabelFeedIssuesViewController: UIViewController {
 
         let title = UILabel()
         title.text = "Feed Issues"
-        title.font = BabelTypography.title(size: 28, weight: .bold)
+        title.font = BabelTypography.title(size: 36, weight: .bold)
         title.textColor = BabelPalette.ink
         title.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(title)
