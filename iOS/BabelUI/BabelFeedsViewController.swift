@@ -412,11 +412,13 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             // Reeder renders Unread as a section-level row: no leading dot,
             // with the same typographic hierarchy as the Folders heading.
             cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: nil, indent: 0, isFolder: false, sectionHeader: true)
+            cell.accessibilityIdentifier = "babel.feeds.row.unread"
         case .sectionSpacing:
             cell.configure(title: "", count: nil, image: nil, indent: 0, isFolder: false)
             cell.isUserInteractionEnabled = false
         case .foldersHeader:
             cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: false, sectionHeader: true)
+            cell.accessibilityIdentifier = "babel.feeds.row.folders"
         case .folder(let folder):
             let expanded = !collapsedFolders.contains(folderKey(folder))
             let key = folderKey(folder)
@@ -425,9 +427,11 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
                 if self.collapsedFolders.contains(key) { self.collapsedFolders.remove(key) } else { self.collapsedFolders.insert(key) }
                 self.rebuildRows()
             }
+            cell.accessibilityIdentifier = "babel.feeds.row.folder.\(folder.nameForDisplay)"
         case .feed(let feed):
             let icon = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image ?? UIImage(systemName: "square.fill")
             cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: icon, indent: 1, isFolder: false)
+            cell.accessibilityIdentifier = "babel.feeds.row.feed.\(feed.nameForDisplay)"
         }
         return cell
     }
