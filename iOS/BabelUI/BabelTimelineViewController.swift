@@ -391,7 +391,7 @@ final class BabelTimelineViewController: UIViewController {
 	func openFirstArticleForDebug() {
 		Task { @MainActor [weak self] in
 			guard let self else { return }
-			for _ in 0..<20 where self.daySections.isEmpty {
+			for _ in 0..<60 where self.daySections.isEmpty {
 				try? await Task.sleep(for: .milliseconds(150))
 			}
 			guard let first = self.daySections.first?.articles.first else { return }
