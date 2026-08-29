@@ -123,7 +123,10 @@ final class BabelReaderViewController: UIViewController {
         NSLayoutConstraint.activate([
             bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            // Reeder's reader toolbar extends through the home-indicator inset;
+            // anchoring to the view bottom keeps its icons at the reference
+            // baseline instead of lifting them by the safe-area height.
+            bottomToolbar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottomToolbar.heightAnchor.constraint(equalToConstant: 58)
         ])
 
