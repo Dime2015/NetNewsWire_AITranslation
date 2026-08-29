@@ -92,7 +92,12 @@ final class BabelReaderViewController: UIViewController {
 							("text.alignleft", "阅读模式", CGFloat(18)), ("character.book.closed", "翻译", CGFloat(18))].enumerated() {
 			let button = UIButton(type: .custom)
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
-			button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
+			if index == 4 {
+				button.setTitle("BR", for: .normal)
+				button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
+			} else {
+				button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
+			}
 			button.tintColor = BabelPalette.mutedInk
 			button.accessibilityLabel = item.1
 			button.translatesAutoresizingMaskIntoConstraints = false
