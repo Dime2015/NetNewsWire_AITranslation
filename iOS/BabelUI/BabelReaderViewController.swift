@@ -130,7 +130,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
         bottomToolbar.axis = .horizontal
 		bottomToolbar.distribution = .equalSpacing
         bottomToolbar.alignment = .center
-		bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 24, bottom: 8, right: 24)
+		// Reeder spreads the five compact controls almost edge to edge.
+		// Keep the 44pt hit targets, but use the narrower visual side inset
+		// so the first and last glyphs align with the reference toolbar.
+		bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 6, bottom: 8, right: 6)
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
 		for (index, item) in [("circle", "已读", CGFloat(12)), ("star", "星标", CGFloat(15)), ("chevron.down", "下一篇", CGFloat(16)),
