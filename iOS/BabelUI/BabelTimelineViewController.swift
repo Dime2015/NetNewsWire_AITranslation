@@ -214,7 +214,9 @@ final class BabelTimelineViewController: UIViewController {
         var config = UIButton.Configuration.plain()
         config.baseForegroundColor = BabelPalette.mutedInk
         config.image = UIImage(systemName: symbol)
-        let pointSize: CGFloat = label == "已读" ? 16 : (label == "搜索" ? 18 : (label == "列表" ? 10 : 14))
+        // Match Reeder's compact bottom control glyphs on the 3x iPhone
+        // canvas; the button hit targets remain 44pt for accessibility.
+        let pointSize: CGFloat = label == "已读" ? 14 : (label == "搜索" ? 16 : (label == "列表" ? 8 : 12))
         config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
         config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
         let button = UIButton(configuration: config)
