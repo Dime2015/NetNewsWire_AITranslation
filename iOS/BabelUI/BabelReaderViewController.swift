@@ -230,7 +230,9 @@ final class BabelReaderViewController: UIViewController {
 				line-height: 1.08 !important;
 				letter-spacing: -0.02em;
 				margin: 12px 0 14px !important;
+				text-align: left !important;
 			}
+			.articleTitle { text-align: left !important; }
 			/* Reeder's reading hierarchy is date, title, then source/byline. */
 			article { display: flex; flex-direction: column; }
 			.articleDateline, .articleDatelineTitle { order: 1; }
