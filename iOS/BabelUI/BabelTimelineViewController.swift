@@ -489,12 +489,8 @@ private final class BabelTimelineCell: UITableViewCell {
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
-		if let feed = article.feed {
-			thumbnailView.image = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image
-			thumbnailView.contentMode = .scaleAspectFit
-		} else {
-			thumbnailView.image = nil
-		}
+		thumbnailView.backgroundColor = article.rawImageLink == nil ? .clear : BabelPalette.raisedBackground
+		thumbnailView.image = nil
 		representedImageURL = nil
 		if let imageLink = article.rawImageLink, let url = URL(string: imageLink) {
 			representedImageURL = url
