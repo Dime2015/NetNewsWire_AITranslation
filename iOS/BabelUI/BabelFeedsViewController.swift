@@ -64,8 +64,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
         tableView.contentInset = UIEdgeInsets(top: 136, left: 0, bottom: 88, right: 0)
-        tableView.rowHeight = 64
-        tableView.estimatedRowHeight = 64
+        tableView.rowHeight = 52
+        tableView.estimatedRowHeight = 52
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
         emptyLabel.text = "No Feeds"
         emptyLabel.textColor = BabelPalette.mutedInk
@@ -326,10 +326,10 @@ private final class BabelFeedCell: UITableViewCell {
 		selectedBackgroundView = selection
 		iconView.contentMode = .scaleAspectFit
 		iconView.tintColor = BabelPalette.mutedInk
-		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        titleLabel.font = BabelTypography.title(size: 16, weight: .regular)
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
-		countLabel.font = BabelTypography.title(size: 16, weight: .regular)
+        countLabel.font = BabelTypography.title(size: 15, weight: .regular)
 		countLabel.textColor = BabelPalette.mutedInk
 		countLabel.textAlignment = .right
 		for subview in [iconView, titleLabel, countLabel] {
@@ -353,8 +353,8 @@ private final class BabelFeedCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			iconView.widthAnchor.constraint(equalToConstant: 28),
-			iconView.heightAnchor.constraint(equalToConstant: 28),
+			iconView.widthAnchor.constraint(equalToConstant: 24),
+			iconView.heightAnchor.constraint(equalToConstant: 24),
 			titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
