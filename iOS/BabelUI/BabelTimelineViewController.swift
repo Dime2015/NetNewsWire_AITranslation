@@ -535,7 +535,8 @@ private final class BabelTimelineCell: UITableViewCell {
 		stack.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(stack)
 
-		separator.backgroundColor = BabelPalette.hairline
+		// Reeder separates timeline entries with whitespace; no full-width table rule.
+		separator.backgroundColor = .clear
 		separator.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(separator)
 
