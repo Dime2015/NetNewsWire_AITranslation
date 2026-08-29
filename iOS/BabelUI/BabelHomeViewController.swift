@@ -55,7 +55,7 @@ final class BabelHomeViewController: UIViewController {
         libraryButton.translatesAutoresizingMaskIntoConstraints = false
         libraryButton.accessibilityLabel = "Library"
         libraryButton.accessibilityHint = "Open your feeds and folders"
-        libraryButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        libraryButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
         libraryButton.addSubview(ReederLibraryToggle())
         libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
