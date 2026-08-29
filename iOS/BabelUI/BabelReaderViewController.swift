@@ -185,7 +185,16 @@ final class BabelReaderViewController: UIViewController {
 		)
 		let fallbackTitle = BabelLibrary.displayTitle(for: article)
 			.replacingOccurrences(of: "\\", with: "\\\\")
+			.replacingOccurrences(of: "&", with: "&amp;")
+			.replacingOccurrences(of: "<", with: "&lt;")
+			.replacingOccurrences(of: ">", with: "&gt;")
 			.replacingOccurrences(of: "'", with: "\\'")
+		var renderedHTML = rendering.html
+		if !renderedHTML.contains("articleTitle"), let articleTag = renderedHTML.range(of: "<article"),
+		   let articleEnd = renderedHTML.range(of: ">", range: articleTag.upperBound..<renderedHTML.endIndex) {
+			let titleHTML = "<div class=\"articleTitle\"><h1>\(fallbackTitle)</h1></div>"
+			renderedHTML.insert(contentsOf: titleHTML, at: renderedHTML.index(after: articleEnd.lowerBound))
+		}
 		let html = """
 		<!doctype html>
 		<html>
@@ -255,7 +264,7 @@ final class BabelReaderViewController: UIViewController {
 			</style>
 		</head>
 		<body>
-			\(rendering.html)
+			\(renderedHTML)
 			<script>
 			// Match Reeder's reading order: date, title, source/byline, then body.
 			(function () {
