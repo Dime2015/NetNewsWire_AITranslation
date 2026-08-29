@@ -47,7 +47,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         refreshControlButton.tintColor = .white
         refreshControlButton.backgroundColor = BabelPalette.accent
         refreshControlButton.layer.cornerRadius = 12
-        refreshControlButton.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
+        refreshControlButton.addTarget(self, action: #selector(showFeedIssues), for: .touchUpInside)
         refreshControlButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             refreshControlButton.widthAnchor.constraint(equalToConstant: 24),
@@ -299,6 +299,12 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.tableView.refreshControl?.endRefreshing()
         }
+    }
+
+    @objc private func showFeedIssues() {
+        let alert = UIAlertController(title: "Feed Issues", message: "No feed issues", preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Done", style: .cancel))
+        present(alert, animated: true)
     }
 
     @objc private func showSubscribe() {
