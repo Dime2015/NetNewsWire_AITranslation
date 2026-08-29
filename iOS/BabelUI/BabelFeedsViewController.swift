@@ -108,7 +108,7 @@ final class BabelFeedsViewController: UITableViewController {
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         unread.backgroundColor = BabelPalette.raisedBackground
         unread.layer.cornerRadius = 22
-        let list = toolbarButton(image: UIImage(systemName: "list.bullet"))
+        let list = toolbarButton(image: UIImage(systemName: "line.3.horizontal"))
         stack.addArrangedSubview(star)
         stack.addArrangedSubview(unread)
         stack.addArrangedSubview(list)

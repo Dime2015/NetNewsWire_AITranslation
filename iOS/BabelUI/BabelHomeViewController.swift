@@ -138,7 +138,7 @@ final class BabelHomeViewController: UIViewController {
         bottom.isLayoutMarginsRelativeArrangement = true
         let star = makeBottomButton("star", label: "已收藏")
         let unread = makeBottomButton("circle.fill", label: "未读")
-        let all = makeBottomButton("list.bullet", label: "全部")
+        let all = makeBottomButton("line.3.horizontal", label: "全部")
         bottom.addArrangedSubview(star)
         bottom.addArrangedSubview(unread)
         bottom.addArrangedSubview(all)
