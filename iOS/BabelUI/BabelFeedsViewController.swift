@@ -212,8 +212,10 @@ private final class BabelFeedCell: UITableViewCell {
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
 		backgroundColor = .clear
-		selectedBackgroundView = UIView()
-		selectedBackgroundView?.backgroundColor = BabelPalette.raisedBackground
+		let selection = UIView()
+		selection.backgroundColor = BabelPalette.raisedBackground
+		selection.layer.cornerRadius = 12
+		selectedBackgroundView = selection
 		iconView.contentMode = .scaleAspectFit
 		iconView.tintColor = BabelPalette.mutedInk
 		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
@@ -226,6 +228,11 @@ private final class BabelFeedCell: UITableViewCell {
 			subview.translatesAutoresizingMaskIntoConstraints = false
 			contentView.addSubview(subview)
 		}
+	}
+
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		selectedBackgroundView?.frame = bounds.insetBy(dx: 8, dy: 3)
 	}
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
