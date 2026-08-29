@@ -47,8 +47,11 @@ final class BabelHomeViewController: UIViewController {
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 28),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
-        let libraryButton = navigationButton(image: UIImage(systemName: "switch.2"), action: #selector(openSettings))
-        libraryButton.tintColor = BabelPalette.ink
+        let libraryButton = UIButton(type: .custom)
+        libraryButton.translatesAutoresizingMaskIntoConstraints = false
+        libraryButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        libraryButton.addSubview(ReederLibraryToggle())
+        libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
         let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
         addButton.tintColor = BabelPalette.ink
@@ -97,25 +100,26 @@ final class BabelHomeViewController: UIViewController {
         feedsButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
         content.addArrangedSubview(feedsButton)
         NSLayoutConstraint.activate([
-            feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            feedsButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            feedsButton.heightAnchor.constraint(equalToConstant: 118)
+            feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            feedsButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+            feedsButton.heightAnchor.constraint(equalToConstant: 98)
         ])
+        feedsButton.layer.cornerRadius = 10
 
         let icon = UIImageView(image: UIImage(systemName: "cloud"))
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 68).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
 
         let title = UILabel()
         title.text = "Feeds"
-        title.font = BabelTypography.title(size: 24)
+        title.font = BabelTypography.title(size: 18, weight: .medium)
         title.textColor = BabelPalette.ink
         syncStatusLabel.text = "Syncing…"
-        syncStatusLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        syncStatusLabel.font = BabelTypography.title(size: 14, weight: .regular)
         syncStatusLabel.textColor = BabelPalette.mutedInk
-        countLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        countLabel.font = BabelTypography.title(size: 14, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
         let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
         labels.axis = .vertical
@@ -130,34 +134,29 @@ final class BabelHomeViewController: UIViewController {
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 18),
-            row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -18),
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 16),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -16)
+            row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 10),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -10)
         ])
 
         statusLabel.isHidden = true
         content.setCustomSpacing(14, after: logo)
 
-        let bottom = UIStackView()
-        bottom.axis = .horizontal
-        bottom.distribution = .equalCentering
-        bottom.alignment = .center
-        bottom.layoutMargins = UIEdgeInsets(top: 12, left: 120, bottom: 18, right: 120)
-        bottom.isLayoutMarginsRelativeArrangement = true
         let star = makeBottomButton("star", label: "已收藏")
         let unread = makeBottomButton("circle.fill", label: "未读")
         let all = makeBottomButton("line.3.horizontal", label: "全部")
-        bottom.addArrangedSubview(star)
-        bottom.addArrangedSubview(unread)
-        bottom.addArrangedSubview(all)
-        view.addSubview(bottom)
-        bottom.translatesAutoresizingMaskIntoConstraints = false
+        [star, unread, all].forEach { view.addSubview($0) }
         NSLayoutConstraint.activate([
-            bottom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            bottom.heightAnchor.constraint(equalToConstant: 64)
+            star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -230),
+            star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -38),
+            star.widthAnchor.constraint(equalToConstant: 64), star.heightAnchor.constraint(equalToConstant: 56),
+            unread.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            unread.centerYAnchor.constraint(equalTo: star.centerYAnchor),
+            unread.widthAnchor.constraint(equalToConstant: 180), unread.heightAnchor.constraint(equalToConstant: 56),
+            all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 230),
+            all.centerYAnchor.constraint(equalTo: star.centerYAnchor),
+            all.widthAnchor.constraint(equalToConstant: 64), all.heightAnchor.constraint(equalToConstant: 56)
         ])
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
@@ -165,6 +164,14 @@ final class BabelHomeViewController: UIViewController {
     }
 
     private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
+        if label != "未读" {
+            let button = UIButton(type: .system)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.setImage(UIImage(systemName: symbol), for: .normal)
+            button.tintColor = BabelPalette.mutedInk
+            button.accessibilityLabel = label
+            return button
+        }
         var configuration = UIButton.Configuration.plain()
         configuration.image = UIImage(systemName: symbol)
         configuration.imagePlacement = .all
@@ -180,6 +187,7 @@ final class BabelHomeViewController: UIViewController {
             configuration.background.cornerRadius = 28
         }
         let button = UIButton(configuration: configuration)
+        button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
         button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
         return button
@@ -230,6 +238,23 @@ final class BabelHomeViewController: UIViewController {
     }
 }
 
+private final class ReederLibraryToggle: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let color = BabelPalette.ink
+        let outer = UIBezierPath(roundedRect: CGRect(x: 11, y: 13, width: 22, height: 14), cornerRadius: 7)
+        color.setStroke(); outer.lineWidth = 3; outer.stroke()
+        let knob = UIBezierPath(ovalIn: CGRect(x: 24, y: 16, width: 8, height: 8))
+        color.setFill(); knob.fill()
+    }
+}
+
 private final class BabelCubeView: UIView {
 	private let cubeLayer = CAShapeLayer()
 	private let starLayer = CAShapeLayer()
@@ -244,7 +269,7 @@ private final class BabelCubeView: UIView {
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		let side = min(bounds.width, bounds.height) * 0.24
+		let side = min(bounds.width, bounds.height) * 0.30
 		let center = CGPoint(x: bounds.midX, y: bounds.midY - 32)
 		let top = CGPoint(x: center.x, y: center.y - side * 0.58)
 		let left = CGPoint(x: center.x - side * 0.88, y: center.y - side * 0.10)
