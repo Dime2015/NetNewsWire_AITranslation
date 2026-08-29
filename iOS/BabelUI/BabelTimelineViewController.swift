@@ -34,6 +34,8 @@ final class BabelTimelineViewController: UIViewController {
 	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
 	private var searchQuery = ""
+	private enum ArticleFilter { case all, unread, starred }
+	private var articleFilter: ArticleFilter = .all
 
 	init(section: BabelLibrarySection) {
 		self.source = .section(section)
@@ -153,6 +155,7 @@ final class BabelTimelineViewController: UIViewController {
             case "已读": button.addTarget(self, action: #selector(markAllRead), for: .touchUpInside)
             case "星标": button.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
             case "未读": button.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
+			case "列表": button.addTarget(self, action: #selector(showFilterMenu), for: .touchUpInside)
             case "搜索": button.addTarget(self, action: #selector(showSearch), for: .touchUpInside)
             default: break
             }
@@ -297,6 +300,22 @@ final class BabelTimelineViewController: UIViewController {
 		controller.searchBar.becomeFirstResponder()
 	}
 
+	@objc private func showFilterMenu() {
+		let alert = UIAlertController(title: "Filter Articles", message: nil, preferredStyle: .actionSheet)
+		let options: [(String, ArticleFilter)] = [("All", .all), ("Unread", .unread), ("Starred", .starred)]
+		for (title, filter) in options {
+			alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+				self?.articleFilter = filter
+				guard let self else { return }
+				self.rebuildSections(from: self.articles)
+				self.tableView.reloadData()
+				self.emptyLabel.isHidden = !self.daySections.isEmpty
+			})
+		}
+		alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+		present(alert, animated: true)
+	}
+
     @objc private func showActions() {
 		let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
 		alert.addAction(UIAlertAction(title: "Mark All as Read", style: .default) { [weak self] _ in
@@ -371,9 +390,22 @@ final class BabelTimelineViewController: UIViewController {
 	private func rebuildSections(from articles: [Article]) {
 		let filtered: [Article]
 		if searchQuery.isEmpty {
-			filtered = articles
+			filtered = articles.filter {
+				switch articleFilter {
+				case .all: true
+				case .unread: !$0.status.read
+				case .starred: $0.status.starred
+				}
+			}
 		} else {
 			filtered = articles.filter { article in
+				let matchesFilter: Bool
+				switch articleFilter {
+				case .all: matchesFilter = true
+				case .unread: matchesFilter = !article.status.read
+				case .starred: matchesFilter = article.status.starred
+				}
+				guard matchesFilter else { return false }
 				let haystack = [article.title, article.summary, article.contentText]
 					.compactMap { $0?.lowercased() }
 					.joined(separator: " ")
