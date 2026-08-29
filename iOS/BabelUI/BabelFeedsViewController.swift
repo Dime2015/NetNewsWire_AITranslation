@@ -384,7 +384,8 @@ private final class BabelFeedIssuesViewController: UIViewController {
         message.text = "No feed issues"
         message.font = BabelTypography.title(size: 17, weight: .regular)
         message.textColor = BabelPalette.mutedInk
-        message.textAlignment = .center
+        message.textAlignment = .left
+        message.numberOfLines = 0
         message.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(message)
 
@@ -395,11 +396,20 @@ private final class BabelFeedIssuesViewController: UIViewController {
             title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             title.topAnchor.constraint(equalTo: close.bottomAnchor, constant: 20),
             message.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            message.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            message.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            message.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            message.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28)
         ])
 		Task { @MainActor in
 			let entries = await AccountManager.shared.errorLogDatabase.allEntries()
-			message.text = entries.isEmpty ? "No feed issues" : "(entries.count) feed issues"
+			if entries.isEmpty {
+				message.text = "No feed issues"
+			} else {
+				message.text = entries.prefix(5).map { entry in
+					let operation = entry.operation.isEmpty ? "Feed" : entry.operation
+					return "\(entry.sourceName) · \(operation)\n\(entry.errorMessage)"
+				}.joined(separator: "\n\n")
+			}
 		}
     }
 
