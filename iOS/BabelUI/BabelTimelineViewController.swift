@@ -301,19 +301,19 @@ final class BabelTimelineViewController: UIViewController {
 	}
 
 	@objc private func showFilterMenu() {
-		let alert = UIAlertController(title: "Filter Articles", message: nil, preferredStyle: .actionSheet)
-		let options: [(String, ArticleFilter)] = [("All", .all), ("Unread", .unread), ("Starred", .starred)]
-		for (title, filter) in options {
-			alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-				self?.articleFilter = filter
-				guard let self else { return }
-				self.rebuildSections(from: self.articles)
-				self.tableView.reloadData()
-				self.emptyLabel.isHidden = !self.daySections.isEmpty
-			})
+		let controller = BabelArticleFilterViewController { [weak self] index in
+			guard let self else { return }
+			self.articleFilter = [.all, .unread, .starred][index]
+			self.rebuildSections(from: self.articles)
+			self.tableView.reloadData()
+			self.emptyLabel.isHidden = !self.daySections.isEmpty
 		}
-		alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-		present(alert, animated: true)
+		if let sheet = controller.sheetPresentationController {
+			sheet.detents = [.medium()]
+			sheet.prefersGrabberVisible = true
+			sheet.preferredCornerRadius = 18
+		}
+		present(controller, animated: true)
 	}
 
     @objc private func showActions() {
@@ -425,6 +425,55 @@ final class BabelTimelineViewController: UIViewController {
 		formatter.dateFormat = "EEEE, MMMM d, yyyy"
 		return formatter
 	}()
+}
+
+private final class BabelArticleFilterViewController: UIViewController {
+	private let onSelect: (Int) -> Void
+	init(onSelect: @escaping (Int) -> Void) { self.onSelect = onSelect; super.init(nibName: nil, bundle: nil) }
+	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+	override func viewDidLoad() {
+		super.viewDidLoad()
+		view.backgroundColor = BabelPalette.background
+		let close = UIButton(type: .custom)
+		close.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18)), for: .normal)
+		close.tintColor = BabelPalette.ink
+		close.addTarget(self, action: #selector(closeSheet), for: .touchUpInside)
+		close.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(close)
+		let title = UILabel()
+		title.text = "Filter Articles"
+		title.font = BabelTypography.title(size: 28, weight: .bold)
+		title.textColor = BabelPalette.ink
+		title.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(title)
+		let stack = UIStackView()
+		stack.axis = .vertical; stack.spacing = 1
+		stack.backgroundColor = BabelPalette.raisedBackground
+		stack.layer.cornerRadius = 14; stack.clipsToBounds = true
+		stack.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(stack)
+		for (index, label) in ["All", "Unread", "Starred"].enumerated() {
+			var buttonConfiguration = UIButton.Configuration.plain()
+			buttonConfiguration.title = label
+			buttonConfiguration.baseForegroundColor = BabelPalette.ink
+			buttonConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 18)
+			let button = UIButton(configuration: buttonConfiguration)
+			button.contentHorizontalAlignment = .left
+			button.titleLabel?.font = BabelTypography.title(size: 17, weight: .regular)
+			button.tag = index
+			button.addTarget(self, action: #selector(selected(_:)), for: .touchUpInside)
+			button.heightAnchor.constraint(equalToConstant: 52).isActive = true
+			stack.addArrangedSubview(button)
+		}
+		NSLayoutConstraint.activate([
+			close.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
+			title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24), title.topAnchor.constraint(equalTo: close.bottomAnchor, constant: 18),
+			stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 22)
+		])
+	}
+	@objc private func selected(_ sender: UIButton) { dismiss(animated: true) { self.onSelect(sender.tag) } }
+	@objc private func closeSheet() { dismiss(animated: true) }
 }
 
 extension BabelTimelineViewController: UISearchResultsUpdating {
