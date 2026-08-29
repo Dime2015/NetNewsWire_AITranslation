@@ -35,15 +35,32 @@ final class BabelHomeViewController: UIViewController {
 
     private func configureView() {
         view.backgroundColor = BabelPalette.background
-        navigationItem.largeTitleDisplayMode = .never
-        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
-        switcher.selectedSegmentIndex = 0
-        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
-        navigationItem.titleView = switcher
-        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: navigationButton(
-            image: UIImage(systemName: "gearshape"), action: #selector(openSettings)))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: navigationButton(
-            image: UIImage(systemName: "plus"), action: #selector(openSubscribe)))
+        navigationController?.setNavigationBarHidden(true, animated: false)
+
+        // Reeder's home has only the compact library toggle and add button in its top row.
+        let topBar = UIView()
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(topBar)
+        NSLayoutConstraint.activate([
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 34),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -34),
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 28),
+            topBar.heightAnchor.constraint(equalToConstant: 48)
+        ])
+        let libraryButton = navigationButton(image: UIImage(systemName: "switch.2"), action: #selector(openSettings))
+        libraryButton.tintColor = BabelPalette.ink
+        topBar.addSubview(libraryButton)
+        let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
+        addButton.tintColor = BabelPalette.ink
+        topBar.addSubview(addButton)
+        NSLayoutConstraint.activate([
+            libraryButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor),
+            libraryButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            libraryButton.widthAnchor.constraint(equalToConstant: 44), libraryButton.heightAnchor.constraint(equalToConstant: 44),
+            addButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor),
+            addButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            addButton.widthAnchor.constraint(equalToConstant: 44), addButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
 
         let scroll = UIScrollView()
         scroll.alwaysBounceVertical = true
@@ -52,7 +69,7 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scroll.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 8),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
@@ -71,7 +88,7 @@ final class BabelHomeViewController: UIViewController {
         ])
 
         let logo = BabelCubeView()
-        logo.heightAnchor.constraint(equalToConstant: 150).isActive = true
+        logo.heightAnchor.constraint(equalToConstant: 130).isActive = true
         content.addArrangedSubview(logo)
 
         feedsButton.backgroundColor = BabelPalette.raisedBackground
@@ -82,14 +99,14 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             feedsButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            feedsButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 118)
+            feedsButton.heightAnchor.constraint(equalToConstant: 118)
         ])
 
         let icon = UIImageView(image: UIImage(systemName: "cloud"))
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 68).isActive = true
 
         let title = UILabel()
         title.text = "Feeds"
@@ -119,19 +136,14 @@ final class BabelHomeViewController: UIViewController {
             row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -16)
         ])
 
-        statusLabel.textAlignment = .center
-        statusLabel.numberOfLines = 2
-        statusLabel.font = UIFont.systemFont(ofSize: 11)
-        statusLabel.textColor = BabelPalette.mutedInk
-        content.addArrangedSubview(statusLabel)
-        content.setCustomSpacing(44, after: feedsButton)
+        statusLabel.isHidden = true
         content.setCustomSpacing(14, after: logo)
 
         let bottom = UIStackView()
         bottom.axis = .horizontal
         bottom.distribution = .equalCentering
         bottom.alignment = .center
-        bottom.layoutMargins = UIEdgeInsets(top: 12, left: 56, bottom: 18, right: 56)
+        bottom.layoutMargins = UIEdgeInsets(top: 12, left: 120, bottom: 18, right: 120)
         bottom.isLayoutMarginsRelativeArrangement = true
         let star = makeBottomButton("star", label: "已收藏")
         let unread = makeBottomButton("circle.fill", label: "未读")
@@ -139,7 +151,14 @@ final class BabelHomeViewController: UIViewController {
         bottom.addArrangedSubview(star)
         bottom.addArrangedSubview(unread)
         bottom.addArrangedSubview(all)
-        content.addArrangedSubview(bottom)
+        view.addSubview(bottom)
+        bottom.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            bottom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            bottom.heightAnchor.constraint(equalToConstant: 64)
+        ])
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         all.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
@@ -172,7 +191,7 @@ final class BabelHomeViewController: UIViewController {
         button.setImage(image, for: .normal)
         button.tintColor = BabelPalette.ink
         button.addTarget(self, action: action, for: .touchUpInside)
-        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }
 
@@ -225,8 +244,8 @@ private final class BabelCubeView: UIView {
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		let side = min(bounds.width, bounds.height) * 0.34
-		let center = CGPoint(x: bounds.midX, y: bounds.midY + 2)
+		let side = min(bounds.width, bounds.height) * 0.24
+		let center = CGPoint(x: bounds.midX, y: bounds.midY - 32)
 		let top = CGPoint(x: center.x, y: center.y - side * 0.58)
 		let left = CGPoint(x: center.x - side * 0.88, y: center.y - side * 0.10)
 		let right = CGPoint(x: center.x + side * 0.88, y: center.y - side * 0.10)
