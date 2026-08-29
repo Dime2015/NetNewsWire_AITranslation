@@ -224,7 +224,7 @@ final class BabelReaderViewController: UIViewController {
 				line-height: \(readerMode ? 1.72 : 1.55);
 				margin: 0 auto;
 				max-width: \(readerMode ? 560 : 680)px;
-				padding: 110px 25px 80px;
+				padding: 90px 25px 80px;
 			}
 			.headerContainer { margin-bottom: 30px; }
 			.headerTable { width: 100%; }
