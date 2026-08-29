@@ -108,6 +108,7 @@ final class BabelTimelineViewController: UIViewController {
 
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
+		// Keep enough room for UIKit's first section header below the custom header.
 		tableView.contentInset = UIEdgeInsets(top: 44, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
@@ -526,6 +527,7 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		header.textLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
 		header.textLabel?.textColor = BabelPalette.ink
 		header.contentView.backgroundColor = BabelPalette.background
+		header.contentView.layoutMargins = UIEdgeInsets(top: 0, left: 120, bottom: 0, right: 16)
 	}
 
 	func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
