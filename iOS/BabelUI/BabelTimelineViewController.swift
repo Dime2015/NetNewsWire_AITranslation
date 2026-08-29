@@ -711,8 +711,8 @@ private final class BabelTimelineCell: UITableViewCell {
 			feedIconView.heightAnchor.constraint(equalToConstant: 26),
 			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			thumbnailView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			thumbnailView.widthAnchor.constraint(equalToConstant: 72),
-			thumbnailView.heightAnchor.constraint(equalToConstant: 72)
+            thumbnailView.widthAnchor.constraint(equalToConstant: 70),
+            thumbnailView.heightAnchor.constraint(equalToConstant: 70)
 		])
 	}
 
