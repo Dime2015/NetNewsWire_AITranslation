@@ -135,7 +135,14 @@ struct BabelHomeSnapshot {
 	}
 
 	private static func decodeHTMLText(_ value: String) -> String {
-		guard let data = value.data(using: .utf8),
+		let entities: [String: String] = [
+			"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"",
+			"&#39;": "'", "&apos;": "'", "&rsquo;": "’", "&lsquo;": "‘",
+			"&rdquo;": "”", "&ldquo;": "“", "&nbsp;": " "
+		]
+		var normalized = value
+		for (entity, replacement) in entities { normalized = normalized.replacingOccurrences(of: entity, with: replacement) }
+		guard let data = normalized.data(using: .utf8),
 			  let decoded = try? NSAttributedString(
 				data: data,
 				options: [.documentType: NSAttributedString.DocumentType.html,
