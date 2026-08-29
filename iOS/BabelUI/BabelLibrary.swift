@@ -75,7 +75,7 @@ struct BabelHomeSnapshot {
 			articles = await SmartFeedsController.shared.starredFeed.fetchArticlesAsync()
 		}
 
-		return articles.sorted {
+		return uniqueArticles(articles).sorted {
 			if $0.logicalDatePublished == $1.logicalDatePublished {
 				return $0.articleID < $1.articleID
 			}
@@ -85,10 +85,19 @@ struct BabelHomeSnapshot {
 
 	static func loadArticles(for fetchType: FetchType) async -> [Article] {
 		let articles = await AccountManager.shared.fetchArticlesAsync(fetchType)
-		return articles.sorted {
+		return uniqueArticles(articles).sorted {
 			if $0.logicalDatePublished == $1.logicalDatePublished { return $0.articleID < $1.articleID }
 			return $0.logicalDatePublished > $1.logicalDatePublished
 		}
+	}
+
+	/// Smart feeds can temporarily expose the same article through more than one
+	/// backing record while sync is settling. The timeline is keyed by article ID,
+	/// so collapse those records before grouping into day sections; otherwise one
+	/// article is rendered twice on top of itself.
+	private static func uniqueArticles(_ articles: some Sequence<Article>) -> [Article] {
+		var seen = Set<String>()
+		return articles.filter { seen.insert($0.articleID).inserted }
 	}
 
 	static func displayTitle(for article: Article) -> String {

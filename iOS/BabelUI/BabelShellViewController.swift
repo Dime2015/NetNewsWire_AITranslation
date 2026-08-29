@@ -107,6 +107,13 @@ final class BabelShellViewController: UINavigationController {
 		DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { feed.openFirstArticleForDebug() }
 	}
 
+	func openUnreadReaderForDebug() {
+		popToRootViewController(animated: false)
+		let timeline = BabelTimelineViewController(section: .unread)
+		pushViewController(timeline, animated: false)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { timeline.openFirstArticleForDebug() }
+	}
+
 	func openReaderForDebug() {
 		// Device Hub can restore the previous navigation stack between launches.
 		// Always reset it so the reader debug route is deterministic.
