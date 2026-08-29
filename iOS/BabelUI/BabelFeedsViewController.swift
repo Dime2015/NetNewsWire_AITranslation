@@ -32,8 +32,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
-    private let headerTitleLabel = UILabel()
-    private let headerSubtitleLabel = UILabel()
     private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
     private var didApplyInitialOffset = false
     private var hasAppeared = false
@@ -134,7 +132,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         back.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(back)
 
-        let titleLabel = headerTitleLabel
+        let titleLabel = UILabel()
         titleLabel.text = "Feeds"
         // Reeder's title is a compact navigation title, not a large page
         // heading. Keep the weight restrained so the 3x simulator glyph box
@@ -145,7 +143,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(titleLabel)
 
-        let subtitle = headerSubtitleLabel
+        let subtitle = UILabel()
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm"
@@ -198,21 +196,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             subscribe.heightAnchor.constraint(equalToConstant: 44)
         ])
 
-    }
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView === tableView else { return }
-        // Reeder expands the page title only at the top of the feed hierarchy.
-        // The normal initial offset remains the compact state used by the
-        // current screen, while dragging toward the top interpolates to the
-        // large centered title seen in the reference recording.
-        let progress = max(0, min(1, (220 - scrollView.contentOffset.y) / 220))
-        let titleScale = 1 + (1.3 * progress)
-        let titleShift = 170 * progress
-        headerTitleLabel.transform = CGAffineTransform(translationX: 0, y: titleShift)
-            .scaledBy(x: titleScale, y: titleScale)
-        headerSubtitleLabel.transform = CGAffineTransform(translationX: 0, y: 185 * progress)
-            .scaledBy(x: 1 + (0.15 * progress), y: 1 + (0.15 * progress))
     }
 
     private func configureBottomBar() {
