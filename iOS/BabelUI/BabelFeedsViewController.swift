@@ -36,9 +36,22 @@ final class BabelFeedsViewController: UITableViewController {
         switcher.selectedSegmentIndex = 0
         switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
         navigationItem.titleView = switcher
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        let refreshControlButton = UIButton(type: .system)
+        refreshControlButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
+        refreshControlButton.tintColor = .white
+        refreshControlButton.backgroundColor = BabelPalette.accent
+        refreshControlButton.layer.cornerRadius = 18
+        refreshControlButton.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
+        refreshControlButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            refreshControlButton.widthAnchor.constraint(equalToConstant: 36),
+            refreshControlButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
+        let refreshButton = UIBarButtonItem(customView: refreshControlButton)
+        let subscribeButton = UIBarButtonItem(
             barButtonSystemItem: .add, target: self, action: #selector(showSubscribe)
         )
+        navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
         tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 88, right: 0)
