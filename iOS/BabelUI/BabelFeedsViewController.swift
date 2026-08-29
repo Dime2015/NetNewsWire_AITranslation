@@ -367,7 +367,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             self?.refreshFeeds()
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if let popover = alert.popoverPresentationController {
+        if traitCollection.userInterfaceIdiom == .pad, let popover = alert.popoverPresentationController {
             popover.sourceView = bottomBar
             popover.sourceRect = CGRect(x: bottomBar.bounds.midX, y: 0, width: 1, height: 1)
         }
