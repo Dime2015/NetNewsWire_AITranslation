@@ -497,6 +497,25 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		Self.dayFormatter.string(from: daySections[section].date).uppercased()
 	}
 
+	func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+		let header = UIView()
+		header.backgroundColor = BabelPalette.background
+		let label = UILabel()
+		label.text = Self.dayFormatter.string(from: daySections[section].date).uppercased()
+		label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+		label.textColor = BabelPalette.ink
+		label.translatesAutoresizingMaskIntoConstraints = false
+		header.addSubview(label)
+		NSLayoutConstraint.activate([
+			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 120),
+			label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
+			label.centerYAnchor.constraint(equalTo: header.centerYAnchor)
+		])
+		return header
+	}
+
+	func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat { 44 }
+
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: BabelTimelineCell.reuseIdentifier, for: indexPath) as! BabelTimelineCell
 		cell.configure(article: daySections[indexPath.section].articles[indexPath.row])
@@ -520,16 +539,6 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 			return nil
 		}
 		navigationController?.pushViewController(reader, animated: true)
-	}
-
-	func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
-		guard let header = view as? UITableViewHeaderFooterView else { return }
-		header.textLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-		header.textLabel?.textColor = BabelPalette.ink
-		header.contentView.backgroundColor = BabelPalette.background
-		// UITableViewHeaderFooterView's label ignores contentView margins on iOS 27;
-		// translate the rendered label to the same 120pt text column as article rows.
-		header.textLabel?.transform = CGAffineTransform(translationX: 72, y: 0)
 	}
 
 	func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
