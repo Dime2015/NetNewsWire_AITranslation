@@ -472,7 +472,8 @@ private final class BabelFeedCell: UITableViewCell {
 		}
 		disclosureButton.addTarget(self, action: #selector(disclosureTapped), for: .touchUpInside)
 		disclosureButton.tintColor = BabelPalette.mutedInk
-		disclosureButton.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+		disclosureButton.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(disclosureButton)
 	}
 
 	override func layoutSubviews() {
@@ -488,9 +489,9 @@ private final class BabelFeedCell: UITableViewCell {
 		self.toggleFolder = toggleFolder
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
-			accessoryView = disclosureButton
+			disclosureButton.isHidden = false
 		} else {
-			accessoryView = nil
+			disclosureButton.isHidden = true
 		}
 		titleLabel.text = title
 		countLabel.text = count?.formatted()
@@ -499,6 +500,10 @@ private final class BabelFeedCell: UITableViewCell {
 		NSLayoutConstraint.deactivate(contentView.constraints)
 		let titleLeading = sectionHeader ? 18 : leading + 32
 		NSLayoutConstraint.activate([
+			disclosureButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18),
+			disclosureButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			disclosureButton.widthAnchor.constraint(equalToConstant: 32),
+			disclosureButton.heightAnchor.constraint(equalToConstant: 44),
 			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 20),
