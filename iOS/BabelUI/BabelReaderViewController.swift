@@ -83,19 +83,21 @@ final class BabelReaderViewController: UIViewController {
 		])
 
         bottomToolbar.axis = .horizontal
-        bottomToolbar.distribution = .equalCentering
+		bottomToolbar.distribution = .equalSpacing
         bottomToolbar.alignment = .center
-        bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 20, bottom: 8, right: 20)
+		bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 24, bottom: 8, right: 24)
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
-		for (index, item) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
-                                ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")].enumerated() {
-            var config = UIButton.Configuration.plain()
-            config.image = UIImage(systemName: item.0)
-            config.baseForegroundColor = BabelPalette.mutedInk
-            let button = UIButton(configuration: config)
-            button.accessibilityLabel = item.1
-            button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+		for (index, item) in [("circle", "已读", CGFloat(18)), ("star", "星标", CGFloat(18)), ("chevron.down", "下一篇", CGFloat(20)),
+							("text.alignleft", "阅读模式", CGFloat(18)), ("character.book.closed", "翻译", CGFloat(18))].enumerated() {
+			let button = UIButton(type: .custom)
+			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
+			button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
+			button.tintColor = BabelPalette.mutedInk
+			button.accessibilityLabel = item.1
+			button.translatesAutoresizingMaskIntoConstraints = false
+			button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+			button.heightAnchor.constraint(equalToConstant: 36).isActive = true
             if index == 0 { button.addTarget(self, action: #selector(toggleRead), for: .touchUpInside) }
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
@@ -302,15 +304,20 @@ final class BabelReaderViewController: UIViewController {
     }
 
 	private func updateStatus(_ key: ArticleStatus.Key, flag: Bool) {
-		if key == .read { readButton?.configuration?.image = UIImage(systemName: flag ? "circle.fill" : "circle") }
-		if key == .starred { starButton?.configuration?.image = UIImage(systemName: flag ? "star.fill" : "star") }
+		if key == .read { setReaderSymbol(readButton, name: flag ? "circle.fill" : "circle", pointSize: 18) }
+		if key == .starred { setReaderSymbol(starButton, name: flag ? "star.fill" : "star", pointSize: 18) }
 		guard let account = article.account else { return }
 		Task { try? await account.markArticles(articleIDs: [article.articleID], statusKey: key, flag: flag) }
 	}
 
 	private func updateToolbarState() {
-		readButton?.configuration?.image = UIImage(systemName: article.status.read ? "circle.fill" : "circle")
-		starButton?.configuration?.image = UIImage(systemName: article.status.starred ? "star.fill" : "star")
+		setReaderSymbol(readButton, name: article.status.read ? "circle.fill" : "circle", pointSize: 18)
+		setReaderSymbol(starButton, name: article.status.starred ? "star.fill" : "star", pointSize: 18)
+	}
+
+	private func setReaderSymbol(_ button: UIButton?, name: String, pointSize: CGFloat) {
+		let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+		button?.setImage(UIImage(systemName: name, withConfiguration: config), for: .normal)
 	}
 
 	@objc private func toggleRead() { updateStatus(.read, flag: !article.status.read) }
