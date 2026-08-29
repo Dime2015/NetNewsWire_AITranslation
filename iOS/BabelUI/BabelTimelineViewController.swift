@@ -491,6 +491,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		summaryLabel.isHidden = summaryLabel.text == nil
 		if let feed = article.feed {
 			thumbnailView.image = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image
+			thumbnailView.contentMode = .scaleAspectFit
 		} else {
 			thumbnailView.image = nil
 		}
@@ -502,6 +503,7 @@ private final class BabelTimelineCell: UITableViewCell {
 				guard !Task.isCancelled else { return }
 				await MainActor.run {
 					guard self?.representedImageURL == url else { return }
+					self?.thumbnailView.contentMode = .scaleAspectFill
 					self?.thumbnailView.image = image
 				}
 			}
