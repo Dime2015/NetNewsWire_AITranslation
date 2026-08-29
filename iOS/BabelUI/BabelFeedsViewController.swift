@@ -215,13 +215,16 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         bottomBar.addSubview(interfaceSwitcher)
 
         let star = toolbarButton(image: UIImage(systemName: "star.fill"), pointSize: 11)
+        star.accessibilityIdentifier = "babel.feeds.toolbar.starred"
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         let unread = makeUnreadToolbarButton()
+        unread.accessibilityIdentifier = "babel.feeds.toolbar.unread"
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         unread.backgroundColor = BabelPalette.raisedBackground
         unread.layer.cornerRadius = 14
         let list = toolbarButton(image: UIImage(systemName: "list.bullet"), pointSize: 8)
         list.accessibilityLabel = "Feed 操作"
+        list.accessibilityIdentifier = "babel.feeds.toolbar.actions"
         list.addTarget(self, action: #selector(showFeedActions), for: .touchUpInside)
         stack.addArrangedSubview(star)
         stack.addArrangedSubview(unread)
