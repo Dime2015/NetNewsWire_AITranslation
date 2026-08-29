@@ -111,7 +111,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         view.addSubview(customHeader)
 
         let back = UIButton(type: .custom)
-        back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 28, weight: .regular)), for: .normal)
+        back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         back.tintColor = BabelPalette.ink
         back.addTarget(self, action: #selector(closeFeeds), for: .touchUpInside)
         back.translatesAutoresizingMaskIntoConstraints = false
@@ -119,7 +119,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -130,7 +130,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm"
         subtitle.text = "Today at \(formatter.string(from: Date()))"
-        subtitle.font = .systemFont(ofSize: 12, weight: .regular)
+        subtitle.font = .systemFont(ofSize: 11, weight: .regular)
         subtitle.textColor = BabelPalette.mutedInk
         subtitle.textAlignment = .center
         subtitle.translatesAutoresizingMaskIntoConstraints = false
@@ -259,7 +259,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private func toolbarButton(image: UIImage?) -> UIButton {
         let button = UIButton(type: .system)
         if let image {
-            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
+            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 10, weight: .regular)), for: .normal)
         }
         button.tintColor = BabelPalette.ink
         button.frame.size = CGSize(width: 44, height: 44)
