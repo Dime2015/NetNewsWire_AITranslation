@@ -225,12 +225,19 @@ final class BabelHomeViewController: UIViewController {
                 title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
             ])
         } else {
-            let glyph = symbol == "star" ? "★" : "☷"
+            if symbol == "line.3.horizontal" {
+                var listConfiguration = configuration
+                listConfiguration.image = UIImage(systemName: "list.bullet")
+                listConfiguration.preferredSymbolSize = .small
+                button.configuration = listConfiguration
+                return button
+            }
+            let glyph = "★"
             var glyphConfiguration = configuration
             glyphConfiguration.title = glyph
             glyphConfiguration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
                 var outgoing = incoming
-                outgoing.font = UIFont.systemFont(ofSize: 18, weight: .regular)
+                outgoing.font = UIFont.systemFont(ofSize: 16, weight: .regular)
                 return outgoing
             }
             button.configuration = glyphConfiguration
