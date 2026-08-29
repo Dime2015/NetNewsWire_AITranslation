@@ -46,8 +46,8 @@ final class BabelHomeViewController: UIViewController {
         topBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(topBar)
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
-            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
@@ -60,6 +60,7 @@ final class BabelHomeViewController: UIViewController {
         libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
         let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
+        addButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 24, weight: .regular), forImageIn: .normal)
         addButton.accessibilityLabel = "Add Subscription"
         addButton.tintColor = BabelPalette.ink
         topBar.addSubview(addButton)
@@ -272,9 +273,9 @@ private final class ReederLibraryToggle: UIView {
 
     override func draw(_ rect: CGRect) {
         let color = BabelPalette.ink
-        let outer = UIBezierPath(roundedRect: CGRect(x: 11, y: 13, width: 22, height: 14), cornerRadius: 7)
+        let outer = UIBezierPath(roundedRect: CGRect(x: 13, y: 14, width: 18, height: 12), cornerRadius: 6)
         color.setStroke(); outer.lineWidth = 3; outer.stroke()
-        let knob = UIBezierPath(ovalIn: CGRect(x: 24, y: 16, width: 8, height: 8))
+        let knob = UIBezierPath(ovalIn: CGRect(x: 25, y: 16, width: 7, height: 8))
         color.setFill(); knob.fill()
     }
 }
