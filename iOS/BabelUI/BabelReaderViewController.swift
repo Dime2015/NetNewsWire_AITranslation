@@ -76,6 +76,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		view.addSubview(bottomToolbar)
 
 		webView.isOpaque = false
+		webView.accessibilityIdentifier = "babel.reader.content"
 		webView.backgroundColor = .clear
 		webView.scrollView.backgroundColor = BabelPalette.background
 		webView.allowsBackForwardNavigationGestures = false
@@ -112,6 +113,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		])
 		loadingIndicator.startAnimating()
 		loadErrorLabel.textColor = BabelPalette.mutedInk
+		loadErrorLabel.accessibilityIdentifier = "babel.reader.load-error"
 		loadErrorLabel.font = UIFont.systemFont(ofSize: 15)
 		loadErrorLabel.textAlignment = .center
 		loadErrorLabel.numberOfLines = 0
