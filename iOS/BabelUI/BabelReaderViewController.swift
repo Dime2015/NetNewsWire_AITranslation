@@ -183,6 +183,9 @@ final class BabelReaderViewController: UIViewController {
 			article: displayArticle,
 			theme: ArticleThemesManager.shared.currentTheme
 		)
+		let fallbackTitle = BabelLibrary.displayTitle(for: article)
+			.replacingOccurrences(of: "\\", with: "\\\\")
+			.replacingOccurrences(of: "'", with: "\\'")
 		let html = """
 		<!doctype html>
 		<html>
@@ -201,7 +204,7 @@ final class BabelReaderViewController: UIViewController {
 				line-height: \(readerMode ? 1.72 : 1.55);
 				margin: 0 auto;
 				max-width: \(readerMode ? 560 : 680)px;
-				padding: 34px 25px 80px;
+				padding: 170px 25px 80px;
 			}
 			.headerContainer { margin-bottom: 30px; }
 			.headerTable { width: 100%; }
@@ -259,9 +262,16 @@ final class BabelReaderViewController: UIViewController {
 				const article = document.querySelector('article');
 				const header = document.querySelector('.headerContainer');
 				if (!article || !header) return;
-				const title = article.querySelector('.articleTitle');
+				let title = article.querySelector('.articleTitle');
 				const dateline = article.querySelector('.articleDateline, .articleDatelineTitle');
 				const body = article.querySelector('.articleBody');
+				if (!title && body) {
+					const fallback = document.createElement('div');
+					fallback.className = 'articleTitle';
+					fallback.innerHTML = '<h1>\(fallbackTitle)</h1>';
+					article.insertBefore(fallback, body);
+					title = fallback;
+				}
 				if (title && dateline) article.insertBefore(dateline, title);
 				if (body) article.insertBefore(header, body);
 			})();
