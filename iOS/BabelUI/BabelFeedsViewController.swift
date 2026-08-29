@@ -64,7 +64,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 104, left: 0, bottom: 88, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 120, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
