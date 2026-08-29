@@ -411,8 +411,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
     }
 
 	private func updateStatus(_ key: ArticleStatus.Key, flag: Bool) {
-		if key == .read { setReaderSymbol(readButton, name: flag ? "circle" : "circle.fill", pointSize: 18) }
-		if key == .starred { setReaderSymbol(starButton, name: flag ? "star.fill" : "star", pointSize: 18) }
+		if key == .read { setReaderSymbol(readButton, name: flag ? "circle" : "circle.fill", pointSize: 12) }
+		if key == .starred { setReaderSymbol(starButton, name: flag ? "star.fill" : "star", pointSize: 15) }
 		if key == .starred { starButton?.tintColor = flag ? BabelPalette.accent : BabelPalette.ink }
 		// Update the shared in-memory status immediately so repeated taps and
 		// subsequent reader transitions use the new state before sync completes.
@@ -422,8 +422,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 	}
 
 	private func updateToolbarState() {
-		setReaderSymbol(readButton, name: article.status.read ? "circle" : "circle.fill", pointSize: 18)
-		setReaderSymbol(starButton, name: article.status.starred ? "star.fill" : "star", pointSize: 18)
+		setReaderSymbol(readButton, name: article.status.read ? "circle" : "circle.fill", pointSize: 12)
+		setReaderSymbol(starButton, name: article.status.starred ? "star.fill" : "star", pointSize: 15)
 		starButton?.tintColor = article.status.starred ? BabelPalette.accent : BabelPalette.ink
 	}
 
