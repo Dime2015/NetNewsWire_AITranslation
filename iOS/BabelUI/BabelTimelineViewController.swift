@@ -730,7 +730,10 @@ private final class BabelTimelineCell: UITableViewCell {
 		// Reeder keeps a preview line when the feed did not provide an
 		// explicit summary. Use the stored plain text as a visual fallback.
 		let explicitSummary = BabelLibrary.summary(for: article)
-		let bodyFallback = article.contentText?
+		let bodyFallback = (article.contentText ?? article.contentHTML)?
+			.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+			.replacingOccurrences(of: "&nbsp;", with: " ")
+			.replacingOccurrences(of: "&amp;", with: "&")
 			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 			.trimmingCharacters(in: .whitespacesAndNewlines)
 		let fallback = bodyFallback.flatMap { $0.isEmpty ? nil : String($0.prefix(150)) }
