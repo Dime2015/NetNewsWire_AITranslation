@@ -209,22 +209,19 @@ final class BabelHomeViewController: UIViewController {
         all.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
     }
 
-    private func makeBottomButton(_ symbol: String, label: String) -> UIButton {
-        var configuration = UIButton.Configuration.plain()
+    private func makeBottomButton(_ symbol: String, label: String) -> UIControl {
         let bottomBarInk = UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.855, alpha: 1)
                 : UIColor(white: 0.369, alpha: 1)
         }
-        configuration.baseForegroundColor = bottomBarInk
-        let button = UIButton(configuration: configuration)
+        // Visible geometry is drawn by the subviews below. A bare UIControl
+        // prevents UIButton.Configuration from adding its own image box or
+        // font metrics to the Reeder-sized controls.
+        let button = UIControl()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
         if label == "未读" {
-            // Keep the capsule itself out of UIButton.Configuration so its
-            // visible bounds are controlled by the same fixed geometry as the
-            // hand-drawn glyphs.
-            button.configuration = nil
             button.backgroundColor = BabelPalette.raisedBackground
             button.layer.cornerRadius = 13
 
@@ -252,11 +249,6 @@ final class BabelHomeViewController: UIViewController {
             ])
         } else {
             if symbol == "list.bullet" {
-                var listConfiguration = configuration
-                // Reeder's compact list glyph is visibly smaller than the default
-                // UIButton image box on the 3x iPhone canvas.
-                listConfiguration.image = nil
-                button.configuration = listConfiguration
                 let glyph = BabelHomeGlyphView(kind: .list)
                 glyph.translatesAutoresizingMaskIntoConstraints = false
                 button.addSubview(glyph)
@@ -267,7 +259,6 @@ final class BabelHomeViewController: UIViewController {
                 ])
                 return button
             }
-            button.configuration = configuration
             let glyph = BabelHomeGlyphView(kind: .star)
             glyph.translatesAutoresizingMaskIntoConstraints = false
             button.addSubview(glyph)
