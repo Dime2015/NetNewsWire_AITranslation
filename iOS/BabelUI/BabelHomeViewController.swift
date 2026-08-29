@@ -20,10 +20,14 @@ final class BabelHomeViewController: UIViewController {
     private let statusLabel = UILabel()
     private let feedsButton = UIControl()
     private var loadTask: Task<Void, Never>?
+    private var isSyncing = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
         configureView()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: BabelHomeViewController, _) in
+            self.updateHomeStatusText()
+        }
         startObserving()
         reloadSnapshot()
     }
@@ -121,6 +125,7 @@ final class BabelHomeViewController: UIViewController {
         syncStatusLabel.textColor = BabelPalette.mutedInk
         countLabel.font = BabelTypography.title(size: 14, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
+        updateHomeStatusText()
         let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
         labels.axis = .vertical
         labels.spacing = 1
@@ -216,8 +221,19 @@ final class BabelHomeViewController: UIViewController {
     }
 
     @objc private func dataDidChange() { reloadSnapshot() }
-    @objc private func syncDidBegin() { syncStatusLabel.text = "Syncing…" }
-    @objc private func syncDidFinish() { syncStatusLabel.text = "Up to date" }
+    @objc private func syncDidBegin() { isSyncing = true; updateHomeStatusText() }
+    @objc private func syncDidFinish() { isSyncing = false; updateHomeStatusText() }
+
+    private func updateHomeStatusText() {
+        if traitCollection.userInterfaceStyle == .light {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "h:mm"
+            syncStatusLabel.text = "Today at \(formatter.string(from: Date()))"
+        } else {
+            syncStatusLabel.text = isSyncing ? "Syncing…" : "Up to date"
+        }
+    }
 
     private func reloadSnapshot() {
         loadTask?.cancel()
