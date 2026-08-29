@@ -32,6 +32,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
+    private let headerSeparator = UIView()
     private let headerTitleLabel = UILabel()
     private let headerSubtitleLabel = UILabel()
     private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
@@ -129,6 +130,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         customHeader.translatesAutoresizingMaskIntoConstraints = false
         customHeader.backgroundColor = BabelPalette.background
         view.addSubview(customHeader)
+        headerSeparator.backgroundColor = BabelPalette.hairline
+        headerSeparator.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(headerSeparator)
 
         let back = UIButton(type: .custom)
         back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
@@ -184,6 +188,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             customHeader.heightAnchor.constraint(equalToConstant: 150),
+            headerSeparator.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor),
+            headerSeparator.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor),
+            headerSeparator.bottomAnchor.constraint(equalTo: customHeader.bottomAnchor),
+            headerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
             back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor),
             back.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             back.widthAnchor.constraint(equalToConstant: 44),
