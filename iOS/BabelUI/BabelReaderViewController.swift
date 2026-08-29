@@ -101,11 +101,11 @@ final class BabelReaderViewController: UIViewController {
 			if index == 4 {
 				button.setTitle("BR", for: .normal)
 				button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
-				button.setTitleColor(BabelPalette.mutedInk, for: .normal)
+				button.setTitleColor(BabelPalette.ink, for: .normal)
 			} else {
 				button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
 			}
-			button.tintColor = BabelPalette.mutedInk
+			button.tintColor = BabelPalette.ink
 			button.accessibilityLabel = item.1
 			button.translatesAutoresizingMaskIntoConstraints = false
 			button.widthAnchor.constraint(equalToConstant: 44).isActive = true
@@ -362,7 +362,7 @@ final class BabelReaderViewController: UIViewController {
 	private func updateStatus(_ key: ArticleStatus.Key, flag: Bool) {
 		if key == .read { setReaderSymbol(readButton, name: flag ? "circle" : "circle.fill", pointSize: 18) }
 		if key == .starred { setReaderSymbol(starButton, name: flag ? "star.fill" : "star", pointSize: 18) }
-		if key == .starred { starButton?.tintColor = flag ? BabelPalette.accent : BabelPalette.mutedInk }
+		if key == .starred { starButton?.tintColor = flag ? BabelPalette.accent : BabelPalette.ink }
 		// Update the shared in-memory status immediately so repeated taps and
 		// subsequent reader transitions use the new state before sync completes.
 		article.status.setBoolStatus(flag, forKey: key)
@@ -373,7 +373,7 @@ final class BabelReaderViewController: UIViewController {
 	private func updateToolbarState() {
 		setReaderSymbol(readButton, name: article.status.read ? "circle" : "circle.fill", pointSize: 18)
 		setReaderSymbol(starButton, name: article.status.starred ? "star.fill" : "star", pointSize: 18)
-		starButton?.tintColor = article.status.starred ? BabelPalette.accent : BabelPalette.mutedInk
+		starButton?.tintColor = article.status.starred ? BabelPalette.accent : BabelPalette.ink
 	}
 
 	private func setReaderSymbol(_ button: UIButton?, name: String, pointSize: CGFloat) {
