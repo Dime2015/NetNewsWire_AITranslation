@@ -97,7 +97,7 @@ final class BabelTimelineViewController: UIViewController {
 
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
-		tableView.contentInset = UIEdgeInsets(top: 20, left: 0, bottom: 62, right: 0)
+		tableView.contentInset = UIEdgeInsets(top: 48, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
