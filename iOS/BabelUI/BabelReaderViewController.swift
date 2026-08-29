@@ -7,13 +7,14 @@ import UIKit
 import WebKit
 import Articles
 
-final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
+final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, WKNavigationDelegate {
 
 	private let article: Article
 	var nextArticle: (() -> Article?)?
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
 	private let loadingIndicator = UIActivityIndicatorView(style: .medium)
+	private let loadErrorLabel = UILabel()
 	private let bottomToolbar = UIStackView()
 	private let readerHeader = UIView()
 	private weak var readButton: UIButton?
@@ -78,6 +79,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		webView.backgroundColor = .clear
 		webView.scrollView.backgroundColor = BabelPalette.background
 		webView.allowsBackForwardNavigationGestures = false
+		webView.navigationDelegate = self
 		webView.scrollView.delegate = self
 		let chromeTap = UITapGestureRecognizer(target: self, action: #selector(toggleChrome))
 		chromeTap.cancelsTouchesInView = false
@@ -109,6 +111,19 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			loadingIndicator.centerYAnchor.constraint(equalTo: webView.centerYAnchor)
 		])
 		loadingIndicator.startAnimating()
+		loadErrorLabel.textColor = BabelPalette.mutedInk
+		loadErrorLabel.font = UIFont.systemFont(ofSize: 15)
+		loadErrorLabel.textAlignment = .center
+		loadErrorLabel.numberOfLines = 0
+		loadErrorLabel.isHidden = true
+		loadErrorLabel.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(loadErrorLabel)
+		NSLayoutConstraint.activate([
+			loadErrorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			loadErrorLabel.centerYAnchor.constraint(equalTo: webView.centerYAnchor),
+			loadErrorLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),
+			loadErrorLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32)
+		])
 
         bottomToolbar.axis = .horizontal
 		bottomToolbar.distribution = .equalSpacing
@@ -403,6 +418,20 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 				self?.webView.scrollView.setContentOffset(offset, animated: false)
 			}
 		}
+	}
+
+	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+		loadingIndicator.stopAnimating()
+	}
+
+	func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+		loadingIndicator.stopAnimating()
+		loadErrorLabel.text = "无法加载文章\n请稍后重试"
+		loadErrorLabel.isHidden = false
+	}
+
+	func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+		self.webView(webView, didFail: navigation, withError: error)
 	}
 
     @objc private func openOriginal() {
