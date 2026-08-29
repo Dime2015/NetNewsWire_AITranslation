@@ -209,7 +209,7 @@ final class BabelTimelineViewController: UIViewController {
         var config = UIButton.Configuration.plain()
         config.baseForegroundColor = BabelPalette.mutedInk
         config.image = UIImage(systemName: symbol)
-        let pointSize: CGFloat = label == "已读" || label == "搜索" ? 18 : (label == "列表" ? 10 : 14)
+        let pointSize: CGFloat = label == "已读" ? 16 : (label == "搜索" ? 18 : (label == "列表" ? 10 : 14))
         config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
         config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
         let button = UIButton(configuration: config)
@@ -224,7 +224,7 @@ final class BabelTimelineViewController: UIViewController {
 		timelineHeader.backgroundColor = BabelPalette.background
 		view.addSubview(timelineHeader)
 		let back = UIButton(type: .custom)
-		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+		back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		back.tintColor = BabelPalette.ink
 		back.addTarget(self, action: #selector(closeTimeline), for: .touchUpInside)
 		back.translatesAutoresizingMaskIntoConstraints = false
