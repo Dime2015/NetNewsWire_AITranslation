@@ -92,9 +92,19 @@ struct BabelHomeSnapshot {
 	}
 
 	static func displayTitle(for article: Article) -> String {
-		NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article)
-			?? article.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-			?? "无标题"
+		if let translated = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article), !translated.isEmpty {
+			return translated
+		}
+		if let title = article.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+			return title
+		}
+		// Some feeds omit the title; Reeder still shows a useful readable line.
+		if let fallback = summary(for: article)?.split(separator: "。", maxSplits: 1).first,
+		   !fallback.isEmpty {
+			let text = String(fallback).trimmingCharacters(in: .whitespacesAndNewlines)
+			return text.count > 80 ? String(text.prefix(77)) + "…" : text
+		}
+		return "Untitled"
 	}
 
 	static func summary(for article: Article) -> String? {
