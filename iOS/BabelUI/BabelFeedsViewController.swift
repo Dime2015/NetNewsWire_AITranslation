@@ -111,7 +111,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         view.addSubview(customHeader)
 
         let back = UIButton(type: .custom)
-        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 28, weight: .regular)), for: .normal)
         back.tintColor = BabelPalette.ink
         back.addTarget(self, action: #selector(closeFeeds), for: .touchUpInside)
         back.translatesAutoresizingMaskIntoConstraints = false
@@ -119,7 +119,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -130,7 +130,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm"
         subtitle.text = "Today at \(formatter.string(from: Date()))"
-        subtitle.font = .systemFont(ofSize: 13, weight: .regular)
+        subtitle.font = .systemFont(ofSize: 12, weight: .regular)
         subtitle.textColor = BabelPalette.mutedInk
         subtitle.textAlignment = .center
         subtitle.translatesAutoresizingMaskIntoConstraints = false
