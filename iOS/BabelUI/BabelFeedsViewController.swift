@@ -345,7 +345,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     @objc private func showFeedIssues() {
         let controller = BabelFeedIssuesViewController()
         if let sheet = controller.sheetPresentationController {
-            let compact = UISheetPresentationController.Detent.custom(identifier: .init("babelFeedIssuesCompact")) { _ in 120 }
+            // Keep the compact state tall enough to show both the title and
+            // the empty/error message without clipping the status text.
+            let compact = UISheetPresentationController.Detent.custom(identifier: .init("babelFeedIssuesCompact")) { _ in 180 }
             sheet.detents = [compact, .large()]
             sheet.selectedDetentIdentifier = compact.identifier
             sheet.prefersGrabberVisible = true
