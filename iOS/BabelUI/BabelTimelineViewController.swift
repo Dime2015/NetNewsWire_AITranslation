@@ -384,7 +384,25 @@ final class BabelTimelineViewController: UIViewController {
 				try? await Task.sleep(for: .milliseconds(150))
 			}
 			guard let first = self.daySections.first?.articles.first else { return }
-			navigationController?.pushViewController(BabelReaderViewController(article: first), animated: false)
+			var currentArticle = first
+			let reader = BabelReaderViewController(article: first)
+			reader.nextArticle = { [weak self] in
+				guard let self,
+					  let sectionIndex = self.daySections.firstIndex(where: { $0.articles.contains(where: { $0.articleID == currentArticle.articleID }) }),
+					  let rowIndex = self.daySections[sectionIndex].articles.firstIndex(where: { $0.articleID == currentArticle.articleID }) else { return nil }
+				let next: Article?
+				if rowIndex + 1 < self.daySections[sectionIndex].articles.count {
+					next = self.daySections[sectionIndex].articles[rowIndex + 1]
+				} else if sectionIndex + 1 < self.daySections.count {
+					next = self.daySections[sectionIndex + 1].articles.first
+				} else {
+					next = nil
+				}
+				guard let next else { return nil }
+				currentArticle = next
+				return next
+			}
+			navigationController?.pushViewController(reader, animated: false)
 		}
 	}
 
