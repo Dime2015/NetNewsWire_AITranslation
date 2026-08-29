@@ -16,7 +16,7 @@ enum BabelPalette {
     static let raisedBackground = UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 46.0 / 255.0, green: 46.0 / 255.0, blue: 46.0 / 255.0, alpha: 1)
-            : UIColor(red: 229.0 / 255.0, green: 226.0 / 255.0, blue: 227.0 / 255.0, alpha: 1)
+            : UIColor(red: 216.0 / 255.0, green: 213.0 / 255.0, blue: 214.0 / 255.0, alpha: 1)
     }
     static let ink = UIColor { traits in
         traits.userInterfaceStyle == .dark
