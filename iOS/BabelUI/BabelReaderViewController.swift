@@ -320,6 +320,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			.externalLink { display: none !important; }
 			.articleBody { order: 5; }
 			.headerContainer .avatar { display: none !important; }
+			.headerContainer, .headerContainer table, .headerContainer tr, .headerContainer td {
+				min-height: 0 !important;
+				height: auto !important;
+			}
 			.headerContainer .headerTable { width: 100%; }
 			.headerContainer .leftAlign { text-align: left; }
 			.headerContainer, .headerContainer * {
