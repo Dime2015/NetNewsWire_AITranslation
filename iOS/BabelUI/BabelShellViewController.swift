@@ -73,6 +73,13 @@ final class BabelShellViewController: UINavigationController {
 		pushViewController(makeFeedsViewController(), animated: false)
 	}
 
+	func openFeedsAtTopForDebug() {
+		popToRootViewController(animated: false)
+		let feeds = makeFeedsViewController()
+		feeds.debugInitialScrollOffset = 0
+		pushViewController(feeds, animated: false)
+	}
+
 	func openFeedIssuesForDebug() {
 		popToRootViewController(animated: false)
 		let feeds = makeFeedsViewController()

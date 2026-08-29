@@ -32,7 +32,12 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
+    private let headerTitleLabel = UILabel()
+    private let headerSubtitleLabel = UILabel()
     private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
+    private var headerTitleTopConstraint: NSLayoutConstraint?
+    private var headerSubtitleTopConstraint: NSLayoutConstraint?
+    var debugInitialScrollOffset: CGFloat = 300
     private var didApplyInitialOffset = false
     private var hasAppeared = false
 
@@ -132,7 +137,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         back.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(back)
 
-        let titleLabel = UILabel()
+        let titleLabel = headerTitleLabel
         titleLabel.text = "Feeds"
         // Reeder's title is a compact navigation title, not a large page
         // heading. Keep the weight restrained so the 3x simulator glyph box
@@ -143,7 +148,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(titleLabel)
 
-        let subtitle = UILabel()
+        let subtitle = headerSubtitleLabel
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm"
@@ -170,6 +175,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         subscribe.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(subscribe)
 
+        let titleTop = titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8)
+        let subtitleTop = subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1)
+        headerTitleTopConstraint = titleTop
+        headerSubtitleTopConstraint = subtitleTop
         NSLayoutConstraint.activate([
             customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -183,9 +192,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             // Reeder keeps the title in the same top control band as the
             // back/refresh/subscribe controls; the label's font metrics add
             // the small optical inset needed below the safe-area edge.
-            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8),
+            titleTop,
             subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            subtitleTop,
             refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
             refresh.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             refresh.widthAnchor.constraint(equalToConstant: 24),
@@ -195,7 +204,22 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             subscribe.widthAnchor.constraint(equalToConstant: 44),
             subscribe.heightAnchor.constraint(equalToConstant: 44)
         ])
+        updateHeaderExpansion(for: tableView.contentOffset.y)
 
+    }
+
+    private func updateHeaderExpansion(for offset: CGFloat) {
+        let progress = max(0, min(1, (220 - offset) / 220))
+        headerTitleTopConstraint?.constant = 8 + (52 * progress)
+        headerSubtitleTopConstraint?.constant = 1 + (2 * progress)
+        headerTitleLabel.font = .systemFont(ofSize: 20 + (26 * progress), weight: progress > 0.5 ? .semibold : .regular)
+        headerSubtitleLabel.font = .systemFont(ofSize: 14 + (2 * progress), weight: .regular)
+        customHeader.layoutIfNeeded()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === tableView else { return }
+        updateHeaderExpansion(for: scrollView.contentOffset.y)
     }
 
     private func configureBottomBar() {
@@ -329,7 +353,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
               rows.contains(where: { if case .feed = $0 { return true }; return false }) else { return }
         didApplyInitialOffset = true
         DispatchQueue.main.async { [weak self] in
-            self?.tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
+            self?.tableView.setContentOffset(CGPoint(x: 0, y: self?.debugInitialScrollOffset ?? 300), animated: false)
         }
     }
 

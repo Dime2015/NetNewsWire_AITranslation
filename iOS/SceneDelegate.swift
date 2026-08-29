@@ -253,7 +253,9 @@ private extension SceneDelegate {
 		babelShellViewController = shellViewController
 		window?.rootViewController = shellViewController
 		window?.makeKeyAndVisible()
-		if ProcessInfo.processInfo.arguments.contains("-BabelFeeds") {
+		if ProcessInfo.processInfo.arguments.contains("-BabelFeedsTop") {
+			DispatchQueue.main.async { shellViewController.openFeedsAtTopForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeeds") {
 			DispatchQueue.main.async { shellViewController.openFeedsForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedIssues") {
 			DispatchQueue.main.async { shellViewController.openFeedIssuesForDebug() }
