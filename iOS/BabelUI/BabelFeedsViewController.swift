@@ -519,7 +519,9 @@ private final class BabelFeedCell: UITableViewCell {
 		titleLabel.text = title
 		countLabel.text = count?.formatted()
 		countLabel.isHidden = count == nil
-        let leading: CGFloat = indent == 0 ? 18 : 40
+        // Reeder keeps the feed glyph column inset from the screen edge; the
+        // previous 18pt column sat visibly too far left in the 3x capture.
+        let leading: CGFloat = indent == 0 ? 32 : 54
 		NSLayoutConstraint.deactivate(contentView.constraints)
 		let titleLeading = sectionHeader ? 18 : leading + 32
 		NSLayoutConstraint.activate([
@@ -534,7 +536,7 @@ private final class BabelFeedCell: UITableViewCell {
 			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: titleLeading),
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
-			countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -22),
+            countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36),
 			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 52)
 		])
