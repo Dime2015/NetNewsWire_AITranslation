@@ -344,6 +344,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: BabelFeedCell.reuseIdentifier, for: indexPath) as! BabelFeedCell
+        // Spacer rows are intentionally inert, but reused cells must regain
+        // interaction before representing a real feed or folder.
+        cell.isUserInteractionEnabled = true
         switch rows[indexPath.row] {
         case .unread:
             cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
