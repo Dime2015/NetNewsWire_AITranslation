@@ -94,8 +94,8 @@ final class BabelReaderViewController: UIViewController {
 		bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 24, bottom: 8, right: 24)
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
-		for (index, item) in [("circle", "已读", CGFloat(18)), ("star", "星标", CGFloat(18)), ("chevron.down", "下一篇", CGFloat(20)),
-							("text.alignleft", "翻译", CGFloat(18)), ("character.book.closed", "Bionic Reading", CGFloat(18))].enumerated() {
+		for (index, item) in [("circle", "已读", CGFloat(12)), ("star", "星标", CGFloat(15)), ("chevron.down", "下一篇", CGFloat(16)),
+								("text.alignleft", "翻译", CGFloat(16)), ("character.book.closed", "Bionic Reading", CGFloat(16))].enumerated() {
 			let button = UIButton(type: .custom)
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
 			if index == 4 {
