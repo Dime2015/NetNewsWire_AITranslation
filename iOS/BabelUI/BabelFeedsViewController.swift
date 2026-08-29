@@ -302,9 +302,13 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     @objc private func showFeedIssues() {
-        let alert = UIAlertController(title: "Feed Issues", message: "No feed issues", preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "Done", style: .cancel))
-        present(alert, animated: true)
+        let controller = BabelFeedIssuesViewController()
+        if let sheet = controller.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+            sheet.preferredCornerRadius = 18
+        }
+        present(controller, animated: true)
     }
 
     @objc private func showSubscribe() {
@@ -351,6 +355,47 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         case .feed(let feed): onSelectFeed?(feed)
         }
     }
+}
+
+private final class BabelFeedIssuesViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = BabelPalette.background
+
+        let close = UIButton(type: .custom)
+        close.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
+        close.tintColor = BabelPalette.ink
+        close.addTarget(self, action: #selector(closeSheet), for: .touchUpInside)
+        close.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(close)
+
+        let title = UILabel()
+        title.text = "Feed Issues"
+        title.font = BabelTypography.title(size: 28, weight: .bold)
+        title.textColor = BabelPalette.ink
+        title.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(title)
+
+        let message = UILabel()
+        message.text = "No feed issues"
+        message.font = BabelTypography.title(size: 17, weight: .regular)
+        message.textColor = BabelPalette.mutedInk
+        message.textAlignment = .center
+        message.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(message)
+
+        NSLayoutConstraint.activate([
+            close.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
+            title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            title.topAnchor.constraint(equalTo: close.bottomAnchor, constant: 20),
+            message.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            message.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+    }
+
+    @objc private func closeSheet() { dismiss(animated: true) }
 }
 
 private final class BabelFeedCell: UITableViewCell {
