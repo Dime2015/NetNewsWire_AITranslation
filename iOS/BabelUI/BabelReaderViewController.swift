@@ -29,7 +29,10 @@ final class BabelReaderViewController: UIViewController {
 		super.viewDidLoad()
 		configureView()
 		renderArticle()
+		NotificationCenter.default.addObserver(self, selector: #selector(translationDidUpdate), name: .nnwTitleTranslationDidUpdate, object: nil)
 	}
+
+	deinit { NotificationCenter.default.removeObserver(self) }
 
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
@@ -90,6 +93,7 @@ final class BabelReaderViewController: UIViewController {
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
             if index == 3 { button.addTarget(self, action: #selector(toggleReaderMode), for: .touchUpInside) }
+			if index == 4 { button.addTarget(self, action: #selector(requestTranslation), for: .touchUpInside) }
             bottomToolbar.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
@@ -214,4 +218,10 @@ final class BabelReaderViewController: UIViewController {
 		readerMode.toggle()
 		renderArticle()
 	}
+
+	@objc private func requestTranslation() {
+		_ = NNWTitleTranslationController.shared.displayArticle(for: article)
+	}
+
+	@objc private func translationDidUpdate() { renderArticle() }
 }
