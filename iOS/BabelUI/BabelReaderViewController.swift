@@ -245,6 +245,9 @@ final class BabelReaderViewController: UIViewController {
 			.headerContainer { order: 3; margin: 0 0 34px !important; border: 0 !important; border-bottom: 0 !important; }
 			body .headerTable { border-bottom: 0 !important; }
 			.externalLink { order: 4; }
+			/* Reeder keeps the raw URL out of the article header; it remains
+			   available through the actions menu and the share control. */
+			.externalLink { display: none !important; }
 			.articleBody { order: 5; }
 			.headerContainer .avatar { display: none !important; }
 			.headerContainer .headerTable { width: 100%; }
