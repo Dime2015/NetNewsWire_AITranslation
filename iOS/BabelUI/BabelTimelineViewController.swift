@@ -117,7 +117,7 @@ final class BabelTimelineViewController: UIViewController {
 		view.addSubview(tableView)
 		tableView.babelPinToEdges(of: view)
 
-		emptyLabel.text = "这里暂时没有文章"
+		emptyLabel.text = "No Articles"
 		emptyLabel.font = BabelTypography.reading(size: 19)
 		emptyLabel.textColor = BabelPalette.mutedInk
 		emptyLabel.textAlignment = .center

@@ -289,7 +289,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
         tableView.reloadData()
-        emptyLabel.isHidden = rows.count > 1
+        emptyLabel.isHidden = rows.contains { row in
+            if case .feed = row { return true }
+            return false
+        }
     }
 
     @objc private func rebuild() { rebuildRows() }
