@@ -8,6 +8,7 @@
 import UIKit
 import Account
 import Images
+import ErrorLog
 
 final class BabelFeedsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 
@@ -396,6 +397,10 @@ private final class BabelFeedIssuesViewController: UIViewController {
             message.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             message.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
+		Task { @MainActor in
+			let entries = await AccountManager.shared.errorLogDatabase.allEntries()
+			message.text = entries.isEmpty ? "No feed issues" : "(entries.count) feed issues"
+		}
     }
 
     @objc private func closeSheet() { dismiss(animated: true) }
