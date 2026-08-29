@@ -417,7 +417,7 @@ private final class BabelFeedIssuesViewController: UIViewController {
         view.addSubview(message)
 
         NSLayoutConstraint.activate([
-            close.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            close.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
             title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
