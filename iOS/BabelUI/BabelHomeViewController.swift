@@ -207,8 +207,8 @@ final class BabelHomeViewController: UIViewController {
         var configuration = UIButton.Configuration.plain()
         let bottomBarInk = UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.78, alpha: 1)
-                : UIColor(white: 0.43, alpha: 1)
+                ? UIColor(white: 0.855, alpha: 1)
+                : UIColor(white: 0.369, alpha: 1)
         }
         configuration.baseForegroundColor = bottomBarInk
         let button = UIButton(configuration: configuration)
@@ -347,7 +347,18 @@ private final class BabelHomeGlyphView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func draw(_ rect: CGRect) {
-        let ink = BabelPalette.ink
+        let ink: UIColor = {
+            switch kind {
+            case .star, .list:
+                return UIColor { traits in
+                    traits.userInterfaceStyle == .dark
+                        ? UIColor(white: 0.722, alpha: 1)
+                        : UIColor(white: 0.467, alpha: 1)
+                }
+            default:
+                return BabelPalette.ink
+            }
+        }()
         switch kind {
         case .plus:
             let p = UIBezierPath(); p.lineWidth = 2.2; p.lineCapStyle = .round
