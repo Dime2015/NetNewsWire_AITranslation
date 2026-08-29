@@ -341,7 +341,8 @@ final class BabelReaderViewController: UIViewController {
 		}
 		alert.addAction(UIAlertAction(title: "Share", style: .default) { [weak self] _ in
 			guard let self else { return }
-			let items: [Any] = [BabelLibrary.displayTitle(for: article), article.preferredURL as Any].compactMap { $0 }
+			var items: [Any] = [BabelLibrary.displayTitle(for: article)]
+			if let url = article.preferredURL { items.append(url) }
 			let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
 			self.present(controller, animated: true)
 		})
