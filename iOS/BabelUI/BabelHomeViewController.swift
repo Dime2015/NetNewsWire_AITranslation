@@ -285,7 +285,7 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            glyph.widthAnchor.constraint(equalToConstant: 28), glyph.heightAnchor.constraint(equalToConstant: 28)
+            glyph.widthAnchor.constraint(equalToConstant: 24), glyph.heightAnchor.constraint(equalToConstant: 24)
         ])
         return button
     }
@@ -392,9 +392,9 @@ private final class ReederLibraryToggle: UIView {
         // Reeder's control keeps a dark inset ring between the track and the
         // light thumb; drawing the ring separately avoids merging the thumb
         // into the outer stroke at 3x display scale.
-        let knobRing = UIBezierPath(ovalIn: CGRect(x: 23, y: 15, width: 10, height: 10))
+        let knobRing = UIBezierPath(ovalIn: CGRect(x: 21, y: 15, width: 8, height: 10))
         BabelPalette.background.setFill(); knobRing.fill()
-        let knob = UIBezierPath(ovalIn: CGRect(x: 25, y: 17, width: 6, height: 6))
+        let knob = UIBezierPath(ovalIn: CGRect(x: 23, y: 17, width: 5, height: 6))
         color.setFill(); knob.fill()
     }
 }
