@@ -177,7 +177,7 @@ final class BabelTimelineViewController: UIViewController {
             var config = UIButton.Configuration.plain()
             config.baseForegroundColor = BabelPalette.mutedInk
             config.background.backgroundColor = BabelPalette.raisedBackground
-            config.background.cornerRadius = 18
+            config.background.cornerRadius = 14
             let button = UIButton(configuration: config)
             button.translatesAutoresizingMaskIntoConstraints = false
             let dot = UIView()
@@ -196,7 +196,7 @@ final class BabelTimelineViewController: UIViewController {
             button.addSubview(title)
             NSLayoutConstraint.activate([
                 button.widthAnchor.constraint(equalToConstant: 76),
-                button.heightAnchor.constraint(equalToConstant: 36),
+                button.heightAnchor.constraint(equalToConstant: 28),
                 dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 10),
                 dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
                 dot.widthAnchor.constraint(equalToConstant: 10), dot.heightAnchor.constraint(equalToConstant: 10),
