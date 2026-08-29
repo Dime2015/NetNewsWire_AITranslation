@@ -22,6 +22,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 	private var pendingScrollOffset: CGPoint?
 	private var lastScrollOffsetY: CGFloat = 0
 	private var hasEstablishedScrollBaseline = false
+	private var webViewToolbarBottomConstraint: NSLayoutConstraint!
+	private var webViewFullBottomConstraint: NSLayoutConstraint!
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -81,11 +83,13 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		progressView.trackTintColor = .clear
 		progressView.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(progressView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+		webViewToolbarBottomConstraint = webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor)
+		webViewFullBottomConstraint = webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+		NSLayoutConstraint.activate([
+			webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			webView.topAnchor.constraint(equalTo: readerHeader.bottomAnchor),
-            webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
+			webViewToolbarBottomConstraint,
             progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
@@ -146,6 +150,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			self.readerHeader.alpha = hidden ? 0 : 1
 			self.bottomToolbar.alpha = hidden ? 0 : 1
 			self.progressView.alpha = hidden ? 0 : 1
+			self.webViewToolbarBottomConstraint.isActive = !hidden
+			self.webViewFullBottomConstraint.isActive = hidden
+			self.view.layoutIfNeeded()
 		}
 		if animated {
 			UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
