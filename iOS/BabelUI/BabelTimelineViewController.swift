@@ -258,6 +258,12 @@ final class BabelTimelineViewController: UIViewController {
 		alert.addAction(UIAlertAction(title: "标记全部已读", style: .default) { [weak self] _ in
 			self?.markAllRead()
 		})
+		alert.addAction(UIAlertAction(title: "标记全部未读", style: .default) { [weak self] _ in
+			self?.markAllUnread()
+		})
+		alert.addAction(UIAlertAction(title: "刷新", style: .default) { [weak self] _ in
+			self?.refreshFromControl()
+		})
 		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
 		present(alert, animated: true)
     }
@@ -270,6 +276,17 @@ final class BabelTimelineViewController: UIViewController {
 				guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
 				try? await account.markArticles(articleIDs: Set(accountArticles.map(\.articleID)), statusKey: .read, flag: true)
 			}
+		}
+	}
+
+	@objc private func markAllUnread() {
+		let grouped = Dictionary(grouping: articles, by: { $0.accountID })
+		Task { @MainActor in
+			for (accountID, accountArticles) in grouped {
+				guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
+				try? await account.markArticles(articleIDs: Set(accountArticles.map(\.articleID)), statusKey: .read, flag: false)
+			}
+			reloadArticles()
 		}
 	}
 
