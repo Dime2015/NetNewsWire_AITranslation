@@ -143,7 +143,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: -2.7, y: 3).scaledBy(x: 1.1, y: 1.1)
+        icon.transform = CGAffineTransform(translationX: -3.0, y: 3.3).scaledBy(x: 1.1, y: 1.3)
 
         let title = UILabel()
         title.text = "Feeds"
