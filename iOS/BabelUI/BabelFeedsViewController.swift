@@ -52,9 +52,12 @@ final class BabelFeedsViewController: UITableViewController {
             refreshControlButton.heightAnchor.constraint(equalToConstant: 36)
         ])
         let refreshButton = UIBarButtonItem(customView: refreshControlButton)
-        let subscribeButton = UIBarButtonItem(
-            barButtonSystemItem: .add, target: self, action: #selector(showSubscribe)
-        )
+        let subscribeControl = UIButton(type: .system)
+        subscribeControl.setImage(UIImage(systemName: "plus"), for: .normal)
+        subscribeControl.tintColor = BabelPalette.ink
+        subscribeControl.addTarget(self, action: #selector(showSubscribe), for: .touchUpInside)
+        subscribeControl.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        let subscribeButton = UIBarButtonItem(customView: subscribeControl)
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline

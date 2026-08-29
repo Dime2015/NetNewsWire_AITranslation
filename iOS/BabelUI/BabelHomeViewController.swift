@@ -40,13 +40,10 @@ final class BabelHomeViewController: UIViewController {
         switcher.selectedSegmentIndex = 0
         switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
         navigationItem.titleView = switcher
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "gearshape"),
-            style: .plain, target: self, action: #selector(openSettings)
-        )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .add, target: self, action: #selector(openSubscribe)
-        )
+        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: navigationButton(
+            image: UIImage(systemName: "gearshape"), action: #selector(openSettings)))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: navigationButton(
+            image: UIImage(systemName: "plus"), action: #selector(openSubscribe)))
 
         let scroll = UIScrollView()
         scroll.alwaysBounceVertical = true
@@ -166,6 +163,15 @@ final class BabelHomeViewController: UIViewController {
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = label
         button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
+        return button
+    }
+
+    private func navigationButton(image: UIImage?, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(image, for: .normal)
+        button.tintColor = BabelPalette.ink
+        button.addTarget(self, action: action, for: .touchUpInside)
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
         return button
     }
 
