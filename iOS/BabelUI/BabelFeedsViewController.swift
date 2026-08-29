@@ -53,6 +53,7 @@ final class BabelFeedsViewController: UITableViewController {
         ])
         let refreshButton = UIBarButtonItem(customView: refreshControlButton)
         let subscribeControl = UIButton(type: .custom)
+        subscribeControl.preferredBehavioralStyle = .pad
         subscribeControl.setImage(UIImage(systemName: "plus"), for: .normal)
         subscribeControl.tintColor = BabelPalette.ink
         subscribeControl.addTarget(self, action: #selector(showSubscribe), for: .touchUpInside)

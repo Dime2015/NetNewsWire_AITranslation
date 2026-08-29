@@ -19,6 +19,7 @@ final class BabelShellViewController: UINavigationController {
 
 	private func configureNavigation() {
 		navigationBar.prefersLargeTitles = true
+		navigationBar.preferredBehavioralStyle = .pad
 		navigationBar.tintColor = BabelPalette.accent
 
 		let appearance = UINavigationBarAppearance()
