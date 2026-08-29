@@ -105,17 +105,23 @@ final class BabelHomeViewController: UIViewController {
         separatorContainer.translatesAutoresizingMaskIntoConstraints = false
         content.addArrangedSubview(separatorContainer)
         let separator = UIView()
-        separator.backgroundColor = BabelPalette.hairline
+        separator.backgroundColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor.black.withAlphaComponent(0.18)
+                : UIColor.black.withAlphaComponent(0.07)
+        }
         separator.translatesAutoresizingMaskIntoConstraints = false
         separatorContainer.addSubview(separator)
         NSLayoutConstraint.activate([
             separatorContainer.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
-            separator.widthAnchor.constraint(equalToConstant: 360),
+            // The reference hairline is a compact centered rule, roughly
+            // 182pt on the iPhone canvas (not a full-width divider).
+            separator.widthAnchor.constraint(equalToConstant: 182),
             separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
-            separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor),
+            separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor, constant: -5),
             // Reeder places this hairline above the card's vertical midpoint;
             // keep the card position independent while matching that baseline.
-            separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -30)
+            separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -14)
         ])
 
         feedsButton.backgroundColor = BabelPalette.raisedBackground
@@ -137,7 +143,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: 3, y: 3).scaledBy(x: 1.1, y: 1.1)
+        icon.transform = CGAffineTransform(translationX: -2, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
         title.text = "Feeds"
@@ -158,7 +164,7 @@ final class BabelHomeViewController: UIViewController {
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
         row.alignment = .center
-        row.spacing = -2
+        row.spacing = 0
         row.isUserInteractionEnabled = false
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
