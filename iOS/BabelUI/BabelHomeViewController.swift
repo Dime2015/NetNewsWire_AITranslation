@@ -137,7 +137,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: -5, y: 3).scaledBy(x: 1.1, y: 1.1)
+        icon.transform = CGAffineTransform(translationX: -1, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
         title.text = "Feeds"
@@ -248,7 +248,7 @@ final class BabelHomeViewController: UIViewController {
                 NSLayoutConstraint.activate([
                     glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                     glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                    glyph.widthAnchor.constraint(equalToConstant: 16), glyph.heightAnchor.constraint(equalToConstant: 16)
+                    glyph.widthAnchor.constraint(equalToConstant: 14), glyph.heightAnchor.constraint(equalToConstant: 14)
                 ])
                 return button
             }
@@ -275,7 +275,7 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            glyph.widthAnchor.constraint(equalToConstant: 24), glyph.heightAnchor.constraint(equalToConstant: 24)
+                glyph.widthAnchor.constraint(equalToConstant: 22), glyph.heightAnchor.constraint(equalToConstant: 22)
         ])
         return button
     }
