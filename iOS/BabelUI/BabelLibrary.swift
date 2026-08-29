@@ -104,6 +104,11 @@ struct BabelHomeSnapshot {
 			let text = String(fallback).trimmingCharacters(in: .whitespacesAndNewlines)
 			return text.count > 80 ? String(text.prefix(77)) + "…" : text
 		}
+		if let html = article.contentHTML, let heading = html.range(of: #"<h[1-6][^>]*>.*?</h[1-6]>"#, options: .regularExpression) {
+			let raw = String(html[heading]).replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+			let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+			if !text.isEmpty { return text.count > 80 ? String(text.prefix(77)) + "…" : text }
+		}
 		return "Untitled"
 	}
 
