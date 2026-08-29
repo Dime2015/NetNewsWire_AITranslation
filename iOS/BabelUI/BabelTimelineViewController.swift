@@ -504,11 +504,11 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		label.text = Self.dayFormatter.string(from: daySections[section].date).uppercased()
 		label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
 		label.textColor = BabelPalette.ink
+		label.textAlignment = .left
 		label.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(label)
 		NSLayoutConstraint.activate([
-			// The table supplies the same 120pt leading inset to custom headers.
-			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 0),
+			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 120),
 			label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
 			label.centerYAnchor.constraint(equalTo: header.centerYAnchor)
 		])
