@@ -64,7 +64,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 120, left: 0, bottom: 88, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 136, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -157,7 +157,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            customHeader.heightAnchor.constraint(equalToConstant: 74),
+            customHeader.heightAnchor.constraint(equalToConstant: 94),
             back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
             back.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
             back.widthAnchor.constraint(equalToConstant: 44),
@@ -183,7 +183,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         customHeader.addSubview(switcher)
         NSLayoutConstraint.activate([
             switcher.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
-            switcher.centerYAnchor.constraint(equalTo: customHeader.bottomAnchor, constant: 14),
+            switcher.centerYAnchor.constraint(equalTo: customHeader.bottomAnchor, constant: 12),
             switcher.widthAnchor.constraint(equalToConstant: 88),
             switcher.heightAnchor.constraint(equalToConstant: 32)
         ])
