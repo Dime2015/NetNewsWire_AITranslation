@@ -490,8 +490,12 @@ private final class BabelFeedCell: UITableViewCell {
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
 			disclosureButton.isHidden = false
+			disclosureButton.accessibilityLabel = title
+			disclosureButton.accessibilityValue = expanded ? "Expanded" : "Collapsed"
 		} else {
 			disclosureButton.isHidden = true
+			disclosureButton.accessibilityLabel = nil
+			disclosureButton.accessibilityValue = nil
 		}
 		titleLabel.text = title
 		countLabel.text = count?.formatted()
