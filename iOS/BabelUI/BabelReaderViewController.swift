@@ -221,6 +221,7 @@ final class BabelReaderViewController: UIViewController {
 			.articleDateline, .articleDatelineTitle { order: 1; }
 			.articleTitle { order: 2; }
 			.headerContainer { order: 3; margin: 0 0 34px !important; border: 0 !important; border-bottom: 0 !important; }
+			body .headerTable { border-bottom: 0 !important; }
 			.externalLink { order: 4; }
 			.articleBody { order: 5; }
 			.headerContainer .avatar { display: none !important; }
