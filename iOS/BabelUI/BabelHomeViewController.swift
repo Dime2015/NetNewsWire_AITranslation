@@ -19,6 +19,11 @@ final class BabelHomeViewController: UIViewController {
     private let syncStatusLabel = UILabel()
     private let statusLabel = UILabel()
     private let feedsButton = UIControl()
+    private let homeMutedInk = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.475, alpha: 1)
+            : UIColor(white: 120.0 / 255.0, alpha: 1)
+    }
     private var loadTask: Task<Void, Never>?
     private var isSyncing = true
 
@@ -151,10 +156,10 @@ final class BabelHomeViewController: UIViewController {
         title.textColor = BabelPalette.ink
         syncStatusLabel.text = "Syncing…"
         syncStatusLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
-        syncStatusLabel.textColor = BabelPalette.mutedInk
+        syncStatusLabel.textColor = homeMutedInk
         syncStatusLabel.transform = CGAffineTransform(scaleX: 1, y: 1.04)
         countLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
-        countLabel.textColor = BabelPalette.mutedInk
+        countLabel.textColor = homeMutedInk
         updateHomeStatusText()
         let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
         labels.axis = .vertical
@@ -310,7 +315,7 @@ final class BabelHomeViewController: UIViewController {
                 string: text,
                 attributes: [
                     .font: font,
-                    .foregroundColor: BabelPalette.mutedInk,
+                    .foregroundColor: self.homeMutedInk,
                     .kern: 0.1
                 ]
             )
