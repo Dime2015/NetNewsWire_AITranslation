@@ -217,12 +217,16 @@ private final class BabelCubeView: UIView {
 		let bottom = CGPoint(x: center.x, y: center.y + side * 0.52)
 		let leftBottom = CGPoint(x: left.x + 2, y: left.y + side * 0.94)
 		let rightBottom = CGPoint(x: right.x - 2, y: right.y + side * 0.94)
+		let seam = CGPoint(x: center.x, y: center.y + side * 0.12)
 
 		let path = UIBezierPath()
-		path.move(to: top); path.addLine(to: right); path.addLine(to: rightBottom)
-		path.addLine(to: bottom); path.addLine(to: leftBottom); path.addLine(to: left); path.close()
+		path.move(to: top); path.addLine(to: right); path.addLine(to: seam); path.addLine(to: left); path.close()
+		path.move(to: left); path.addLine(to: seam); path.addLine(to: bottom); path.addLine(to: leftBottom); path.close()
+		path.move(to: seam); path.addLine(to: right); path.addLine(to: rightBottom); path.addLine(to: bottom); path.close()
 		cubeLayer.path = path.cgPath
-		cubeLayer.fillColor = BabelPalette.ink.cgColor
+		cubeLayer.fillColor = UIColor { traits in
+			traits.userInterfaceStyle == .dark ? UIColor(white: 0.82, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
 
