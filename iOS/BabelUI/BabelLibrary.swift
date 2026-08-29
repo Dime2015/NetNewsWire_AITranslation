@@ -99,8 +99,9 @@ struct BabelHomeSnapshot {
 			return title
 		}
 		// Some feeds omit the title; Reeder still shows a useful readable line.
-		if let fallback = summary(for: article)?.split(separator: "。", maxSplits: 1).first,
-		   !fallback.isEmpty {
+		if let summary = summary(for: article),
+		   let boundary = summary.firstIndex(where: { ".!?。！？".contains($0) }) {
+			let fallback = summary[...boundary].drop(while: { $0.isWhitespace })
 			let text = String(fallback).trimmingCharacters(in: .whitespacesAndNewlines)
 			return text.count > 80 ? String(text.prefix(77)) + "…" : text
 		}
