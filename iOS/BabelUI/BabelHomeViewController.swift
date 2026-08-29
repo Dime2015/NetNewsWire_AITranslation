@@ -59,8 +59,7 @@ final class BabelHomeViewController: UIViewController {
         libraryButton.addSubview(ReederLibraryToggle())
         libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
-        let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
-        addButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .regular), forImageIn: .normal)
+        let addButton = customIconButton(kind: .plus, action: #selector(openSubscribe))
         addButton.accessibilityLabel = "Add Subscription"
         addButton.tintColor = BabelPalette.ink
         topBar.addSubview(addButton)
@@ -134,12 +133,10 @@ final class BabelHomeViewController: UIViewController {
         ])
         feedsButton.layer.cornerRadius = 10
 
-        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 44, weight: .bold)
-        let icon = UIImageView(image: UIImage(systemName: "cloud", withConfiguration: cloudConfiguration))
-        icon.tintColor = BabelPalette.ink
-        icon.contentMode = .scaleAspectFit
+        let icon = BabelHomeGlyphView(kind: .cloud)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
         icon.transform = CGAffineTransform(translationX: -5, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
@@ -165,7 +162,7 @@ final class BabelHomeViewController: UIViewController {
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 16),
+            row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 12),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
             // The card's content is vertically centered in Reeder's card.
             row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 6),
@@ -243,13 +240,27 @@ final class BabelHomeViewController: UIViewController {
                 var listConfiguration = configuration
                 // Reeder's compact list glyph is visibly smaller than the default
                 // UIButton image box on the 3x iPhone canvas.
-                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
+                listConfiguration.image = nil
                 button.configuration = listConfiguration
+                let glyph = BabelHomeGlyphView(kind: .list)
+                glyph.translatesAutoresizingMaskIntoConstraints = false
+                button.addSubview(glyph)
+                NSLayoutConstraint.activate([
+                    glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                    glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                    glyph.widthAnchor.constraint(equalToConstant: 16), glyph.heightAnchor.constraint(equalToConstant: 16)
+                ])
                 return button
             }
-            var starConfiguration = configuration
-            starConfiguration.image = UIImage(systemName: "star.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .regular))
-            button.configuration = starConfiguration
+            button.configuration = configuration
+            let glyph = BabelHomeGlyphView(kind: .star)
+            glyph.translatesAutoresizingMaskIntoConstraints = false
+            button.addSubview(glyph)
+            NSLayoutConstraint.activate([
+                glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                glyph.widthAnchor.constraint(equalToConstant: 14), glyph.heightAnchor.constraint(equalToConstant: 14)
+            ])
         }
         return button
     }
@@ -261,6 +272,21 @@ final class BabelHomeViewController: UIViewController {
         button.tintColor = BabelPalette.ink
         button.addTarget(self, action: action, for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    private func customIconButton(kind: BabelHomeGlyphView.Kind, action: Selector) -> UIButton {
+        let button = UIButton(type: .custom)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: action, for: .touchUpInside)
+        let glyph = BabelHomeGlyphView(kind: kind)
+        glyph.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(glyph)
+        NSLayoutConstraint.activate([
+            glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            glyph.widthAnchor.constraint(equalToConstant: 28), glyph.heightAnchor.constraint(equalToConstant: 28)
+        ])
         return button
     }
 
@@ -307,6 +333,47 @@ final class BabelHomeViewController: UIViewController {
 
     @objc private func switchInterface(_ sender: UISegmentedControl) {
         if sender.selectedSegmentIndex == 1 { onOpenGenesisV2?() }
+    }
+}
+
+private final class BabelHomeGlyphView: UIView {
+    enum Kind { case plus, cloud, star, list }
+    private let kind: Kind
+    init(kind: Kind) {
+        self.kind = kind
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let ink = BabelPalette.ink
+        switch kind {
+        case .plus:
+            let p = UIBezierPath(); p.lineWidth = 2.2; p.lineCapStyle = .round
+            p.move(to: CGPoint(x: rect.midX, y: 3)); p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY - 3))
+            p.move(to: CGPoint(x: 3, y: rect.midY)); p.addLine(to: CGPoint(x: rect.maxX - 3, y: rect.midY))
+            ink.setStroke(); p.stroke()
+        case .cloud:
+            let p = UIBezierPath(); p.lineWidth = 2.8; p.lineCapStyle = .round; p.lineJoinStyle = .round
+            let w = rect.width, h = rect.height
+            p.move(to: CGPoint(x: w * 0.16, y: h * 0.70))
+            p.addCurve(to: CGPoint(x: w * 0.34, y: h * 0.35), controlPoint1: CGPoint(x: w * 0.10, y: h * 0.70), controlPoint2: CGPoint(x: w * 0.18, y: h * 0.40))
+            p.addCurve(to: CGPoint(x: w * 0.58, y: h * 0.30), controlPoint1: CGPoint(x: w * 0.40, y: h * 0.20), controlPoint2: CGPoint(x: w * 0.52, y: h * 0.20))
+            p.addCurve(to: CGPoint(x: w * 0.78, y: h * 0.50), controlPoint1: CGPoint(x: w * 0.66, y: h * 0.28), controlPoint2: CGPoint(x: w * 0.76, y: h * 0.34))
+            p.addCurve(to: CGPoint(x: w * 0.84, y: h * 0.70), controlPoint1: CGPoint(x: w * 0.90, y: h * 0.52), controlPoint2: CGPoint(x: w * 0.88, y: h * 0.70))
+            p.addLine(to: CGPoint(x: w * 0.16, y: h * 0.70)); ink.setStroke(); p.stroke()
+        case .star:
+            let p = UIBezierPath(); let c = CGPoint(x: rect.midX, y: rect.midY); let outer = min(rect.width, rect.height) * 0.48; let inner = outer * 0.43
+            for i in 0..<10 { let a = CGFloat(i) * .pi / 5 - .pi / 2; let r = i.isMultiple(of: 2) ? outer : inner; let q = CGPoint(x: c.x + cos(a) * r, y: c.y + sin(a) * r); if i == 0 { p.move(to: q) } else { p.addLine(to: q) } }
+            p.close(); ink.setFill(); p.fill()
+        case .list:
+            let p = UIBezierPath(); p.lineWidth = 1.8; p.lineCapStyle = .round
+            for y in stride(from: 5.0, through: 15.0, by: 5.0) { p.move(to: CGPoint(x: 8, y: y)); p.addLine(to: CGPoint(x: rect.width - 3, y: y)) }
+            ink.setStroke(); p.stroke()
+            ink.setFill(); for y in stride(from: 5.0, through: 15.0, by: 5.0) { UIBezierPath(ovalIn: CGRect(x: 3, y: y - 1.2, width: 2.4, height: 2.4)).fill() }
+        }
     }
 }
 
