@@ -190,21 +190,21 @@ final class BabelHomeViewController: UIViewController {
             let dot = UIView()
             dot.translatesAutoresizingMaskIntoConstraints = false
             dot.backgroundColor = BabelPalette.mutedInk
-            dot.layer.cornerRadius = 8
+            dot.layer.cornerRadius = 5
             button.addSubview(dot)
             let title = UILabel()
             title.translatesAutoresizingMaskIntoConstraints = false
             title.text = "UNREAD"
             title.textColor = BabelPalette.mutedInk
-            title.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+            title.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
             title.adjustsFontSizeToFitWidth = true
             title.minimumScaleFactor = 0.8
             button.addSubview(title)
             NSLayoutConstraint.activate([
                 dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 10),
                 dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                dot.widthAnchor.constraint(equalToConstant: 16),
-                dot.heightAnchor.constraint(equalToConstant: 16),
+                dot.widthAnchor.constraint(equalToConstant: 10),
+                dot.heightAnchor.constraint(equalToConstant: 10),
                 title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
                 title.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -5),
                 title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
