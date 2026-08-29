@@ -303,13 +303,24 @@ final class BabelHomeViewController: UIViewController {
     @objc private func syncDidFinish() { isSyncing = false; updateHomeStatusText() }
 
     private func updateHomeStatusText() {
+        let setSyncText: (String) -> Void = { [weak self] text in
+            guard let self, let font = self.syncStatusLabel.font else { return }
+            self.syncStatusLabel.attributedText = NSAttributedString(
+                string: text,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: BabelPalette.mutedInk,
+                    .kern: 0.1
+                ]
+            )
+        }
         if traitCollection.userInterfaceStyle == .light {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "h:mm"
-            syncStatusLabel.text = "Today at \(formatter.string(from: Date()))"
+            setSyncText("Today at \(formatter.string(from: Date()))")
         } else {
-            syncStatusLabel.text = isSyncing ? "Syncing..." : "Up to date"
+            setSyncText(isSyncing ? "Syncing..." : "Up to date")
         }
     }
 
