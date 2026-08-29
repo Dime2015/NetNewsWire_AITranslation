@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import Account
 
 final class BabelShellViewController: UINavigationController {
 
@@ -75,6 +76,21 @@ final class BabelShellViewController: UINavigationController {
 	func openTimelineForDebug() {
 		guard viewControllers.count == 1 else { return }
 		pushViewController(BabelTimelineViewController(section: .today), animated: false)
+	}
+
+	func openFirstFeedTimelineForDebug() {
+		guard viewControllers.count == 1 else { return }
+		let feed = AccountManager.shared.sortedActiveAccounts
+			.flatMap { account in
+				(account.topLevelFeeds + (account.folders ?? []).flatMap { $0.topLevelFeeds })
+			}
+			.sorted { $0.nameForDisplay < $1.nameForDisplay }
+			.first
+		if let feed {
+			pushViewController(BabelTimelineViewController(feed: feed), animated: false)
+		} else {
+			pushViewController(BabelTimelineViewController(section: .today), animated: false)
+		}
 	}
 
 	func openReaderForDebug() {
