@@ -123,7 +123,7 @@ final class BabelTimelineViewController: UIViewController {
 		// The table is pinned behind the custom navigation header. A small
 		// negative top inset cancels UIKit's automatic safe-area contribution so
 		// the first day header sits directly below the Reeder-style title bar.
-		tableView.contentInset = UIEdgeInsets(top: 30, left: 0, bottom: 62, right: 0)
+		tableView.contentInset = UIEdgeInsets(top: 30, left: 0, bottom: 100, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
@@ -670,11 +670,13 @@ private final class BabelTimelineCell: UITableViewCell {
 		dateLabel.textAlignment = .right
 		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
+		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 3
 
-        summaryLabel.font = .systemFont(ofSize: 12)
+		// Reeder uses the same readable text scale for the preview as for the
+		// headline; unread headlines carry a heavier weight rather than a dot.
+		summaryLabel.font = .systemFont(ofSize: 17, weight: .regular)
 		summaryLabel.textColor = BabelPalette.mutedInk
 		summaryLabel.numberOfLines = 2
 
@@ -737,6 +739,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		feedIconView.backgroundColor = feedIconView.image == nil ? .clear : BabelPalette.raisedBackground
 		dateLabel.text = Self.timeFormatter.string(from: article.logicalDatePublished)
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
+		titleLabel.font = .systemFont(ofSize: 17, weight: article.status.read ? .regular : .semibold)
 		// Reeder keeps a preview line when the feed did not provide an
 		// explicit summary. Use the stored plain text as a visual fallback.
 		let explicitSummary = BabelLibrary.summary(for: article)
