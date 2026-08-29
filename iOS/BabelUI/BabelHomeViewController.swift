@@ -365,7 +365,7 @@ private final class BabelCubeView: UIView {
 		cubeLayer.path = path.cgPath
 		cubeLayer.fillRule = .evenOdd
 		cubeLayer.fillColor = UIColor { traits in
-			traits.userInterfaceStyle == .dark ? UIColor(white: 0.82, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.56, alpha: 1)
 		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
@@ -376,16 +376,19 @@ private final class BabelCubeView: UIView {
 		rightFace.addLine(to: bottom)
 		rightFace.close()
 		rightFaceLayer.path = rightFace.cgPath
-		rightFaceLayer.fillColor = UIColor(white: 0.82, alpha: 1).cgColor
+        rightFaceLayer.fillColor = UIColor(white: 1.0, alpha: 1).cgColor
 		rightFaceLayer.strokeColor = BabelPalette.background.cgColor
 		rightFaceLayer.lineWidth = 2
 
 		let star = UIBezierPath()
 		let starCenter = CGPoint(x: center.x - side * 0.42, y: center.y + side * 0.40)
 		for i in 0..<10 {
-			let angle = CGFloat(i) * .pi / 5 - .pi / 2
-			let radius = i.isMultiple(of: 2) ? side * 0.22 : side * 0.09
-			let point = CGPoint(x: starCenter.x + cos(angle) * radius, y: starCenter.y + sin(angle) * radius)
+            // The mark sits on the angled left face, so Reeder's star is
+            // slightly rotated rather than an upright geometric glyph.
+            let angle = CGFloat(i) * .pi / 5 - .pi / 2 + 0.22
+            let radius = i.isMultiple(of: 2) ? side * 0.22 : side * 0.09
+            let point = CGPoint(x: starCenter.x + cos(angle) * radius,
+                                y: starCenter.y + sin(angle) * radius * 1.08)
 			if i == 0 { star.move(to: point) } else { star.addLine(to: point) }
 		}
 		star.close()
