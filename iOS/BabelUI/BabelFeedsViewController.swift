@@ -29,6 +29,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
+    private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -38,10 +39,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         timeFormatter.locale = Locale(identifier: "en_US_POSIX")
         timeFormatter.dateFormat = "h:mm"
         navigationItem.prompt = "Today at \(timeFormatter.string(from: Date()))"
-        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
-        switcher.selectedSegmentIndex = 0
-        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
-        navigationItem.titleView = switcher
+        interfaceSwitcher.selectedSegmentIndex = 0
+        interfaceSwitcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
         let refreshControlButton = UIButton(type: .system)
         refreshControlButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
         refreshControlButton.tintColor = .white
@@ -176,17 +175,6 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             subscribe.heightAnchor.constraint(equalToConstant: 44)
         ])
 
-        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
-        switcher.selectedSegmentIndex = 0
-        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
-        switcher.translatesAutoresizingMaskIntoConstraints = false
-        customHeader.addSubview(switcher)
-        NSLayoutConstraint.activate([
-            switcher.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
-            switcher.centerYAnchor.constraint(equalTo: customHeader.bottomAnchor, constant: 12),
-            switcher.widthAnchor.constraint(equalToConstant: 88),
-            switcher.heightAnchor.constraint(equalToConstant: 32)
-        ])
     }
 
     private func configureBottomBar() {
@@ -202,6 +190,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         stack.distribution = .equalCentering
         stack.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(stack)
+        interfaceSwitcher.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.addSubview(interfaceSwitcher)
 
         let star = toolbarButton(image: UIImage(systemName: "star.fill"))
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
@@ -228,7 +218,11 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 72),
-            stack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 52),
+            interfaceSwitcher.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 8),
+            interfaceSwitcher.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+            interfaceSwitcher.widthAnchor.constraint(equalToConstant: 88),
+            interfaceSwitcher.heightAnchor.constraint(equalToConstant: 28),
+            stack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 116),
             stack.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -52),
             stack.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor, constant: -2)
         ])
