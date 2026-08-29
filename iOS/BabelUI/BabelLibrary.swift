@@ -146,6 +146,11 @@ struct BabelHomeSnapshot {
 		for _ in 0..<2 {
 			for (entity, replacement) in entities { normalized = normalized.replacingOccurrences(of: entity, with: replacement) }
 		}
+		// Handle feeds that preserve an arbitrary number of ampersand layers.
+		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*rsquo;"#, with: "’", options: .regularExpression)
+		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*lsquo;"#, with: "‘", options: .regularExpression)
+		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*rdquo;"#, with: "”", options: .regularExpression)
+		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*ldquo;"#, with: "“", options: .regularExpression)
 		guard let data = normalized.data(using: .utf8),
 			  let decoded = try? NSAttributedString(
 				data: data,
