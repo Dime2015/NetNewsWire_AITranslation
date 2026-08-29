@@ -78,7 +78,9 @@ final class BabelShellViewController: UINavigationController {
 	}
 
 	func openReaderForDebug() {
-		guard viewControllers.count == 1 else { return }
+		// Device Hub can restore the previous navigation stack between launches.
+		// Always reset it so the reader debug route is deterministic.
+		popToRootViewController(animated: false)
 		// Unread can legitimately be empty after a reader test marks an item read.
 		// Use Today for the debug reader route so a current article remains available.
 		let timeline = BabelTimelineViewController(section: .today)
