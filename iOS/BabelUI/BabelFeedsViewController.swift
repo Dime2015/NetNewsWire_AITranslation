@@ -294,6 +294,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
         tableView.reloadData()
+        // Match Reeder's initial scroll position: the header remains fixed
+        // while the first content row begins above the table's safe-area origin.
+        tableView.setContentOffset(CGPoint(x: 0, y: 107), animated: false)
         emptyLabel.isHidden = rows.contains { row in
             if case .feed = row { return true }
             return false
@@ -354,7 +357,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if case .unread = rows[indexPath.row] { return 66 }
+        if case .unread = rows[indexPath.row] { return 82 }
         return 44
     }
 
