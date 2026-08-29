@@ -14,6 +14,8 @@ final class BabelReaderViewController: UIViewController {
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
 	private let bottomToolbar = UIStackView()
+	private weak var readButton: UIButton?
+	private weak var starButton: UIButton?
 	private var readerMode = false
 	private var progressObservation: NSKeyValueObservation?
 
@@ -82,7 +84,7 @@ final class BabelReaderViewController: UIViewController {
         bottomToolbar.backgroundColor = BabelPalette.background
         bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottomToolbar)
-        for (index, item) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
+		for (index, item) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
                                 ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")].enumerated() {
             var config = UIButton.Configuration.plain()
             config.image = UIImage(systemName: item.0)
@@ -95,8 +97,11 @@ final class BabelReaderViewController: UIViewController {
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
             if index == 3 { button.addTarget(self, action: #selector(toggleReaderMode), for: .touchUpInside) }
 			if index == 4 { button.addTarget(self, action: #selector(requestTranslation), for: .touchUpInside) }
-            bottomToolbar.addArrangedSubview(button)
-        }
+			if index == 0 { readButton = button }
+			if index == 1 { starButton = button }
+			bottomToolbar.addArrangedSubview(button)
+		}
+		updateToolbarState()
         NSLayoutConstraint.activate([
             bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -207,8 +212,15 @@ final class BabelReaderViewController: UIViewController {
     }
 
 	private func updateStatus(_ key: ArticleStatus.Key, flag: Bool) {
+		if key == .read { readButton?.configuration?.image = UIImage(systemName: flag ? "circle.fill" : "circle") }
+		if key == .starred { starButton?.configuration?.image = UIImage(systemName: flag ? "star.fill" : "star") }
 		guard let account = article.account else { return }
 		Task { try? await account.markArticles(articleIDs: [article.articleID], statusKey: key, flag: flag) }
+	}
+
+	private func updateToolbarState() {
+		readButton?.configuration?.image = UIImage(systemName: article.status.read ? "circle.fill" : "circle")
+		starButton?.configuration?.image = UIImage(systemName: article.status.starred ? "star.fill" : "star")
 	}
 
 	@objc private func toggleRead() { updateStatus(.read, flag: !article.status.read) }
