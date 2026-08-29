@@ -48,7 +48,7 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
         let libraryButton = UIButton(type: .custom)
@@ -60,7 +60,7 @@ final class BabelHomeViewController: UIViewController {
         libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
         let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
-        addButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 24, weight: .regular), forImageIn: .normal)
+        addButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .regular), forImageIn: .normal)
         addButton.accessibilityLabel = "Add Subscription"
         addButton.tintColor = BabelPalette.ink
         topBar.addSubview(addButton)
