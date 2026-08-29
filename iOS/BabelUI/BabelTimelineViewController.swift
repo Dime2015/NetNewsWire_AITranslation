@@ -356,6 +356,8 @@ final class BabelTimelineViewController: UIViewController {
 
 	private func reloadArticles() {
 		loadTask?.cancel()
+		let shouldPreserveOffset = tableView.window != nil
+		let preservedOffset = tableView.contentOffset
 		loadingIndicator.startAnimating()
 		emptyLabel.isHidden = true
 		loadTask = Task { [weak self] in
@@ -371,6 +373,10 @@ final class BabelTimelineViewController: UIViewController {
 			navSubtitleLabel.text = "\(loaded.filter { !$0.status.read }.count) Unread Items"
 			self.rebuildSections(from: loaded)
 			tableView.reloadData()
+			if shouldPreserveOffset {
+				tableView.layoutIfNeeded()
+				tableView.setContentOffset(preservedOffset, animated: false)
+			}
 			loadingIndicator.stopAnimating()
 			tableView.refreshControl?.endRefreshing()
 			emptyLabel.isHidden = !loaded.isEmpty
