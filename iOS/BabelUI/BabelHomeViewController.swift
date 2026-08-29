@@ -188,12 +188,12 @@ final class BabelHomeViewController: UIViewController {
             star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -76),
             star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
             star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
-            unread.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             unread.centerYAnchor.constraint(equalTo: star.centerYAnchor),
             // Reeder's unread pill is shallower than the 36pt hit target used by
             // the surrounding buttons. Keep the hit area centered while matching
             // the visible 28pt capsule height.
-            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 26),
+            unread.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 0.3),
+            unread.widthAnchor.constraint(equalToConstant: 70), unread.heightAnchor.constraint(equalToConstant: 25.3),
             all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 76),
             all.centerYAnchor.constraint(equalTo: star.centerYAnchor),
             all.widthAnchor.constraint(equalToConstant: 44), all.heightAnchor.constraint(equalToConstant: 36)
@@ -257,7 +257,7 @@ final class BabelHomeViewController: UIViewController {
                 NSLayoutConstraint.activate([
                     glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                     glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                    glyph.widthAnchor.constraint(equalToConstant: 14), glyph.heightAnchor.constraint(equalToConstant: 14)
+                    glyph.widthAnchor.constraint(equalToConstant: 16), glyph.heightAnchor.constraint(equalToConstant: 14)
                 ])
                 return button
             }
@@ -268,7 +268,7 @@ final class BabelHomeViewController: UIViewController {
             NSLayoutConstraint.activate([
                 glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                 glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                glyph.widthAnchor.constraint(equalToConstant: 14), glyph.heightAnchor.constraint(equalToConstant: 14)
+                glyph.widthAnchor.constraint(equalToConstant: 14.8), glyph.heightAnchor.constraint(equalToConstant: 14.8)
             ])
         }
         return button
@@ -369,9 +369,9 @@ private final class BabelHomeGlyphView: UIView {
             p.close(); ink.setFill(); p.fill()
         case .list:
             let p = UIBezierPath(); p.lineWidth = 1.8; p.lineCapStyle = .round
-            for y in stride(from: 5.0, through: 15.0, by: 5.0) { p.move(to: CGPoint(x: 8, y: y)); p.addLine(to: CGPoint(x: rect.width - 3, y: y)) }
+            for y in stride(from: 4.0, through: 10.0, by: 3.0) { p.move(to: CGPoint(x: 8, y: y)); p.addLine(to: CGPoint(x: rect.width - 4, y: y)) }
             ink.setStroke(); p.stroke()
-            ink.setFill(); for y in stride(from: 5.0, through: 15.0, by: 5.0) { UIBezierPath(ovalIn: CGRect(x: 3, y: y - 1.2, width: 2.4, height: 2.4)).fill() }
+            ink.setFill(); for y in stride(from: 4.0, through: 10.0, by: 3.0) { UIBezierPath(ovalIn: CGRect(x: 3, y: y - 1.2, width: 2.4, height: 2.4)).fill() }
         }
     }
 }
