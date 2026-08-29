@@ -136,6 +136,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		for (index, item) in [("circle", "已读", CGFloat(12)), ("star", "星标", CGFloat(15)), ("chevron.down", "下一篇", CGFloat(16)),
 								("text.alignleft", "翻译", CGFloat(16)), ("character.book.closed", "Bionic Reading", CGFloat(16))].enumerated() {
 			let button = UIButton(type: .custom)
+			button.accessibilityIdentifier = "babel.reader.toolbar.\(item.1)"
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
 			if index == 4 {
 				button.setTitle("BR", for: .normal)

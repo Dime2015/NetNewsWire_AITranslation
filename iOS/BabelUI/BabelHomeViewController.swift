@@ -125,6 +125,7 @@ final class BabelHomeViewController: UIViewController {
         feedsButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
         feedsButton.accessibilityLabel = "Feeds"
         feedsButton.accessibilityHint = "Open the feed list"
+        feedsButton.accessibilityIdentifier = "babel.home.feeds"
         content.addArrangedSubview(feedsButton)
         NSLayoutConstraint.activate([
             feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),

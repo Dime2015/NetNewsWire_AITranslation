@@ -163,6 +163,7 @@ final class BabelTimelineViewController: UIViewController {
                                 ("magnifyingglass", "搜索")] {
             let button = makeTimelineToolbarButton(symbol: symbol, label: label)
             button.accessibilityLabel = label
+            button.accessibilityIdentifier = "babel.timeline.toolbar.\(label)"
             switch label {
             case "已读": button.addTarget(self, action: #selector(markAllRead), for: .touchUpInside)
             case "星标": button.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
