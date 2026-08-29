@@ -134,12 +134,12 @@ final class BabelHomeViewController: UIViewController {
         ])
         feedsButton.layer.cornerRadius = 10
 
-        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 42, weight: .bold)
+        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 44, weight: .bold)
         let icon = UIImageView(image: UIImage(systemName: "cloud", withConfiguration: cloudConfiguration))
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
         icon.transform = CGAffineTransform(translationX: -5, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
@@ -147,9 +147,9 @@ final class BabelHomeViewController: UIViewController {
         title.font = BabelTypography.title(size: 18, weight: .medium)
         title.textColor = BabelPalette.ink
         syncStatusLabel.text = "Syncing…"
-        syncStatusLabel.font = BabelTypography.title(size: 14, weight: .regular)
+        syncStatusLabel.font = BabelTypography.title(size: 16, weight: .regular)
         syncStatusLabel.textColor = BabelPalette.mutedInk
-        countLabel.font = BabelTypography.title(size: 14, weight: .regular)
+        countLabel.font = BabelTypography.title(size: 16, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
         updateHomeStatusText()
         let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
