@@ -102,13 +102,18 @@ final class BabelHomeViewController: UIViewController {
         logo.heightAnchor.constraint(equalToConstant: 130).isActive = true
         content.addArrangedSubview(logo)
 
+        let separatorContainer = UIView()
+        separatorContainer.translatesAutoresizingMaskIntoConstraints = false
+        content.addArrangedSubview(separatorContainer)
         let separator = UIView()
         separator.backgroundColor = BabelPalette.hairline
         separator.translatesAutoresizingMaskIntoConstraints = false
-        content.addArrangedSubview(separator)
+        separatorContainer.addSubview(separator)
         NSLayoutConstraint.activate([
+            separatorContainer.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
             separator.widthAnchor.constraint(equalToConstant: 360),
-            separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+            separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor)
         ])
 
         feedsButton.backgroundColor = BabelPalette.raisedBackground
@@ -163,7 +168,7 @@ final class BabelHomeViewController: UIViewController {
 
         statusLabel.isHidden = true
         content.setCustomSpacing(8, after: logo)
-        content.setCustomSpacing(20, after: separator)
+        content.setCustomSpacing(20, after: separatorContainer)
 
         let star = makeBottomButton("star", label: "已收藏")
         let unread = makeBottomButton("circle.fill", label: "未读")
