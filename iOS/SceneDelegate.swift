@@ -253,6 +253,9 @@ private extension SceneDelegate {
 		babelShellViewController = shellViewController
 		window?.rootViewController = shellViewController
 		window?.makeKeyAndVisible()
+		if ProcessInfo.processInfo.arguments.contains("-BabelFeeds") {
+			DispatchQueue.main.async { shellViewController.openFeedsForDebug() }
+		}
 	}
 
 	func showGenesisV2Interface() {

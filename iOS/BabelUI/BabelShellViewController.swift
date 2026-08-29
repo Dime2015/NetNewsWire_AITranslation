@@ -55,26 +55,8 @@ final class BabelShellViewController: UINavigationController {
 			self?.pushViewController(BabelTimelineViewController(section: section), animated: true)
 		}
 		homeViewController.onOpenFeeds = { [weak self] in
-            let feedsViewController = BabelFeedsViewController()
-            feedsViewController.onOpenSubscribe = { [weak self] in
-				self?.onOpenSubscribe?()
-			}
-            feedsViewController.onOpenGenesisV2 = { [weak self] in
-                self?.onOpenGenesisV2?()
-            }
-            feedsViewController.onSelectUnread = { [weak self] in
-                self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
-            }
-            feedsViewController.onSelectSaved = { [weak self] in
-                self?.pushViewController(BabelTimelineViewController(section: .saved), animated: true)
-            }
-			feedsViewController.onSelectFolder = { [weak self] folder in
-				self?.pushViewController(BabelTimelineViewController(folder: folder), animated: true)
-			}
-			feedsViewController.onSelectFeed = { [weak self] feed in
-				self?.pushViewController(BabelTimelineViewController(feed: feed), animated: true)
-			}
-			self?.pushViewController(feedsViewController, animated: true)
+			guard let self else { return }
+			self.pushViewController(self.makeFeedsViewController(), animated: true)
 		}
 		homeViewController.onSelectArticle = { [weak self] article in
 			self?.pushViewController(BabelReaderViewController(article: article), animated: true)
@@ -83,5 +65,29 @@ final class BabelShellViewController: UINavigationController {
 			self?.onOpenGenesisV2?()
 		}
 		setViewControllers([homeViewController], animated: false)
+	}
+
+	func openFeedsForDebug() {
+		guard viewControllers.count == 1 else { return }
+		pushViewController(makeFeedsViewController(), animated: false)
+	}
+
+	private func makeFeedsViewController() -> BabelFeedsViewController {
+		let feedsViewController = BabelFeedsViewController()
+		feedsViewController.onOpenSubscribe = { [weak self] in self?.onOpenSubscribe?() }
+		feedsViewController.onOpenGenesisV2 = { [weak self] in self?.onOpenGenesisV2?() }
+		feedsViewController.onSelectUnread = { [weak self] in
+			self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
+		}
+		feedsViewController.onSelectSaved = { [weak self] in
+			self?.pushViewController(BabelTimelineViewController(section: .saved), animated: true)
+		}
+		feedsViewController.onSelectFolder = { [weak self] folder in
+			self?.pushViewController(BabelTimelineViewController(folder: folder), animated: true)
+		}
+		feedsViewController.onSelectFeed = { [weak self] feed in
+			self?.pushViewController(BabelTimelineViewController(feed: feed), animated: true)
+		}
+		return feedsViewController
 	}
 }
