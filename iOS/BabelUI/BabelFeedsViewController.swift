@@ -221,6 +221,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         unread.backgroundColor = BabelPalette.raisedBackground
         unread.layer.cornerRadius = 14
         let list = toolbarButton(image: UIImage(systemName: "list.bullet"), pointSize: 8)
+        list.accessibilityLabel = "Feed 操作"
+        list.addTarget(self, action: #selector(showFeedActions), for: .touchUpInside)
         stack.addArrangedSubview(star)
         stack.addArrangedSubview(unread)
         stack.addArrangedSubview(list)
@@ -345,6 +347,41 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             sheet.preferredCornerRadius = 18
         }
         present(controller, animated: true)
+    }
+
+    @objc private func showFeedActions() {
+        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Mark All as Read", style: .default) { [weak self] _ in
+            self?.markAllArticles(read: true)
+        })
+        alert.addAction(UIAlertAction(title: "Mark All as Unread", style: .default) { [weak self] _ in
+            self?.markAllArticles(read: false)
+        })
+        alert.addAction(UIAlertAction(title: "Refresh", style: .default) { [weak self] _ in
+            self?.refreshFeeds()
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = bottomBar
+            popover.sourceRect = CGRect(x: bottomBar.bounds.midX, y: 0, width: 1, height: 1)
+        }
+        present(alert, animated: true)
+    }
+
+    private func markAllArticles(read: Bool) {
+        let accounts = AccountManager.shared.sortedActiveAccounts
+        Task { @MainActor in
+            for account in accounts {
+                var ids = Set<String>()
+                for feed in account.flattenedFeeds() {
+                    let articles = await account.fetchArticlesAsync(.feed(feed))
+                    ids.formUnion(articles.map(\.articleID))
+                }
+                guard !ids.isEmpty else { continue }
+                try? await account.markArticles(articleIDs: ids, statusKey: .read, flag: read)
+            }
+            rebuildRows()
+        }
     }
 
     @objc private func showSubscribe() {
