@@ -237,12 +237,12 @@ final class BabelHomeViewController: UIViewController {
                 var listConfiguration = configuration
                 // Reeder's compact list glyph is visibly smaller than the default
                 // UIButton image box on the 3x iPhone canvas.
-                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
+                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .regular))
                 button.configuration = listConfiguration
                 return button
             }
             var starConfiguration = configuration
-            starConfiguration.image = UIImage(systemName: "star.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+            starConfiguration.image = UIImage(systemName: "star.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular))
             button.configuration = starConfiguration
         }
         return button
