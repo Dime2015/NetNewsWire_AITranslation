@@ -120,7 +120,10 @@ final class BabelTimelineViewController: UIViewController {
 		tableView.separatorStyle = .none
 		// The custom header already occupies the top region; a small inset keeps
 		// the first day label just below it, matching Reeder's timeline rhythm.
-		tableView.contentInset = UIEdgeInsets(top: 30, left: 0, bottom: 62, right: 0)
+		// The table is pinned behind the custom navigation header. A small
+		// negative top inset cancels UIKit's automatic safe-area contribution so
+		// the first day header sits directly below the Reeder-style title bar.
+		tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
@@ -705,7 +708,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			unreadDot.widthAnchor.constraint(equalToConstant: 6),
 			unreadDot.heightAnchor.constraint(equalToConstant: 6),
-            stack.leadingAnchor.constraint(equalTo: feedIconView.trailingAnchor, constant: 8),
+			stack.leadingAnchor.constraint(equalTo: feedIconView.trailingAnchor, constant: 5),
 			stack.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -12),
@@ -713,7 +716,7 @@ private final class BabelTimelineCell: UITableViewCell {
             separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			separator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
-			feedIconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+			feedIconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 21),
 			feedIconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			feedIconView.widthAnchor.constraint(equalToConstant: 26),
 			feedIconView.heightAnchor.constraint(equalToConstant: 26),
