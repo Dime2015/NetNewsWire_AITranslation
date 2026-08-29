@@ -216,6 +216,19 @@ final class BabelReaderViewController: UIViewController {
 				letter-spacing: -0.02em;
 				margin: 12px 0 14px !important;
 			}
+			/* Reeder's reading hierarchy is date, title, then source/byline. */
+			article { display: flex; flex-direction: column; }
+			.articleDateline, .articleDatelineTitle { order: 1; }
+			.articleTitle { order: 2; }
+			.headerContainer { order: 3; margin: 0 0 34px !important; border: 0 !important; border-bottom: 0 !important; }
+			.externalLink { order: 4; }
+			.articleBody { order: 5; }
+			.headerContainer .avatar { display: none !important; }
+			.headerContainer .headerTable { width: 100%; }
+			.headerContainer .leftAlign { text-align: left; }
+			.articleDateline, .articleDatelineTitle { margin: 0 0 10px !important; }
+			.articleTitle h1 { margin: 0 0 16px !important; }
+			.externalLink { margin: 0 0 28px !important; }
 			a { color: inherit !important; text-decoration-color: #c14a28 !important; }
 			.articleBody { margin-top: 34px !important; }
 			.articleBody p { margin: 0 0 1.25em; }
@@ -237,6 +250,17 @@ final class BabelReaderViewController: UIViewController {
 		<body>
 			\(rendering.html)
 			<script>
+			// Match Reeder's reading order: date, title, source/byline, then body.
+			(function () {
+				const article = document.querySelector('article');
+				const header = document.querySelector('.headerContainer');
+				if (!article || !header) return;
+				const title = article.querySelector('.articleTitle');
+				const dateline = article.querySelector('.articleDateline, .articleDatelineTitle');
+				const body = article.querySelector('.articleBody');
+				if (title && dateline) article.insertBefore(dateline, title);
+				if (body) article.insertBefore(header, body);
+			})();
 			// Reeder does not reserve a blank frame when a remote thumbnail fails.
 			document.querySelectorAll('img').forEach(function (image) {
 				image.addEventListener('error', function () { image.style.display = 'none'; });
