@@ -18,6 +18,7 @@ final class BabelReaderViewController: UIViewController {
 	private weak var readButton: UIButton?
 	private weak var starButton: UIButton?
 	private var readerMode = false
+	private var didApplyDebugReaderMode = false
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -51,6 +52,10 @@ final class BabelReaderViewController: UIViewController {
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		if !article.status.read { updateStatus(.read, flag: true) }
+		if !didApplyDebugReaderMode && ProcessInfo.processInfo.arguments.contains("-BabelReaderBR") {
+			didApplyDebugReaderMode = true
+			toggleReaderMode()
+		}
 	}
 
 	private func configureView() {
