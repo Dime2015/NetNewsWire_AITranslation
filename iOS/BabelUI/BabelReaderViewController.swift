@@ -196,7 +196,7 @@ final class BabelReaderViewController: UIViewController {
 			.replacingOccurrences(of: "'", with: "\\'")
 		let readerDateFormatter = DateFormatter()
 		readerDateFormatter.locale = Locale(identifier: "en_US_POSIX")
-		readerDateFormatter.dateFormat = "EEEE, MMMM d, yyyy 'AT' h:mm a"
+		readerDateFormatter.dateFormat = "EEEE, MMMM d, yyyy 'AT' H:mm"
 		let readerDate = readerDateFormatter.string(from: article.logicalDatePublished).uppercased()
 		var renderedHTML = rendering.html
 		let needsFallbackTitle = article.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
