@@ -386,6 +386,7 @@ final class BabelReaderViewController: UIViewController {
     @objc private func showNextArticle() {
 		guard let next = nextArticle?() else { return }
 		let reader = BabelReaderViewController(article: next)
+		reader.readerMode = readerMode
 		reader.nextArticle = nextArticle
 		navigationController?.pushViewController(reader, animated: true)
 	}
