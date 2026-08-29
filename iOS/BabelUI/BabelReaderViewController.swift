@@ -320,7 +320,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 				line-height: \(readerMode ? 1.72 : 1.55);
 				margin: 0 auto;
 				max-width: \(readerMode ? 560 : 680)px;
-				padding: 90px 20px 80px;
+				/* Reeder starts the article metadata close below the reader chrome.
+				   The previous 90px reserve pushed the date/title block visibly
+				   below the reference layout on the iPhone canvas. */
+				padding: 28px 20px 80px;
 			}
 			.headerContainer { margin-bottom: 30px; }
 			.headerTable { width: 100%; }
