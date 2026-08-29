@@ -25,6 +25,7 @@ final class BabelTimelineViewController: UIViewController {
 	private let source: Source
 	private let tableView = UITableView(frame: .zero, style: .plain)
 	private let emptyLabel = UILabel()
+	private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 	private let navTitleLabel = UILabel()
 	private let navSubtitleLabel = UILabel()
 	private var articles = [Article]()
@@ -102,9 +103,15 @@ final class BabelTimelineViewController: UIViewController {
 		emptyLabel.isHidden = true
 		emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(emptyLabel)
+		loadingIndicator.color = BabelPalette.mutedInk
+		loadingIndicator.hidesWhenStopped = true
+		loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(loadingIndicator)
 		NSLayoutConstraint.activate([
 			emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-			emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+			emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+			loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
 		])
 
 		let refreshControl = UIRefreshControl()
@@ -187,6 +194,8 @@ final class BabelTimelineViewController: UIViewController {
 
 	private func reloadArticles() {
 		loadTask?.cancel()
+		loadingIndicator.startAnimating()
+		emptyLabel.isHidden = true
 		loadTask = Task { [weak self] in
 			guard let self else { return }
 			let loaded: [Article]
@@ -204,6 +213,7 @@ final class BabelTimelineViewController: UIViewController {
 				(date: date, articles: grouped[date] ?? [])
 			}
 			tableView.reloadData()
+			loadingIndicator.stopAnimating()
 			tableView.refreshControl?.endRefreshing()
 			emptyLabel.isHidden = !loaded.isEmpty
 		}

@@ -20,6 +20,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onSelectFeed: ((Feed) -> Void)?
     var onSelectFolder: ((Folder) -> Void)?
     private var rows = [Row]()
+    private let emptyLabel = UILabel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -34,6 +35,12 @@ final class BabelFeedsViewController: UITableViewController {
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
+        emptyLabel.text = "No Feeds"
+        emptyLabel.textColor = BabelPalette.mutedInk
+        emptyLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        emptyLabel.textAlignment = .center
+        emptyLabel.isHidden = true
+        tableView.backgroundView = emptyLabel
         let refresh = UIRefreshControl()
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
         tableView.refreshControl = refresh
@@ -54,6 +61,7 @@ final class BabelFeedsViewController: UITableViewController {
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
         tableView.reloadData()
+        emptyLabel.isHidden = !rows.isEmpty
     }
 
     @objc private func rebuild() { rebuildRows() }
