@@ -322,7 +322,12 @@ private final class ReederLibraryToggle: UIView {
         let color = BabelPalette.ink
         let outer = UIBezierPath(roundedRect: CGRect(x: 13, y: 14, width: 18, height: 12), cornerRadius: 6)
         color.setStroke(); outer.lineWidth = 3; outer.stroke()
-        let knob = UIBezierPath(ovalIn: CGRect(x: 25, y: 16, width: 7, height: 8))
+        // Reeder's control keeps a dark inset ring between the track and the
+        // light thumb; drawing the ring separately avoids merging the thumb
+        // into the outer stroke at 3x display scale.
+        let knobRing = UIBezierPath(ovalIn: CGRect(x: 23, y: 15, width: 10, height: 10))
+        BabelPalette.background.setFill(); knobRing.fill()
+        let knob = UIBezierPath(ovalIn: CGRect(x: 25, y: 17, width: 6, height: 6))
         color.setFill(); knob.fill()
     }
 }
