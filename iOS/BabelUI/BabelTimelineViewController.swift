@@ -687,7 +687,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		// headline; unread headlines carry a heavier weight rather than a dot.
 		summaryLabel.font = .systemFont(ofSize: 17, weight: .regular)
 		summaryLabel.textColor = BabelPalette.mutedInk
-		summaryLabel.numberOfLines = 2
+		summaryLabel.numberOfLines = 1
 
 		thumbnailView.contentMode = .scaleAspectFill
 		thumbnailView.clipsToBounds = true
