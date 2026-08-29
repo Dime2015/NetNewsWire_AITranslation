@@ -265,7 +265,7 @@ private extension SceneDelegate {
 			DispatchQueue.main.async { shellViewController.openReaderScrolledForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFilter") {
 			DispatchQueue.main.async { shellViewController.openTimelineFilterForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelReader") || ProcessInfo.processInfo.arguments.contains("-BabelReaderBR") {
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelReader") {
 			DispatchQueue.main.async { shellViewController.openReaderForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimeline") {
 			DispatchQueue.main.async { shellViewController.openTimelineForDebug() }

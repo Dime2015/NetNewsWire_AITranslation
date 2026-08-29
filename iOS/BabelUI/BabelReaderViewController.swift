@@ -19,8 +19,6 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 	private let readerHeader = UIView()
 	private weak var readButton: UIButton?
 	private weak var starButton: UIButton?
-	private var readerMode = false
-	private var didApplyDebugReaderMode = false
 	private var pendingScrollOffset: CGPoint?
 	private var lastScrollOffsetY: CGFloat = 0
 	private var hasEstablishedScrollBaseline = false
@@ -61,10 +59,6 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		if !article.status.read { updateStatus(.read, flag: true) }
-		if !didApplyDebugReaderMode && ProcessInfo.processInfo.arguments.contains("-BabelReaderBR") {
-			didApplyDebugReaderMode = true
-			toggleReaderMode()
-		}
 	}
 
 	private func configureView() {
@@ -132,20 +126,20 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
         bottomToolbar.axis = .horizontal
 		bottomToolbar.distribution = .equalSpacing
         bottomToolbar.alignment = .center
-		// Reeder spreads the five compact controls almost edge to edge.
+		// Reeder spreads the compact controls almost edge to edge.
 		// Keep the 44pt hit targets, but use the narrower visual side inset
 		// so the first and last glyphs align with the reference toolbar.
 		bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 6, bottom: 8, right: 6)
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
 		for (index, item) in [("circle", "已读", CGFloat(12)), ("star", "星标", CGFloat(15)), ("chevron.down", "下一篇", CGFloat(16)),
-								("text.alignleft", "翻译", CGFloat(16)), ("character.book.closed", "Bionic Reading", CGFloat(16))].enumerated() {
+								("character.book.closed", "AI翻译", CGFloat(16))].enumerated() {
 			let button = UIButton(type: .custom)
 			button.accessibilityIdentifier = "babel.reader.toolbar.\(item.1)"
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
-			if index == 4 {
-				button.setTitle("BR", for: .normal)
-				button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
+			if index == 3 {
+				button.setTitle("AI", for: .normal)
+				button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
 				button.setTitleColor(BabelPalette.ink, for: .normal)
 			} else {
 				button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
@@ -159,7 +153,6 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
             if index == 1 { button.addTarget(self, action: #selector(toggleStar), for: .touchUpInside) }
             if index == 2 { button.addTarget(self, action: #selector(showNextArticle), for: .touchUpInside) }
 			if index == 3 { button.addTarget(self, action: #selector(requestTranslation), for: .touchUpInside) }
-			if index == 4 { button.addTarget(self, action: #selector(toggleReaderMode), for: .touchUpInside) }
 			if index == 0 { readButton = button }
 			if index == 1 { starButton = button }
 			bottomToolbar.addArrangedSubview(button)
@@ -327,11 +320,11 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 				background: transparent !important;
 				color: \(readerBodyColor);
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-				font-size: \(readerMode ? 19 : 17)px;
-				font-weight: \(readerMode ? 500 : 400);
-				line-height: \(readerMode ? 1.72 : 1.55);
+				font-size: 17px;
+				font-weight: 400;
+				line-height: 1.55;
 				margin: 0 auto;
-				max-width: \(readerMode ? 560 : 680)px;
+				max-width: 680px;
 				/* Reeder starts the article metadata close below the reader chrome.
 				   The previous 90px reserve pushed the date/title block visibly
 				   below the reference layout on the iPhone canvas. */
@@ -382,7 +375,6 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 			.externalLink { margin: 0 0 28px !important; }
 			a { color: inherit !important; text-decoration-color: \(readerAccentColor) !important; }
 			.articleBody { margin-top: 34px !important; }
-			(readerMode ? ".articleBody, .articleBody p, .articleBody li { font-weight: 500 !important; }" : "")
 			.articleBody p { margin: 0 0 1.25em; }
 			.articleBody img, .articleBody video { border-radius: 10px; height: auto; max-width: 100%; }
 			(article.rawImageLink == nil ? ".headerTable img, .headerImage, .articleImage { display: none !important; }" : "")
@@ -534,18 +526,8 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
     @objc private func showNextArticle() {
 		guard let next = nextArticle?() else { return }
 		let reader = BabelReaderViewController(article: next)
-		reader.readerMode = readerMode
 		reader.nextArticle = nextArticle
 		navigationController?.pushViewController(reader, animated: true)
-	}
-
-	@objc private func toggleReaderMode() {
-		pendingScrollOffset = webView.scrollView.contentOffset
-		readerMode.toggle()
-		if let brButton = bottomToolbar.arrangedSubviews.last as? UIButton {
-			brButton.setTitleColor(readerMode ? BabelPalette.accent : BabelPalette.mutedInk, for: .normal)
-		}
-		renderArticle()
 	}
 
 	@objc private func requestTranslation() {
