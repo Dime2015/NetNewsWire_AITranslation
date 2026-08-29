@@ -227,7 +227,7 @@ final class BabelHomeViewController: UIViewController {
         } else {
             if symbol == "list.bullet" {
                 var listConfiguration = configuration
-                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))
+                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .regular))
                 button.configuration = listConfiguration
                 return button
             }
@@ -236,7 +236,7 @@ final class BabelHomeViewController: UIViewController {
             glyphConfiguration.title = glyph
             glyphConfiguration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
                 var outgoing = incoming
-                outgoing.font = UIFont.systemFont(ofSize: 16, weight: .regular)
+                outgoing.font = UIFont.systemFont(ofSize: 15, weight: .regular)
                 return outgoing
             }
             button.configuration = glyphConfiguration
