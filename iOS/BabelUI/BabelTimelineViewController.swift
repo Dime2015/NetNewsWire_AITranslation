@@ -165,8 +165,8 @@ final class BabelTimelineViewController: UIViewController {
         NSLayoutConstraint.activate([
             bottom.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottom.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            bottom.heightAnchor.constraint(equalToConstant: 72)
+            bottom.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bottom.heightAnchor.constraint(equalToConstant: 90)
         ])
 		view.bringSubviewToFront(bottom)
 		view.bringSubviewToFront(timelineHeader)
