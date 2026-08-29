@@ -113,7 +113,10 @@ final class BabelHomeViewController: UIViewController {
             separatorContainer.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
             separator.widthAnchor.constraint(equalToConstant: 360),
             separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
-            separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor)
+            separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor),
+            // Reeder places this hairline above the card's vertical midpoint;
+            // keep the card position independent while matching that baseline.
+            separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -30)
         ])
 
         feedsButton.backgroundColor = BabelPalette.raisedBackground
@@ -162,8 +165,9 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 16),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 15),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -5)
+            // The card's content sits slightly above geometric center in Reeder.
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 2),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -18)
         ])
 
         statusLabel.isHidden = true
