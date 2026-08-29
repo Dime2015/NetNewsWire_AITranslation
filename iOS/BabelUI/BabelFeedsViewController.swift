@@ -41,7 +41,7 @@ final class BabelFeedsViewController: UITableViewController {
         )
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 92, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -100,7 +100,7 @@ final class BabelFeedsViewController: UITableViewController {
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 76),
+            bottomBar.heightAnchor.constraint(equalToConstant: 72),
             stack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 52),
             stack.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -52),
             stack.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor, constant: -2)
@@ -216,7 +216,7 @@ private final class BabelFeedCell: UITableViewCell {
 		iconView.image = image
 		titleLabel.text = title
 		countLabel.text = count.formatted()
-		let leading: CGFloat = indent == 0 ? 22 : 58
+        let leading: CGFloat = indent == 0 ? 18 : 40
 		NSLayoutConstraint.deactivate(contentView.constraints)
 		NSLayoutConstraint.activate([
 			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),

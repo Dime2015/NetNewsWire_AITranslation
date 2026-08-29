@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import Account
 import Articles
 
 final class BabelHomeViewController: UIViewController {
@@ -15,6 +16,7 @@ final class BabelHomeViewController: UIViewController {
     var onOpenGenesisV2: (() -> Void)?
 
     private let countLabel = UILabel()
+    private let syncStatusLabel = UILabel()
     private let statusLabel = UILabel()
     private let feedsButton = UIControl()
     private var loadTask: Task<Void, Never>?
@@ -96,13 +98,12 @@ final class BabelHomeViewController: UIViewController {
         title.text = "Feeds"
         title.font = BabelTypography.title(size: 24)
         title.textColor = BabelPalette.ink
-        let today = UILabel()
-        today.text = "Syncing…"
-        today.font = BabelTypography.title(size: 17, weight: .regular)
-        today.textColor = BabelPalette.mutedInk
+        syncStatusLabel.text = "Syncing…"
+        syncStatusLabel.font = BabelTypography.title(size: 17, weight: .regular)
+        syncStatusLabel.textColor = BabelPalette.mutedInk
         countLabel.font = BabelTypography.title(size: 17, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
-        let labels = UIStackView(arrangedSubviews: [title, today, countLabel])
+        let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
         labels.axis = .vertical
         labels.spacing = 1
         labels.alignment = .leading
@@ -173,9 +174,13 @@ final class BabelHomeViewController: UIViewController {
                      .UserDidAddAccount, .UserDidDeleteAccount, .nnwTitleTranslationDidUpdate] {
             NotificationCenter.default.addObserver(self, selector: #selector(dataDidChange), name: name, object: nil)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(syncDidBegin), name: .AccountRefreshDidBegin, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(syncDidFinish), name: .AccountRefreshDidFinish, object: nil)
     }
 
     @objc private func dataDidChange() { reloadSnapshot() }
+    @objc private func syncDidBegin() { syncStatusLabel.text = "Syncing…" }
+    @objc private func syncDidFinish() { syncStatusLabel.text = "Up to date" }
 
     private func reloadSnapshot() {
         loadTask?.cancel()
