@@ -219,6 +219,7 @@ final class BabelReaderViewController: UIViewController {
 			.articleBody { margin-top: 34px !important; }
 			.articleBody p { margin: 0 0 1.25em; }
 			.articleBody img, .articleBody video { border-radius: 10px; height: auto; max-width: 100%; }
+			(article.rawImageLink == nil ? ".headerTable img, .headerImage, .articleImage { display: none !important; }" : "")
 			blockquote {
 				border-left: 2px solid #c14a28;
 				color: #5d594f;
