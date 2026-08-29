@@ -527,7 +527,9 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		header.textLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
 		header.textLabel?.textColor = BabelPalette.ink
 		header.contentView.backgroundColor = BabelPalette.background
-		header.contentView.layoutMargins = UIEdgeInsets(top: 0, left: 120, bottom: 0, right: 16)
+		// UITableViewHeaderFooterView's label ignores contentView margins on iOS 27;
+		// translate the rendered label to the same 120pt text column as article rows.
+		header.textLabel?.transform = CGAffineTransform(translationX: 72, y: 0)
 	}
 
 	func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
