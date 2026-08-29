@@ -345,7 +345,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     @objc private func showFeedIssues() {
         let controller = BabelFeedIssuesViewController()
         if let sheet = controller.sheetPresentationController {
-            let compact = UISheetPresentationController.Detent.custom(identifier: .init("babelFeedIssuesCompact")) { _ in 180 }
+            let compact = UISheetPresentationController.Detent.custom(identifier: .init("babelFeedIssuesCompact")) { _ in 120 }
             sheet.detents = [compact, .large()]
             sheet.selectedDetentIdentifier = compact.identifier
             sheet.prefersGrabberVisible = true
