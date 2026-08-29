@@ -345,7 +345,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     @objc private func showFeedIssues() {
         let controller = BabelFeedIssuesViewController()
         if let sheet = controller.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
+            let compact = UISheetPresentationController.Detent.custom(identifier: .init("babelFeedIssuesCompact")) { _ in 180 }
+            sheet.detents = [compact, .large()]
+            sheet.selectedDetentIdentifier = compact.identifier
             sheet.prefersGrabberVisible = true
             sheet.preferredCornerRadius = 18
         }
@@ -490,8 +492,7 @@ private final class BabelFeedIssuesViewController: UIViewController {
             close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
             title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             title.topAnchor.constraint(equalTo: close.bottomAnchor, constant: 20),
-            message.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            message.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            message.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 18),
             message.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
             message.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28)
         ])
