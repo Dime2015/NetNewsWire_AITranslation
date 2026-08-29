@@ -17,6 +17,7 @@ final class BabelFeedsViewController: UITableViewController {
     }
 
     var onSelectUnread: (() -> Void)?
+    var onSelectSaved: (() -> Void)?
     var onSelectFeed: ((Feed) -> Void)?
     var onSelectFolder: ((Folder) -> Void)?
     var onOpenGenesisV2: (() -> Void)?
@@ -73,6 +74,7 @@ final class BabelFeedsViewController: UITableViewController {
         bottomBar.addSubview(stack)
 
         let star = toolbarButton(image: UIImage(systemName: "star.fill"))
+        star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         let unread = UIButton(type: .system)
         var unreadConfiguration = UIButton.Configuration.plain()
         unreadConfiguration.image = UIImage(systemName: "circle.fill")
@@ -83,6 +85,7 @@ final class BabelFeedsViewController: UITableViewController {
         unread.titleLabel?.font = BabelTypography.title(size: 14, weight: .semibold)
         unread.tintColor = BabelPalette.ink
         unread.setTitleColor(BabelPalette.ink, for: .normal)
+        unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         unread.backgroundColor = BabelPalette.raisedBackground
         unread.layer.cornerRadius = 22
         let list = toolbarButton(image: UIImage(systemName: "list.bullet"))
@@ -108,6 +111,9 @@ final class BabelFeedsViewController: UITableViewController {
         button.frame.size = CGSize(width: 44, height: 44)
         return button
     }
+
+    @objc private func openUnread() { onSelectUnread?() }
+    @objc private func openSaved() { onSelectSaved?() }
 
     private func rebuildRows() {
         rows = [.unread]

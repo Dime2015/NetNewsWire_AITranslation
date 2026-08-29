@@ -45,9 +45,12 @@ final class BabelShellViewController: UINavigationController {
             feedsViewController.onOpenGenesisV2 = { [weak self] in
                 self?.onOpenGenesisV2?()
             }
-			feedsViewController.onSelectUnread = { [weak self] in
-				self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
-			}
+            feedsViewController.onSelectUnread = { [weak self] in
+                self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
+            }
+            feedsViewController.onSelectSaved = { [weak self] in
+                self?.pushViewController(BabelTimelineViewController(section: .saved), animated: true)
+            }
 			feedsViewController.onSelectFolder = { [weak self] folder in
 				self?.pushViewController(BabelTimelineViewController(folder: folder), animated: true)
 			}
