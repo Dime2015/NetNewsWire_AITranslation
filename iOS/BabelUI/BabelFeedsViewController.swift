@@ -158,7 +158,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             customHeader.heightAnchor.constraint(equalToConstant: 94),
             back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
-            back.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            back.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             back.widthAnchor.constraint(equalToConstant: 44),
             back.heightAnchor.constraint(equalToConstant: 44),
             titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
@@ -166,11 +166,11 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
             subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
             refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
-            refresh.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            refresh.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             refresh.widthAnchor.constraint(equalToConstant: 24),
             refresh.heightAnchor.constraint(equalToConstant: 24),
             subscribe.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor, constant: -12),
-            subscribe.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            subscribe.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
             subscribe.widthAnchor.constraint(equalToConstant: 44),
             subscribe.heightAnchor.constraint(equalToConstant: 44)
         ])

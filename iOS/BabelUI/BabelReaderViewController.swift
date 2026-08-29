@@ -158,14 +158,14 @@ final class BabelReaderViewController: UIViewController {
 		NSLayoutConstraint.activate([
 			readerHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor), readerHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			readerHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), readerHeader.heightAnchor.constraint(equalToConstant: 58),
-			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor, constant: 16), back.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor, constant: 16), back.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
 			label.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), label.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
-			actions.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), actions.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			actions.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), actions.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44),
-			tag.trailingAnchor.constraint(equalTo: share.leadingAnchor, constant: -18), tag.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			tag.trailingAnchor.constraint(equalTo: share.leadingAnchor, constant: -18), tag.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			tag.widthAnchor.constraint(equalToConstant: 44), tag.heightAnchor.constraint(equalToConstant: 44),
-			share.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), share.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			share.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), share.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			share.widthAnchor.constraint(equalToConstant: 44), share.heightAnchor.constraint(equalToConstant: 44)
 		])
 	}

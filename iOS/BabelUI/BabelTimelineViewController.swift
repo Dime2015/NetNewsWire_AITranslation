@@ -198,14 +198,14 @@ final class BabelTimelineViewController: UIViewController {
 			timelineHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
 			timelineHeader.heightAnchor.constraint(equalToConstant: 68),
 			back.leadingAnchor.constraint(equalTo: timelineHeader.leadingAnchor, constant: 16),
-			back.centerYAnchor.constraint(equalTo: timelineHeader.centerYAnchor),
+			back.centerYAnchor.constraint(equalTo: timelineHeader.topAnchor, constant: 24),
 			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
 			navTitleLabel.centerXAnchor.constraint(equalTo: timelineHeader.centerXAnchor),
 			navTitleLabel.topAnchor.constraint(equalTo: timelineHeader.topAnchor, constant: 8),
 			navSubtitleLabel.centerXAnchor.constraint(equalTo: timelineHeader.centerXAnchor),
 			navSubtitleLabel.topAnchor.constraint(equalTo: navTitleLabel.bottomAnchor),
 			actions.trailingAnchor.constraint(equalTo: timelineHeader.trailingAnchor, constant: -16),
-			actions.centerYAnchor.constraint(equalTo: timelineHeader.centerYAnchor),
+			actions.centerYAnchor.constraint(equalTo: timelineHeader.topAnchor, constant: 24),
 			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44)
 		])
 	}
