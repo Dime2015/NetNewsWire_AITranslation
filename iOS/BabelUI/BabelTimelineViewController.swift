@@ -321,6 +321,7 @@ final class BabelTimelineViewController: UIViewController {
 
 	@objc private func showSearch() {
 		let controller = UISearchController(searchResultsController: nil)
+		controller.searchBar.accessibilityIdentifier = "babel.timeline.search"
 		controller.searchResultsUpdater = self
 		controller.obscuresBackgroundDuringPresentation = false
 		controller.searchBar.placeholder = "Search Articles"
@@ -536,6 +537,7 @@ private final class BabelArticleFilterViewController: UIViewController {
 				button.accessibilityTraits.insert(.selected)
 			}
 			button.tag = index
+			button.accessibilityIdentifier = "babel.timeline.filter.\(label.lowercased())"
 			button.addTarget(self, action: #selector(selected(_:)), for: .touchUpInside)
 			button.heightAnchor.constraint(equalToConstant: 52).isActive = true
 			stack.addArrangedSubview(button)
