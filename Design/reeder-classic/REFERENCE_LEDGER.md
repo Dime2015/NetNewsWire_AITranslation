@@ -55,3 +55,11 @@
 - 空状态、加载状态、错误状态的完整浅色/深色母版。
 - 菜单弹出动画和返回转场的逐帧节奏。
 - 真机最终视觉验收（由用户完成）。
+
+## 叠图复核记录
+
+叠图使用 `Design/reeder-classic/comparisons/make_overlay.py`，输入必须是同一画布尺寸、同一外观和同一滚动状态的参考图与模拟器截图。输出的 `-overlay.png` 用于肉眼观察位置偏差，`-diff.png` 用于确认差异区域；状态栏时间、电量和文章数据不作为布局验收依据。
+
+- Home 深色：`/tmp/home-overlay-latest.png`。卡片左右边距、卡片高度、立方体中心和底部三个视觉中心已对齐到参考图量级；状态栏动态岛和同步文字属于运行时差异。
+- Feeds 深色：`Design/reeder-classic/comparisons/feeds-dark-latest-overlay.png`。当前仍有临时 `Babel/旧版` 切换控件、数据集和滚动位置差异，不能据此宣称像素级通过；下一轮应使用锁定滚动位置且隐藏测试开关的母版截图复核。
+- Reader 深色：`Design/reeder-classic/comparisons/reader-dark-latest-overlay.png`。顶部控制亮色像素带约 `y=141–202`，参考约 `y=140–196`；正文标题位置已接近，但文章内容与滚动状态仍未同态。
