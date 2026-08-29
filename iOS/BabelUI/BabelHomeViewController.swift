@@ -172,7 +172,7 @@ final class BabelHomeViewController: UIViewController {
 
         let star = makeBottomButton("star", label: "已收藏")
         let unread = makeBottomButton("circle.fill", label: "未读")
-        let all = makeBottomButton("line.3.horizontal", label: "全部")
+        let all = makeBottomButton("list.bullet", label: "全部")
         [star, unread, all].forEach { view.addSubview($0) }
         NSLayoutConstraint.activate([
             star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -76),
@@ -225,7 +225,7 @@ final class BabelHomeViewController: UIViewController {
                 title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
             ])
         } else {
-            if symbol == "line.3.horizontal" {
+            if symbol == "list.bullet" {
                 var listConfiguration = configuration
                 listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))
                 button.configuration = listConfiguration
