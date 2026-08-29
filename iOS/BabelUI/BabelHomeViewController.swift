@@ -11,6 +11,7 @@ final class BabelHomeViewController: UIViewController {
     var onSelectArticle: ((Article) -> Void)?
     var onOpenFeeds: (() -> Void)?
     var onOpenSubscribe: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
     var onOpenGenesisV2: (() -> Void)?
 
     private let countLabel = UILabel()
@@ -38,8 +39,8 @@ final class BabelHomeViewController: UIViewController {
         switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
         navigationItem.titleView = switcher
         navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "eye.slash"),
-            style: .plain, target: self, action: #selector(openGenesisV2)
+            image: UIImage(systemName: "gearshape"),
+            style: .plain, target: self, action: #selector(openSettings)
         )
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .add, target: self, action: #selector(openSubscribe)
@@ -191,6 +192,7 @@ final class BabelHomeViewController: UIViewController {
     @objc private func openSaved() { onSelectSection?(.saved) }
     @objc private func openGenesisV2() { onOpenGenesisV2?() }
     @objc private func openSubscribe() { onOpenSubscribe?() }
+    @objc private func openSettings() { onOpenSettings?() }
 
     @objc private func switchInterface(_ sender: UISegmentedControl) {
         if sender.selectedSegmentIndex == 1 { onOpenGenesisV2?() }

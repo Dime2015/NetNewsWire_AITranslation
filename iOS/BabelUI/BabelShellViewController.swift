@@ -9,6 +9,7 @@ final class BabelShellViewController: UINavigationController {
 
 	var onOpenGenesisV2: (() -> Void)?
 	var onOpenSubscribe: (() -> Void)?
+	var onOpenSettings: (() -> Void)?
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
@@ -40,6 +41,9 @@ final class BabelShellViewController: UINavigationController {
 		let homeViewController = BabelHomeViewController()
 		homeViewController.onOpenSubscribe = { [weak self] in
 			self?.onOpenSubscribe?()
+		}
+		homeViewController.onOpenSettings = { [weak self] in
+			self?.onOpenSettings?()
 		}
 		homeViewController.onSelectSection = { [weak self] section in
 			self?.pushViewController(BabelTimelineViewController(section: section), animated: true)

@@ -247,6 +247,9 @@ private extension SceneDelegate {
 		shellViewController.onOpenSubscribe = { [weak self] in
 			self?.coordinator.showAddFeed()
 		}
+		shellViewController.onOpenSettings = { [weak self] in
+			self?.coordinator.showSettings()
+		}
 		babelShellViewController = shellViewController
 		window?.rootViewController = shellViewController
 		window?.makeKeyAndVisible()
