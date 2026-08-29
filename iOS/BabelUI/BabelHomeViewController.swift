@@ -176,7 +176,7 @@ final class BabelHomeViewController: UIViewController {
         [star, unread, all].forEach { view.addSubview($0) }
         NSLayoutConstraint.activate([
             star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -76),
-            star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
             star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
             unread.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             unread.centerYAnchor.constraint(equalTo: star.centerYAnchor),
@@ -227,7 +227,9 @@ final class BabelHomeViewController: UIViewController {
         } else {
             if symbol == "list.bullet" {
                 var listConfiguration = configuration
-                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .regular))
+                // Reeder's compact list glyph is visibly smaller than the default
+                // UIButton image box on the 3x iPhone canvas.
+                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .regular))
                 button.configuration = listConfiguration
                 return button
             }
