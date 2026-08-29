@@ -349,7 +349,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         cell.isUserInteractionEnabled = true
         switch rows[indexPath.row] {
         case .unread:
-            cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
+            // Reeder renders Unread as a section-level row: no leading dot,
+            // with the same typographic hierarchy as the Folders heading.
+            cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: nil, indent: 0, isFolder: false, sectionHeader: true)
         case .sectionSpacing:
             cell.configure(title: "", count: nil, image: nil, indent: 0, isFolder: false)
             cell.isUserInteractionEnabled = false
@@ -485,7 +487,7 @@ private final class BabelFeedCell: UITableViewCell {
 	func configure(title: String, count: Int?, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, sectionHeader: Bool = false, toggleFolder: (() -> Void)? = nil) {
 		iconView.image = image
 		iconView.isHidden = sectionHeader
-		titleLabel.font = sectionHeader ? BabelTypography.title(size: 20, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
+        titleLabel.font = sectionHeader ? BabelTypography.title(size: 24, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
 		self.toggleFolder = toggleFolder
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
