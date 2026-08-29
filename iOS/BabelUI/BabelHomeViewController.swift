@@ -148,13 +148,13 @@ final class BabelHomeViewController: UIViewController {
         let all = makeBottomButton("line.3.horizontal", label: "全部")
         [star, unread, all].forEach { view.addSubview($0) }
         NSLayoutConstraint.activate([
-            star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -76),
+            star.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -110),
             star.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -38),
             star.widthAnchor.constraint(equalToConstant: 64), star.heightAnchor.constraint(equalToConstant: 56),
             unread.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             unread.centerYAnchor.constraint(equalTo: star.centerYAnchor),
-            unread.widthAnchor.constraint(equalToConstant: 180), unread.heightAnchor.constraint(equalToConstant: 56),
-            all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 76),
+            unread.widthAnchor.constraint(equalToConstant: 96), unread.heightAnchor.constraint(equalToConstant: 56),
+            all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 110),
             all.centerYAnchor.constraint(equalTo: star.centerYAnchor),
             all.widthAnchor.constraint(equalToConstant: 64), all.heightAnchor.constraint(equalToConstant: 56)
         ])
