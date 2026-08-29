@@ -140,7 +140,7 @@ final class BabelReaderViewController: UIViewController {
 		readerHeader.backgroundColor = BabelPalette.background
 		view.addSubview(readerHeader)
 		let back = UIButton(type: .custom)
-		back.setImage(UIImage(systemName: "xmark"), for: .normal)
+		back.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		back.tintColor = BabelPalette.ink
 		back.addTarget(self, action: #selector(closeReader), for: .touchUpInside)
 		back.translatesAutoresizingMaskIntoConstraints = false
@@ -152,19 +152,19 @@ final class BabelReaderViewController: UIViewController {
 		label.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(label)
 		let actions = UIButton(type: .custom)
-		actions.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+		actions.setImage(UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		actions.tintColor = BabelPalette.ink
 		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		actions.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(actions)
 		let tag = UIButton(type: .custom)
-		tag.setImage(UIImage(systemName: "tag"), for: .normal)
+		tag.setImage(UIImage(systemName: "tag", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		tag.tintColor = BabelPalette.ink
 		tag.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		tag.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(tag)
 		let share = UIButton(type: .custom)
-		share.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+		share.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		share.tintColor = BabelPalette.ink
 		share.addTarget(self, action: #selector(shareArticle), for: .touchUpInside)
 		share.translatesAutoresizingMaskIntoConstraints = false
