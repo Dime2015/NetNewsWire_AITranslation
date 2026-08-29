@@ -30,6 +30,11 @@ final class BabelShellViewController: UINavigationController {
 			.foregroundColor: BabelPalette.ink,
 			.font: BabelTypography.display(size: 36)
 		]
+		let plainButtonAppearance = UIBarButtonItemAppearance(style: .plain)
+		plainButtonAppearance.normal.backgroundImage = nil
+		plainButtonAppearance.highlighted.backgroundImage = nil
+		appearance.buttonAppearance = plainButtonAppearance
+		appearance.backButtonAppearance = plainButtonAppearance
 		navigationBar.standardAppearance = appearance
 		navigationBar.scrollEdgeAppearance = appearance
 		navigationBar.compactAppearance = appearance
