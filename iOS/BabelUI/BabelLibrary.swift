@@ -141,7 +141,11 @@ struct BabelHomeSnapshot {
 			"&rdquo;": "”", "&ldquo;": "“", "&nbsp;": " "
 		]
 		var normalized = value
-		for (entity, replacement) in entities { normalized = normalized.replacingOccurrences(of: entity, with: replacement) }
+		// Feeds occasionally double-encode entities (for example &amp;rsquo;).
+		// Two passes handle both the direct and double-encoded forms.
+		for _ in 0..<2 {
+			for (entity, replacement) in entities { normalized = normalized.replacingOccurrences(of: entity, with: replacement) }
+		}
 		guard let data = normalized.data(using: .utf8),
 			  let decoded = try? NSAttributedString(
 				data: data,
