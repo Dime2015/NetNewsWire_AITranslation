@@ -146,6 +146,7 @@ final class BabelReaderViewController: UIViewController {
 		let tag = UIButton(type: .custom)
 		tag.setImage(UIImage(systemName: "tag"), for: .normal)
 		tag.tintColor = BabelPalette.ink
+		tag.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		tag.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(tag)
 		let share = UIButton(type: .custom)
