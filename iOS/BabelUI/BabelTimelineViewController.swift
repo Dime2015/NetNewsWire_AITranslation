@@ -345,6 +345,7 @@ final class BabelTimelineViewController: UIViewController {
 				guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
 				try? await account.markArticles(articleIDs: Set(accountArticles.map(\.articleID)), statusKey: .read, flag: true)
 			}
+			reloadArticles()
 		}
 	}
 
