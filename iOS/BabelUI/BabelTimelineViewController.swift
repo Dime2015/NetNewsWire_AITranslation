@@ -298,17 +298,17 @@ final class BabelTimelineViewController: UIViewController {
 	}
 
     @objc private func showActions() {
-		let alert = UIAlertController(title: source.title, message: nil, preferredStyle: .actionSheet)
-		alert.addAction(UIAlertAction(title: "标记全部已读", style: .default) { [weak self] _ in
+		let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+		alert.addAction(UIAlertAction(title: "Mark All as Read", style: .default) { [weak self] _ in
 			self?.markAllRead()
 		})
-		alert.addAction(UIAlertAction(title: "标记全部未读", style: .default) { [weak self] _ in
+		alert.addAction(UIAlertAction(title: "Mark All as Unread", style: .default) { [weak self] _ in
 			self?.markAllUnread()
 		})
-		alert.addAction(UIAlertAction(title: "刷新", style: .default) { [weak self] _ in
+		alert.addAction(UIAlertAction(title: "Refresh", style: .default) { [weak self] _ in
 			self?.refreshFromControl()
 		})
-		alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+		alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
 		present(alert, animated: true)
     }
 
