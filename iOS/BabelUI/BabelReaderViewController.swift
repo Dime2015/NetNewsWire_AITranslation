@@ -7,7 +7,7 @@ import UIKit
 import WebKit
 import Articles
 
-final class BabelReaderViewController: UIViewController {
+final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 
 	private let article: Article
 	var nextArticle: (() -> Article?)?
@@ -20,6 +20,8 @@ final class BabelReaderViewController: UIViewController {
 	private var readerMode = false
 	private var didApplyDebugReaderMode = false
 	private var pendingScrollOffset: CGPoint?
+	private var lastScrollOffsetY: CGFloat = 0
+	private var hasEstablishedScrollBaseline = false
 	private var progressObservation: NSKeyValueObservation?
 
 	init(article: Article) {
@@ -71,6 +73,7 @@ final class BabelReaderViewController: UIViewController {
 		webView.backgroundColor = .clear
 		webView.scrollView.backgroundColor = BabelPalette.background
 		webView.allowsBackForwardNavigationGestures = false
+		webView.scrollView.delegate = self
         view.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -135,6 +138,36 @@ final class BabelReaderViewController: UIViewController {
 				self?.progressView.setProgress(Float(webView.estimatedProgress), animated: true)
 				self?.progressView.isHidden = webView.estimatedProgress >= 1
 			}
+		}
+	}
+
+	private func setChromeHidden(_ hidden: Bool, animated: Bool) {
+		let changes = {
+			self.readerHeader.alpha = hidden ? 0 : 1
+			self.bottomToolbar.alpha = hidden ? 0 : 1
+			self.progressView.alpha = hidden ? 0 : 1
+		}
+		if animated {
+			UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
+		} else {
+			changes()
+		}
+	}
+
+	func scrollViewDidScroll(_ scrollView: UIScrollView) {
+		let offsetY = scrollView.contentOffset.y
+		guard hasEstablishedScrollBaseline else {
+			lastScrollOffsetY = offsetY
+			hasEstablishedScrollBaseline = true
+			return
+		}
+		let delta = offsetY - lastScrollOffsetY
+		lastScrollOffsetY = offsetY
+		guard abs(delta) > 1 else { return }
+		if delta > 0, offsetY > -scrollView.adjustedContentInset.top + 12 {
+			setChromeHidden(true, animated: true)
+		} else if delta < 0 {
+			setChromeHidden(false, animated: true)
 		}
 	}
 
