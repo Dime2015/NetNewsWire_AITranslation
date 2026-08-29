@@ -71,7 +71,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         // layered above the table, so a small inset would hide the Unread row.
         // The table's automatic safe-area adjustment adds the status/header
         // space.  217pt places the Unread row on the same baseline as Reeder.
-        tableView.contentInset = UIEdgeInsets(top: 178, left: 0, bottom: 88, right: 0)
+        // The custom header occupies the first 150pt. Reeder leaves roughly
+        // 98pt between its subtitle rule and the Unread row on the iPhone 17
+        // canvas; the previous 178pt inset left an oversized empty band.
+        tableView.contentInset = UIEdgeInsets(top: 98, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 44
         tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
