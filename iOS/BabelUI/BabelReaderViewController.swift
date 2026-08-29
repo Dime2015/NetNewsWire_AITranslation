@@ -194,6 +194,10 @@ final class BabelReaderViewController: UIViewController {
 			.replacingOccurrences(of: "<", with: "&lt;")
 			.replacingOccurrences(of: ">", with: "&gt;")
 			.replacingOccurrences(of: "'", with: "\\'")
+		let readerDateFormatter = DateFormatter()
+		readerDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+		readerDateFormatter.dateFormat = "EEEE, MMMM d, yyyy 'AT' h:mm a"
+		let readerDate = readerDateFormatter.string(from: article.logicalDatePublished).uppercased()
 		var renderedHTML = rendering.html
 		let needsFallbackTitle = article.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
 		if needsFallbackTitle, let articleTag = renderedHTML.range(of: "<article"),
@@ -289,6 +293,7 @@ final class BabelReaderViewController: UIViewController {
 				let title = article.querySelector('.articleTitle');
 				const dateline = article.querySelector('.articleDateline, .articleDatelineTitle');
 				const body = article.querySelector('.articleBody');
+				if (dateline) dateline.textContent = '\(readerDate)';
 				if (!title && body) {
 					const fallback = document.createElement('div');
 					fallback.className = 'articleTitle';
