@@ -53,11 +53,14 @@ final class BabelHomeViewController: UIViewController {
         ])
         let libraryButton = UIButton(type: .custom)
         libraryButton.translatesAutoresizingMaskIntoConstraints = false
+        libraryButton.accessibilityLabel = "Library"
+        libraryButton.accessibilityHint = "Open your feeds and folders"
         libraryButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
         libraryButton.addSubview(ReederLibraryToggle())
         libraryButton.subviews[0].babelPinToEdges(of: libraryButton)
         topBar.addSubview(libraryButton)
         let addButton = navigationButton(image: UIImage(systemName: "plus"), action: #selector(openSubscribe))
+        addButton.accessibilityLabel = "Add Subscription"
         addButton.tintColor = BabelPalette.ink
         topBar.addSubview(addButton)
         NSLayoutConstraint.activate([
@@ -102,6 +105,8 @@ final class BabelHomeViewController: UIViewController {
         feedsButton.layer.cornerRadius = 12
         feedsButton.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
+        feedsButton.accessibilityLabel = "Feeds"
+        feedsButton.accessibilityHint = "Open the feed list"
         content.addArrangedSubview(feedsButton)
         NSLayoutConstraint.activate([
             feedsButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
