@@ -137,6 +137,22 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(subtitle)
 
+        let refresh = UIButton(type: .custom)
+        refresh.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
+        refresh.tintColor = .white
+        refresh.backgroundColor = BabelPalette.accent
+        refresh.layer.cornerRadius = 18
+        refresh.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
+        refresh.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(refresh)
+
+        let subscribe = UIButton(type: .custom)
+        subscribe.setImage(UIImage(systemName: "plus"), for: .normal)
+        subscribe.tintColor = BabelPalette.ink
+        subscribe.addTarget(self, action: #selector(showSubscribe), for: .touchUpInside)
+        subscribe.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(subscribe)
+
         NSLayoutConstraint.activate([
             customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -149,7 +165,15 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
             titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8),
             subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1)
+            subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
+            refresh.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            refresh.widthAnchor.constraint(equalToConstant: 36),
+            refresh.heightAnchor.constraint(equalToConstant: 36),
+            subscribe.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor, constant: -12),
+            subscribe.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            subscribe.widthAnchor.constraint(equalToConstant: 44),
+            subscribe.heightAnchor.constraint(equalToConstant: 44)
         ])
 
         let switcher = UISegmentedControl(items: ["Babel", "旧版"])
@@ -158,9 +182,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         switcher.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(switcher)
         NSLayoutConstraint.activate([
-            switcher.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            switcher.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor, constant: 1),
-            switcher.widthAnchor.constraint(equalToConstant: 150),
+            switcher.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 68),
+            switcher.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            switcher.widthAnchor.constraint(equalToConstant: 112),
             switcher.heightAnchor.constraint(equalToConstant: 32)
         ])
     }
