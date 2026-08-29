@@ -78,6 +78,10 @@ final class BabelTimelineViewController: UIViewController {
 		NotificationCenter.default.removeObserver(self)
 	}
 
+	@objc private func imageDidBecomeAvailable() {
+		tableView.reloadRows(at: tableView.indexPathsForVisibleRows ?? [], with: .none)
+	}
+
 	private func configureView() {
 		title = source.title
 		view.backgroundColor = BabelPalette.background
@@ -115,6 +119,7 @@ final class BabelTimelineViewController: UIViewController {
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
 		tableView.dataSource = self
 		tableView.delegate = self
+		NotificationCenter.default.addObserver(self, selector: #selector(imageDidBecomeAvailable), name: .imageDidBecomeAvailable, object: nil)
 		view.addSubview(tableView)
 		tableView.babelPinToEdges(of: view)
 
@@ -715,19 +720,16 @@ private final class BabelTimelineCell: UITableViewCell {
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
-		thumbnailView.backgroundColor = article.rawImageLink == nil ? .clear : BabelPalette.raisedBackground
-		thumbnailView.image = nil
-		representedImageURL = nil
-		if let imageLink = article.rawImageLink, let url = URL(string: imageLink) {
-			representedImageURL = url
-			Task { [weak self] in
-				guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
-				guard !Task.isCancelled else { return }
-				await MainActor.run {
-					guard self?.representedImageURL == url else { return }
-					self?.thumbnailView.contentMode = .scaleAspectFill
-					self?.thumbnailView.image = image
-				}
+		thumbnailView.image = ArticleThumbnail.shared.thumbnail(for: article)
+		let imageLink = article.rawImageLink ?? ArticleThumbnail.shared.firstImageURL(for: article)
+		thumbnailView.backgroundColor = imageLink == nil ? .clear : BabelPalette.raisedBackground
+		representedImageURL = imageLink.flatMap(URL.init(string:))
+		if let imageLink {
+			// ImageDownloader handles disk caching and emits a notification when
+			// the async fetch completes; the owning timeline reloads visible cells.
+			if let data = ImageDownloader.shared.image(for: imageLink), let image = UIImage(data: data) {
+				thumbnailView.contentMode = .scaleAspectFill
+				thumbnailView.image = image
 			}
 		}
 		unreadDot.isHidden = true
