@@ -18,7 +18,7 @@ final class BabelHomeViewController: UIViewController {
     private let countLabel = UILabel()
     private let syncStatusLabel = UILabel()
     private let statusLabel = UILabel()
-    private let feedsButton = UIControl()
+    private let feedsButton = BabelFeedCardControl()
     private let homeMutedInk = UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(white: 0.475, alpha: 1)
@@ -129,8 +129,6 @@ final class BabelHomeViewController: UIViewController {
             separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -10)
         ])
 
-        feedsButton.backgroundColor = BabelPalette.raisedBackground
-        feedsButton.layer.cornerRadius = 12
         feedsButton.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addTarget(self, action: #selector(openFeeds), for: .touchUpInside)
         feedsButton.accessibilityLabel = "Feeds"
@@ -142,7 +140,6 @@ final class BabelHomeViewController: UIViewController {
             feedsButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
             feedsButton.heightAnchor.constraint(equalToConstant: 93)
         ])
-        feedsButton.layer.cornerRadius = 10
 
         let icon = BabelHomeGlyphView(kind: .cloud)
         icon.translatesAutoresizingMaskIntoConstraints = false
@@ -391,6 +388,32 @@ private final class BabelHomeGlyphView: UIView {
             for y in stride(from: 4.0, through: 10.0, by: 3.0) { p.move(to: CGPoint(x: 8, y: y)); p.addLine(to: CGPoint(x: rect.width - 4, y: y)) }
             ink.setStroke(); p.stroke()
             ink.setFill(); for y in stride(from: 4.0, through: 10.0, by: 3.0) { UIBezierPath(ovalIn: CGRect(x: 3, y: y - 1.2, width: 2.4, height: 2.4)).fill() }
+        }
+    }
+}
+
+/// Reeder's feed tile is a flat, fixed-radius surface. Drawing it here keeps
+/// the visible corner geometry independent from UIKit's layer rasterization.
+private final class BabelFeedCardControl: UIControl {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        clipsToBounds = true
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let path = UIBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 10)
+        BabelPalette.raisedBackground.setFill()
+        path.fill()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            setNeedsDisplay()
         }
     }
 }
