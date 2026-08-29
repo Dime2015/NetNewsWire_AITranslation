@@ -30,6 +30,7 @@ final class BabelTimelineViewController: UIViewController {
 	private let navTitleLabel = UILabel()
 	private let navSubtitleLabel = UILabel()
 	private let timelineHeader = UIView()
+	private let timelineHeaderSeparator = UIView()
 	private var articles = [Article]()
 	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
@@ -250,6 +251,9 @@ final class BabelTimelineViewController: UIViewController {
 		timelineHeader.translatesAutoresizingMaskIntoConstraints = false
 		timelineHeader.backgroundColor = BabelPalette.background
 		view.addSubview(timelineHeader)
+		timelineHeaderSeparator.backgroundColor = BabelPalette.hairline
+		timelineHeaderSeparator.translatesAutoresizingMaskIntoConstraints = false
+		timelineHeader.addSubview(timelineHeaderSeparator)
 		let back = UIButton(type: .custom)
 		back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		back.tintColor = BabelPalette.ink
@@ -271,6 +275,10 @@ final class BabelTimelineViewController: UIViewController {
 			timelineHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			timelineHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
 			timelineHeader.heightAnchor.constraint(equalToConstant: 68),
+			timelineHeaderSeparator.leadingAnchor.constraint(equalTo: timelineHeader.leadingAnchor),
+			timelineHeaderSeparator.trailingAnchor.constraint(equalTo: timelineHeader.trailingAnchor),
+			timelineHeaderSeparator.bottomAnchor.constraint(equalTo: timelineHeader.bottomAnchor),
+			timelineHeaderSeparator.heightAnchor.constraint(equalToConstant: 0.5),
 			back.leadingAnchor.constraint(equalTo: timelineHeader.leadingAnchor),
 			back.centerYAnchor.constraint(equalTo: timelineHeader.topAnchor, constant: 24),
 			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
