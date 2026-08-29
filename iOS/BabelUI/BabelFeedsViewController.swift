@@ -472,12 +472,13 @@ private final class BabelFeedCell: UITableViewCell {
 		countLabel.isHidden = count == nil
         let leading: CGFloat = indent == 0 ? 18 : 40
 		NSLayoutConstraint.deactivate(contentView.constraints)
+		let titleLeading = sectionHeader ? 18 : leading + 32
 		NSLayoutConstraint.activate([
 			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 20),
             iconView.heightAnchor.constraint(equalToConstant: 20),
-			titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: titleLeading),
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
 			countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -22),
