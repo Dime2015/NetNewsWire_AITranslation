@@ -126,7 +126,7 @@ final class BabelReaderViewController: UIViewController {
 		readerHeader.backgroundColor = BabelPalette.background
 		view.addSubview(readerHeader)
 		let back = UIButton(type: .custom)
-		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+		back.setImage(UIImage(systemName: "xmark"), for: .normal)
 		back.tintColor = BabelPalette.ink
 		back.addTarget(self, action: #selector(closeReader), for: .touchUpInside)
 		back.translatesAutoresizingMaskIntoConstraints = false
@@ -143,15 +143,35 @@ final class BabelReaderViewController: UIViewController {
 		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		actions.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(actions)
+		let tag = UIButton(type: .custom)
+		tag.setImage(UIImage(systemName: "tag"), for: .normal)
+		tag.tintColor = BabelPalette.ink
+		tag.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.addSubview(tag)
+		let share = UIButton(type: .custom)
+		share.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+		share.tintColor = BabelPalette.ink
+		share.addTarget(self, action: #selector(shareArticle), for: .touchUpInside)
+		share.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.addSubview(share)
 		NSLayoutConstraint.activate([
 			readerHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor), readerHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			readerHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), readerHeader.heightAnchor.constraint(equalToConstant: 58),
 			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor, constant: 16), back.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
 			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
 			label.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), label.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
-		actions.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), actions.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
-			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44)
+			actions.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), actions.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44),
+			tag.trailingAnchor.constraint(equalTo: share.leadingAnchor, constant: -18), tag.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			tag.widthAnchor.constraint(equalToConstant: 44), tag.heightAnchor.constraint(equalToConstant: 44),
+			share.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), share.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			share.widthAnchor.constraint(equalToConstant: 44), share.heightAnchor.constraint(equalToConstant: 44)
 		])
+	}
+
+	@objc private func shareArticle() {
+		let items: [Any] = [BabelLibrary.displayTitle(for: article), article.preferredURL as Any].compactMap { $0 }
+		present(UIActivityViewController(activityItems: items, applicationActivities: nil), animated: true)
 	}
 
 	private func renderArticle() {
