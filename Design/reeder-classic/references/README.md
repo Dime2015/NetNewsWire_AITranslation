@@ -18,3 +18,7 @@
 ## 使用约定
 
 叠图时使用同尺寸模拟器截图；状态栏时间、电量和录制状态属于外部状态，不作为页面几何差异的依据。
+
+## Action sheet 视觉参考
+
+`light-action-sheet-reference.jpg`（录屏帧 0219）展示了 Reeder 在 Gestures 设置中的真实 Action sheet：浅色半透明圆角面板、顶部阴影、紧凑纵向按钮列表。它不是 Reader 文章菜单本身，但可作为同一套菜单组件的几何和材质参考。
