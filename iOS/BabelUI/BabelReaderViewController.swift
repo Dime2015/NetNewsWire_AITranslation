@@ -139,7 +139,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 			let symbol = UIImage.SymbolConfiguration(pointSize: item.2, weight: .regular)
 			if index == 4 {
 				button.setTitle("AI", for: .normal)
-				button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+				button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
 				button.setTitleColor(BabelPalette.ink, for: .normal)
 			} else {
 				button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
