@@ -727,7 +727,14 @@ private final class BabelTimelineCell: UITableViewCell {
 		feedIconView.backgroundColor = feedIconView.image == nil ? .clear : BabelPalette.raisedBackground
 		dateLabel.text = Self.timeFormatter.string(from: article.logicalDatePublished)
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
-		summaryLabel.text = BabelLibrary.summary(for: article)
+		// Reeder keeps a preview line when the feed did not provide an
+		// explicit summary. Use the stored plain text as a visual fallback.
+		let explicitSummary = BabelLibrary.summary(for: article)
+		let bodyFallback = article.contentText?
+			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let fallback = bodyFallback.flatMap { $0.isEmpty ? nil : String($0.prefix(150)) }
+		summaryLabel.text = explicitSummary ?? fallback
 		summaryLabel.isHidden = summaryLabel.text == nil
 		thumbnailView.image = ArticleThumbnail.shared.thumbnail(for: article)
 		let imageLink = article.rawImageLink ?? ArticleThumbnail.shared.firstImageURL(for: article)
