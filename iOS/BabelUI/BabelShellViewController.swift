@@ -8,6 +8,7 @@ import UIKit
 final class BabelShellViewController: UINavigationController {
 
 	var onOpenGenesisV2: (() -> Void)?
+	var onOpenSubscribe: (() -> Void)?
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
@@ -37,11 +38,17 @@ final class BabelShellViewController: UINavigationController {
 		guard viewControllers.isEmpty else { return }
 
 		let homeViewController = BabelHomeViewController()
+		homeViewController.onOpenSubscribe = { [weak self] in
+			self?.onOpenSubscribe?()
+		}
 		homeViewController.onSelectSection = { [weak self] section in
 			self?.pushViewController(BabelTimelineViewController(section: section), animated: true)
 		}
 		homeViewController.onOpenFeeds = { [weak self] in
             let feedsViewController = BabelFeedsViewController()
+            feedsViewController.onOpenSubscribe = { [weak self] in
+				self?.onOpenSubscribe?()
+			}
             feedsViewController.onOpenGenesisV2 = { [weak self] in
                 self?.onOpenGenesisV2?()
             }

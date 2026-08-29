@@ -10,6 +10,7 @@ final class BabelHomeViewController: UIViewController {
     var onSelectSection: ((BabelLibrarySection) -> Void)?
     var onSelectArticle: ((Article) -> Void)?
     var onOpenFeeds: (() -> Void)?
+    var onOpenSubscribe: (() -> Void)?
     var onOpenGenesisV2: (() -> Void)?
 
     private let countLabel = UILabel()
@@ -41,7 +42,7 @@ final class BabelHomeViewController: UIViewController {
             style: .plain, target: self, action: #selector(openGenesisV2)
         )
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .add, target: self, action: #selector(openGenesisV2)
+            barButtonSystemItem: .add, target: self, action: #selector(openSubscribe)
         )
 
         let scroll = UIScrollView()
@@ -189,6 +190,7 @@ final class BabelHomeViewController: UIViewController {
     @objc private func openUnread() { onSelectSection?(.unread) }
     @objc private func openSaved() { onSelectSection?(.saved) }
     @objc private func openGenesisV2() { onOpenGenesisV2?() }
+    @objc private func openSubscribe() { onOpenSubscribe?() }
 
     @objc private func switchInterface(_ sender: UISegmentedControl) {
         if sender.selectedSegmentIndex == 1 { onOpenGenesisV2?() }

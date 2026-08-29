@@ -21,6 +21,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onSelectFeed: ((Feed) -> Void)?
     var onSelectFolder: ((Folder) -> Void)?
     var onOpenGenesisV2: (() -> Void)?
+    var onOpenSubscribe: (() -> Void)?
     private var rows = [Row]()
     private var collapsedFolders = Set<String>()
     private let emptyLabel = UILabel()
@@ -145,9 +146,7 @@ final class BabelFeedsViewController: UITableViewController {
     }
 
     @objc private func showSubscribe() {
-        let alert = UIAlertController(title: "Subscribe", message: "订阅发现功能仍由创世版本 2 处理。", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "知道了", style: .default))
-        present(alert, animated: true)
+        onOpenSubscribe?()
     }
 
     @objc private func switchInterface(_ sender: UISegmentedControl) {
