@@ -63,3 +63,4 @@
 - Home 深色：`/tmp/home-overlay-latest.png`。卡片左右边距、卡片高度、立方体中心和底部三个视觉中心已对齐到参考图量级；状态栏动态岛和同步文字属于运行时差异。
 - Feeds 深色：`Design/reeder-classic/comparisons/feeds-dark-latest-overlay.png`。当前仍有临时 `Babel/旧版` 切换控件、数据集和滚动位置差异，不能据此宣称像素级通过；下一轮应使用锁定滚动位置且隐藏测试开关的母版截图复核。
 - Reader 深色：`Design/reeder-classic/comparisons/reader-dark-latest-overlay.png`。顶部控制亮色像素带约 `y=141–202`，参考约 `y=140–196`；正文标题位置已接近，但文章内容与滚动状态仍未同态。
+- Feed Issues 深色紧凑状态：`/tmp/babel-feed-issues-180-current2.png`。180pt 面板可同时显示关闭按钮、标题和 `No feed issues`；120pt 状态会裁掉消息文字，因此不再作为验收基准。
