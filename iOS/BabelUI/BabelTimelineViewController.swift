@@ -639,7 +639,7 @@ private final class BabelTimelineCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			unreadDot.widthAnchor.constraint(equalToConstant: 6),
 			unreadDot.heightAnchor.constraint(equalToConstant: 6),
-            stack.leadingAnchor.constraint(equalTo: feedIconView.trailingAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: feedIconView.trailingAnchor, constant: 8),
 			stack.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -12),
