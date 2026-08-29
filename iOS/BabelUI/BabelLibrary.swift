@@ -93,10 +93,10 @@ struct BabelHomeSnapshot {
 
 	static func displayTitle(for article: Article) -> String {
 		if let translated = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article), !translated.isEmpty {
-			return translated
+			return decodeHTMLText(translated)
 		}
 		if let title = article.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
-			return title
+			return decodeHTMLText(title)
 		}
 		// Some feeds omit the title; Reeder still shows a useful readable line.
 		if let summary = summary(for: article),
@@ -130,6 +130,18 @@ struct BabelHomeSnapshot {
 		let collapsed = candidate
 			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 			.trimmingCharacters(in: .whitespacesAndNewlines)
-		return collapsed.isEmpty ? nil : collapsed
+		guard !collapsed.isEmpty else { return nil }
+		return decodeHTMLText(collapsed)
+	}
+
+	private static func decodeHTMLText(_ value: String) -> String {
+		guard let data = value.data(using: .utf8),
+			  let decoded = try? NSAttributedString(
+				data: data,
+				options: [.documentType: NSAttributedString.DocumentType.html,
+						  .characterEncoding: String.Encoding.utf8.rawValue],
+				 documentAttributes: nil
+			  ).string else { return value }
+		return decoded.trimmingCharacters(in: .whitespacesAndNewlines)
 	}
 }
