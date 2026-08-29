@@ -137,7 +137,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: -1, y: 3).scaledBy(x: 1.1, y: 1.1)
+        icon.transform = CGAffineTransform(translationX: 3, y: 3).scaledBy(x: 1.1, y: 1.1)
 
         let title = UILabel()
         title.text = "Feeds"
@@ -153,11 +153,12 @@ final class BabelHomeViewController: UIViewController {
         labels.axis = .vertical
         labels.spacing = 1
         labels.alignment = .leading
+        labels.transform = CGAffineTransform(translationX: 0, y: 1.5)
 
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
         row.alignment = .center
-        row.spacing = 4
+        row.spacing = -2
         row.isUserInteractionEnabled = false
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
@@ -424,7 +425,7 @@ private final class BabelCubeView: UIView {
 		cubeLayer.path = path.cgPath
 		cubeLayer.fillRule = .evenOdd
 		cubeLayer.fillColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 0.84, alpha: 1) : UIColor(white: 0.45, alpha: 1)
 		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
@@ -436,7 +437,7 @@ private final class BabelCubeView: UIView {
 		rightFace.close()
 		rightFaceLayer.path = rightFace.cgPath
         rightFaceLayer.fillColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 0.84, alpha: 1) : UIColor(white: 0.45, alpha: 1)
         }.cgColor
 		rightFaceLayer.strokeColor = BabelPalette.background.cgColor
 		rightFaceLayer.lineWidth = 2
