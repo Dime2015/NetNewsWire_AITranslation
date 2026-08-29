@@ -62,7 +62,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         let subscribeButton = UIBarButtonItem(customView: subscribeControl)
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
-        tableView.separatorColor = BabelPalette.hairline
+        tableView.separatorStyle = .none
         tableView.contentInset = UIEdgeInsets(top: 100, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 52
         tableView.estimatedRowHeight = 52
