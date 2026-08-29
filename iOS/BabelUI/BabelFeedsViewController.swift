@@ -134,7 +134,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 32, weight: .bold)
+        // Reeder's title is a compact navigation title, not a large page
+        // heading. Keep the weight restrained so the 3x simulator glyph box
+        // matches the reference capture.
+        titleLabel.font = .systemFont(ofSize: 20, weight: .regular)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
