@@ -14,6 +14,7 @@ final class BabelReaderViewController: UIViewController {
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
 	private let bottomToolbar = UIStackView()
+	private let readerHeader = UIView()
 	private weak var readButton: UIButton?
 	private weak var starButton: UIButton?
 	private var readerMode = false
@@ -37,6 +38,16 @@ final class BabelReaderViewController: UIViewController {
 
 	deinit { NotificationCenter.default.removeObserver(self) }
 
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		navigationController?.setNavigationBarHidden(true, animated: animated)
+	}
+
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		navigationController?.setNavigationBarHidden(false, animated: animated)
+	}
+
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		if !article.status.read { updateStatus(.read, flag: true) }
@@ -46,14 +57,7 @@ final class BabelReaderViewController: UIViewController {
 		view.backgroundColor = BabelPalette.background
 		title = article.feed?.nameForDisplay
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "chevron.left"), style: .plain,
-            target: self, action: #selector(closeReader)
-        )
-		navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "ellipsis"), style: .plain,
-            target: self, action: #selector(showActions)
-        )
+		configureReaderHeader()
 		bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(bottomToolbar)
 
@@ -71,12 +75,12 @@ final class BabelReaderViewController: UIViewController {
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
+			webView.topAnchor.constraint(equalTo: readerHeader.bottomAnchor),
             webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
             progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
-        ])
+		])
 
         bottomToolbar.axis = .horizontal
         bottomToolbar.distribution = .equalCentering
@@ -115,6 +119,39 @@ final class BabelReaderViewController: UIViewController {
 				self?.progressView.isHidden = webView.estimatedProgress >= 1
 			}
 		}
+	}
+
+	private func configureReaderHeader() {
+		readerHeader.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.backgroundColor = BabelPalette.background
+		view.addSubview(readerHeader)
+		let back = UIButton(type: .custom)
+		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+		back.tintColor = BabelPalette.ink
+		back.addTarget(self, action: #selector(closeReader), for: .touchUpInside)
+		back.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.addSubview(back)
+		let label = UILabel()
+		label.text = article.feed?.nameForDisplay
+		label.font = .systemFont(ofSize: 18, weight: .semibold)
+		label.textColor = BabelPalette.ink
+		label.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.addSubview(label)
+		let actions = UIButton(type: .custom)
+		actions.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+		actions.tintColor = BabelPalette.ink
+		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
+		actions.translatesAutoresizingMaskIntoConstraints = false
+		readerHeader.addSubview(actions)
+		NSLayoutConstraint.activate([
+			readerHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor), readerHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			readerHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), readerHeader.heightAnchor.constraint(equalToConstant: 58),
+			back.leadingAnchor.constraint(equalTo: readerHeader.leadingAnchor, constant: 16), back.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
+			label.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), label.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+		actions.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), actions.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
+			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44)
+		])
 	}
 
 	private func renderArticle() {
