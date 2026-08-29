@@ -7,6 +7,7 @@
 
 import UIKit
 import Account
+import Images
 
 final class BabelFeedsViewController: UITableViewController {
 
@@ -166,7 +167,8 @@ final class BabelFeedsViewController: UITableViewController {
             let expanded = !collapsedFolders.contains(folderKey(folder))
             cell.configure(title: folder.nameForDisplay, count: folder.unreadCount, image: UIImage(systemName: expanded ? "chevron.down" : "chevron.right"), indent: 0, isFolder: true)
         case .feed(let feed):
-            cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: UIImage(systemName: "square.fill"), indent: 1, isFolder: false)
+            let icon = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image ?? UIImage(systemName: "square.fill")
+            cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: icon, indent: 1, isFolder: false)
         }
         return cell
     }
