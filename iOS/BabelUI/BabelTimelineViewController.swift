@@ -407,6 +407,7 @@ private final class BabelTimelineCell: UITableViewCell {
 	private let titleLabel = UILabel()
 	private let summaryLabel = UILabel()
 	private let thumbnailView = UIImageView()
+	private let feedIconView = UIImageView()
 	private let separator = UIView()
 	private var representedImageURL: URL?
 
@@ -446,6 +447,11 @@ private final class BabelTimelineCell: UITableViewCell {
 		thumbnailView.backgroundColor = BabelPalette.raisedBackground
 		thumbnailView.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(thumbnailView)
+		feedIconView.contentMode = .scaleAspectFit
+		feedIconView.layer.cornerRadius = 5
+		feedIconView.clipsToBounds = true
+		feedIconView.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(feedIconView)
 
 		let metaRow = UIStackView(arrangedSubviews: [unreadDot, feedLabel, UIView(), dateLabel])
 		metaRow.alignment = .center
@@ -464,15 +470,19 @@ private final class BabelTimelineCell: UITableViewCell {
 		NSLayoutConstraint.activate([
 			unreadDot.widthAnchor.constraint(equalToConstant: 6),
 			unreadDot.heightAnchor.constraint(equalToConstant: 6),
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: feedIconView.trailingAnchor, constant: 12),
 			stack.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor, constant: -12),
             separator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			separator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
-			,thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+			feedIconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+			feedIconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			feedIconView.widthAnchor.constraint(equalToConstant: 52),
+			feedIconView.heightAnchor.constraint(equalToConstant: 52),
+			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			thumbnailView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			thumbnailView.widthAnchor.constraint(equalToConstant: 88),
 			thumbnailView.heightAnchor.constraint(equalToConstant: 88)
@@ -485,6 +495,7 @@ private final class BabelTimelineCell: UITableViewCell {
 
 	func configure(article: Article) {
 		feedLabel.text = (article.feed?.nameForDisplay ?? "订阅文章").uppercased()
+		feedIconView.image = article.feed.flatMap { FaviconDownloader.shared.faviconAsIcon(for: $0)?.image }
 		dateLabel.text = Self.timeFormatter.string(from: article.logicalDatePublished)
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
@@ -504,7 +515,7 @@ private final class BabelTimelineCell: UITableViewCell {
 				}
 			}
 		}
-		unreadDot.isHidden = article.status.read
+		unreadDot.isHidden = true
 		accessibilityLabel = "\(feedLabel.text ?? "")，\(titleLabel.text ?? "")，\(dateLabel.text ?? "")"
 	}
 
