@@ -227,8 +227,7 @@ final class BabelHomeViewController: UIViewController {
         } else {
             if symbol == "line.3.horizontal" {
                 var listConfiguration = configuration
-                listConfiguration.image = UIImage(systemName: "list.bullet")
-                listConfiguration.preferredSymbolSize = .small
+                listConfiguration.image = UIImage(systemName: "list.bullet", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))
                 button.configuration = listConfiguration
                 return button
             }
