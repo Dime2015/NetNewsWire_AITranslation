@@ -307,6 +307,8 @@ final class BabelTimelineViewController: UIViewController {
 			self.articleFilter = [.all, .unread, .starred][index]
 			self.rebuildSections(from: self.articles)
 			self.tableView.reloadData()
+			self.tableView.layoutIfNeeded()
+			self.tableView.setContentOffset(CGPoint(x: 0, y: -self.tableView.adjustedContentInset.top), animated: false)
 			self.emptyLabel.isHidden = !self.daySections.isEmpty
 		}
 		if let sheet = controller.sheetPresentationController {
