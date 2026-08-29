@@ -74,12 +74,14 @@ final class BabelShellViewController: UINavigationController {
 
 	func openTimelineForDebug() {
 		guard viewControllers.count == 1 else { return }
-		pushViewController(BabelTimelineViewController(section: .unread), animated: false)
+		pushViewController(BabelTimelineViewController(section: .today), animated: false)
 	}
 
 	func openReaderForDebug() {
 		guard viewControllers.count == 1 else { return }
-		let timeline = BabelTimelineViewController(section: .unread)
+		// Unread can legitimately be empty after a reader test marks an item read.
+		// Use Today for the debug reader route so a current article remains available.
+		let timeline = BabelTimelineViewController(section: .today)
 		pushViewController(timeline, animated: false)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { timeline.openFirstArticleForDebug() }
 	}
