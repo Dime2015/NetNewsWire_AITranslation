@@ -249,6 +249,10 @@ final class BabelReaderViewController: UIViewController {
 			.headerContainer .avatar { display: none !important; }
 			.headerContainer .headerTable { width: 100%; }
 			.headerContainer .leftAlign { text-align: left; }
+			.headerContainer, .headerContainer * {
+				font-weight: 400 !important;
+				text-transform: uppercase;
+			}
 			.articleDateline, .articleDatelineTitle { margin: 0 0 10px !important; }
 			.articleTitle h1 { margin: 0 0 16px !important; }
 			.externalLink { margin: 0 0 28px !important; }
