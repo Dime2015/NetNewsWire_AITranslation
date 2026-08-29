@@ -365,7 +365,7 @@ private final class BabelCubeView: UIView {
 		cubeLayer.path = path.cgPath
 		cubeLayer.fillRule = .evenOdd
 		cubeLayer.fillColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.56, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.45, alpha: 1)
 		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
@@ -376,7 +376,9 @@ private final class BabelCubeView: UIView {
 		rightFace.addLine(to: bottom)
 		rightFace.close()
 		rightFaceLayer.path = rightFace.cgPath
-        rightFaceLayer.fillColor = UIColor(white: 1.0, alpha: 1).cgColor
+        rightFaceLayer.fillColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+        }.cgColor
 		rightFaceLayer.strokeColor = BabelPalette.background.cgColor
 		rightFaceLayer.lineWidth = 2
 
