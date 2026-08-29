@@ -189,7 +189,7 @@ final class BabelHomeViewController: UIViewController {
             // Reeder's unread pill is shallower than the 36pt hit target used by
             // the surrounding buttons. Keep the hit area centered while matching
             // the visible 28pt capsule height.
-            unread.widthAnchor.constraint(equalToConstant: 70), unread.heightAnchor.constraint(equalToConstant: 28),
+            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 26),
             all.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 76),
             all.centerYAnchor.constraint(equalTo: star.centerYAnchor),
             all.widthAnchor.constraint(equalToConstant: 44), all.heightAnchor.constraint(equalToConstant: 36)
@@ -248,7 +248,7 @@ final class BabelHomeViewController: UIViewController {
                 return button
             }
             var starConfiguration = configuration
-            starConfiguration.image = UIImage(systemName: "star.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .regular))
+            starConfiguration.image = UIImage(systemName: "star.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .regular))
             button.configuration = starConfiguration
         }
         return button
