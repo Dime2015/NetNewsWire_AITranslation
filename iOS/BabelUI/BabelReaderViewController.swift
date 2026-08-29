@@ -199,6 +199,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		let back = UIButton(type: .custom)
 		back.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		back.tintColor = BabelPalette.ink
+		back.accessibilityLabel = "关闭文章"
 		back.addTarget(self, action: #selector(closeReader), for: .touchUpInside)
 		back.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(back)
@@ -211,18 +212,21 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		let actions = UIButton(type: .custom)
 		actions.setImage(UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		actions.tintColor = BabelPalette.ink
+		actions.accessibilityLabel = "文章操作"
 		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		actions.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(actions)
 		let tag = UIButton(type: .custom)
 		tag.setImage(UIImage(systemName: "tag", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		tag.tintColor = BabelPalette.ink
+		tag.accessibilityLabel = "文章标签"
 		tag.addTarget(self, action: #selector(showActions), for: .touchUpInside)
 		tag.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(tag)
 		let share = UIButton(type: .custom)
 		share.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
 		share.tintColor = BabelPalette.ink
+		share.accessibilityLabel = "分享文章"
 		share.addTarget(self, action: #selector(shareArticle), for: .touchUpInside)
 		share.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(share)
