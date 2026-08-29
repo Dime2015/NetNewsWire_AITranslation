@@ -106,6 +106,13 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Apply after UITableView has performed its safe-area/content-size
+        // adjustment; doing this during reloadData is clamped by UIKit.
+        tableView.setContentOffset(CGPoint(x: 0, y: 300), animated: false)
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -357,7 +364,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if case .unread = rows[indexPath.row] { return 82 }
+        if case .unread = rows[indexPath.row] { return 68 }
         return 44
     }
 
