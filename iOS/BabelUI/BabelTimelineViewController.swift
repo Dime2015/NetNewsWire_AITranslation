@@ -302,7 +302,10 @@ final class BabelTimelineViewController: UIViewController {
 	}
 
 	@objc private func showFilterMenu() {
-		let controller = BabelArticleFilterViewController { [weak self] index in
+		let selectedIndex: Int = {
+			switch articleFilter { case .all: 0; case .unread: 1; case .starred: 2 }
+		}()
+		let controller = BabelArticleFilterViewController(selectedIndex: selectedIndex) { [weak self] index in
 			guard let self else { return }
 			self.articleFilter = [.all, .unread, .starred][index]
 			self.rebuildSections(from: self.articles)
@@ -456,7 +459,12 @@ final class BabelTimelineViewController: UIViewController {
 
 private final class BabelArticleFilterViewController: UIViewController {
 	private let onSelect: (Int) -> Void
-	init(onSelect: @escaping (Int) -> Void) { self.onSelect = onSelect; super.init(nibName: nil, bundle: nil) }
+	private let selectedIndex: Int
+	init(selectedIndex: Int, onSelect: @escaping (Int) -> Void) {
+		self.selectedIndex = selectedIndex
+		self.onSelect = onSelect
+		super.init(nibName: nil, bundle: nil)
+	}
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
 	override func viewDidLoad() {
@@ -488,6 +496,10 @@ private final class BabelArticleFilterViewController: UIViewController {
 			let button = UIButton(configuration: buttonConfiguration)
 			button.contentHorizontalAlignment = .left
 			button.titleLabel?.font = BabelTypography.title(size: 17, weight: .regular)
+			if index == selectedIndex {
+				button.setImage(UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)), for: .normal)
+				button.tintColor = BabelPalette.accent
+			}
 			button.tag = index
 			button.addTarget(self, action: #selector(selected(_:)), for: .touchUpInside)
 			button.heightAnchor.constraint(equalToConstant: 52).isActive = true
