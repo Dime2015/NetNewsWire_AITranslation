@@ -284,7 +284,7 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             glyph.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             glyph.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                glyph.widthAnchor.constraint(equalToConstant: 22), glyph.heightAnchor.constraint(equalToConstant: 22)
+                glyph.widthAnchor.constraint(equalToConstant: 20), glyph.heightAnchor.constraint(equalToConstant: 20)
         ])
         return button
     }
@@ -386,14 +386,14 @@ private final class ReederLibraryToggle: UIView {
 
     override func draw(_ rect: CGRect) {
         let color = BabelPalette.ink
-        let outer = UIBezierPath(roundedRect: CGRect(x: 13, y: 14, width: 18, height: 12), cornerRadius: 6)
-        color.setStroke(); outer.lineWidth = 3; outer.stroke()
+        let outer = UIBezierPath(roundedRect: CGRect(x: 13.5, y: 14.5, width: 17, height: 11), cornerRadius: 5.5)
+        color.setStroke(); outer.lineWidth = 2.8; outer.stroke()
         // Reeder's control keeps a dark inset ring between the track and the
         // light thumb; drawing the ring separately avoids merging the thumb
         // into the outer stroke at 3x display scale.
-        let knobRing = UIBezierPath(ovalIn: CGRect(x: 21, y: 15, width: 8, height: 10))
+        let knobRing = UIBezierPath(ovalIn: CGRect(x: 21.2, y: 15.2, width: 7.5, height: 9.5))
         BabelPalette.background.setFill(); knobRing.fill()
-        let knob = UIBezierPath(ovalIn: CGRect(x: 23, y: 17, width: 5, height: 6))
+        let knob = UIBezierPath(ovalIn: CGRect(x: 23, y: 17, width: 4.8, height: 5.8))
         color.setFill(); knob.fill()
     }
 }
@@ -431,7 +431,7 @@ private final class BabelCubeView: UIView {
 		cubeLayer.path = path.cgPath
 		cubeLayer.fillRule = .evenOdd
 		cubeLayer.fillColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 0.84, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 0.843, alpha: 1) : UIColor(white: 0.443, alpha: 1)
 		}.cgColor
 		cubeLayer.strokeColor = BabelPalette.background.cgColor
 		cubeLayer.lineWidth = 2
@@ -443,7 +443,7 @@ private final class BabelCubeView: UIView {
 		rightFace.close()
 		rightFaceLayer.path = rightFace.cgPath
         rightFaceLayer.fillColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 0.84, alpha: 1) : UIColor(white: 0.45, alpha: 1)
+            traits.userInterfaceStyle == .dark ? UIColor(white: 0.843, alpha: 1) : UIColor(white: 0.443, alpha: 1)
         }.cgColor
 		rightFaceLayer.strokeColor = BabelPalette.background.cgColor
 		rightFaceLayer.lineWidth = 2
