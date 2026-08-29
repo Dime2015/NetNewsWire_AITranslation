@@ -236,6 +236,12 @@ final class BabelReaderViewController: UIViewController {
 		</head>
 		<body>
 			\(rendering.html)
+			<script>
+			// Reeder does not reserve a blank frame when a remote thumbnail fails.
+			document.querySelectorAll('img').forEach(function (image) {
+				image.addEventListener('error', function () { image.style.display = 'none'; });
+			});
+			</script>
 		</body>
 		</html>
 		"""
