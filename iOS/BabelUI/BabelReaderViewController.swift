@@ -190,7 +190,8 @@ final class BabelReaderViewController: UIViewController {
 			.replacingOccurrences(of: ">", with: "&gt;")
 			.replacingOccurrences(of: "'", with: "\\'")
 		var renderedHTML = rendering.html
-		if !renderedHTML.contains("articleTitle"), let articleTag = renderedHTML.range(of: "<article"),
+		let needsFallbackTitle = article.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+		if needsFallbackTitle, let articleTag = renderedHTML.range(of: "<article"),
 		   let articleEnd = renderedHTML.range(of: ">", range: articleTag.upperBound..<renderedHTML.endIndex) {
 			let titleHTML = "<div class=\"articleTitle\"><h1>\(fallbackTitle)</h1></div>"
 			renderedHTML.insert(contentsOf: titleHTML, at: renderedHTML.index(after: articleEnd.lowerBound))
