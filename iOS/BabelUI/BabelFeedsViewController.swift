@@ -14,6 +14,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     private enum Row {
         case unread
+        case sectionSpacing
         case foldersHeader
         case folder(Folder)
         case feed(Feed)
@@ -289,7 +290,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     private func rebuildRows() {
-        rows = [.unread]
+        rows = [.unread, .sectionSpacing]
         rows.append(.foldersHeader)
         for account in AccountManager.shared.sortedActiveAccounts {
             for folder in (account.folders ?? []).sorted(by: { $0.nameForDisplay < $1.nameForDisplay }) {
@@ -346,6 +347,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         switch rows[indexPath.row] {
         case .unread:
             cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
+        case .sectionSpacing:
+            cell.configure(title: "", count: nil, image: nil, indent: 0, isFolder: false)
+            cell.isUserInteractionEnabled = false
         case .foldersHeader:
             cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: false, sectionHeader: true)
         case .folder(let folder):
@@ -364,7 +368,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if case .unread = rows[indexPath.row] { return 68 }
+        if case .sectionSpacing = rows[indexPath.row] { return 14 }
         return 44
     }
 
@@ -372,6 +376,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
         case .unread: onSelectUnread?()
+        case .sectionSpacing: break
         case .foldersHeader: break
         case .folder(let folder):
             onSelectFolder?(folder)
