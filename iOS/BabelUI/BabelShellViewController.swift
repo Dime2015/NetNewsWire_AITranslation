@@ -104,6 +104,13 @@ final class BabelShellViewController: UINavigationController {
 		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { timeline.openFirstArticleForDebug() }
 	}
 
+	func openReaderMenuForDebug() {
+		openReaderForDebug()
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+			(self?.topViewController as? BabelReaderViewController)?.presentActionsForDebug()
+		}
+	}
+
 	private func makeFeedsViewController() -> BabelFeedsViewController {
 		let feedsViewController = BabelFeedsViewController()
 		feedsViewController.onOpenSubscribe = { [weak self] in self?.onOpenSubscribe?() }

@@ -453,7 +453,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
         navigationController?.popViewController(animated: true)
     }
 
-    @objc private func showActions() {
+	@objc private func showActions() {
 		let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
 		alert.addAction(UIAlertAction(title: article.status.read ? "Mark as Unread" : "Mark as Read", style: .default) { [weak self] _ in
 			self?.updateStatus(.read, flag: !(self?.article.status.read ?? false))
@@ -488,6 +488,12 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		article.status.setBoolStatus(flag, forKey: key)
 		guard let account = article.account else { return }
 		Task { try? await account.markArticles(articleIDs: [article.articleID], statusKey: key, flag: flag) }
+	}
+
+	/// Simulator-only hook used by the visual comparison workflow.
+	func presentActionsForDebug() {
+		guard presentedViewController == nil else { return }
+		showActions()
 	}
 
 	private func updateToolbarState() {
