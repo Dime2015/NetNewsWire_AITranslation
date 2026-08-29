@@ -21,12 +21,12 @@ enum BabelPalette {
     static let ink = UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 216.0 / 255.0, green: 216.0 / 255.0, blue: 216.0 / 255.0, alpha: 1)
-            : UIColor(red: 66.0 / 255.0, green: 63.0 / 255.0, blue: 64.0 / 255.0, alpha: 1)
+            : UIColor(red: 58.0 / 255.0, green: 58.0 / 255.0, blue: 58.0 / 255.0, alpha: 1)
     }
     static let mutedInk = UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 108.0 / 255.0, green: 108.0 / 255.0, blue: 108.0 / 255.0, alpha: 1)
-            : UIColor(red: 136.0 / 255.0, green: 136.0 / 255.0, blue: 134.0 / 255.0, alpha: 1)
+            : UIColor(red: 120.0 / 255.0, green: 120.0 / 255.0, blue: 120.0 / 255.0, alpha: 1)
     }
     static let hairline = UIColor { traits in
         traits.userInterfaceStyle == .dark
