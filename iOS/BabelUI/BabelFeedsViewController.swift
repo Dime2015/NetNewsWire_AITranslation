@@ -187,7 +187,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.alignment = .center
-        stack.distribution = .equalCentering
+        stack.distribution = .equalSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(stack)
         interfaceSwitcher.translatesAutoresizingMaskIntoConstraints = false
@@ -195,16 +195,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let star = toolbarButton(image: UIImage(systemName: "star.fill"))
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
-        let unread = UIButton(type: .system)
-        var unreadConfiguration = UIButton.Configuration.plain()
-        unreadConfiguration.image = UIImage(systemName: "circle.fill")
-        unreadConfiguration.title = "UNREAD"
-        unreadConfiguration.imagePadding = 8
-        unreadConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 18)
-        unread.configuration = unreadConfiguration
-        unread.titleLabel?.font = BabelTypography.title(size: 14, weight: .semibold)
-        unread.tintColor = BabelPalette.ink
-        unread.setTitleColor(BabelPalette.ink, for: .normal)
+        let unread = makeUnreadToolbarButton()
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         unread.backgroundColor = BabelPalette.raisedBackground
         unread.layer.cornerRadius = 22
@@ -222,16 +213,53 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             interfaceSwitcher.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
             interfaceSwitcher.widthAnchor.constraint(equalToConstant: 88),
             interfaceSwitcher.heightAnchor.constraint(equalToConstant: 28),
-            stack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 116),
-            stack.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -52),
+            stack.centerXAnchor.constraint(equalTo: bottomBar.centerXAnchor),
+            stack.widthAnchor.constraint(equalToConstant: 244),
+            stack.heightAnchor.constraint(equalToConstant: 36),
             stack.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor, constant: -2)
         ])
+
+        NSLayoutConstraint.activate([
+            star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
+            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 36),
+            list.widthAnchor.constraint(equalToConstant: 44), list.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    private func makeUnreadToolbarButton() -> UIButton {
+        var configuration = UIButton.Configuration.plain()
+        configuration.baseForegroundColor = BabelPalette.ink
+        configuration.background.backgroundColor = BabelPalette.raisedBackground
+        configuration.background.cornerRadius = 18
+        let button = UIButton(configuration: configuration)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = "未读"
+        let dot = UIView()
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.backgroundColor = BabelPalette.ink
+        dot.layer.cornerRadius = 6
+        button.addSubview(dot)
+        let title = UILabel()
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.text = "UNREAD"
+        title.textColor = BabelPalette.ink
+        title.font = UIFont.systemFont(ofSize: 9, weight: .semibold)
+        button.addSubview(title)
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 8),
+            dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 12), dot.heightAnchor.constraint(equalToConstant: 12),
+            title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 4),
+            title.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -3),
+            title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+        ])
+        return button
     }
 
     private func toolbarButton(image: UIImage?) -> UIButton {
         let button = UIButton(type: .system)
         if let image {
-            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)), for: .normal)
+            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
         }
         button.tintColor = BabelPalette.ink
         button.frame.size = CGSize(width: 44, height: 44)
