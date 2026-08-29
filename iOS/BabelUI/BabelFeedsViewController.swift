@@ -32,6 +32,10 @@ final class BabelFeedsViewController: UITableViewController {
         super.viewDidLoad()
         title = "Feeds"
         navigationItem.largeTitleDisplayMode = .never
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+        timeFormatter.dateFormat = "h:mm"
+        navigationItem.prompt = "Today at \(timeFormatter.string(from: Date()))"
         let switcher = UISegmentedControl(items: ["Babel", "旧版"])
         switcher.selectedSegmentIndex = 0
         switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
