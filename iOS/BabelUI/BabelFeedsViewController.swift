@@ -13,6 +13,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     private enum Row {
         case unread
+        case foldersHeader
         case folder(Folder)
         case feed(Feed)
     }
@@ -277,6 +278,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     private func rebuildRows() {
         rows = [.unread]
+        rows.append(.foldersHeader)
         for account in AccountManager.shared.sortedActiveAccounts {
             for folder in (account.folders ?? []).sorted(by: { $0.nameForDisplay < $1.nameForDisplay }) {
                 rows.append(.folder(folder))
@@ -316,6 +318,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         switch rows[indexPath.row] {
         case .unread:
             cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
+        case .foldersHeader:
+            cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: false, sectionHeader: true)
         case .folder(let folder):
             let expanded = !collapsedFolders.contains(folderKey(folder))
             let key = folderKey(folder)
@@ -335,6 +339,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
         case .unread: onSelectUnread?()
+        case .foldersHeader: break
         case .folder(let folder):
             onSelectFolder?(folder)
         case .feed(let feed): onSelectFeed?(feed)
@@ -380,8 +385,10 @@ private final class BabelFeedCell: UITableViewCell {
 	}
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-	func configure(title: String, count: Int, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, toggleFolder: (() -> Void)? = nil) {
+	func configure(title: String, count: Int?, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, sectionHeader: Bool = false, toggleFolder: (() -> Void)? = nil) {
 		iconView.image = image
+		iconView.isHidden = sectionHeader
+		titleLabel.font = sectionHeader ? BabelTypography.title(size: 18, weight: .semibold) : BabelTypography.title(size: 16, weight: .regular)
 		self.toggleFolder = toggleFolder
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
@@ -390,7 +397,8 @@ private final class BabelFeedCell: UITableViewCell {
 			accessoryView = nil
 		}
 		titleLabel.text = title
-		countLabel.text = count.formatted()
+		countLabel.text = count?.formatted()
+		countLabel.isHidden = count == nil
         let leading: CGFloat = indent == 0 ? 18 : 40
 		NSLayoutConstraint.deactivate(contentView.constraints)
 		NSLayoutConstraint.activate([
