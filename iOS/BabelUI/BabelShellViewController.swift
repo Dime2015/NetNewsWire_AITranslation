@@ -111,6 +111,15 @@ final class BabelShellViewController: UINavigationController {
 		}
 	}
 
+	func openTimelineFilterForDebug() {
+		guard viewControllers.count == 1 else { return }
+		let timeline = BabelTimelineViewController(section: .today)
+		pushViewController(timeline, animated: false)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+			timeline.presentFilterForDebug()
+		}
+	}
+
 	private func makeFeedsViewController() -> BabelFeedsViewController {
 		let feedsViewController = BabelFeedsViewController()
 		feedsViewController.onOpenSubscribe = { [weak self] in self?.onOpenSubscribe?() }

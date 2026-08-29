@@ -433,6 +433,12 @@ final class BabelTimelineViewController: UIViewController {
 		}
 	}
 
+	/// Opens the same filter sheet used by the toolbar, for deterministic
+	/// simulator screenshot and accessibility checks.
+	func presentFilterForDebug() {
+		showFilterMenu()
+	}
+
 	private func rebuildSections(from articles: [Article]) {
 		let filtered: [Article]
 		if searchQuery.isEmpty {
