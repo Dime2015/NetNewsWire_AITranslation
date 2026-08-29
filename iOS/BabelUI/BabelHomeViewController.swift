@@ -42,9 +42,9 @@ final class BabelHomeViewController: UIViewController {
         topBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(topBar)
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 34),
-            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -34),
-            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 28),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
         let libraryButton = UIButton(type: .custom)
@@ -110,7 +110,7 @@ final class BabelHomeViewController: UIViewController {
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 32).isActive = true
 
         let title = UILabel()
         title.text = "Feeds"
@@ -129,7 +129,7 @@ final class BabelHomeViewController: UIViewController {
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
         row.alignment = .center
-        row.spacing = 16
+        row.spacing = 8
         row.isUserInteractionEnabled = false
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
