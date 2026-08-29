@@ -533,6 +533,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 
 	@objc private func requestTranslation() {
 		_ = NNWTitleTranslationController.shared.displayArticle(for: article)
+		// A cached translation does not emit a completion notification. Re-render
+		// immediately so tapping AI is visible in both cached and in-flight cases.
+		renderArticle()
 	}
 
 	@objc private func translationDidUpdate() { renderArticle() }
