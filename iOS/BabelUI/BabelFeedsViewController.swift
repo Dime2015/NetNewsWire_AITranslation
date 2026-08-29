@@ -22,6 +22,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onSelectFolder: ((Folder) -> Void)?
     var onOpenGenesisV2: (() -> Void)?
     private var rows = [Row]()
+    private var collapsedFolders = Set<String>()
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
 
@@ -115,12 +116,18 @@ final class BabelFeedsViewController: UITableViewController {
     @objc private func openUnread() { onSelectUnread?() }
     @objc private func openSaved() { onSelectSaved?() }
 
+    private func folderKey(_ folder: Folder) -> String {
+        "\(folder.accountID):\(folder.nameForDisplay)"
+    }
+
     private func rebuildRows() {
         rows = [.unread]
         for account in AccountManager.shared.sortedActiveAccounts {
             for folder in (account.folders ?? []).sorted(by: { $0.nameForDisplay < $1.nameForDisplay }) {
                 rows.append(.folder(folder))
-                rows.append(contentsOf: folder.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
+                if !collapsedFolders.contains(folderKey(folder)) {
+                    rows.append(contentsOf: folder.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
+                }
             }
             rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
         }
@@ -157,7 +164,8 @@ final class BabelFeedsViewController: UITableViewController {
         case .unread:
             cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: UIImage(systemName: "circle.fill"), indent: 0, isFolder: false)
         case .folder(let folder):
-            cell.configure(title: folder.nameForDisplay, count: folder.unreadCount, image: UIImage(systemName: "chevron.down"), indent: 0, isFolder: true)
+            let expanded = !collapsedFolders.contains(folderKey(folder))
+            cell.configure(title: folder.nameForDisplay, count: folder.unreadCount, image: UIImage(systemName: expanded ? "chevron.down" : "chevron.right"), indent: 0, isFolder: true)
         case .feed(let feed):
             cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: UIImage(systemName: "square.fill"), indent: 1, isFolder: false)
         }
@@ -168,7 +176,10 @@ final class BabelFeedsViewController: UITableViewController {
         tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
         case .unread: onSelectUnread?()
-        case .folder(let folder): onSelectFolder?(folder)
+        case .folder(let folder):
+            let key = folderKey(folder)
+            if collapsedFolders.contains(key) { collapsedFolders.remove(key) } else { collapsedFolders.insert(key) }
+            rebuildRows()
         case .feed(let feed): onSelectFeed?(feed)
         }
     }
