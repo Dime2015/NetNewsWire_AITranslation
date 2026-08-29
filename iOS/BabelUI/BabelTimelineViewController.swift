@@ -66,6 +66,12 @@ final class BabelTimelineViewController: UIViewController {
 	override func viewWillAppear(_ animated: Bool) {
 		super.viewWillAppear(animated)
 		navigationController?.setNavigationBarHidden(true, animated: animated)
+		// A reader marks an article read while it is visible. Refresh the
+		// timeline on return so counts and row styling reflect that change,
+		// while UITableView preserves the user's current content offset.
+		if isViewLoaded {
+			reloadArticles()
+		}
 	}
 
 	override func viewWillDisappear(_ animated: Bool) {
