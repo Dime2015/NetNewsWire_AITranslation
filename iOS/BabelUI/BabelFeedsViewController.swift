@@ -352,6 +352,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         present(controller, animated: true)
     }
 
+    /// Deterministic entry used by simulator screenshot checks.
+    func presentFeedIssuesForDebug() { showFeedIssues() }
+
     @objc private func showFeedActions() {
         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "Mark All as Read", style: .default) { [weak self] _ in

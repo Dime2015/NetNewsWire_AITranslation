@@ -73,6 +73,15 @@ final class BabelShellViewController: UINavigationController {
 		pushViewController(makeFeedsViewController(), animated: false)
 	}
 
+	func openFeedIssuesForDebug() {
+		popToRootViewController(animated: false)
+		let feeds = makeFeedsViewController()
+		pushViewController(feeds, animated: false)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+			feeds.presentFeedIssuesForDebug()
+		}
+	}
+
 	func openTimelineForDebug() {
 		popToRootViewController(animated: false)
 		pushViewController(BabelTimelineViewController(section: .today), animated: false)
