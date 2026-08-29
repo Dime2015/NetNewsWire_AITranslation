@@ -208,10 +208,12 @@ final class BabelHomeViewController: UIViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.accessibilityLabel = label
         if label == "未读" {
-            var unreadConfiguration = configuration
-            unreadConfiguration.background.backgroundColor = BabelPalette.raisedBackground
-            unreadConfiguration.background.cornerRadius = 18
-            button.configuration = unreadConfiguration
+            // Keep the capsule itself out of UIButton.Configuration so its
+            // visible bounds are controlled by the same fixed geometry as the
+            // hand-drawn glyphs.
+            button.configuration = nil
+            button.backgroundColor = BabelPalette.raisedBackground
+            button.layer.cornerRadius = 13
 
             let dot = UIView()
             dot.translatesAutoresizingMaskIntoConstraints = false
