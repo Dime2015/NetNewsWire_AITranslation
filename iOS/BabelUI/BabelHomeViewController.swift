@@ -143,7 +143,7 @@ final class BabelHomeViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 46).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        icon.transform = CGAffineTransform(translationX: -3.0, y: 3.6).scaledBy(x: 1.1, y: 1.33)
+        icon.transform = CGAffineTransform(translationX: -3.0, y: 3.6).scaledBy(x: 1.1, y: 1.32)
 
         let title = UILabel()
         title.text = "Feeds"
@@ -366,7 +366,7 @@ private final class BabelHomeGlyphView: UIView {
             p.move(to: CGPoint(x: 3, y: rect.midY)); p.addLine(to: CGPoint(x: rect.maxX - 3, y: rect.midY))
             ink.setStroke(); p.stroke()
         case .cloud:
-            let p = UIBezierPath(); p.lineWidth = 2.8; p.lineCapStyle = .round; p.lineJoinStyle = .round
+            let p = UIBezierPath(); p.lineWidth = 3.15; p.lineCapStyle = .round; p.lineJoinStyle = .round
             let w = rect.width, h = rect.height
             p.move(to: CGPoint(x: w * 0.16, y: h * 0.70))
             p.addCurve(to: CGPoint(x: w * 0.34, y: h * 0.35), controlPoint1: CGPoint(x: w * 0.10, y: h * 0.70), controlPoint2: CGPoint(x: w * 0.18, y: h * 0.40))
