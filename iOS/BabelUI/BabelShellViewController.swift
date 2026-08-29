@@ -41,7 +41,10 @@ final class BabelShellViewController: UINavigationController {
 			self?.pushViewController(BabelTimelineViewController(section: section), animated: true)
 		}
 		homeViewController.onOpenFeeds = { [weak self] in
-			let feedsViewController = BabelFeedsViewController()
+            let feedsViewController = BabelFeedsViewController()
+            feedsViewController.onOpenGenesisV2 = { [weak self] in
+                self?.onOpenGenesisV2?()
+            }
 			feedsViewController.onSelectUnread = { [weak self] in
 				self?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
 			}

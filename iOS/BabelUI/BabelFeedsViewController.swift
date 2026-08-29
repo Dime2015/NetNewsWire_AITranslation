@@ -19,6 +19,7 @@ final class BabelFeedsViewController: UITableViewController {
     var onSelectUnread: (() -> Void)?
     var onSelectFeed: ((Feed) -> Void)?
     var onSelectFolder: ((Folder) -> Void)?
+    var onOpenGenesisV2: (() -> Void)?
     private var rows = [Row]()
     private let emptyLabel = UILabel()
 
@@ -26,6 +27,10 @@ final class BabelFeedsViewController: UITableViewController {
         super.viewDidLoad()
         title = "Feeds"
         navigationItem.largeTitleDisplayMode = .never
+        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
+        switcher.selectedSegmentIndex = 0
+        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
+        navigationItem.titleView = switcher
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .add, target: self, action: #selector(showSubscribe)
         )
@@ -77,6 +82,12 @@ final class BabelFeedsViewController: UITableViewController {
         let alert = UIAlertController(title: "Subscribe", message: "订阅发现功能仍由创世版本 2 处理。", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "知道了", style: .default))
         present(alert, animated: true)
+    }
+
+    @objc private func switchInterface(_ sender: UISegmentedControl) {
+        guard sender.selectedSegmentIndex == 1 else { return }
+        sender.selectedSegmentIndex = 0
+        onOpenGenesisV2?()
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
