@@ -593,7 +593,9 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: BabelTimelineCell.reuseIdentifier, for: indexPath) as! BabelTimelineCell
-		cell.configure(article: daySections[indexPath.section].articles[indexPath.row])
+		let article = daySections[indexPath.section].articles[indexPath.row]
+		cell.configure(article: article)
+		cell.accessibilityIdentifier = "babel.timeline.row.\(article.articleID)"
 		return cell
 	}
 
