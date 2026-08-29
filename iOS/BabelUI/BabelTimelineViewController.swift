@@ -146,7 +146,7 @@ final class BabelTimelineViewController: UIViewController {
         bottom.backgroundColor = BabelPalette.background
         bottom.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottom)
-        for (symbol, label) in [("checkmark.circle", "已读"), ("star", "星标"),
+        for (symbol, label) in [("checkmark.circle.fill", "已读"), ("star.fill", "星标"),
                                 ("circle.fill", "未读"), ("line.3.horizontal", "列表"),
                                 ("magnifyingglass", "搜索")] {
             let button = makeTimelineToolbarButton(symbol: symbol, label: label)
