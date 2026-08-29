@@ -507,9 +507,8 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		label.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(label)
 		NSLayoutConstraint.activate([
-			// UIKit applies an additional 240pt section-header inset on this table
-			// configuration; compensate so the rendered origin is 120pt.
-			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: -120),
+			// The table supplies the same 120pt leading inset to custom headers.
+			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 0),
 			label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
 			label.centerYAnchor.constraint(equalTo: header.centerYAnchor)
 		])
