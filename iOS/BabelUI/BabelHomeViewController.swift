@@ -167,8 +167,11 @@ final class BabelHomeViewController: UIViewController {
         if label != "未读" {
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.setImage(UIImage(systemName: symbol), for: .normal)
+            let glyph = symbol == "star" ? "★" : "☷"
+            button.setTitle(glyph, for: .normal)
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 28, weight: .regular)
             button.tintColor = BabelPalette.mutedInk
+            button.setTitleColor(BabelPalette.mutedInk, for: .normal)
             button.accessibilityLabel = label
             return button
         }
