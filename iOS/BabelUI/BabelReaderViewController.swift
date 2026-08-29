@@ -76,6 +76,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		webView.scrollView.backgroundColor = BabelPalette.background
 		webView.allowsBackForwardNavigationGestures = false
 		webView.scrollView.delegate = self
+		let chromeTap = UITapGestureRecognizer(target: self, action: #selector(toggleChrome))
+		chromeTap.cancelsTouchesInView = false
+		webView.addGestureRecognizer(chromeTap)
         view.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -143,6 +146,11 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 				self?.progressView.isHidden = webView.estimatedProgress >= 1
 			}
 		}
+	}
+
+	@objc private func toggleChrome() {
+		let hidden = readerHeader.alpha > 0.5
+		setChromeHidden(!hidden, animated: true)
 	}
 
 	private func setChromeHidden(_ hidden: Bool, animated: Bool) {
