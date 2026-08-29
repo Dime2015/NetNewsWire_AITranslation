@@ -147,19 +147,19 @@ final class BabelHomeViewController: UIViewController {
 
         let title = UILabel()
         title.text = "Feeds"
-        title.font = BabelTypography.title(size: 18, weight: .medium)
+        title.font = BabelTypography.title(size: 17.5, weight: .regular)
         title.textColor = BabelPalette.ink
         syncStatusLabel.text = "Syncing…"
-        syncStatusLabel.font = BabelTypography.title(size: 16, weight: .regular)
+        syncStatusLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
         syncStatusLabel.textColor = BabelPalette.mutedInk
-        countLabel.font = BabelTypography.title(size: 16, weight: .regular)
+        countLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
         updateHomeStatusText()
         let labels = UIStackView(arrangedSubviews: [title, syncStatusLabel, countLabel])
         labels.axis = .vertical
         labels.spacing = 1
         labels.alignment = .leading
-        labels.transform = CGAffineTransform(translationX: 0.7, y: 1.5)
+        labels.transform = CGAffineTransform(translationX: 1.0, y: 1.0)
 
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
@@ -309,7 +309,7 @@ final class BabelHomeViewController: UIViewController {
             formatter.dateFormat = "h:mm"
             syncStatusLabel.text = "Today at \(formatter.string(from: Date()))"
         } else {
-            syncStatusLabel.text = isSyncing ? "Syncing…" : "Up to date"
+            syncStatusLabel.text = isSyncing ? "Syncing..." : "Up to date"
         }
     }
 
