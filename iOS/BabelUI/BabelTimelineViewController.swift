@@ -525,20 +525,25 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 	}
 
 	func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-		tableView.deselectRow(at: indexPath, animated: true)
+		 tableView.deselectRow(at: indexPath, animated: true)
 		let selected = daySections[indexPath.section].articles[indexPath.row]
+		var currentArticle = selected
 		let reader = BabelReaderViewController(article: selected)
 		reader.nextArticle = { [weak self] in
 			guard let self,
-				  let sectionIndex = self.daySections.firstIndex(where: { $0.articles.contains(where: { $0.articleID == selected.articleID }) }),
-				  let rowIndex = self.daySections[sectionIndex].articles.firstIndex(where: { $0.articleID == selected.articleID }) else { return nil }
+				  let sectionIndex = self.daySections.firstIndex(where: { $0.articles.contains(where: { $0.articleID == currentArticle.articleID }) }),
+				  let rowIndex = self.daySections[sectionIndex].articles.firstIndex(where: { $0.articleID == currentArticle.articleID }) else { return nil }
+			let next: Article?
 			if rowIndex + 1 < self.daySections[sectionIndex].articles.count {
-				return self.daySections[sectionIndex].articles[rowIndex + 1]
+				next = self.daySections[sectionIndex].articles[rowIndex + 1]
+			} else if sectionIndex + 1 < self.daySections.count {
+				next = self.daySections[sectionIndex + 1].articles.first
+			} else {
+				next = nil
 			}
-			if sectionIndex + 1 < self.daySections.count {
-				return self.daySections[sectionIndex + 1].articles.first
-			}
-			return nil
+			guard let next else { return nil }
+			currentArticle = next
+			return next
 		}
 		navigationController?.pushViewController(reader, animated: true)
 	}
