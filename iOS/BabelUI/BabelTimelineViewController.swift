@@ -123,7 +123,7 @@ final class BabelTimelineViewController: UIViewController {
 		// The table is pinned behind the custom navigation header. A small
 		// negative top inset cancels UIKit's automatic safe-area contribution so
 		// the first day header sits directly below the Reeder-style title bar.
-		tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 62, right: 0)
+		tableView.contentInset = UIEdgeInsets(top: 14, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
@@ -720,7 +720,7 @@ private final class BabelTimelineCell: UITableViewCell {
 			feedIconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			feedIconView.widthAnchor.constraint(equalToConstant: 26),
 			feedIconView.heightAnchor.constraint(equalToConstant: 26),
-			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -19),
 			thumbnailView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             thumbnailView.widthAnchor.constraint(equalToConstant: 70),
             thumbnailView.heightAnchor.constraint(equalToConstant: 70)
