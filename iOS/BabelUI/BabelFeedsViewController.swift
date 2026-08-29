@@ -27,6 +27,7 @@ final class BabelFeedsViewController: UITableViewController {
     private var collapsedFolders = Set<String>()
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
+    private let customHeader = UIView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -62,7 +63,7 @@ final class BabelFeedsViewController: UITableViewController {
         navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorColor = BabelPalette.hairline
-        tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 88, right: 0)
+        tableView.contentInset = UIEdgeInsets(top: 80, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 64
         tableView.estimatedRowHeight = 64
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -75,6 +76,7 @@ final class BabelFeedsViewController: UITableViewController {
         let refresh = UIRefreshControl()
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
         tableView.refreshControl = refresh
+        configureCustomHeader()
         configureBottomBar()
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
@@ -82,6 +84,75 @@ final class BabelFeedsViewController: UITableViewController {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+
+    private func configureCustomHeader() {
+        customHeader.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.backgroundColor = BabelPalette.background
+        view.addSubview(customHeader)
+
+        let back = UIButton(type: .custom)
+        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        back.tintColor = BabelPalette.ink
+        back.addTarget(self, action: #selector(closeFeeds), for: .touchUpInside)
+        back.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(back)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Feeds"
+        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
+        titleLabel.textColor = BabelPalette.ink
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(titleLabel)
+
+        let subtitle = UILabel()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm"
+        subtitle.text = "Today at \(formatter.string(from: Date()))"
+        subtitle.font = .systemFont(ofSize: 13, weight: .regular)
+        subtitle.textColor = BabelPalette.mutedInk
+        subtitle.textAlignment = .center
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(subtitle)
+
+        NSLayoutConstraint.activate([
+            customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            customHeader.heightAnchor.constraint(equalToConstant: 74),
+            back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 16),
+            back.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
+            back.widthAnchor.constraint(equalToConstant: 44),
+            back.heightAnchor.constraint(equalToConstant: 44),
+            titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
+            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8),
+            subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
+            subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1)
+        ])
+
+        let switcher = UISegmentedControl(items: ["Babel", "旧版"])
+        switcher.selectedSegmentIndex = 0
+        switcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
+        switcher.translatesAutoresizingMaskIntoConstraints = false
+        customHeader.addSubview(switcher)
+        NSLayoutConstraint.activate([
+            switcher.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
+            switcher.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor, constant: 1),
+            switcher.widthAnchor.constraint(equalToConstant: 150),
+            switcher.heightAnchor.constraint(equalToConstant: 32)
+        ])
+    }
 
     private func configureBottomBar() {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
@@ -138,6 +209,8 @@ final class BabelFeedsViewController: UITableViewController {
 
     @objc private func openUnread() { onSelectUnread?() }
     @objc private func openSaved() { onSelectSaved?() }
+
+    @objc private func closeFeeds() { navigationController?.popViewController(animated: true) }
 
     private func folderKey(_ folder: Folder) -> String {
         "\(folder.accountID):\(folder.nameForDisplay)"
