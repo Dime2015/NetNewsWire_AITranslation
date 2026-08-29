@@ -116,11 +116,12 @@ final class BabelHomeViewController: UIViewController {
         ])
         feedsButton.layer.cornerRadius = 10
 
-        let icon = UIImageView(image: UIImage(systemName: "cloud"))
+        let cloudConfiguration = UIImage.SymbolConfiguration(pointSize: 44, weight: .regular)
+        let icon = UIImageView(image: UIImage(systemName: "cloud", withConfiguration: cloudConfiguration))
         icon.tintColor = BabelPalette.ink
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        icon.widthAnchor.constraint(equalToConstant: 40).isActive = true
 
         let title = UILabel()
         title.text = "Feeds"
@@ -140,15 +141,15 @@ final class BabelHomeViewController: UIViewController {
         let row = UIStackView(arrangedSubviews: [icon, labels])
         row.axis = .horizontal
         row.alignment = .center
-        row.spacing = 8
+        row.spacing = 4
         row.isUserInteractionEnabled = false
         row.translatesAutoresizingMaskIntoConstraints = false
         feedsButton.addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 16),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 10),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -10)
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 15),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -5)
         ])
 
         statusLabel.isHidden = true
@@ -178,7 +179,7 @@ final class BabelHomeViewController: UIViewController {
         if label != "未读" {
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
-            let glyph = symbol == "star" ? "☆" : "☷"
+            let glyph = symbol == "star" ? "★" : "☷"
             button.setTitle(glyph, for: .normal)
             button.titleLabel?.font = UIFont.systemFont(ofSize: 28, weight: .regular)
             button.tintColor = BabelPalette.mutedInk
