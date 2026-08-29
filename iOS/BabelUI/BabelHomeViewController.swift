@@ -96,7 +96,7 @@ final class BabelHomeViewController: UIViewController {
         title.font = BabelTypography.title(size: 24)
         title.textColor = BabelPalette.ink
         let today = UILabel()
-        today.text = "Today"
+        today.text = "Syncing…"
         today.font = BabelTypography.title(size: 17, weight: .regular)
         today.textColor = BabelPalette.mutedInk
         countLabel.font = BabelTypography.title(size: 17, weight: .regular)
@@ -181,7 +181,7 @@ final class BabelHomeViewController: UIViewController {
         loadTask = Task { [weak self] in
             let snapshot = await BabelLibrary.loadHomeSnapshot()
             guard !Task.isCancelled else { return }
-            self?.countLabel.text = "\(snapshot.counts[.unread] ?? 0) Unread Items"
+            self?.countLabel.text = "\((snapshot.counts[.unread] ?? 0).formatted()) Unread Items"
             self?.statusLabel.text = "\(snapshot.accountCount) 个账户 · \(snapshot.feedCount) 个订阅源"
         }
     }
