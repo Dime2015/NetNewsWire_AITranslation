@@ -56,7 +56,7 @@ final class BabelHomeViewController: UIViewController {
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
             topBar.heightAnchor.constraint(equalToConstant: 48)
         ])
-        let libraryButton = UIButton(type: .custom)
+        let libraryButton = UIControl()
         libraryButton.translatesAutoresizingMaskIntoConstraints = false
         libraryButton.accessibilityLabel = "Library"
         libraryButton.accessibilityHint = "Open your feeds and folders"
@@ -271,8 +271,8 @@ final class BabelHomeViewController: UIViewController {
         return button
     }
 
-    private func customIconButton(kind: BabelHomeGlyphView.Kind, action: Selector) -> UIButton {
-        let button = UIButton(type: .custom)
+    private func customIconButton(kind: BabelHomeGlyphView.Kind, action: Selector) -> UIControl {
+        let button = UIControl()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: action, for: .touchUpInside)
         let glyph = BabelHomeGlyphView(kind: kind)
