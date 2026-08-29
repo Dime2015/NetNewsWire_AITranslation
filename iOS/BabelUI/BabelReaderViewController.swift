@@ -13,6 +13,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 	var nextArticle: (() -> Article?)?
     private let webView = WKWebView(frame: .zero)
     private let progressView = UIProgressView(progressViewStyle: .bar)
+	private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 	private let bottomToolbar = UIStackView()
 	private let readerHeader = UIView()
 	private weak var readButton: UIButton?
@@ -88,6 +89,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		progressView.trackTintColor = .clear
 		progressView.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(progressView)
+		loadingIndicator.color = BabelPalette.mutedInk
+		loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+		loadingIndicator.hidesWhenStopped = true
+		view.addSubview(loadingIndicator)
 		webViewHeaderTopConstraint = webView.topAnchor.constraint(equalTo: readerHeader.bottomAnchor)
 		webViewFullTopConstraint = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
 		webViewToolbarBottomConstraint = webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor)
@@ -99,8 +104,11 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			webViewToolbarBottomConstraint,
             progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-			progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+			progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+			loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			loadingIndicator.centerYAnchor.constraint(equalTo: webView.centerYAnchor)
 		])
+		loadingIndicator.startAnimating()
 
         bottomToolbar.axis = .horizontal
 		bottomToolbar.distribution = .equalSpacing
@@ -148,6 +156,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 			Task { @MainActor in
 				self?.progressView.setProgress(Float(webView.estimatedProgress), animated: true)
 				self?.progressView.isHidden = webView.estimatedProgress >= 1
+				if webView.estimatedProgress >= 0.9 { self?.loadingIndicator.stopAnimating() }
 			}
 		}
 	}
