@@ -132,7 +132,7 @@ final class BabelReaderViewController: UIViewController {
 		back.translatesAutoresizingMaskIntoConstraints = false
 		readerHeader.addSubview(back)
 		let label = UILabel()
-		label.text = article.feed?.nameForDisplay
+		label.text = nil
 		label.font = .systemFont(ofSize: 18, weight: .semibold)
 		label.textColor = BabelPalette.ink
 		label.translatesAutoresizingMaskIntoConstraints = false
