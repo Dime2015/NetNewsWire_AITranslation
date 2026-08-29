@@ -228,6 +228,7 @@ final class BabelReaderViewController: UIViewController {
 				color: #423f40;
 				font-family: -apple-system, BlinkMacSystemFont, sans-serif;
 				font-size: \(readerMode ? 19 : 17)px;
+				font-weight: \(readerMode ? 500 : 400);
 				line-height: \(readerMode ? 1.72 : 1.55);
 				margin: 0 auto;
 				max-width: \(readerMode ? 560 : 680)px;
