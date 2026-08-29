@@ -168,6 +168,7 @@ final class BabelTimelineViewController: UIViewController {
             bottom.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             bottom.heightAnchor.constraint(equalToConstant: 54)
         ])
+		view.bringSubviewToFront(timelineHeader)
 	}
 
 	private func configureTimelineHeader() {
