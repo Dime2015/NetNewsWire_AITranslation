@@ -508,7 +508,8 @@ extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegat
 		label.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(label)
 		NSLayoutConstraint.activate([
-			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 120),
+			// 50pt renders at the 120px reference origin on the 3x simulator canvas.
+			label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 50),
 			label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
 			label.centerYAnchor.constraint(equalTo: header.centerYAnchor)
 		])
