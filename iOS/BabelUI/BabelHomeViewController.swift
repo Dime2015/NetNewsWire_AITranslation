@@ -265,16 +265,6 @@ final class BabelHomeViewController: UIViewController {
         return button
     }
 
-    private func navigationButton(image: UIImage?, action: Selector) -> UIButton {
-        let button = UIButton(type: .custom)
-        button.preferredBehavioralStyle = .pad
-        button.setImage(image, for: .normal)
-        button.tintColor = BabelPalette.ink
-        button.addTarget(self, action: action, for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }
-
     private func customIconButton(kind: BabelHomeGlyphView.Kind, action: Selector) -> UIButton {
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
