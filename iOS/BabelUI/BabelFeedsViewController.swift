@@ -45,12 +45,12 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         refreshControlButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
         refreshControlButton.tintColor = .white
         refreshControlButton.backgroundColor = BabelPalette.accent
-        refreshControlButton.layer.cornerRadius = 18
+        refreshControlButton.layer.cornerRadius = 12
         refreshControlButton.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
         refreshControlButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            refreshControlButton.widthAnchor.constraint(equalToConstant: 36),
-            refreshControlButton.heightAnchor.constraint(equalToConstant: 36)
+            refreshControlButton.widthAnchor.constraint(equalToConstant: 24),
+            refreshControlButton.heightAnchor.constraint(equalToConstant: 24)
         ])
         let refreshButton = UIBarButtonItem(customView: refreshControlButton)
         let subscribeControl = UIButton(type: .custom)
@@ -119,7 +119,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -140,7 +140,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         refresh.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
         refresh.tintColor = .white
         refresh.backgroundColor = BabelPalette.accent
-        refresh.layer.cornerRadius = 18
+        refresh.layer.cornerRadius = 12
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
         refresh.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(refresh)
@@ -167,8 +167,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
             refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
             refresh.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
-            refresh.widthAnchor.constraint(equalToConstant: 36),
-            refresh.heightAnchor.constraint(equalToConstant: 36),
+            refresh.widthAnchor.constraint(equalToConstant: 24),
+            refresh.heightAnchor.constraint(equalToConstant: 24),
             subscribe.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor, constant: -12),
             subscribe.centerYAnchor.constraint(equalTo: customHeader.centerYAnchor),
             subscribe.widthAnchor.constraint(equalToConstant: 44),
@@ -230,7 +230,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     private func toolbarButton(image: UIImage?) -> UIButton {
         let button = UIButton(type: .system)
-        button.setImage(image, for: .normal)
+        if let image {
+            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)), for: .normal)
+        }
         button.tintColor = BabelPalette.ink
         button.frame.size = CGSize(width: 44, height: 44)
         return button
