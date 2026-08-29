@@ -121,7 +121,7 @@ final class BabelHomeViewController: UIViewController {
             separator.centerXAnchor.constraint(equalTo: separatorContainer.centerXAnchor, constant: -5),
             // Reeder places this hairline above the card's vertical midpoint;
             // keep the card position independent while matching that baseline.
-            separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -14)
+            separator.centerYAnchor.constraint(equalTo: separatorContainer.centerYAnchor, constant: -10)
         ])
 
         feedsButton.backgroundColor = BabelPalette.raisedBackground
