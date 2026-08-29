@@ -118,8 +118,9 @@ final class BabelTimelineViewController: UIViewController {
 
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
-		// Keep enough room for UIKit's first section header below the custom header.
-		tableView.contentInset = UIEdgeInsets(top: 44, left: 0, bottom: 62, right: 0)
+		// The custom header already occupies the top region; a small inset keeps
+		// the first day label just below it, matching Reeder's timeline rhythm.
+		tableView.contentInset = UIEdgeInsets(top: 30, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
