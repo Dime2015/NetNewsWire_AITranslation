@@ -69,17 +69,17 @@ final class BabelShellViewController: UINavigationController {
 	}
 
 	func openFeedsForDebug() {
-		guard viewControllers.count == 1 else { return }
+		popToRootViewController(animated: false)
 		pushViewController(makeFeedsViewController(), animated: false)
 	}
 
 	func openTimelineForDebug() {
-		guard viewControllers.count == 1 else { return }
+		popToRootViewController(animated: false)
 		pushViewController(BabelTimelineViewController(section: .today), animated: false)
 	}
 
 	func openFirstFeedTimelineForDebug() {
-		guard viewControllers.count == 1 else { return }
+		popToRootViewController(animated: false)
 		let feed = AccountManager.shared.sortedActiveAccounts
 			.flatMap { account in
 				(account.topLevelFeeds + (account.folders ?? []).flatMap { $0.topLevelFeeds })
