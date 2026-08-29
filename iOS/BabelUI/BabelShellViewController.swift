@@ -111,6 +111,13 @@ final class BabelShellViewController: UINavigationController {
 		}
 	}
 
+	func openReaderScrolledForDebug() {
+		openReaderForDebug()
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+			(self?.topViewController as? BabelReaderViewController)?.hideChromeForDebug()
+		}
+	}
+
 	func openTimelineFilterForDebug() {
 		guard viewControllers.count == 1 else { return }
 		let timeline = BabelTimelineViewController(section: .today)

@@ -503,6 +503,10 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 		showActions()
 	}
 
+	func hideChromeForDebug() {
+		setChromeHidden(true, animated: false)
+	}
+
 	private func updateToolbarState() {
 		setReaderSymbol(readButton, name: article.status.read ? "circle" : "circle.fill", pointSize: 12)
 		setReaderSymbol(starButton, name: article.status.starred ? "star.fill" : "star", pointSize: 15)
