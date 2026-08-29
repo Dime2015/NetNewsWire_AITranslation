@@ -67,7 +67,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         tableView.separatorStyle = .none
         // Keep the first data row below the custom Reeder header. The header is
         // layered above the table, so a small inset would hide the Unread row.
-        tableView.contentInset = UIEdgeInsets(top: 260, left: 0, bottom: 88, right: 0)
+        // The table's automatic safe-area adjustment adds the status/header
+        // space.  217pt places the Unread row on the same baseline as Reeder.
+        tableView.contentInset = UIEdgeInsets(top: 178, left: 0, bottom: 88, right: 0)
         tableView.rowHeight = 44
         tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -123,7 +125,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         let titleLabel = UILabel()
         titleLabel.text = "Feeds"
-        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 32, weight: .bold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -351,6 +353,11 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         return cell
     }
 
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        if case .unread = rows[indexPath.row] { return 66 }
+        return 44
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
@@ -459,7 +466,7 @@ private final class BabelFeedCell: UITableViewCell {
 	func configure(title: String, count: Int?, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, sectionHeader: Bool = false, toggleFolder: (() -> Void)? = nil) {
 		iconView.image = image
 		iconView.isHidden = sectionHeader
-		titleLabel.font = sectionHeader ? BabelTypography.title(size: 18, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
+		titleLabel.font = sectionHeader ? BabelTypography.title(size: 20, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
 		self.toggleFolder = toggleFolder
 		if isFolder {
 			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
