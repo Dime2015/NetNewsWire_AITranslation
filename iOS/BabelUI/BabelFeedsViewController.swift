@@ -179,7 +179,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             back.widthAnchor.constraint(equalToConstant: 44),
             back.heightAnchor.constraint(equalToConstant: 44),
             titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 64),
+            // Reeder keeps the title in the same top control band as the
+            // back/refresh/subscribe controls; the label's font metrics add
+            // the small optical inset needed below the safe-area edge.
+            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor),
             subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
             subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
             refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
