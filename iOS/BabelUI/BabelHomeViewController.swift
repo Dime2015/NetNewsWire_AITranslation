@@ -167,11 +167,9 @@ final class BabelHomeViewController: UIViewController {
     }
 
     private func navigationButton(image: UIImage?, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
-        var configuration = UIButton.Configuration.plain()
-        configuration.image = image
-        configuration.baseForegroundColor = BabelPalette.ink
-        button.configuration = configuration
+        let button = UIButton(type: .custom)
+        button.setImage(image, for: .normal)
+        button.tintColor = BabelPalette.ink
         button.addTarget(self, action: action, for: .touchUpInside)
         button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
         return button
