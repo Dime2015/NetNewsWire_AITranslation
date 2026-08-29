@@ -176,7 +176,7 @@ final class BabelReaderViewController: UIViewController {
 			label.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), label.centerYAnchor.constraint(equalTo: readerHeader.centerYAnchor),
 			actions.centerXAnchor.constraint(equalTo: readerHeader.centerXAnchor), actions.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44),
-			tag.trailingAnchor.constraint(equalTo: share.leadingAnchor, constant: -18), tag.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
+			tag.trailingAnchor.constraint(equalTo: share.leadingAnchor, constant: -31), tag.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			tag.widthAnchor.constraint(equalToConstant: 44), tag.heightAnchor.constraint(equalToConstant: 44),
 			share.trailingAnchor.constraint(equalTo: readerHeader.trailingAnchor, constant: -16), share.centerYAnchor.constraint(equalTo: readerHeader.topAnchor, constant: 24),
 			share.widthAnchor.constraint(equalToConstant: 44), share.heightAnchor.constraint(equalToConstant: 44)
@@ -184,7 +184,8 @@ final class BabelReaderViewController: UIViewController {
 	}
 
 	@objc private func shareArticle() {
-		let items: [Any] = [BabelLibrary.displayTitle(for: article), article.preferredURL as Any].compactMap { $0 }
+		var items: [Any] = [BabelLibrary.displayTitle(for: article)]
+		if let url = article.preferredURL { items.append(url) }
 		present(UIActivityViewController(activityItems: items, applicationActivities: nil), animated: true)
 	}
 
