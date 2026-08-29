@@ -406,6 +406,9 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate {
 		alert.addAction(UIAlertAction(title: article.status.read ? "Mark as Unread" : "Mark as Read", style: .default) { [weak self] _ in
 			self?.updateStatus(.read, flag: !(self?.article.status.read ?? false))
 		})
+		alert.addAction(UIAlertAction(title: article.status.starred ? "Unstar" : "Star", style: .default) { [weak self] _ in
+			self?.updateStatus(.starred, flag: !(self?.article.status.starred ?? false))
+		})
 		if article.preferredURL != nil {
 			alert.addAction(UIAlertAction(title: "Open in Safari", style: .default) { [weak self] _ in self?.openOriginal() })
 		}
