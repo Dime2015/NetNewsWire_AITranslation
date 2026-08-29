@@ -10,21 +10,23 @@ import UIKit
 enum BabelPalette {
     static let background = UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.115, green: 0.115, blue: 0.125, alpha: 1)
-            : UIColor(red: 0.945, green: 0.940, blue: 0.945, alpha: 1)
+            ? UIColor(red: 28.0 / 255.0, green: 28.0 / 255.0, blue: 28.0 / 255.0, alpha: 1)
+            : UIColor(red: 245.0 / 255.0, green: 242.0 / 255.0, blue: 241.0 / 255.0, alpha: 1)
     }
     static let raisedBackground = UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.185, green: 0.185, blue: 0.195, alpha: 1)
-            : UIColor(red: 0.875, green: 0.870, blue: 0.875, alpha: 1)
+            ? UIColor(red: 46.0 / 255.0, green: 46.0 / 255.0, blue: 46.0 / 255.0, alpha: 1)
+            : UIColor(red: 229.0 / 255.0, green: 226.0 / 255.0, blue: 227.0 / 255.0, alpha: 1)
     }
     static let ink = UIColor { traits in
-        traits.userInterfaceStyle == .dark ? .white : .black
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 216.0 / 255.0, green: 216.0 / 255.0, blue: 216.0 / 255.0, alpha: 1)
+            : UIColor(red: 66.0 / 255.0, green: 63.0 / 255.0, blue: 64.0 / 255.0, alpha: 1)
     }
     static let mutedInk = UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(white: 0.58, alpha: 1)
-            : UIColor(white: 0.42, alpha: 1)
+            ? UIColor(red: 108.0 / 255.0, green: 108.0 / 255.0, blue: 108.0 / 255.0, alpha: 1)
+            : UIColor(red: 136.0 / 255.0, green: 136.0 / 255.0, blue: 134.0 / 255.0, alpha: 1)
     }
     static let hairline = UIColor { traits in
         traits.userInterfaceStyle == .dark
@@ -33,8 +35,8 @@ enum BabelPalette {
     }
     static let accent = UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.95, green: 0.28, blue: 0.30, alpha: 1)
-            : UIColor(red: 0.82, green: 0.17, blue: 0.18, alpha: 1)
+            ? UIColor(red: 214.0 / 255.0, green: 76.0 / 255.0, blue: 70.0 / 255.0, alpha: 1)
+            : UIColor(red: 68.0 / 255.0, green: 190.0 / 255.0, blue: 156.0 / 255.0, alpha: 1)
     }
 }
 
