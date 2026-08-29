@@ -152,6 +152,7 @@ final class BabelHomeViewController: UIViewController {
         syncStatusLabel.text = "Syncing…"
         syncStatusLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
         syncStatusLabel.textColor = BabelPalette.mutedInk
+        syncStatusLabel.transform = CGAffineTransform(scaleX: 1, y: 1.04)
         countLabel.font = BabelTypography.title(size: 16.5, weight: .regular)
         countLabel.textColor = BabelPalette.mutedInk
         updateHomeStatusText()
