@@ -382,6 +382,7 @@ final class BabelReaderViewController: UIViewController, UIScrollViewDelegate, W
 			.externalLink { margin: 0 0 28px !important; }
 			a { color: inherit !important; text-decoration-color: \(readerAccentColor) !important; }
 			.articleBody { margin-top: 34px !important; }
+			(readerMode ? ".articleBody, .articleBody p, .articleBody li { font-weight: 500 !important; }" : "")
 			.articleBody p { margin: 0 0 1.25em; }
 			.articleBody img, .articleBody video { border-radius: 10px; height: auto; max-width: 100%; }
 			(article.rawImageLink == nil ? ".headerTable img, .headerImage, .articleImage { display: none !important; }" : "")
