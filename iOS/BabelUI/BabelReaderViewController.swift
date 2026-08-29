@@ -50,10 +50,12 @@ final class BabelReaderViewController: UIViewController {
             image: UIImage(systemName: "chevron.left"), style: .plain,
             target: self, action: #selector(closeReader)
         )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+		navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "ellipsis"), style: .plain,
             target: self, action: #selector(showActions)
         )
+		bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(bottomToolbar)
 
 		webView.isOpaque = false
 		webView.backgroundColor = .clear
@@ -82,8 +84,6 @@ final class BabelReaderViewController: UIViewController {
         bottomToolbar.layoutMargins = UIEdgeInsets(top: 6, left: 20, bottom: 8, right: 20)
         bottomToolbar.isLayoutMarginsRelativeArrangement = true
         bottomToolbar.backgroundColor = BabelPalette.background
-        bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(bottomToolbar)
 		for (index, item) in [("circle", "已读"), ("star", "星标"), ("chevron.down", "下一篇"),
                                 ("text.alignleft", "阅读模式"), ("character.book.closed", "翻译")].enumerated() {
             var config = UIButton.Configuration.plain()
