@@ -31,6 +31,7 @@ final class BabelTimelineViewController: UIViewController {
 	private var articles = [Article]()
 	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
+	private var searchQuery = ""
 
 	init(section: BabelLibrarySection) {
 		self.source = .section(section)
@@ -143,6 +144,13 @@ final class BabelTimelineViewController: UIViewController {
             let button = UIButton(configuration: config)
             button.accessibilityLabel = label
             button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)
+            switch label {
+            case "已读": button.addTarget(self, action: #selector(markAllRead), for: .touchUpInside)
+            case "星标": button.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
+            case "未读": button.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
+            case "搜索": button.addTarget(self, action: #selector(showSearch), for: .touchUpInside)
+            default: break
+            }
             bottom.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
@@ -172,6 +180,29 @@ final class BabelTimelineViewController: UIViewController {
         reloadArticles()
     }
 
+	@objc private func openSaved() {
+		guard case .section(.saved) = source else {
+			navigationController?.pushViewController(BabelTimelineViewController(section: .saved), animated: true)
+			return
+		}
+	}
+
+	@objc private func openUnread() {
+		guard case .section(.unread) = source else {
+			navigationController?.pushViewController(BabelTimelineViewController(section: .unread), animated: true)
+			return
+		}
+	}
+
+	@objc private func showSearch() {
+		let controller = UISearchController(searchResultsController: nil)
+		controller.searchResultsUpdater = self
+		controller.obscuresBackgroundDuringPresentation = false
+		controller.searchBar.placeholder = "Search Articles"
+		present(controller, animated: true)
+		controller.searchBar.becomeFirstResponder()
+	}
+
     @objc private func showActions() {
 		let alert = UIAlertController(title: source.title, message: nil, preferredStyle: .actionSheet)
 		alert.addAction(UIAlertAction(title: "标记全部已读", style: .default) { [weak self] _ in
@@ -181,7 +212,7 @@ final class BabelTimelineViewController: UIViewController {
 		present(alert, animated: true)
     }
 
-	private func markAllRead() {
+	@objc private func markAllRead() {
 		let unread = articles.filter { !$0.status.read }
 		let grouped = Dictionary(grouping: unread, by: { $0.accountID })
 		Task { @MainActor in
@@ -207,15 +238,30 @@ final class BabelTimelineViewController: UIViewController {
 			guard !Task.isCancelled else { return }
 			articles = loaded
 			navSubtitleLabel.text = "\(loaded.filter { !$0.status.read }.count) Unread Items"
-			let calendar = Calendar.current
-			let grouped = Dictionary(grouping: loaded) { calendar.startOfDay(for: $0.logicalDatePublished) }
-			daySections = grouped.keys.sorted(by: >).map { date in
-				(date: date, articles: grouped[date] ?? [])
-			}
+			self.rebuildSections(from: loaded)
 			tableView.reloadData()
 			loadingIndicator.stopAnimating()
 			tableView.refreshControl?.endRefreshing()
 			emptyLabel.isHidden = !loaded.isEmpty
+		}
+	}
+
+	private func rebuildSections(from articles: [Article]) {
+		let filtered: [Article]
+		if searchQuery.isEmpty {
+			filtered = articles
+		} else {
+			filtered = articles.filter { article in
+				let haystack = [article.title, article.summary, article.contentText]
+					.compactMap { $0?.lowercased() }
+					.joined(separator: " ")
+				return haystack.contains(searchQuery.lowercased())
+			}
+		}
+		let calendar = Calendar.current
+		let grouped = Dictionary(grouping: filtered) { calendar.startOfDay(for: $0.logicalDatePublished) }
+		daySections = grouped.keys.sorted(by: >).map { date in
+			(date: date, articles: grouped[date] ?? [])
 		}
 	}
 
@@ -225,6 +271,14 @@ final class BabelTimelineViewController: UIViewController {
 		formatter.dateFormat = "EEEE, MMMM d, yyyy"
 		return formatter
 	}()
+}
+
+extension BabelTimelineViewController: UISearchResultsUpdating {
+	func updateSearchResults(for searchController: UISearchController) {
+		searchQuery = searchController.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		rebuildSections(from: articles)
+		tableView.reloadData()
+	}
 }
 
 extension BabelTimelineViewController: UITableViewDataSource, UITableViewDelegate {
