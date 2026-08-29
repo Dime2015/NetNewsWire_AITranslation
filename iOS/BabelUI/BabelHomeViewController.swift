@@ -165,9 +165,9 @@ final class BabelHomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: feedsButton.leadingAnchor, constant: 16),
             row.trailingAnchor.constraint(equalTo: feedsButton.trailingAnchor, constant: -16),
-            // The card's content sits slightly above geometric center in Reeder.
-            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 2),
-            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -18)
+            // The card's content is vertically centered in Reeder's card.
+            row.topAnchor.constraint(equalTo: feedsButton.topAnchor, constant: 15),
+            row.bottomAnchor.constraint(equalTo: feedsButton.bottomAnchor, constant: -5)
         ])
 
         statusLabel.isHidden = true
