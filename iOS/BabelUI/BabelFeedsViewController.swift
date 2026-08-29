@@ -210,7 +210,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         interfaceSwitcher.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(interfaceSwitcher)
 
-        let star = toolbarButton(image: UIImage(systemName: "star.fill"), pointSize: 15)
+        let star = toolbarButton(image: UIImage(systemName: "star.fill"), pointSize: 11)
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         let unread = makeUnreadToolbarButton()
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
