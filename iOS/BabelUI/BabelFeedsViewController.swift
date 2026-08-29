@@ -210,13 +210,13 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         interfaceSwitcher.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(interfaceSwitcher)
 
-        let star = toolbarButton(image: UIImage(systemName: "star.fill"))
+        let star = toolbarButton(image: UIImage(systemName: "star.fill"), pointSize: 15)
         star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
         let unread = makeUnreadToolbarButton()
         unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
         unread.backgroundColor = BabelPalette.raisedBackground
-        unread.layer.cornerRadius = 22
-        let list = toolbarButton(image: UIImage(systemName: "list.bullet"))
+        unread.layer.cornerRadius = 14
+        let list = toolbarButton(image: UIImage(systemName: "list.bullet"), pointSize: 8)
         stack.addArrangedSubview(star)
         stack.addArrangedSubview(unread)
         stack.addArrangedSubview(list)
@@ -238,7 +238,7 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
         NSLayoutConstraint.activate([
             star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
-            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 36),
+            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 28),
             list.widthAnchor.constraint(equalToConstant: 44), list.heightAnchor.constraint(equalToConstant: 36)
         ])
     }
@@ -273,10 +273,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         return button
     }
 
-    private func toolbarButton(image: UIImage?) -> UIButton {
+    private func toolbarButton(image: UIImage?, pointSize: CGFloat) -> UIButton {
         let button = UIButton(type: .system)
         if let image {
-            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: 10, weight: .regular)), for: .normal)
+            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)), for: .normal)
         }
         button.tintColor = BabelPalette.ink
         button.frame.size = CGSize(width: 44, height: 44)
