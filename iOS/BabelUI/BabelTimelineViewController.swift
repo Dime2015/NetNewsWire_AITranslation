@@ -6,6 +6,7 @@
 import UIKit
 import Account
 import Articles
+import Images
 
 final class BabelTimelineViewController: UIViewController {
 	@MainActor enum Source {
@@ -28,6 +29,7 @@ final class BabelTimelineViewController: UIViewController {
 	private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 	private let navTitleLabel = UILabel()
 	private let navSubtitleLabel = UILabel()
+	private let timelineHeader = UIView()
 	private var articles = [Article]()
 	private var daySections = [(date: Date, articles: [Article])]()
 	private var loadTask: Task<Void, Never>?
@@ -59,6 +61,16 @@ final class BabelTimelineViewController: UIViewController {
 		startObserving()
 	}
 
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		navigationController?.setNavigationBarHidden(true, animated: animated)
+	}
+
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		navigationController?.setNavigationBarHidden(false, animated: animated)
+	}
+
 	deinit {
 		loadTask?.cancel()
 		NotificationCenter.default.removeObserver(self)
@@ -80,15 +92,12 @@ final class BabelTimelineViewController: UIViewController {
 		navTitleStack.axis = .vertical
 		navTitleStack.alignment = .center
 		navTitleStack.spacing = 0
-		navigationItem.titleView = navTitleStack
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "ellipsis"),
-            style: .plain, target: self, action: #selector(showActions)
-        )
+		// The title stack is rendered in the custom header below.
+		configureTimelineHeader()
 
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
-        tableView.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 62, right: 0)
+		tableView.contentInset = UIEdgeInsets(top: 82, left: 0, bottom: 62, right: 0)
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 154
 		tableView.register(BabelTimelineCell.self, forCellReuseIdentifier: BabelTimelineCell.reuseIdentifier)
@@ -160,6 +169,46 @@ final class BabelTimelineViewController: UIViewController {
             bottom.heightAnchor.constraint(equalToConstant: 54)
         ])
 	}
+
+	private func configureTimelineHeader() {
+		timelineHeader.translatesAutoresizingMaskIntoConstraints = false
+		timelineHeader.backgroundColor = BabelPalette.background
+		view.addSubview(timelineHeader)
+		let back = UIButton(type: .custom)
+		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+		back.tintColor = BabelPalette.ink
+		back.addTarget(self, action: #selector(closeTimeline), for: .touchUpInside)
+		back.translatesAutoresizingMaskIntoConstraints = false
+		timelineHeader.addSubview(back)
+		navTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+		navSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+		timelineHeader.addSubview(navTitleLabel)
+		timelineHeader.addSubview(navSubtitleLabel)
+		let actions = UIButton(type: .custom)
+		actions.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+		actions.tintColor = BabelPalette.ink
+		actions.addTarget(self, action: #selector(showActions), for: .touchUpInside)
+		actions.translatesAutoresizingMaskIntoConstraints = false
+		timelineHeader.addSubview(actions)
+		NSLayoutConstraint.activate([
+			timelineHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			timelineHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			timelineHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+			timelineHeader.heightAnchor.constraint(equalToConstant: 68),
+			back.leadingAnchor.constraint(equalTo: timelineHeader.leadingAnchor, constant: 16),
+			back.centerYAnchor.constraint(equalTo: timelineHeader.centerYAnchor),
+			back.widthAnchor.constraint(equalToConstant: 44), back.heightAnchor.constraint(equalToConstant: 44),
+			navTitleLabel.centerXAnchor.constraint(equalTo: timelineHeader.centerXAnchor),
+			navTitleLabel.topAnchor.constraint(equalTo: timelineHeader.topAnchor, constant: 8),
+			navSubtitleLabel.centerXAnchor.constraint(equalTo: timelineHeader.centerXAnchor),
+			navSubtitleLabel.topAnchor.constraint(equalTo: navTitleLabel.bottomAnchor),
+			actions.trailingAnchor.constraint(equalTo: timelineHeader.trailingAnchor, constant: -16),
+			actions.centerYAnchor.constraint(equalTo: timelineHeader.centerYAnchor),
+			actions.widthAnchor.constraint(equalToConstant: 44), actions.heightAnchor.constraint(equalToConstant: 44)
+		])
+	}
+
+	@objc private func closeTimeline() { navigationController?.popViewController(animated: true) }
 
 	private func startObserving() {
 		let names: [Notification.Name] = [
@@ -424,8 +473,8 @@ private final class BabelTimelineCell: UITableViewCell {
 			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
 			,thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 			thumbnailView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			thumbnailView.widthAnchor.constraint(equalToConstant: 132),
-			thumbnailView.heightAnchor.constraint(equalToConstant: 82)
+			thumbnailView.widthAnchor.constraint(equalToConstant: 88),
+			thumbnailView.heightAnchor.constraint(equalToConstant: 88)
 		])
 	}
 
@@ -439,7 +488,11 @@ private final class BabelTimelineCell: UITableViewCell {
 		titleLabel.text = BabelLibrary.displayTitle(for: article)
 		summaryLabel.text = BabelLibrary.summary(for: article)
 		summaryLabel.isHidden = summaryLabel.text == nil
-		thumbnailView.image = nil
+		if let feed = article.feed {
+			thumbnailView.image = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image
+		} else {
+			thumbnailView.image = nil
+		}
 		representedImageURL = nil
 		if let imageLink = article.rawImageLink, let url = URL(string: imageLink) {
 			representedImageURL = url
