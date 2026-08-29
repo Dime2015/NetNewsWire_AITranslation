@@ -95,6 +95,7 @@ final class BabelReaderViewController: UIViewController {
 			if index == 4 {
 				button.setTitle("BR", for: .normal)
 				button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
+				button.setTitleColor(BabelPalette.mutedInk, for: .normal)
 			} else {
 				button.setImage(UIImage(systemName: item.0, withConfiguration: symbol), for: .normal)
 			}
