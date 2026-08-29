@@ -455,7 +455,10 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
             cell.configure(title: "", count: nil, image: nil, indent: 0, isFolder: false)
             cell.isUserInteractionEnabled = false
         case .foldersHeader:
-            cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: false, sectionHeader: true)
+            // Reeder keeps an always-visible disclosure affordance on the
+            // Folders section heading, even when the heading itself is not a
+            // feed row.
+            cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: true, expanded: true, sectionHeader: true)
             cell.accessibilityIdentifier = "babel.feeds.row.folders"
         case .folder(let folder):
             let expanded = !collapsedFolders.contains(folderKey(folder))
@@ -610,8 +613,13 @@ private final class BabelFeedCell: UITableViewCell {
         let leading: CGFloat = indent == 0 ? 32 : 54
 		NSLayoutConstraint.deactivate(contentView.constraints)
 		let titleLeading = sectionHeader ? 18 : leading + 32
-		NSLayoutConstraint.activate([
-			disclosureButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18),
+		var constraints = [NSLayoutConstraint]()
+		if sectionHeader {
+			constraints.append(disclosureButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36))
+		} else {
+			constraints.append(disclosureButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18))
+		}
+		constraints.append(contentsOf: [
 			disclosureButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			disclosureButton.widthAnchor.constraint(equalToConstant: 32),
 			disclosureButton.heightAnchor.constraint(equalToConstant: 44),
@@ -626,6 +634,7 @@ private final class BabelFeedCell: UITableViewCell {
 			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 52)
 		])
+		NSLayoutConstraint.activate(constraints)
 	}
 
 	@objc private func disclosureTapped() { toggleFolder?() }
