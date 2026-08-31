@@ -111,6 +111,7 @@
 		D1A7E100000000000000C008 /* Images in Frameworks */ = {isa = PBXBuildFile; productRef = D1A7E100000000000000C007 /* Images */; };
 		D1B2E2000000000000000001 /* Babel2UI in Frameworks */ = {isa = PBXBuildFile; productRef = D1B2E2000000000000000002 /* Babel2UI */; };
 		D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */; };
+		D1B2E2000000000000000006 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -343,6 +344,7 @@
 		84D2200922B0BC4B0019E085 /* CONTRIBUTING.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CONTRIBUTING.md; sourceTree = "<group>"; };
 		C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift"; sourceTree = SOURCE_ROOT; };
 		D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -691,6 +693,7 @@
 				84719F4B2EE01A1100EEF332 /* Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift */,
 				C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */,
 				D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */,
+				D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -1383,6 +1386,7 @@
 				84719F4C2EE01A1100EEF332 /* Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift in Sources */,
 				C0D3B00130D3B00100BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift in Sources */,
 				D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */,
+				D1B2E2000000000000000006 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
