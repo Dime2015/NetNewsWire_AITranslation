@@ -35,7 +35,26 @@ Known `measured` recording metadata: canvas `1206 × 2622 px`, `60 fps`, duratio
 `237.823333 s`. The ledger maps this to an iPhone 17 reference canvas with approximately
 `3 px/pt`; that conversion is `reference`, not a device-independent layout rule.
 
-The following are **not** currently backed by a complete frame-by-frame trace of Reeder:
+### Immutable baselines and live-status boundary
+
+The historical product baselines and contract-related commits below are immutable
+references. They are not claims about the live branch, HEAD, or working tree:
+
+| Reference | Meaning | Evidence boundary |
+|---|---|---|
+| `v0.5` → `649f85fd50e5fff21e75818193011250baf08d50` | Genesis v1 stable baseline | local annotated tag peeled SHA |
+| `v1.0` → `d1679c7f253d37eda557970fca0827c096132a05` | Genesis v2 stable baseline | local annotated tag peeled SHA |
+| `v1.1` → `a94c00626edf13bb3e869c35924bfd6ece7e6165` | pre-Babel 2.0 UIKit redesign baseline | local annotated tag peeled SHA |
+| `9fda5c5650d06ff5155ead466adbe1b084ccdd44` | Babel 2.0 static AppIcon asset commit | immutable commit contents only |
+| `ce7c0ea38da3cb8bcab9a01dd6bd712b215ae6d9` | prior Babel 2.0 product and motion contract version | immutable contents only; this amendment must be recorded by a new immutable contract commit |
+
+At review time, the live branch, HEAD, working tree, uncommitted changes, and
+implementation status must be read from Git together with
+`Design/Babel2/Project/STATUS.md`. This contract is not a live-status source; a dated
+evidence snapshot cannot be promoted to a live branch or working-tree claim.
+
+At the date of this contract version, the following are **not** backed by a complete
+frame-by-frame trace of Reeder:
 exact easing curves, exact settle duration, exact velocity cutoff, exact edge activation
 width, and exact spring damping. Any value for those items below is explicitly
 `target` or `to-tune`. Static frames can prove checkpoints; they cannot prove
@@ -53,8 +72,8 @@ decisions below supersede any older Draft checkpoint whose boundary differs:
   around `y = 103 pt` and article content around `y = 189 pt` in a `402 × 874 pt`
   reference frame (`reference`, Figma contract).
 - Reader static capture: bright top-control band around `y = 140–196 px` in the local
-  reference and around `y = 141–202 px` in the current Babel comparison (`reference`);
-  these are screenshot coordinates, not scroll thresholds.
+  reference and around `y = 141–202 px` in the Babel comparison captured in the dated
+  evidence snapshot (`reference`); these are screenshot coordinates, not scroll thresholds.
 
 Latest product constraints carried by this motion contract:
 
@@ -72,13 +91,23 @@ Latest product constraints carried by this motion contract:
   Horizontal article media is full-bleed 100vw and square-cornered; text/caption retain
   reading inset. Ordinary controls and links use neutral gray/black; user accent is
   reserved for Settings switches and the Reader progress ring.
+- Library filter motion stays on one route: Starred/Unread/All taps drive one shared
+  `pFilter` (or equivalent) across the selection pill, source/article list
+  translate/crossfade, summary, and per-source counts. Counts are computed with the
+  destination filter semantics. Rapid taps interrupt and reverse from the rendered
+  presentation state; they do not reload the whole page or flash.
+- Timeline geometry has no independent spacer or transparent band between hero/source
+  title/compact chrome and the first date header. Only the standard section-inset token
+  may occupy that boundary (`to-tune`, pending Figma overlay measurement). The paper
+  list surface remains continuous and opaque across expanded, intermediate `pHero`, and
+  compact states; date header and article rows share one scroll surface.
 - Naming follows Route A in the product contract: new Babel2 motion code, resources,
   tests, leaf filenames, types, methods, accessibility identifiers, log categories, and
   routes use Babel/Babel2 names. Existing parent target/directory names do not fail the
   gate merely by inheritance. Required old build/module references are build/test
   harness allowlist entries only; persisted/system identity is centralized behind the
   single `LegacyIdentityCompatibility` boundary, and an allowlist can never be a second
-  persisted/system identity outlet. The current motion phase executes no-new-name, user-visible
+  persisted/system identity outlet. The phase covered by this contract executes no-new-name, user-visible
   Babel naming, and compatibility isolation only. Technical source/target/project/scheme/
   CI renaming waits for Babel 2.0 device stability; bundle/data identity and external
   repository identity require a separate migration project and explicit authorization.
@@ -109,8 +138,8 @@ Latest product constraints carried by this motion contract:
 
 ## 2A. Audited legacy failure modes（audit-only historical reference）
 
-The following are `measured from current source` observations. They explain why the
-existing motion must not be treated as the Babel 2.0 baseline:
+The following are `measured from the audited source snapshot` observations. They explain
+why the existing motion must not be treated as the Babel 2.0 baseline:
 
 All old type names, file names, and paths in this subsection are explicitly
 `audit-only historical reference`; they do not participate in Gate A and cannot be copied
@@ -129,7 +158,8 @@ or routes.
 
 Line ranges above are navigation aids, not an instruction to preserve the old code.
 The old implementation’s `64 pt` pop activation width and `0.32` progress finish rule
-are also `measured from current source`; neither is an approved Babel 2.0 value.
+are also `measured from the audited source snapshot`; neither is an approved Babel 2.0
+value.
 
 ## 3. Unified ownership model
 
@@ -178,6 +208,36 @@ for the configured right-edge region. Browser back uses the same left-edge pop o
 At gesture start, record the owning route, initial translation, initial content offset,
 and a monotonic interaction token. Once intent locks, direction cannot change owner
 mid-flight. Tiny reversals remain in the same owner and update progress continuously.
+
+## 4A. Library filter transition
+
+Starred, Unread, and All are presentations of one Library route, not three navigation
+destinations. A tap in the fixed filter slot changes the route's filter state in place.
+The transition owner must expose one normalized `pFilter` (or an equivalent shared
+progress value):
+
+```text
+pFilter = clamp(elapsed / filterDuration, 0, 1)
+```
+
+The `180 ms` `filterDuration` is a linear Figma reference and a Babel `to-tune` target;
+it must be calibrated against physical-device touch response. The same progress drives
+the selection pill, source/article list translation and crossfade, summary, and
+per-source counts. The target count is calculated from the destination filter's
+semantics, so Starred hides sources/folders with no starred articles and shows only
+the corresponding starred counts.
+
+The transition must start from the currently rendered presentation state. A rapid tap
+interrupts the active transition, samples its presentation progress, and reverses or
+continues toward the newly selected filter without reconstructing the whole page,
+reloading the data surface, or flashing a blank/skeleton state. Filter identity,
+selection context, and route ownership remain stable throughout. Completion and
+cancellation are idempotent, and stale filter tokens cannot publish counts or rows.
+
+Unit tests must cover clamping, shared-progress mapping, destination-semantic counts,
+rapid tap interruption/reversal, and stale-token rejection. Simulator checks are
+structural diagnostics; physical-device checks must cover single taps, rapid alternating
+taps, slow/reversed transitions, and no-flicker list/count presentation.
 
 ## 5. Motion driver lifecycle and API contract
 
@@ -335,7 +395,7 @@ pCollapse = clamp((offsetY - collapseStart) / collapseDistance, 0, 1)
 
 The formula is `target`; `collapseStart` and `collapseDistance` are `to-tune` per
 device/font/content class. The existing Babel implementation’s `70 pt` collapse
-distance is `measured from current source`, not an approved motion constant. Do not
+distance is `measured from the audited source snapshot`, not an approved motion constant. Do not
 mutate scroll insets or WebView geometry on every update. Render the large title,
 compact title, icon, ring, and article surface from this one `pCollapse`.
 
@@ -380,7 +440,7 @@ bars must never move or animate the pinned identity.
 After pinning, require accumulated travel of `12 pt` (`reference`, Figma contract) in
 one direction before changing visibility. Tiny reversals and rubber-band movement are
 ignored until the accumulator crosses zero. The existing source’s `12 pt` direction
-threshold is `measured from current source` and happens to match the Figma reference;
+threshold is `measured from the audited source snapshot` and happens to match the Figma reference;
 the contract still requires device confirmation.
 
 Continuous bar progress uses:
@@ -425,10 +485,10 @@ heroHeight = expandedHeight - collapseDistance * pHero
 ```
 
 `pHero` and the linear interpolation rule are `reference` from the Figma contract.
-The current source’s `expandedHeight = 169 pt`, `compactHeight = 99 pt`, and
-`collapseDistance = 70 pt` are `measured from current source`; they are useful baseline
-values, not automatically accepted Babel 2.0 constants. Confirm safe-area behavior on
-device before assigning `target` status.
+The audited source snapshot’s `expandedHeight = 169 pt`, `compactHeight = 99 pt`, and
+`collapseDistance = 70 pt` are `measured from the audited source snapshot`; they are
+useful baseline values, not automatically accepted Babel 2.0 constants. Confirm safe-area
+behavior on device before assigning `target` status.
 
 Map the same `pHero` to image crop/opacity, source mark position/scale, title position/
 size, readability feather, status-bar scrim, and list origin. Do not call `layoutIfNeeded`,
@@ -437,11 +497,27 @@ The date header and article rows translate as one list surface. At `pHero = 1`, 
 is absent and the compact paper header is pinned as fully opaque chrome. Reversing uses
 the same mapping without resetting filter, route, or scroll context.
 
+### Timeline geometry acceptance (normative)
+
+For every hero presentation checkpoint—expanded, any intermediate `pHero`, and compact—
+there must be no independent spacer, transparent band, background leak, or view seam
+between the hero/source title/compact chrome and the first date header. The only permitted
+inset at that boundary is the standard section-inset token; its value is `to-tune` and
+must be confirmed by a Figma overlay measurement, not invented as a state-specific gap.
+The paper list surface is one continuous, fully opaque surface. The date header and
+article rows share the same scroll surface and may not be independently reflowed to
+manufacture the transition.
+
+An automated geometry/snapshot check must cover expanded, intermediate, and compact
+states, asserting the absence of the spacer/seam and the continuity/opacity of the paper
+surface. Simulator inspection is a structural gate only. A target-iPhone screenshot and
+scroll run must confirm the same geometry during forward and reversed hero motion.
+
 ## 12. WebView and content isolation
 
 Use a dedicated Babel 2.0 WebView factory and pool. The old prewarming concept may be
 borrowed, but the old configuration, legacy scripts, and shared mutable state are not a
-motion foundation. The current reader removes a legacy reading-bar class from a pooled
+motion foundation. The audited reader implementation removes a legacy reading-bar class from a pooled
 WebView; that is contamination containment, not isolation.
 
 Each prepared WebView must have stable configuration, script namespace, scroll delegate,
@@ -505,6 +581,7 @@ Instrument the motion layer with `os_signpost` intervals/events (names are norma
 | `Babel2.Reader.Chrome` | collapse or bar visibility update | state, pCollapse, barP |
 | `Babel2.Reader.Pager` | pager arm/commit/cancel | article IDs, p |
 | `Babel2.Feed.Hero` | hero tracking | pHero, imageReady |
+| `Babel2.Library.Filter` | filter transition ownership and settlement | fromFilter, toFilter, pFilter, token |
 | `Babel2.Web.Prepared` | Browser/adjacent article ready | route token, warm/cold |
 | `Babel2.Loading.Owner` | visible loading owner changes | surface, owner, state |
 
@@ -531,6 +608,8 @@ identity and anchor persistence; they cannot certify feel alone.
 | Browser | Browser left-edge back | same pop contract and anchor behavior | device |
 | Pager | at top/bottom, slow drag and velocity release | neighbor commit/cancel follows projection; three-surface window rebases once | automated + device |
 | Pager | rapid next/previous reversal | no duplicate article, stale token, or stack growth | stress device |
+| Filter | Starred/Unread/All single tap | one route; pill, list, summary, and per-source counts share `pFilter`; destination-semantic counts | unit + simulator + device |
+| Filter | rapid alternating taps / mid-flight reversal | starts from presentation state; no page reload, blank flash, stale counts, or filter token leak; `180 ms` linear reference/to-tune | unit + stress device + signpost |
 | Collapse | long article slow down/up through range | title/icon/ring track continuously and reverse without snap | device |
 | Reader entry | cold and warm article open | title/date/byline are visible above body on first settled frame; no full-screen loader or progress bar masks available content | device + signpost |
 | Collapse | short article | no compact identity or artificial collapse | UI test + device |
@@ -538,6 +617,7 @@ identity and anchor persistence; they cannot certify feel alone.
 | Toolbar | top/bottom elastic overscroll | bars do not change spuriously; top forces shown | device |
 | Hero | expanded → 50% → compact → reverse | one route/list surface; no row reflow or image snap | device |
 | Hero | expanded at status bar/dynamic island | image/background and scrim remain fully opaque; compact/list chrome is fully opaque; no date/article/WebView underlap | device + screenshot |
+| Hero geometry | expanded/intermediate `pHero`/compact | no independent spacer, transparent band, background leak, or seam between hero/source title/compact chrome and first date header; one opaque paper surface and one date+rows scroll surface | geometry/snapshot + simulator + physical device |
 | Hero | image ready late / no image fallback | motion unaffected; fallback remains valid | stress device |
 | Media | landscape body image | 100vw/full-bleed to both screen edges, square corners; text/caption retain inset | device + screenshot |
 | Async | translation/theme/filter update during tracking | no ownership change, layout jump, or anchor loss | stress device |
@@ -627,6 +707,6 @@ documentation use Babel/Babel2 naming. Historical build/module/test-harness iden
 may remain only in a clearly scoped explicit allowlist; historical persisted/system
 identity may remain only behind the single `LegacyIdentityCompatibility` boundary. The
 allowlist is never a second persisted/system identity outlet, and neither category may
-appear in user-visible UI. The current phase does not perform internal path/symbol/project/target/scheme/CI renaming; that work
+appear in user-visible UI. The phase covered by this contract does not perform internal path/symbol/project/target/scheme/CI renaming; that work
 waits for stable real-device acceptance. Bundle/data identity and external repository
 identity require a separate migration project and explicit authorization.

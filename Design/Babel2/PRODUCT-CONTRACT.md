@@ -1,6 +1,6 @@
 # Babel 2.0 产品与迁移合同
 
-状态：范围与验收合同草案（2026-08-31）  
+状态：当前规范产品与验收合同文本；产品实现仍未完成（2026-08-31）。
 适用平台：iOS 前端迁移；macOS、同步服务和内容管线不因本合同自动重写。  
 产品名：**Babel 2.0**
 
@@ -32,19 +32,28 @@ Babel 2.0 的工作范围包括：
 - 把 Genesis 的“有代码”当作 Babel 2.0 的“已验收”；
 - 仅凭模拟器截图、单元测试或 Figma 预览宣称真机手感完成。
 
-### 1.2 版本谱系（audit-only historical reference）
+### 1.2 版本谱系与实时状态边界（audit-only historical reference）
 
-evidence snapshot（2026-08-31；不是实时 hosted remote 核验）：
+以下是不可变历史基线和不可变合同/资产提交的证据快照（2026-08-31；不是实时
+hosted remote 核验）：
 
 | 版本 | 产品定位 | 本地 annotated tag peeled SHA | evidence snapshot |
 |---|---|---|---|
 | v0.5 | Genesis v1 stable baseline | `649f85fd50e5fff21e75818193011250baf08d50` | 本地 annotated tag；远端 tag 仅据先前 push agent 报告记录 |
 | v1.0 | Genesis v2 stable baseline | `d1679c7f253d37eda557970fca0827c096132a05` | 本地 annotated tag；远端 tag 仅据先前 push agent 报告记录 |
-| v1.1 | pre-Babel 2.0 UIKit redesign baseline | `a94c00626edf13bb3e869c35924bfd6ece7e6165` | 本地 annotated tag；`origin/codex/reeder-classic-rebuild` remote-tracking ref=`9fda5c5650d06ff5155ead466adbe1b084ccdd44`；v1.1 是祖先而非同一 commit；远端 tag 仅据先前 push agent 报告记录 |
+| v1.1 | pre-Babel 2.0 UIKit redesign baseline | `a94c00626edf13bb3e869c35924bfd6ece7e6165` | 本地 annotated tag peeled SHA；远端 tag 仅据先前 push agent 报告记录 |
 
-本轮 evidence snapshot 只记录本地 annotated tags、remote-tracking ref 和先前 push agent 报告；没有重新获取 hosted remote 的 `ls-remote`，因此不称为实时远端核验。已核对的祖先关系为：`v0.5 → v1.0 → v1.1 → origin/codex/reeder-classic-rebuild`。当前 HEAD 与 `origin/codex/reeder-classic-rebuild` 均为 `9fda5c5650d06ff5155ead466adbe1b084ccdd44`；该 commit 是 v1.1 的后代，不是 v1.1 本身。
+不可变相关提交（用于追溯，不代表实时工作树状态）：
 
-当前工作树位于分支 `codex/reeder-classic-rebuild`，且存在大量未提交修改和未跟踪设计/比较产物。因此下表描述的是“当前源码和工作树证据”，不是一个干净、已发布的 v1.1 构建。
+| 提交 | 内容 | 证据边界 |
+|---|---|---|
+| `9fda5c5650d06ff5155ead466adbe1b084ccdd44` | Babel 2.0 AppIcon 静态资产 | 仅代表该提交中的 Light/Dark/Mono（Tinted）静态资源及其提交事实 |
+| `ce7c0ea38da3cb8bcab9a01dd6bd712b215ae6d9` | Babel 2.0 产品与 Motion 合同的上一不可变版本 | 仅代表该提交中的两份合同文本；本次修订须以新的不可变提交记录，不代表后续工作树或分支状态 |
+
+实时分支、HEAD、工作树、未提交变更和合同之外的实现状态，必须在检查时同时查询
+Git 与 `Design/Babel2/Project/STATUS.md`。本合同不是 live-status source；任何
+evidence snapshot 都不能替代该实时查询，也不能把历史提交 SHA 推断为当前分支或
+工作树状态。
 
 ### 1.3 与旧 UI 的边界
 
@@ -65,12 +74,14 @@ reference`：它们用于迁移回退和证据追踪，不参与 no-new-legacy-n
 
 - 启动：Babel 2.0 cold start 直接到 Feeds/Library root，不显示旧 account-card landing page。
 - Feed hero：expanded 状态的图像/背景连续延伸到状态栏与动态岛区域，并由 hero 自身提供完全不透明底图和足够对比的 scrim；compact/list 状态切为完全不透明的实色 chrome。日期、文章列表、Reader WebView 以及其他滚动内容不得透过状态栏显示。expanded 到 compact 是同一连续 progress surface，不能拆成离散页面。
+- Timeline 几何：hero/source title/compact chrome 与首个 date header 之间不得出现独立 spacer、透明空带或可见的背景裂缝；只能使用标准 section inset token（provenance=`toTune`，待 Figma overlay 量测确认），不得为各状态另造隐式间距。list paper surface 必须连续且完全不透明；expanded、compact 及中间 `pHero` 状态均不得有视图裂缝；date header 与 article rows 必须属于同一个 scroll surface。自动 geometry/snapshot 检查、模拟器结构检查和目标 iPhone 实机检查均必须覆盖该边界。
+- Library filter motion：Starred/Unread/All 在同一路由的固定槽位 tap 切换；selection pill、source/article list 的 translate/crossfade、summary 与 per-source counts 共享同一个 `pFilter`（或等价连续进度）。目标 count 必须按目标 filter 语义计算；快速连续 tap 从当前 presentation state 中断并反向/重新跟手，不 reload 整页、不闪烁。`180 ms` 为 Figma linear reference，同时标为 Babel `toTune`，必须有 unit、simulator 和 physical-device gate。
 - Reader：顶部原长图位置改为普通系统分享；长图入口只在底栏，tap-only 生成长图，不以 long-press 承载分享。
 - Article media：横向正文图片 100vw/full-bleed 贴齐屏幕两侧且为直角；正文文字和 caption 保持 reading inset。portrait/inline 图片不强制 full-bleed；`figure`、链接和 wrapper 不得重新加圆角。
 - 颜色：全局禁止 hard-coded legacy mint/green。普通 icon、link、star、selection、reading-mode 状态使用 neutral gray/black；链接使用加粗和中性下划线，不使用绿色。accent 只由用户选择的主题色驱动 Settings switch 和 Reader progress ring；例如 Forest 不得扩散到其他控件。
 - Loading：sync arrow 是唯一同步指示器，只在真实 syncing 期间旋转并在完成后隐藏。文章、翻译和普通加载使用 skeleton/passive state；不得将系统菊花与 sync arrow 叠加，失败必须变成可读 error + retry。
 - Reader 首屏：进入文章时 title/byline 必须位于正文上方并立即可见；下滑由同一连续 motion surface 将它们移到 compact header，icon/progress 以连续渐出进入顶栏，不得因异步加载先隐藏标题。
-- 正式 AppIcon 资产事实：commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 已提交最终 Light/Dark/Mono（Tinted）三套静态资源；root 已逐图检查，独立静态 QA 与 actool QA 均通过。用户授权达标后，这三套资源直接作为 Babel 2.0 AppIcon。这里不宣称用户对最终 Light 做过逐像素再次口头确认。Light 使用明亮木桌与逐本独立的暗色调杂志封面，不使用整张黑色蒙版；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选明暗版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成；未跟踪的 Round 4 草稿只记录设计过程，不推翻该 commit 的正式资产事实。
+- 正式 AppIcon 资产事实：commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 已提交最终 Light/Dark/Mono（Tinted）三套静态资源；root 已逐图检查，独立静态 QA 与 actool QA 均通过。用户授权达标后，这三套资源直接作为 Babel 2.0 AppIcon。这里不宣称用户对最终 Light 做过逐像素再次口头确认。Light 使用明亮木桌与逐本独立的暗色调杂志封面，不使用整张黑色蒙版，也不得用统一压黑、烧焦感的降级版本替代；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选明暗版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成；未跟踪的 Round 4 草稿只记录设计过程，不推翻该 commit 的正式资产事实。
 
 ### 1.5 路线 A：命名与系统身份迁移 gate
 
@@ -149,10 +160,10 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 |---|---|---|---|
 | Babel 2.0 根壳 | `/Users/wenbopan/Downloads/AI Projects/Babel app/iOS/BabelUI/BabelShellViewController.swift` 已将根入口接到 Feeds；Release/Debug feature gate 仍存在；**半实现** | 冷启动直接进入 Feeds/Library root，不经过旧 account-card landing page；导航栈、状态栏和底部栏稳定；离开再返回不重复壳、不跳旧世代 UI；旧 UI 只能通过明确回退入口出现 | SceneDelegate、feature gate、UIKit 导航 |
 | Feeds 首页 | `BabelFeedsViewController.swift` 有 unread/folder/feed rows、计数、展开；**有代码未验收** | 首屏显示 Feeds、Starred、Unread、All 及源/文件夹；选中态、计数、缩进、分隔和点击反馈与 Reeder/Figma 一致；文件夹展开原地发生并保持上下文 | Core Data feeds/folders/articles、SmartFeeds、图标缓存 |
-| Starred / Unread / All | Feeds 过滤状态已部分存在；Figma Library `22:36`、Unread `22:7`、Starred `29:8`、All `29:23`；**半实现** | 点击过滤器只在固定槽位原地 `CHANGE_TO`；列表回到顶部但路由和其他上下文保留；没有 push/card/sheet；数量与实际结果一致。Starred 只显示至少有 starred 文章的源/文件夹，且每个源/文件夹的计数只统计当前过滤语义下的 starred 文章 | 文章 read/star 状态、SmartFeeds 查询 |
+| Starred / Unread / All | Feeds 过滤状态已部分存在；Figma Library `22:36`、Unread `22:7`、Starred `29:8`、All `29:23`；**半实现** | 点击过滤器只在固定槽位原地 `CHANGE_TO`；selection pill、summary、source/article list 使用共享 `pFilter` 做 translate/crossfade，且可从当前 presentation state 中断/反向；不 reload 整页、不闪烁；列表回到顶部但路由和其他上下文保留；没有 push/card/sheet；目标数量与实际结果一致。Starred 只显示至少有 starred 文章的源/文件夹，且每个源/文件夹的计数只统计当前过滤语义下的 starred 文章。`180 ms` linear 为 reference/toTune；unit、simulator、physical gate 均须通过 | 文章 read/star 状态、SmartFeeds 查询 |
 | 源 / 文件夹计数 | 新 Feeds 代码有 counts；**有代码未验收** | 文件夹计数等于可见子项语义；源计数等于对应过滤下文章数；0、同步中和错误时不显示过期的“成功数字” | Feed/folder 关系、文章状态、同步刷新 |
 | Feed 列表 / Timeline | `BabelTimelineViewController.swift` 有分组文章列表、底部栏、行内标题翻译；**半实现** | 日分组、标题、来源、时间、摘要、已读/未读重量、缩略图和底部操作与锁定参考一致；点击文章进入 Reader，返回保留位置 | 文章抓取、正文/摘要、日期、本地化、缩略图 |
-| Feed hero | 代码有 hero 与滚动插值；Figma Feed expanded `22:37`、transition `244:541`、compact `244:552`、no image `244:563`；**有代码未验收** | expanded hero 的图像/背景延伸到状态栏与动态岛区域，并由自身提供完全不透明底图和对比 scrim；compact/list 切为完全不透明实色 chrome；日期、文章列表不透过状态栏；展开到收缩是连续 progress surface，无卡片阴影跳变；无图时有稳定 fallback | `TimelineFeedHeader`、`FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader`、dominant color/cache |
+| Feed hero | 代码有 hero 与滚动插值；Figma Feed expanded `22:37`、transition `244:541`、compact `244:552`、no image `244:563`；**有代码未验收** | expanded hero 的图像/背景延伸到状态栏与动态岛区域，并由自身提供完全不透明底图和对比 scrim；compact/list 切为完全不透明实色 chrome；日期、文章列表不透过状态栏；hero/source title/compact chrome 到首个 date header 之间没有独立 spacer、透明空带或裂缝，只使用标准 section inset token（`toTune`，待 Figma overlay）；date header+article rows 是同一 scroll surface；展开到收缩是连续 progress surface，无卡片阴影跳变；无图时有稳定 fallback；自动 geometry/snapshot、模拟器和目标 iPhone 检查均通过 | `TimelineFeedHeader`、`FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader`、dominant color/cache |
 | Feed 搜索 | `BabelArticleSearchViewController.swift` 有当前源文章搜索覆盖层；**半实现** | 搜索留在当前源上下文；键盘、取消、空结果、错误和返回不丢失原滚动位置；搜索结果仍遵守文章行合同 | 本地文章索引/过滤、iOS 搜索输入 |
 | Feed More / 反馈 | Feeds/Timeline 有 More/Feed Issues sheet；**有代码未验收** | 菜单/反馈出现和消失不破坏当前 route、filter、scroll；命令作用后有可观察结果或明确错误；菜单材料和返回时序需实机确认 | UIKit sheet/action、订阅源状态、日志 |
 | Reader 原文 | `BabelReaderViewController.swift` 有 WKWebView、header、底部 toolbar；Figma Reader Original `22:38`；**有代码未验收** | 进入时标题、日期、byline 立即位于正文上方且可见；下滑由同一连续 motion surface 移到 compact header，feed icon/progress 渐出并保持稳定；底部 read/star/next/translation/long-image 槽位稳定；进入、返回、下一篇不跳位；短文和长文均不裁切 | WKWebView、文章 HTML/正文、`ReaderViewExtractor`、文章状态 |
@@ -176,7 +187,7 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 | 图标缓存 | 当前链 `FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader` 和 fallback/dominant color 存在；**有代码未验收** | 同一 feed 不重复解析/下载；缓存命中不闪烁；坏图标、有图标、无图标和网络失败均有稳定 fallback；Feed hero 与行图标不建立第二套 resolver | URL cache/disk cache、favicon 下载、图片裁切/主色分析 |
 | 同步状态 | 根壳有 sync glyph/Feed Issues 入口，历史同步能力可适配；**半实现** | 初始同步、同步中、成功、失败和离线均有可观察状态；sync arrow 只在真实 syncing 期间出现并旋转，成功/停止后自动隐藏；数字、列表和 star/read 操作不会显示已失效成功值；失败可重试并保留本地内容 | 账户、同步、网络、本地模型、活动日志 |
 | Loading / Empty / Error | Figma 有 Empty State `25:8`、Confused Bear `241:41`；完整 loading/error/empty master 未齐；**未验收** | 每个屏幕定义首次加载、刷新、无内容、无搜索结果、网络错误、解析错误和翻译错误；状态不造成布局跳变；文章/翻译加载使用 skeleton/passive state；不得同时显示系统菊花和 sync arrow；错误有恢复动作；不以永恒 spinner 代替错误 | 网络、解析、同步、翻译、状态模型 |
-| Babel 2.0 AppIcon | commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中 `iOS/Babel2/Assets.xcassets` 的最终 Light/Dark/Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过；**素材与静态 QA 通过，runtime appearance 待验收** | 用户授权达标后直接作为 Babel 2.0 AppIcon。Light 为明亮木桌、逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版；Dark 使用深色木桌版本；Tinted/Mono 与主题外观一致；runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成 | asset catalog、AppIcon 配置、runtime appearance wiring、模拟器与真机 Home Screen |
+| Babel 2.0 AppIcon | commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中 `iOS/Babel2/Assets.xcassets` 的最终 Light/Dark/Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过；**素材与静态 QA 通过，runtime appearance 待验收** | 用户授权达标后直接作为 Babel 2.0 AppIcon。Light 为明亮木桌、逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版或统一压黑/烧焦感的降级版本；Dark 使用深色木桌版本；Tinted/Mono 与主题外观一致；runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成 | asset catalog、AppIcon 配置、runtime appearance wiring、模拟器与真机 Home Screen |
 | 自动化门禁 | 现有测试覆盖 shell flag、pop policy、original-link swipe；没有完整 UI/snapshot/motion/device tests；**未验收** | 每个 Slice 有结构/单元检查、关键 UI 测试和实机检查记录；测试失败阻止“完成”标签；性能/运动由设备而非单元测试单独验收 | XCTest、截图/比较工具、真机、测试数据 |
 
 ## 4. 屏幕注册表与节点合同
@@ -337,7 +348,7 @@ reference`；它们不参加 Gate A 命名扫描。
 8. 仅凭 spinner、空数组或一个错误 alert 就证明 loading/empty/error 全状态完成；
 9. 仅凭现有 XCTest（shell flag、pop policy、original-link swipe）证明 UI、截图、运动或设备验收完成；
 10. 当前 dirty worktree 上未经重新构建、安装和设备验证的任何历史测试数字；
-11. 临时几何 B、Inter fallback、neutral thumbnail、compact T mark 等设计占位物已经是最终品牌或最终素材；正式 Babel 2.0 AppIcon 以 Light/Dark/Tinted（Mono）资源合同为准，Light 不得使用统一黑色蒙版；
+11. 临时几何 B、Inter fallback、neutral thumbnail、compact T mark 等设计占位物已经是最终品牌或最终素材；正式 Babel 2.0 AppIcon 以 Light/Dark/Tinted（Mono）资源合同为准，Light 不得使用统一黑色蒙版或统一压黑/烧焦感的降级版本；
 12. 把 Settings IA 文档中“7 个二级编辑器”和 Figma 状态文件的完整节点列表视为无冲突事实；精确屏幕注册以 `figma-state.json` 和用户当前决策为准，差异必须单独解决。
 13. 新增 Babel 2.0 代码、资源、测试或文档出现旧产品命名就视为 gate 失败；历史路径和旧 build/module/test-harness 引用仅在显式 allowlist 中保留且不可显示给用户；旧 persisted/system identity 只能在唯一 `LegacyIdentityCompatibility` 边界中保留，allowlist 不得成为第二出口。
 
@@ -350,7 +361,7 @@ reference`；它们不参加 Gate A 命名扫描。
 - Feed filter/folder 原地状态、Feed hero 既有 pipeline 的代码同步需要逐 Slice 核对；不能只看节点或静态 preview。
 - 添加订阅源的关键词发现后端、供应商范围、认证和配额尚未由当前源码证明。
 - Loading/empty/error 的完整主视觉和每种服务错误的恢复动作尚未齐全。
-- 当前工作树未清洁，且本合同创建前的修改涉及多处 Swift、工程、测试和未跟踪设计产物；本文件不把它们重新解释成稳定发布物。
+- 本合同版本的证据快照记录了创建时工作树未清洁，且此前修改涉及多处 Swift、工程、测试和未跟踪设计产物；本文件不把那一时点的状态重新解释成稳定发布物。实时状态仍须按 1.2 查询 Git 与 `Design/Babel2/Project/STATUS.md`。
 
 ## 10. 真机验收边界
 
@@ -406,9 +417,9 @@ historical reference`；实现与验收以本合同最新条款为准，旧节�
 | `Figma Drafts/BATCH-01-SPEC.md` 对文章缩略图的圆角描述（约第 67 行）被误用于正文媒体 | 正文横向图片 100vw/full-bleed、贴齐屏幕两侧、直角；文字/caption 保持 reading inset；portrait/inline 不强制 full-bleed，`figure`/link/wrapper 不得加圆角。该覆盖不改变列表 thumbnail 的独立规格。 |
 | 旧 Draft 对命名、旧工程品牌或历史组件的直接引用可能被复制进新 Babel2 文件 | 新 Babel2 code/resource/test/docs 统一使用 Babel/Babel2；旧 build/module/test-harness 引用只在显式 allowlist 中出现且不可进入 UI；旧 persisted/system identity 只能经唯一 `LegacyIdentityCompatibility` 边界出现，allowlist 不得成为第二出口。完整旧技术命名迁移另立任务。 |
 
-### 12.1 AppIcon 当前状态
+### 12.1 AppIcon 静态提交状态（audit-only historical reference）
 
-commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中正式 Babel 2.0 AppIcon 的最终 Light、Dark、Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过。用户授权达标后，三套资源直接作为 Babel 2.0 AppIcon。这不是本轮重新运行的声明，也不宣称用户对最终 Light 做过逐像素再次口头确认。Light 采用明亮木桌与逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍属于待验收项。未跟踪的 Round 4 草稿只记录设计过程，不改变该 commit 的正式资产事实。
+commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中正式 Babel 2.0 AppIcon 的最终 Light、Dark、Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过。用户授权达标后，三套资源直接作为 Babel 2.0 AppIcon。这不是本轮重新运行的声明，也不宣称用户对最终 Light 做过逐像素再次口头确认。Light 采用明亮木桌与逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版或统一压黑/烧焦感的降级版本；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍属于待验收项。未跟踪的 Round 4 草稿只记录设计过程，不改变该 commit 的正式资产事实。
 
 ### 12.2 Release gate 汇总
 
