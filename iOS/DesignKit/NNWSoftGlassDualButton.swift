@@ -144,7 +144,7 @@ import UIKit
 		init(icon: UIImage, label: String) {
 			super.init(frame: .zero)
 			iconView.image = icon.withRenderingMode(.alwaysTemplate)
-			iconView.tintColor = NNWSoftMaterial.accent
+			iconView.tintColor = NNWSoftMaterial.ink
 			iconView.contentMode = .center
 			iconView.isUserInteractionEnabled = false
 			addSubview(iconView)

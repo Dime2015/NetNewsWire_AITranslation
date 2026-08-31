@@ -241,32 +241,47 @@ private extension SceneDelegate {
 		guard BabelShellConfiguration.isEnabled else { return }
 
 		let shellViewController = BabelShellViewController()
-		shellViewController.onOpenGenesisV2 = { [weak self] in
-			self?.showGenesisV2Interface()
-		}
+		// Babel reader shares the legacy reader's pre-warmed WKWebView pool. This
+		// removes the cold WebKit process start from the article-open path.
+		BabelReaderWebViewPool.provider = coordinator.webViewProvider
 		shellViewController.onOpenSubscribe = { [weak self] in
 			self?.coordinator.showAddFeed()
-		}
-		shellViewController.onOpenSettings = { [weak self] in
-			self?.coordinator.showSettings()
 		}
 		babelShellViewController = shellViewController
 		window?.rootViewController = shellViewController
 		window?.makeKeyAndVisible()
-		if ProcessInfo.processInfo.arguments.contains("-BabelFeedsTop") {
+		if ProcessInfo.processInfo.arguments.contains("-BabelSettings") {
+			DispatchQueue.main.async { shellViewController.openSettingsForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelAddSubscription") {
+			DispatchQueue.main.async { shellViewController.openAddSubscriptionForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedDiscovery") {
+			DispatchQueue.main.async { shellViewController.openFeedDiscoveryForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelSubscriptionManagement") {
+			DispatchQueue.main.async { shellViewController.openSubscriptionManagementForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelSearch") {
+			DispatchQueue.main.async { shellViewController.openSearchForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedsStarred") {
+			DispatchQueue.main.async { shellViewController.openFeedsStarredForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedsTop") {
 			DispatchQueue.main.async { shellViewController.openFeedsAtTopForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeeds") {
 			DispatchQueue.main.async { shellViewController.openFeedsForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedIssues") {
 			DispatchQueue.main.async { shellViewController.openFeedIssuesForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderMenu") {
-			DispatchQueue.main.async { shellViewController.openReaderMenuForDebug() }
+			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderMenuForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderPinnedUp") {
+			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderPinnedUpForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderScrolled") {
-			DispatchQueue.main.async { shellViewController.openReaderScrolledForDebug() }
+			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderScrolledForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFilter") {
 			DispatchQueue.main.async { shellViewController.openTimelineFilterForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelReader") {
-			DispatchQueue.main.async { shellViewController.openReaderForDebug() }
+			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineTranslationStress") {
+			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineTranslationStressForDebug() }
+		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFeedCompact") {
+			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineCompactForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFeed") {
 			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineForDebug() }
 		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimeline") {

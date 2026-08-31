@@ -85,10 +85,20 @@ struct BabelHomeSnapshot {
 
 	static func loadArticles(for fetchType: FetchType) async -> [Article] {
 		let articles = await AccountManager.shared.fetchArticlesAsync(fetchType)
-		return uniqueArticles(articles).sorted {
-			if $0.logicalDatePublished == $1.logicalDatePublished { return $0.articleID < $1.articleID }
-			return $0.logicalDatePublished > $1.logicalDatePublished
+		return sortedArticles(articles)
+	}
+
+	/// `FetchType` has no account-wide "all" case. The compact filter bar does,
+	/// so compose its local source from the actual feeds rather than pretending
+	/// the unread smart feed contains read articles.
+	static func loadAllArticles() async -> [Article] {
+		var articles = Set<Article>()
+		for account in AccountManager.shared.sortedActiveAccounts {
+			for feed in account.flattenedFeeds() {
+				articles.formUnion(await account.fetchArticlesAsync(.feed(feed)))
+			}
 		}
+		return sortedArticles(articles)
 	}
 
 	/// Smart feeds can temporarily expose the same article through more than one
@@ -100,8 +110,20 @@ struct BabelHomeSnapshot {
 		return articles.filter { seen.insert($0.articleID).inserted }
 	}
 
-	static func displayTitle(for article: Article) -> String {
-		if let translated = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article), !translated.isEmpty {
+	private static func sortedArticles(_ articles: some Sequence<Article>) -> [Article] {
+		uniqueArticles(articles).sorted {
+			if $0.logicalDatePublished == $1.logicalDatePublished { return $0.articleID < $1.articleID }
+			return $0.logicalDatePublished > $1.logicalDatePublished
+		}
+	}
+
+	static func sorted(_ articles: some Sequence<Article>) -> [Article] {
+		sortedArticles(articles)
+	}
+
+	static func displayTitle(for article: Article, usesTitleTranslation: Bool = true) -> String {
+		if usesTitleTranslation,
+		   let translated = NNWTitleTranslationController.shared.cachedTranslatedTitle(for: article), !translated.isEmpty {
 			return decodeHTMLText(translated)
 		}
 		if let title = article.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
@@ -151,26 +173,53 @@ struct BabelHomeSnapshot {
 		let entities: [String: String] = [
 			"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"",
 			"&#39;": "'", "&apos;": "'", "&rsquo;": "’", "&lsquo;": "‘",
-			"&rdquo;": "”", "&ldquo;": "“", "&nbsp;": " "
+			"&rdquo;": "”", "&ldquo;": "“", "&nbsp;": " ",
+			"&ndash;": "–", "&mdash;": "—", "&hellip;": "…",
+			"&copy;": "©", "&reg;": "®", "&trade;": "™",
+			"&laquo;": "«", "&raquo;": "»", "&middot;": "·", "&bull;": "•"
 		]
-		var normalized = value
+		// Title/summary decoding sits on the cell-configuration hot path. Using
+		// NSAttributedString's HTML importer here spins up the HTML/WebKit stack
+		// once per visible label and can stall the main thread for seconds. Feed
+		// titles only need tags removed and entities decoded, so keep this path
+		// deliberately lightweight and deterministic.
+		var normalized = value.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
 		// Feeds occasionally double-encode entities (for example &amp;rsquo;).
 		// Two passes handle both the direct and double-encoded forms.
 		for _ in 0..<2 {
 			for (entity, replacement) in entities { normalized = normalized.replacingOccurrences(of: entity, with: replacement) }
+			normalized = decodeNumericEntities(in: normalized)
 		}
 		// Handle feeds that preserve an arbitrary number of ampersand layers.
 		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*rsquo;"#, with: "’", options: .regularExpression)
 		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*lsquo;"#, with: "‘", options: .regularExpression)
 		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*rdquo;"#, with: "”", options: .regularExpression)
 		normalized = normalized.replacingOccurrences(of: #"(?i)&(?:amp;)*ldquo;"#, with: "“", options: .regularExpression)
-		guard let data = normalized.data(using: .utf8),
-			  let decoded = try? NSAttributedString(
-				data: data,
-				options: [.documentType: NSAttributedString.DocumentType.html,
-						  .characterEncoding: String.Encoding.utf8.rawValue],
-				 documentAttributes: nil
-			  ).string else { return value }
-		return decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+		return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
+	private static func decodeNumericEntities(in value: String) -> String {
+		guard let expression = try? NSRegularExpression(pattern: #"&#(?:x([0-9a-fA-F]+)|([0-9]+));"#) else { return value }
+		let range = NSRange(value.startIndex..<value.endIndex, in: value)
+		let matches = expression.matches(in: value, range: range)
+		guard !matches.isEmpty else { return value }
+		let result = NSMutableString(string: value)
+		for match in matches.reversed() {
+			let hexRange = match.range(at: 1)
+			let decimalRange = match.range(at: 2)
+			let digits: String
+			let radix: Int
+			if hexRange.location != NSNotFound {
+				digits = (value as NSString).substring(with: hexRange)
+				radix = 16
+			} else {
+				digits = (value as NSString).substring(with: decimalRange)
+				radix = 10
+			}
+			guard let scalarValue = UInt32(digits, radix: radix),
+				  let scalar = UnicodeScalar(scalarValue) else { continue }
+			result.replaceCharacters(in: match.range, with: String(Character(scalar)))
+		}
+		return result as String
 	}
 }

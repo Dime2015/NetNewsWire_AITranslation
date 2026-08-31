@@ -297,7 +297,7 @@ final class SettingsViewController: UITableViewController {
 			cell = tableView.dequeueReusableCell(withIdentifier: "SettingsTableViewCell", for: indexPath)
 			cell.textLabel?.text = "强调色"
 			cell.detailTextLabel?.text = NNWAccentPalette.choice.displayName
-			cell.detailTextLabel?.textColor = NNWSoftMaterial.accent
+			cell.detailTextLabel?.textColor = .secondaryLabel
 			cell.accessoryType = .disclosureIndicator
 		default:
 			cell = super.tableView(tableView, cellForRowAt: indexPath)

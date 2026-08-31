@@ -79,7 +79,7 @@ final class ArticleThemesTableViewController: UITableViewController {
 		// section 1:列表下方的「导入主题」按钮行(原来在右上角)
 		if indexPath.section == 1 {
 			cell.textLabel?.text = NSLocalizedString("Import Theme", comment: "Import Theme")
-			cell.textLabel?.textColor = NNWAccentPalette.live	// [外观] 一行换一行:走调色板,像个按钮
+			cell.textLabel?.textColor = .label
 			cell.textLabel?.textAlignment = .center
 			cell.accessoryType = .none
 			return cell

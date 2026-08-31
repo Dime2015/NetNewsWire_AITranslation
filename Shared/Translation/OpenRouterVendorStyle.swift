@@ -112,7 +112,7 @@ enum OpenRouterVendorStyle {
 		let slug = vendor.hasPrefix(aliasPrefix) ? String(vendor.dropFirst()) : vendor
 		guard let letter = slug.first(where: { $0.isLetter })?.uppercased() else { return nil }
 
-		let color = NNWAccentPalette.live.resolvedColor(with: traits)
+		let color = UIColor.label.resolvedColor(with: traits)
 		let key = "\(letter)|\(color.description)"
 		if let cached = cache[key] { return cached }
 

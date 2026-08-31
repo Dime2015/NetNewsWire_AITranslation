@@ -325,7 +325,7 @@ import UIKit
 		// ⚠️ 为什么染主题色而不是 `.label`:那几个单色 logo 的原色是**纯黑**,
 		// 深色模式下会直接消失(L112)。染成主题色一举两得 —— 深浅色都读得出来,
 		// 而且和这个 app「单一强调色」的调子是一路的。
-		content.imageProperties.tintColor = NNWAccentPalette.live
+		content.imageProperties.tintColor = .label
 		content.imageToTextPadding = 8
 		header.contentConfiguration = content
 		return header
@@ -385,7 +385,7 @@ import UIKit
 				content.image = OpenRouterVendorStyle.icon(for: model.vendor, traits: traitCollection)
 				content.imageProperties.maximumSize = CGSize(width: 18, height: 18)
 				content.imageProperties.reservedLayoutSize = CGSize(width: 18, height: 18)
-				content.imageProperties.tintColor = NNWAccentPalette.live	// 只影响标了 template 的那 6 个单色 logo
+				content.imageProperties.tintColor = .label
 				content.imageToTextPadding = 8
 			}
 			cell.selectionStyle = .default
@@ -399,7 +399,7 @@ import UIKit
 
 		case .refresh:
 			content.text = isRefreshing ? "正在刷新…" : "刷新模型目录"
-			content.textProperties.color = NNWAccentPalette.live	// [外观] 走调色板,像个按钮
+			content.textProperties.color = .label
 			content.textProperties.alignment = .center
 			cell.selectionStyle = .default
 			if isRefreshing {

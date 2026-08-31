@@ -401,24 +401,25 @@ a.footnote:hover,
 		font: -apple-system-body;
 		/* The font-size is replaced at runtime by the dynamic type size */
 		font-size: [[font-size]]px;
-		--primary-accent-color: #086AEE;
-		--secondary-accent-color: #086AEE;
+		--primary-accent-color: #707070;
+		--secondary-accent-color: #3D3D3D;
 		--block-quote-border-color: rgba(0, 0, 0, 0.25);
 		--ios-hover-color: lightgray; /* placeholder */
 	}
 
 	@media(prefers-color-scheme: dark) {
 		:root {
-			--primary-accent-color: #2D80F1;
-			--secondary-accent-color: #5E9EF4;
-			--block-quote-border-color: rgba(94, 158, 244, 0.75);
+			--primary-accent-color: #A0A0A0;
+			--secondary-accent-color: #E0E0E0;
+			--block-quote-border-color: rgba(255, 255, 255, 0.36);
 			--header-table-border-color: rgba(255, 255, 255, 0.2);
 			--ios-hover-color: #444444; /* placeholder */
 		}
 	}
 
 	body a, body a:visited, body a * {
-		color: var(--secondary-accent-color);
+		color: inherit;
+		font-weight: 600;
 	}
 
 	a :is(i, em) {
@@ -430,11 +431,9 @@ a.footnote:hover,
 	}
 
 	.articleBody a:link, .articleBody a:visited {
-		text-decoration: underline;
-		text-decoration-color: var(--primary-accent-color);
-		text-decoration-thickness: 1px;
-		text-underline-offset: 2px;
-		color: var(--secondary-accent-color);
+		text-decoration: none;
+		color: inherit;
+		font-weight: 600;
 	}
 
 	.articleBody sup a:link, .articleBody sup a:visited {
@@ -443,11 +442,9 @@ a.footnote:hover,
 	}
 
 	sup .newsfoot-footnote-popover a:link, sup .newsfoot-footnote-popover a:visited {
-		text-decoration: underline;
-		text-decoration-color: var(--primary-accent-color);
-		text-decoration-thickness: 1px;
-		text-underline-offset: 2px;
-		color: var(--secondary-accent-color);
+		text-decoration: none;
+		color: inherit;
+		font-weight: 600;
 	}
 
 	body .header {
@@ -456,7 +453,8 @@ a.footnote:hover,
 	}
 
 	body .header a:link, body .header a:visited {
-		color: var(--secondary-accent-color);
+		color: inherit;
+		font-weight: 600;
 	}
 
 	.articleBody a:hover {
@@ -502,24 +500,25 @@ a.footnote:hover,
 
 	:root {
 		color-scheme: light dark;
-		--accent-color: rgba( 8, 106, 238, 1);
+		--accent-color: rgba( 80, 80, 80, 1);
 		--block-quote-border-color: rgba( 0,   0,   0, 0.25);
-		--hover-gradient-color-start: rgba(60, 146, 251, 1);
-		--hover-gradient-color-end: rgba(67, 149, 251, 1);
+		--hover-gradient-color-start: rgba(220, 220, 220, 1);
+		--hover-gradient-color-end: rgba(205, 205, 205, 1);
 	}
 
 	@media(prefers-color-scheme: dark) {
 		:root {
-			--accent-color: rgba( 94, 158, 244, 1);
-			--block-quote-border-color: rgba( 94, 158, 244, 0.50);
+			--accent-color: rgba( 225, 225, 225, 1);
+			--block-quote-border-color: rgba(255, 255, 255, 0.36);
 			--header-table-border-color: rgba(255, 255, 255, 0.1);
-			--hover-gradient-color-start: rgba( 41, 121, 213, 1);
-			--hover-gradient-color-end: rgba( 42, 120, 212, 1);
+			--hover-gradient-color-start: rgba(70, 70, 70, 1);
+			--hover-gradient-color-end: rgba(84, 84, 84, 1);
 		}
 	}
 
 	body a, body a:visited, body a * {
-		color: var(--accent-color);
+		color: inherit;
+		font-weight: 600;
 	}
 
 	a :is(i, em) {
@@ -535,7 +534,8 @@ a.footnote:hover,
 	}
 
 	.articleBody a:link, .articleBody a:visited {
-		border-bottom: 1px solid var(--accent-color);
+		border-bottom: 0;
+		font-weight: 600;
 	}
 	
 	.articleBody a:has(img),
@@ -547,8 +547,8 @@ a.footnote:hover,
 	.articleBody a:hover {
 		border-radius: 2px;
 		background: linear-gradient(0deg, var(--hover-gradient-color-start) 0%, var(--hover-gradient-color-end) 100%);
-		border-bottom: 1px solid var(--hover-gradient-color-end);
-		color: white;
+		border-bottom: 0;
+		color: inherit;
 		text-decoration: none;
 	}
 	
@@ -559,7 +559,7 @@ a.footnote:hover,
 		border-radius: 0;
 	}
 	.articleBody a:hover u {
-		color: white;
+		color: inherit;
 	}
 
 	pre {

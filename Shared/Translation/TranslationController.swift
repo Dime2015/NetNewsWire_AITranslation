@@ -289,8 +289,16 @@ enum TranslationScript {
 	}()
 
 	private(set) var state: TranslationButtonState = .original {
-		didSet { button.displayState = state }
+		didSet {
+			button.displayState = state
+			stateDidChange?(state)
+		}
 	}
+
+	/// Alternate UIKit shells can render their own compact translation control
+	/// while still delegating all request, cache, cancellation and streaming
+	/// work to this controller.
+	var stateDidChange: (@MainActor (TranslationButtonState) -> Void)?
 
 	/// 最近一次失败的原因,用人话写的。翻译失败时弹给用户看。
 	private(set) var lastErrorMessage: String?

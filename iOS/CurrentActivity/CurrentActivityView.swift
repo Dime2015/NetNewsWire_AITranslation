@@ -112,7 +112,7 @@ private extension CurrentActivityView {
 		case .running:
 			return .blue
 		case .completed:
-			return .green
+			return .secondary
 		case .failed:
 			return .red
 		}

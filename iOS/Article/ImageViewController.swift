@@ -37,9 +37,9 @@ final class ImageViewController: UIViewController {
         super.viewDidLoad()
 
 		let closeButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(done(_:)))
-		closeButtonItem.tintColor = NNWAccentPalette.live
+		closeButtonItem.tintColor = .label
 		let shareButtonItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(share(_:)))
-		shareButtonItem.tintColor = NNWAccentPalette.live
+		shareButtonItem.tintColor = .label
 		navigationItem.leftBarButtonItem = closeButtonItem
 		navigationItem.rightBarButtonItem = shareButtonItem
 		self.shareButtonItem = shareButtonItem

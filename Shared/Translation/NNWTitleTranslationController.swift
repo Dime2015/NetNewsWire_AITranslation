@@ -45,13 +45,17 @@ extension Notification.Name {
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "TitleTranslation")
 
-	/// 一批最多多少条。40 条标题连提示词也就一两千 token,单次请求很稳。
-	private static let batchLimit = 40
-	/// 攒批的时间窗:一屏 cell 的装配在一两帧内到齐,0.4 秒绰绰有余
-	private static let coalesceSeconds: UInt64 = 400_000_000
+	/// 后台预翻批次不宜过大:短标题的交互延迟主要来自等整批生成完毕。
+	private static let backgroundBatchLimit = 24
+	/// 屏幕上正在等待的标题优先走更小的批次,更快拿到完整 JSON。
+	private static let interactiveBatchLimit = 12
+	/// 一屏 cell 会在几帧内完成装配。100ms 足够攒批,不额外白等 0.4 秒。
+	private static let coalesceSeconds: UInt64 = 100_000_000
 
 	/// 待翻:文章 ID → 文章(去重靠字典键)
 	private var pending: [String: Article] = [:]
+	/// 由可见 cell 请求的标题。后台预翻不能长期排在它们前面。
+	private var interactivePendingIDs: Set<String> = []
 	/// 已经发出去在翻的
 	private var inFlight: Set<String> = []
 	/// 本次运行里翻失败的,别反复撞同一堵墙
@@ -64,6 +68,9 @@ extension Notification.Name {
 	private var draining = false
 
 	private init() {
+		// AppDelegate 会在启动阶段创建本控制器。此时预热磁盘缓存,
+		// 避免第一次进入翻译源时在 cell 装配热路径里同步读文件。
+		NNWTitleTranslationCache.shared.preload()
 		#if os(iOS)
 		// 回前台时给失败的一个再试的机会 —— 断网多半发生在离开 app 的那段时间
 		NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification,
@@ -114,7 +121,7 @@ extension Notification.Name {
 															  model: model) == nil else {
 				continue
 			}
-			enqueue(article)
+			enqueue(article, priority: .background)
 			count += 1
 		}
 		if count > 0 {
@@ -166,7 +173,7 @@ extension Notification.Name {
 			return translated == title ? article : article.nnwReplacingTitle(translated)
 		}
 
-		enqueue(article)
+		enqueue(article, priority: .interactive)
 		return article
 	}
 
@@ -197,9 +204,13 @@ extension Notification.Name {
 
 	// MARK: - 攒批与翻译
 
-	private func enqueue(_ article: Article) {
+	private enum Priority { case interactive, background }
+
+	private func enqueue(_ article: Article, priority: Priority) {
 		let id = article.articleID
-		guard pending[id] == nil, !inFlight.contains(id), !failedThisRun.contains(id) else { return }
+		guard !inFlight.contains(id), !failedThisRun.contains(id) else { return }
+		if priority == .interactive { interactivePendingIDs.insert(id) }
+		guard pending[id] == nil else { return }
 		// ⚠️ 这里刻意**不查**配置(isFullyConfigured 要同步读一次 Keychain,
 		// 而本方法在每行装配的热路径上,滚一屏就是几十次 —— 独立审查建议 3)。
 		// 配置检查统一放在 drain() 里,一批只查一次;没配 key 时那边整批标失败,
@@ -225,11 +236,21 @@ extension Notification.Name {
 		defer { draining = false }
 
 		while !pending.isEmpty {
-			// 取一批。排序只为了日志和调试稳定,模型不在乎顺序
-			let batch = Array(pending.values.prefix(Self.batchLimit))
+			// 可见标题优先,同优先级内新文章优先。Dictionary 的迭代顺序不能
+			// 代表屏幕顺序,否则一屏标题可能被后台历史文章压在后面。
+			let interactive = pending.values
+				.filter { interactivePendingIDs.contains($0.articleID) }
+				.sorted { $0.logicalDatePublished > $1.logicalDatePublished }
+			let background = pending.values
+				.filter { !interactivePendingIDs.contains($0.articleID) }
+				.sorted { $0.logicalDatePublished > $1.logicalDatePublished }
+			let limit = interactive.isEmpty ? Self.backgroundBatchLimit : Self.interactiveBatchLimit
+			let batch = Array((interactive + background).prefix(limit))
 			let ids = batch.map { $0.articleID }
+			let interactiveBatchIDs = Set(ids.filter { interactivePendingIDs.contains($0) })
 			for id in ids {
 				pending.removeValue(forKey: id)
+				interactivePendingIDs.remove(id)
 				inFlight.insert(id)
 			}
 
@@ -239,6 +260,7 @@ extension Notification.Name {
 				inFlight.subtract(ids)
 				failedThisRun.formUnion(pending.keys)
 				pending.removeAll()
+				interactivePendingIDs.removeAll()
 				break
 			}
 			let model = TranslationConfigStore.selectedModel
@@ -255,8 +277,9 @@ extension Notification.Name {
 														  title: article.title ?? "",
 														  model: model)
 				}
-				NNWTitleTranslationCache.shared.flush()
+					NNWTitleTranslationCache.shared.flush()
 				inFlight.subtract(ids)
+				for id in ids { retryCounts.removeValue(forKey: id) }
 				Self.logger.info("[翻译] 标题批量翻译成功:\(ids.count) 条(模型 \(model, privacy: .public))")
 				NotificationCenter.default.post(name: .nnwTitleTranslationDidUpdate, object: nil)
 			} catch {
@@ -289,6 +312,9 @@ extension Notification.Name {
 							failedThisRun.insert(article.articleID)
 						} else {
 							pending[article.articleID] = article
+							if interactiveBatchIDs.contains(article.articleID) {
+								interactivePendingIDs.insert(article.articleID)
+							}
 						}
 					}
 					Self.logger.error("""
@@ -301,6 +327,7 @@ extension Notification.Name {
 				failedThisRun.formUnion(ids)
 				failedThisRun.formUnion(pending.keys)
 				pending.removeAll()
+				interactivePendingIDs.removeAll()
 				Self.logger.error("[翻译] 标题批量翻译失败:\(ids.count) 条 — \(error.localizedDescription, privacy: .public)")
 				break
 			}

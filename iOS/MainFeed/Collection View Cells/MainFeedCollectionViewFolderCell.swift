@@ -57,7 +57,7 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			// ⚠️ **不能再走 `iconImage?.preferredColor`**:上游那个 IconImage 自带一个
 			// 偏暗的陶土色,会压过强调色(2026-08-05 实测:图标画出来是棕的,不是橙的)。
 			// 上面既然已经不用它的图了,它的颜色也不该再参与 —— 直接用调色板。
-			faviconView.tintColor = NNWSoftMaterial.accent
+			faviconView.tintColor = .secondaryLabel
 		}
 	}
 
@@ -77,7 +77,7 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			faviconView.isAccessibilityElement = false
 			disclosureButton.isAccessibilityElement = false
 			disclosureButton.addInteraction(UIPointerInteraction())
-			disclosureButton.tintColor = NNWSoftMaterial.accent	// [外观] 2026-08-04:三角跟着这一页的橙色走
+			disclosureButton.tintColor = .secondaryLabel
 
 			// [外观] 收紧行高、放大图标,并把展开三角从最右挪到最左
 			//(让未读数顶到右边缘,和智能组那几个数字对齐)。实现见 FeedListMetrics。
@@ -183,9 +183,9 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 		switch (state.isHighlighted || state.isSelected || state.isFocused, traitCollection.userInterfaceIdiom) {
 		case (true, .pad):
 			backgroundConfig.backgroundColor = .tertiarySystemFill
-			folderTitle.textColor = NNWAccentPalette.live
+			folderTitle.textColor = .label
 			folderTitle.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
-			unreadCountLabel.textColor = NNWAccentPalette.live
+			unreadCountLabel.textColor = .label
 			unreadCountLabel.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
 		default:
 			folderTitle.textColor = .label
@@ -194,7 +194,7 @@ class MainFeedCollectionViewFolderCell: UICollectionViewCell {
 			// didSet **之后**跑 —— 2026-08-05 只改了 didSet 那处,颜色纹丝不动
 			// (画出来是陶土色不是橙色),就是被这行覆盖的。典型的 L74:
 			// 一个显示值有 N 个写入点,只改一个等于没改。
-			faviconView.tintColor = NNWSoftMaterial.accent
+			faviconView.tintColor = .secondaryLabel
 			folderTitle.font = UIFont.preferredFont(forTextStyle: .body)
 			unreadCountLabel.textColor = .secondaryLabel
 			unreadCountLabel.font = UIFont.preferredFont(forTextStyle: .body)

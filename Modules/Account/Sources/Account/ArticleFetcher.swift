@@ -40,9 +40,7 @@ extension Feed: ArticleFetcher {
 			assertionFailure("Expected feed.account, but got nil.")
 			return Set<Article>()
 		}
-		// TODO: fetch only unread articles rather than filtering.
-		let articles = await account.fetchArticlesAsync(.feed(self))
-		return articles.unreadArticles()
+		return await account.fetchUnreadArticlesAsync(feed: self)
 	}
 }
 

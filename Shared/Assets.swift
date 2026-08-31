@@ -91,9 +91,9 @@ struct Assets {
 		static let swipeMarkStarred = RSImage(systemSymbolName: "star.fill", accessibilityDescription: "Star")!
 		static let swipeMarkRead = RSImage(systemSymbolName: "circle", accessibilityDescription: "Mark Read")!
 		static let swipeMarkUnread = RSImage(systemSymbolName: "largecircle.fill.circle", accessibilityDescription: "Mark Unread")!
-		static let mainFolder = IconImage(folder, isSymbol: true, isBackgroundSuppressed: true, preferredColor: Assets.Colors.primaryAccent)
+		static let mainFolder = IconImage(folder, isSymbol: true, isBackgroundSuppressed: true, preferredColor: NSColor.secondaryLabelColor)
 		static let todayFeed = IconImage(RSImage(symbol: "sun.max.fill")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: NSColor.orange)
-		static let unreadFeed = IconImage(RSImage(symbol: "largecircle.fill.circle")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: Assets.Colors.primaryAccent)
+		static let unreadFeed = IconImage(RSImage(symbol: "largecircle.fill.circle")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: NSColor.secondaryLabelColor)
 
 #else // iOS
 		static var accountLocalPadImage: RSImage { RSImage(named: "accountLocalPad")! }
@@ -120,14 +120,14 @@ struct Assets {
 		static let trash = RSImage(symbol: "trash")!
 
 		static let searchFeed = IconImage(RSImage(symbol: "magnifyingglass")!, isSymbol: true)
-		static let mainFolder = IconImage(folder, isSymbol: true, isBackgroundSuppressed: true, preferredColor: Assets.Colors.secondaryAccent)
+		static let mainFolder = IconImage(folder, isSymbol: true, isBackgroundSuppressed: true, preferredColor: UIColor.secondaryLabel)
 		static let todayFeed = IconImage(RSImage(symbol: "sun.max.fill")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: UIColor.systemOrange)
-		static let unreadFeed = IconImage(RSImage(symbol: "largecircle.fill.circle")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: Assets.Colors.secondaryAccent)
+		static let unreadFeed = IconImage(RSImage(symbol: "largecircle.fill.circle")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: UIColor.secondaryLabel)
 		static var timelineStar: RSImage {
 			let image = RSImage(symbol: "star.fill")!
 			return image.withTintColor(Assets.Colors.star, renderingMode: .alwaysOriginal)
 		}
-		static let unreadCellIndicator = IconImage(RSImage(symbol: "circle.fill")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: Assets.Colors.secondaryAccent)
+		static let unreadCellIndicator = IconImage(RSImage(symbol: "circle.fill")!, isSymbol: true, isBackgroundSuppressed: true, preferredColor: UIColor.secondaryLabel)
 #endif
 	}
 

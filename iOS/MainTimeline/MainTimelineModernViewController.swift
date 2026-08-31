@@ -790,7 +790,7 @@ private extension MainTimelineModernViewController {
 			}
 
 			readAction.image = article.status.read ? Assets.Images.circleClosed : Assets.Images.circleOpen
-			readAction.backgroundColor = NNWAccentPalette.live
+			readAction.backgroundColor = .secondaryLabel
 			actions.append(readAction)
 
 			let config = UISwipeActionsConfiguration(actions: actions)
@@ -902,7 +902,7 @@ private extension MainTimelineModernViewController {
 		navigationItem.rightBarButtonItems = (NNWReadingModeStore.showsPerFeedFilterButton && shouldShowFilterButton) ? [filterButton] : nnwNavBarButtonItems()
 
 		if isReadArticlesFiltered {
-			filterButton.tintColor = NNWAccentPalette.live
+			filterButton.tintColor = .label
 			filterButton.accLabelText = NSLocalizedString("Selected - Filter Read Articles", comment: "Selected - Filter Read Articles")
 		} else {
 			filterButton.tintColor = .label

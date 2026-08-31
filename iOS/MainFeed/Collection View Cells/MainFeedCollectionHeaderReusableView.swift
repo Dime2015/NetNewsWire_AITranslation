@@ -68,7 +68,7 @@ final class MainFeedCollectionHeaderReusableView: UICollectionReusableView {
 	/// 挪到每次配装都会跑的地方(`disclosureExpanded` 的 didSet)才跟得上。
 	var disclosureExpanded = true {
 		didSet {
-			disclosureIndicator?.tintColor = NNWSoftMaterial.accent	// [外观] 每次配装都刷一遍,换色才跟得上
+			disclosureIndicator?.tintColor = .secondaryLabel
 			updateExpandedState(animate: true)
 			updateUnreadCount()
 		}

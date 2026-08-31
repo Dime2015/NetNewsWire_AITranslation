@@ -832,6 +832,15 @@ public enum FetchType {
 		await database.fetchUnreadCountForStarredArticlesAsync(feedIDs: flattenedFeedsIDs)
 	}
 
+	/// Fetches only unread rows for one feed. The generic `.feed` fetch returns
+	/// the feed's full history and is unnecessarily expensive for an unread-first
+	/// timeline, especially on long-lived subscriptions.
+	public func fetchUnreadArticlesAsync(feed: Feed) async -> Set<Article> {
+		let articles = await database.fetchUnreadArticlesAsync(feedIDs: [feed.feedID])
+		validateUnreadCount(feed: feed, articles: articles)
+		return articles
+	}
+
 	public func fetchCountForStarredArticles() -> Int {
 		database.fetchStarredArticlesCount(feedIDs: flattenedFeedsIDs)
 	}

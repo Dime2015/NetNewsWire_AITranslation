@@ -209,7 +209,7 @@ import UIKit
 			// 高饱和的红只留给「开关」这类真正表达状态的控件。
 			// [外观] 2026-08-04:当前档改为「橙字 + 浮起的胶囊」(参考图的做法)。
 			// 胶囊由 capsule 视图画(软材质),这里的 background 一律留空,免得两层叠。
-			config.baseForegroundColor = NNWSoftMaterial.accent
+			config.baseForegroundColor = NNWSoftMaterial.ink
 			config.background.backgroundColor = .clear
 		} else {
 			config.attributedTitle = nil

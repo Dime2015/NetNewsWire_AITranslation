@@ -43,7 +43,7 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 		if let icon, icon === Assets.Images.todayFeed, let preferred = icon.preferredColor {
 			return preferred
 		}
-		return NNWSoftMaterial.accent
+		return .secondaryLabel
 	}
 
 	private var _unreadCount: Int = 0
@@ -122,10 +122,10 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 		switch (state.isHighlighted || state.isSelected || state.isFocused, traitCollection.userInterfaceIdiom) {
 		case (true, .pad):
 			backgroundConfig.backgroundColor = .tertiarySystemFill
-			feedTitle.textColor = NNWAccentPalette.live
+			feedTitle.textColor = .label
 			feedTitle.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize,
 											   weight: .semibold)
-			unreadCountLabel.textColor = NNWAccentPalette.live
+			unreadCountLabel.textColor = .label
 			unreadCountLabel.font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
 		default:
 			feedTitle.textColor = .label
@@ -134,7 +134,7 @@ final class MainFeedCollectionViewCell: UICollectionViewCell {
 			unreadCountLabel.textColor = .secondaryLabel
 			if traitCollection.userInterfaceIdiom == .phone {
 				if feedTitle.text == "All Unread" {
-					faviconView.tintColor = NNWSoftMaterial.accent	// [外观] 走调色板;不再吃 preferredColor(那是静态色板,换色跟不上)
+					faviconView.tintColor = .secondaryLabel
 				}
 			}
 		}

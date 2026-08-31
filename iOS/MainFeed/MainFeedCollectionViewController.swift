@@ -122,7 +122,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 	func updateCurrentActivityButtonState() {
 		let hasCurrentActivity = !ActivityLog.shared.runningActivities.isEmpty || !ActivityLog.shared.pendingActivities.isEmpty
-		currentActivityButton?.tintColor = hasCurrentActivity ? NNWAccentPalette.live : .label
+		currentActivityButton?.tintColor = hasCurrentActivity ? .label : .label
 	}
 
 	override func viewWillAppear(_ animated: Bool) {
@@ -830,7 +830,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func setFilterButtonToActive() {
-		filterButton.tintColor = NNWAccentPalette.live
+		filterButton.tintColor = .label
 		filterButton?.accLabelText = NSLocalizedString("Selected - Filter Read Feeds", comment: "Selected - Filter Read Feeds")
 	}
 

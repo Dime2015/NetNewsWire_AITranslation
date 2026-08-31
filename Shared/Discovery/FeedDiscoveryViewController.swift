@@ -713,7 +713,7 @@ import os
 			configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 6)
 
 			let button = UIButton(configuration: configuration)
-			button.tintColor = .systemGreen
+			button.tintColor = .label
 			button.accessibilityLabel = "取消订阅"
 			// 点绿勾 = 直接取消订阅。2026-07-29 加;初版有二次确认,用户验收后要求去掉 ——
 			// 误触的挽回成本很低:行还在原地,绿勾变回加号,再点一下就订回来了。

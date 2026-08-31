@@ -185,7 +185,7 @@ final class NNWArticleControlBoard: UIView {
 		// 星标:点亮时用 app 的星色,平时和别的键一样是暖墨
 		starButton.setImage(NNWDockIcons.star(filled: state.isStarred))	// [外观] 手绘
 		// [外观] 点亮用强调橙 —— 参考图里"当前/已激活"一律是橙色实心
-		starButton.iconTint = state.isStarred ? NNWSoftMaterial.accent : nil
+		starButton.iconTint = state.isStarred ? NNWSoftMaterial.ink : nil
 		starButton.isEnabled = state.hasArticle
 		starButton.accessibilityLabel = state.isStarred
 			? NSLocalizedString("Selected - Star Article", comment: "Selected - Star Article")

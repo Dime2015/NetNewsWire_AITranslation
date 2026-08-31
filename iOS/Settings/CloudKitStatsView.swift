@@ -126,7 +126,7 @@ struct CloudKitStatsView: View {
 			case .completed:
 				HStack(spacing: 4) {
 					Image(systemName: "checkmark.circle.fill")
-						.foregroundStyle(.green)
+						.foregroundStyle(.secondary)
 					Text(NSLocalizedString("Scan completed.", comment: "Scan status text when completed"))
 						.foregroundStyle(.secondary)
 					Spacer()

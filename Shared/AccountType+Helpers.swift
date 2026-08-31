@@ -27,13 +27,13 @@ extension AccountType {
 		case .cloudKit:
 			return .systemPurple
 		case .feedly:
-			return .systemGreen
+			return .secondaryLabelColor
 		case .feedbin:
 			return .systemBlue
 		case .newsBlur:
 			return .systemOrange
 		case .freshRSS:
-			return .systemTeal
+			return .secondaryLabelColor
 		case .inoreader:
 			return .systemBrown
 		case .bazQux:
@@ -50,13 +50,13 @@ extension AccountType {
 		case .cloudKit:
 			return .purple
 		case .feedly:
-			return .green
+			return .secondary
 		case .feedbin:
 			return .blue
 		case .newsBlur:
 			return .orange
 		case .freshRSS:
-			return .teal
+			return .secondary
 		case .inoreader:
 			return .brown
 		case .bazQux:

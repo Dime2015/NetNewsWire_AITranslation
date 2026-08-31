@@ -113,7 +113,7 @@ private extension ActivityLogView {
 		case .secondary:
 			return .secondaryLabel
 		case .success:
-			return .systemGreen
+			return .secondaryLabel
 		case .failure:
 			return .systemRed
 		case .account(let accountID):

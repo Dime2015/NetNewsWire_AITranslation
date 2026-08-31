@@ -45,7 +45,7 @@ final class ArticleViewController: UIViewController {
 		button.frame = CGRect(x: 0, y: 0, width: 44.0, height: 44.0)
 		button.setImage(Assets.Images.articleExtractorOff, for: .normal)
 		if #unavailable(iOS 26) {
-			button.tintColor = NNWAccentPalette.live
+			button.tintColor = .label
 		} else {
 			button.tintColor = .label
 		}

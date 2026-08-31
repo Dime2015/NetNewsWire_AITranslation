@@ -109,7 +109,7 @@ import UIKit
 		}
 
 		iconView.image = icon.withRenderingMode(.alwaysTemplate)
-		iconView.tintColor = tint ?? NNWSoftMaterial.accent
+		iconView.tintColor = tint ?? NNWSoftMaterial.ink
 		iconView.contentMode = .center
 		iconView.isUserInteractionEnabled = false
 		addSubview(iconView)
@@ -177,7 +177,7 @@ import UIKit
 	/// 换图标(换强调色 / 换页面状态时用)。
 	func nnwSetIcon(_ icon: UIImage, tint: UIColor? = nil) {
 		iconView.image = icon.withRenderingMode(.alwaysTemplate)
-		iconView.tintColor = tint ?? NNWSoftMaterial.accent
+		iconView.tintColor = tint ?? NNWSoftMaterial.ink
 	}
 }
 

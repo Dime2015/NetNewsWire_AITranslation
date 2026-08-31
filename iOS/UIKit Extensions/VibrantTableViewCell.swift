@@ -82,7 +82,7 @@ class VibrantBasicTableViewCell: VibrantTableViewCell {
 	@IBInspectable var imageSelected: UIImage?
 
 	var iconTint: UIColor {
-		return isHighlighted || isSelected ? labelColor : NNWAccentPalette.live
+		return isHighlighted || isSelected ? labelColor : secondaryLabelColor
 	}
 
 	var iconImage: UIImage? {

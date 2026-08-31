@@ -14,71 +14,45 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     private enum Row {
         case unread
-        case sectionSpacing
         case foldersHeader
         case folder(Folder)
         case feed(Feed)
     }
 
-    var onSelectUnread: (() -> Void)?
-    var onSelectSaved: (() -> Void)?
-    var onSelectFeed: ((Feed) -> Void)?
-    var onSelectFolder: ((Folder) -> Void)?
-    var onOpenGenesisV2: (() -> Void)?
+    var onSelectUnread: ((BabelArticleFilter) -> Void)?
+    var onSelectFeed: ((Feed, BabelArticleFilter) -> Void)?
+    var onSelectFolder: ((Folder, BabelArticleFilter) -> Void)?
     var onOpenSubscribe: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
     private var rows = [Row]()
     private var collapsedFolders = Set<String>()
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let emptyLabel = UILabel()
     private let bottomBar = UIView()
     private let customHeader = UIView()
-    private let headerSeparator = UIView()
     private let headerTitleLabel = UILabel()
     private let headerSubtitleLabel = UILabel()
-    private let interfaceSwitcher = UISegmentedControl(items: ["Babel", "旧版"])
-    private var headerTitleTopConstraint: NSLayoutConstraint?
-    private var headerSubtitleTopConstraint: NSLayoutConstraint?
-    var debugInitialScrollOffset: CGFloat = 300
+    private let syncGlyph = BabelSyncGlyphView()
+    private let starredFilterButton = BabelFilterControl(filter: .starred)
+    private let unreadFilterButton = BabelFilterControl(filter: .unread)
+    private let allFilterButton = BabelFilterControl(filter: .all)
+    var debugInitialScrollOffset: CGFloat = 0
+    var debugExpandedFolderNames: Set<String>?
+    var debugSelectedFeedName: String?
     private var didApplyInitialOffset = false
+    private var didApplyDebugFolderState = false
     private var hasAppeared = false
+    private var selectedFilter: BabelArticleFilter = .unread
+    private var isSyncing = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = BabelPalette.background
         title = "Feeds"
         navigationItem.largeTitleDisplayMode = .never
-        let timeFormatter = DateFormatter()
-        timeFormatter.locale = Locale(identifier: "en_US_POSIX")
-        timeFormatter.dateFormat = "h:mm"
-        navigationItem.prompt = "Today at \(timeFormatter.string(from: Date()))"
-        interfaceSwitcher.selectedSegmentIndex = 0
-        interfaceSwitcher.addTarget(self, action: #selector(switchInterface(_:)), for: .valueChanged)
-        let refreshControlButton = UIButton(type: .system)
-        refreshControlButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
-        refreshControlButton.tintColor = .white
-        refreshControlButton.backgroundColor = BabelPalette.accent
-        refreshControlButton.layer.cornerRadius = 12
-        refreshControlButton.addTarget(self, action: #selector(showFeedIssues), for: .touchUpInside)
-        refreshControlButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            refreshControlButton.widthAnchor.constraint(equalToConstant: 24),
-            refreshControlButton.heightAnchor.constraint(equalToConstant: 24)
-        ])
-        let refreshButton = UIBarButtonItem(customView: refreshControlButton)
-        let subscribeControl = UIButton(type: .custom)
-        subscribeControl.preferredBehavioralStyle = .pad
-        subscribeControl.setImage(UIImage(systemName: "plus"), for: .normal)
-        subscribeControl.tintColor = BabelPalette.ink
-        subscribeControl.addTarget(self, action: #selector(showSubscribe), for: .touchUpInside)
-        subscribeControl.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
-        let subscribeButton = UIBarButtonItem(customView: subscribeControl)
-        navigationItem.rightBarButtonItems = [subscribeButton, refreshButton]
         tableView.backgroundColor = BabelPalette.background
         tableView.separatorStyle = .none
-        // Keep the first data row below the custom Reeder header. The header is
-        // layered above the table, so a small inset would hide the Unread row.
-        // The table's automatic safe-area adjustment adds the status/header
-        // space.  186pt places the Unread row on the same baseline as Reeder.
-        tableView.contentInset = UIEdgeInsets(top: 186, left: 0, bottom: 88, right: 0)
+        tableView.contentInsetAdjustmentBehavior = .never
         tableView.rowHeight = 44
         tableView.estimatedRowHeight = 44
         tableView.register(BabelFeedCell.self, forCellReuseIdentifier: BabelFeedCell.reuseIdentifier)
@@ -89,6 +63,9 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         emptyLabel.isHidden = true
         tableView.backgroundView = emptyLabel
         let refresh = UIRefreshControl()
+		// The header's BabelSyncGlyphView is the only visible sync indicator.
+		// Keep the pull gesture, but do not duplicate it with UIKit's spinner.
+        refresh.tintColor = .clear
         refresh.addTarget(self, action: #selector(refreshFeeds), for: .valueChanged)
         tableView.refreshControl = refresh
         tableView.dataSource = self
@@ -98,22 +75,27 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         NSLayoutConstraint.activate([
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            tableView.topAnchor.constraint(equalTo: view.topAnchor, constant: 184),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -72)
         ])
         configureCustomHeader()
         configureBottomBar()
         rebuildRows()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .UnreadCountDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rebuild), name: .AccountDidDownloadArticles, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(syncDidBegin), name: .AccountRefreshDidBegin, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(syncDidFinish), name: .AccountRefreshDidFinish, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(starredIndexDidChange), name: NNWStarredIndex.didChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(feedIconDidBecomeAvailable(_:)), name: .feedIconDidBecomeAvailable, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(faviconDidBecomeAvailable(_:)), name: .FaviconDidBecomeAvailable, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(feedSettingDidChange(_:)), name: .feedSettingDidChange, object: nil)
+        // Warm the per-feed starred index before the user changes filters. It is
+        // one account-level query followed by an in-memory grouping, not one
+        // database query per visible source.
+        NNWStarredIndex.shared.refresh()
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
-    }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -121,213 +103,197 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         applyInitialOffsetIfNeeded()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: animated)
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        updateSyncState()
+        // An icon may have finished downloading while the article list covered
+        // this controller. Re-query the shared caches when returning instead of
+        // leaving an already-visible initials placeholder on screen.
+        refreshVisibleFeedIcons()
     }
 
     private func configureCustomHeader() {
         customHeader.translatesAutoresizingMaskIntoConstraints = false
         customHeader.backgroundColor = BabelPalette.background
         view.addSubview(customHeader)
-        headerSeparator.backgroundColor = BabelPalette.hairline
-        headerSeparator.translatesAutoresizingMaskIntoConstraints = false
-        customHeader.addSubview(headerSeparator)
-
-        let back = UIButton(type: .custom)
-        back.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
-        back.tintColor = BabelPalette.ink
-        back.addTarget(self, action: #selector(closeFeeds), for: .touchUpInside)
-        back.translatesAutoresizingMaskIntoConstraints = false
-        customHeader.addSubview(back)
 
         let titleLabel = headerTitleLabel
         titleLabel.text = "Feeds"
-        // Reeder's title is a compact navigation title, not a large page
-        // heading. Keep the weight restrained so the 3x simulator glyph box
-        // matches the reference capture.
-        titleLabel.font = .systemFont(ofSize: 20, weight: .regular)
+        titleLabel.font = .systemFont(ofSize: 36, weight: .semibold)
         titleLabel.textColor = BabelPalette.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(titleLabel)
 
         let subtitle = headerSubtitleLabel
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "h:mm"
-        subtitle.text = "Today at \(formatter.string(from: Date()))"
-        subtitle.font = .systemFont(ofSize: 14, weight: .regular)
-        subtitle.textColor = BabelPalette.mutedInk
+        subtitle.text = nil
+        subtitle.font = .systemFont(ofSize: 16, weight: .medium)
+        subtitle.textColor = BabelPalette.tertiaryInk
         subtitle.textAlignment = .center
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(subtitle)
 
-        let refresh = UIButton(type: .custom)
-        refresh.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
-        refresh.tintColor = .white
-        refresh.backgroundColor = BabelPalette.accent
-        refresh.layer.cornerRadius = 12
-        refresh.addTarget(self, action: #selector(refreshFeeds), for: .touchUpInside)
-        refresh.translatesAutoresizingMaskIntoConstraints = false
-        customHeader.addSubview(refresh)
+        syncGlyph.translatesAutoresizingMaskIntoConstraints = false
+        syncGlyph.isAccessibilityElement = false
+        syncGlyph.isHidden = true
+        customHeader.addSubview(syncGlyph)
 
-        let subscribe = UIButton(type: .custom)
-        subscribe.setImage(UIImage(systemName: "plus"), for: .normal)
-        subscribe.tintColor = BabelPalette.ink
+        let settings = makeTemplateIconControl(assetName: "BabelHomeAccountToggle", label: "Settings")
+        settings.accessibilityHint = "Open app settings"
+        settings.accessibilityIdentifier = "babel.feeds.settings"
+        settings.addTarget(self, action: #selector(showSettings), for: .touchUpInside)
+        customHeader.addSubview(settings)
+
+        let subscribe = makeTemplateIconControl(assetName: "BabelHomeAdd", label: "Add Subscription")
         subscribe.addTarget(self, action: #selector(showSubscribe), for: .touchUpInside)
-        subscribe.translatesAutoresizingMaskIntoConstraints = false
         customHeader.addSubview(subscribe)
 
-        let titleTop = titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 8)
-        let subtitleTop = subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1)
-        headerTitleTopConstraint = titleTop
-        headerSubtitleTopConstraint = subtitleTop
         NSLayoutConstraint.activate([
             customHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             customHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            customHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            customHeader.heightAnchor.constraint(equalToConstant: 150),
-            headerSeparator.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor),
-            headerSeparator.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor),
-            headerSeparator.bottomAnchor.constraint(equalTo: customHeader.bottomAnchor),
-            headerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
-            back.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor),
-            back.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
-            back.widthAnchor.constraint(equalToConstant: 44),
-            back.heightAnchor.constraint(equalToConstant: 44),
-            titleLabel.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            // Reeder keeps the title in the same top control band as the
-            // back/refresh/subscribe controls; the label's font metrics add
-            // the small optical inset needed below the safe-area edge.
-            titleTop,
-            subtitle.centerXAnchor.constraint(equalTo: customHeader.centerXAnchor),
-            subtitleTop,
-            refresh.trailingAnchor.constraint(equalTo: subscribe.leadingAnchor, constant: -8),
-            refresh.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
-            refresh.widthAnchor.constraint(equalToConstant: 24),
-            refresh.heightAnchor.constraint(equalToConstant: 24),
-            subscribe.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor, constant: -12),
-            subscribe.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: 24),
+            customHeader.topAnchor.constraint(equalTo: view.topAnchor, constant: 59),
+            customHeader.heightAnchor.constraint(equalToConstant: 125),
+            settings.centerXAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: BabelChromeMetrics.topSlots[0]),
+            settings.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: BabelChromeMetrics.topControlCenterY),
+            settings.widthAnchor.constraint(equalToConstant: BabelChromeMetrics.minimumHitTarget),
+            settings.heightAnchor.constraint(equalToConstant: BabelChromeMetrics.minimumHitTarget),
+            syncGlyph.centerXAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: BabelChromeMetrics.topSlots[1]),
+            syncGlyph.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: BabelChromeMetrics.topControlCenterY),
+            syncGlyph.widthAnchor.constraint(equalToConstant: 24),
+            syncGlyph.heightAnchor.constraint(equalToConstant: 24),
+            subscribe.centerXAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 370),
+            subscribe.centerYAnchor.constraint(equalTo: customHeader.topAnchor, constant: BabelChromeMetrics.topControlCenterY),
             subscribe.widthAnchor.constraint(equalToConstant: 44),
-            subscribe.heightAnchor.constraint(equalToConstant: 44)
+            subscribe.heightAnchor.constraint(equalToConstant: 44),
+            titleLabel.leadingAnchor.constraint(equalTo: customHeader.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: customHeader.trailingAnchor, constant: -20),
+            titleLabel.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 35),
+            titleLabel.heightAnchor.constraint(equalToConstant: 43),
+            subtitle.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitle.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            subtitle.topAnchor.constraint(equalTo: customHeader.topAnchor, constant: 76),
+            subtitle.heightAnchor.constraint(equalToConstant: 22)
         ])
-        updateHeaderExpansion(for: tableView.contentOffset.y)
-
-    }
-
-    private func updateHeaderExpansion(for offset: CGFloat) {
-        let progress = max(0, min(1, (220 - offset) / 220))
-        headerTitleTopConstraint?.constant = 8 + (52 * progress)
-        headerSubtitleTopConstraint?.constant = 1 + (2 * progress)
-        // Expanded Reeder title is about 36 pt on the iPhone 17 capture;
-        // 46 pt made the wordmark visibly wider and pushed the subtitle down.
-        headerTitleLabel.font = .systemFont(ofSize: 20 + (16 * progress), weight: progress > 0.5 ? .semibold : .regular)
-        headerSubtitleLabel.font = .systemFont(ofSize: 14 + (2 * progress), weight: .regular)
-        customHeader.layoutIfNeeded()
-    }
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView === tableView else { return }
-        updateHeaderExpansion(for: scrollView.contentOffset.y)
     }
 
     private func configureBottomBar() {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.backgroundColor = BabelPalette.background
-        bottomBar.layer.borderColor = BabelPalette.hairline.cgColor
-        bottomBar.layer.borderWidth = 0.5
         view.addSubview(bottomBar)
 
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.alignment = .center
-        stack.distribution = .equalSpacing
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.addSubview(stack)
-        interfaceSwitcher.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.addSubview(interfaceSwitcher)
+        let hairline = UIView()
+        hairline.translatesAutoresizingMaskIntoConstraints = false
+        hairline.backgroundColor = BabelPalette.hairline
+        bottomBar.addSubview(hairline)
 
-        let star = toolbarButton(image: UIImage(systemName: "star.fill"), pointSize: 11)
-        star.accessibilityIdentifier = "babel.feeds.toolbar.starred"
-        star.addTarget(self, action: #selector(openSaved), for: .touchUpInside)
-        let unread = makeUnreadToolbarButton()
-        unread.accessibilityIdentifier = "babel.feeds.toolbar.unread"
-        unread.addTarget(self, action: #selector(openUnread), for: .touchUpInside)
-        unread.backgroundColor = BabelPalette.raisedBackground
-        unread.layer.cornerRadius = 14
-        let list = toolbarButton(image: UIImage(systemName: "list.bullet"), pointSize: 8)
-        list.accessibilityLabel = "Feed 操作"
-        list.accessibilityIdentifier = "babel.feeds.toolbar.actions"
-        list.addTarget(self, action: #selector(showFeedActions), for: .touchUpInside)
-        stack.addArrangedSubview(star)
-        stack.addArrangedSubview(unread)
-        stack.addArrangedSubview(list)
+        starredFilterButton.addTarget(self, action: #selector(selectStarredFilter), for: .touchUpInside)
+        unreadFilterButton.addTarget(self, action: #selector(selectUnreadFilter), for: .touchUpInside)
+        allFilterButton.addTarget(self, action: #selector(selectAllFilter), for: .touchUpInside)
+        [starredFilterButton, unreadFilterButton, allFilterButton].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            bottomBar.addSubview($0)
+        }
 
         NSLayoutConstraint.activate([
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 72),
-            interfaceSwitcher.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 8),
-            interfaceSwitcher.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            interfaceSwitcher.widthAnchor.constraint(equalToConstant: 88),
-            interfaceSwitcher.heightAnchor.constraint(equalToConstant: 28),
-            stack.centerXAnchor.constraint(equalTo: bottomBar.centerXAnchor),
-            stack.widthAnchor.constraint(equalToConstant: 244),
-            stack.heightAnchor.constraint(equalToConstant: 36),
-            stack.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor, constant: -2)
+            hairline.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
+            hairline.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor),
+            hairline.topAnchor.constraint(equalTo: bottomBar.topAnchor),
+            hairline.heightAnchor.constraint(equalToConstant: 0.5),
+            starredFilterButton.centerXAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: BabelChromeMetrics.bottomSlots[1]),
+            unreadFilterButton.centerXAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: BabelChromeMetrics.bottomSlots[2]),
+            allFilterButton.centerXAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: BabelChromeMetrics.bottomSlots[3]),
+            starredFilterButton.centerYAnchor.constraint(equalTo: bottomBar.topAnchor, constant: BabelChromeMetrics.bottomControlCenterY),
+            unreadFilterButton.centerYAnchor.constraint(equalTo: starredFilterButton.centerYAnchor),
+            allFilterButton.centerYAnchor.constraint(equalTo: starredFilterButton.centerYAnchor),
+            starredFilterButton.widthAnchor.constraint(equalToConstant: 90),
+            unreadFilterButton.widthAnchor.constraint(equalToConstant: 78),
+            allFilterButton.widthAnchor.constraint(equalToConstant: 68),
+            starredFilterButton.heightAnchor.constraint(equalToConstant: BabelChromeMetrics.minimumHitTarget),
+            unreadFilterButton.heightAnchor.constraint(equalToConstant: BabelChromeMetrics.minimumHitTarget),
+            allFilterButton.heightAnchor.constraint(equalToConstant: BabelChromeMetrics.minimumHitTarget)
         ])
-
-        NSLayoutConstraint.activate([
-            star.widthAnchor.constraint(equalToConstant: 44), star.heightAnchor.constraint(equalToConstant: 36),
-            unread.widthAnchor.constraint(equalToConstant: 76), unread.heightAnchor.constraint(equalToConstant: 28),
-            list.widthAnchor.constraint(equalToConstant: 44), list.heightAnchor.constraint(equalToConstant: 36)
-        ])
+        updateFilterControls(animated: false)
     }
 
-    private func makeUnreadToolbarButton() -> UIButton {
-        var configuration = UIButton.Configuration.plain()
-        configuration.baseForegroundColor = BabelPalette.ink
-        configuration.background.backgroundColor = BabelPalette.raisedBackground
-        configuration.background.cornerRadius = 18
-        let button = UIButton(configuration: configuration)
+    private func makeUnreadToolbarButton() -> UIControl {
+        let button = UIControl()
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.accessibilityLabel = "未读"
+        button.accessibilityLabel = "Unread"
+        let pill = UIView()
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.isUserInteractionEnabled = false
+        pill.backgroundColor = BabelPalette.raisedBackground.withAlphaComponent(0.62)
+        pill.layer.cornerRadius = 13
+        button.addSubview(pill)
         let dot = UIView()
         dot.translatesAutoresizingMaskIntoConstraints = false
-        dot.backgroundColor = BabelPalette.ink
-        dot.layer.cornerRadius = 6
-        button.addSubview(dot)
+        dot.backgroundColor = BabelPalette.tertiaryInk
+        dot.layer.cornerRadius = 4
+        pill.addSubview(dot)
         let title = UILabel()
         title.translatesAutoresizingMaskIntoConstraints = false
         title.text = "UNREAD"
-        title.textColor = BabelPalette.ink
-        title.font = UIFont.systemFont(ofSize: 9, weight: .semibold)
-        button.addSubview(title)
+        title.textColor = BabelPalette.tertiaryInk
+        title.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
+        pill.addSubview(title)
         NSLayoutConstraint.activate([
-            dot.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 8),
-            dot.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            dot.widthAnchor.constraint(equalToConstant: 12), dot.heightAnchor.constraint(equalToConstant: 12),
-            title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 4),
-            title.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -3),
-            title.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+            pill.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            pill.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            pill.widthAnchor.constraint(equalToConstant: 78),
+            pill.heightAnchor.constraint(equalToConstant: 26),
+            dot.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
+            dot.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8),
+            title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 7),
+            title.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            title.widthAnchor.constraint(equalToConstant: 47)
         ])
         return button
     }
 
-    private func toolbarButton(image: UIImage?, pointSize: CGFloat) -> UIButton {
-        let button = UIButton(type: .system)
-        if let image {
-            button.setImage(image.withConfiguration(UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)), for: .normal)
-        }
-        button.tintColor = BabelPalette.ink
-        button.frame.size = CGSize(width: 44, height: 44)
-        return button
+    private func makeTemplateIconControl(assetName: String, label: String) -> UIControl {
+        let control = UIControl()
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.accessibilityLabel = label
+        let imageView = UIImageView(image: UIImage(named: assetName)?.withRenderingMode(.alwaysTemplate))
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFit
+        imageView.tintColor = BabelPalette.mutedInk
+        imageView.isUserInteractionEnabled = false
+        control.addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: control.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: control.centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 24),
+            imageView.heightAnchor.constraint(equalToConstant: 24)
+        ])
+        return control
     }
 
-    @objc private func openUnread() { onSelectUnread?() }
-    @objc private func openSaved() { onSelectSaved?() }
+    @objc private func selectStarredFilter() { selectFilter(.starred) }
+    @objc private func selectUnreadFilter() { selectFilter(.unread) }
+    @objc private func selectAllFilter() { selectFilter(.all) }
+
+    private func selectFilter(_ filter: BabelArticleFilter) {
+        guard selectedFilter != filter else { return }
+        selectedFilter = filter
+        updateFilterControls(animated: true)
+        rebuildRows()
+        if filter == .starred {
+            NNWStarredIndex.shared.refresh()
+        }
+    }
+
+    private func updateFilterControls(animated: Bool) {
+        starredFilterButton.setSelected(selectedFilter == .starred, animated: animated)
+        unreadFilterButton.setSelected(selectedFilter == .unread, animated: animated)
+        allFilterButton.setSelected(selectedFilter == .all, animated: animated)
+    }
 
     @objc private func closeFeeds() { navigationController?.popViewController(animated: true) }
 
@@ -336,18 +302,37 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
     }
 
     private func rebuildRows() {
-        rows = [.unread, .sectionSpacing]
-        rows.append(.foldersHeader)
-        for account in AccountManager.shared.sortedActiveAccounts {
+        let accounts = AccountManager.shared.sortedActiveAccounts
+        if !didApplyDebugFolderState, let expandedNames = debugExpandedFolderNames {
+            let folders = accounts.flatMap { $0.folders ?? [] }
+            for folder in folders where !expandedNames.contains(folder.nameForDisplay) {
+                collapsedFolders.insert(folderKey(folder))
+            }
+            didApplyDebugFolderState = !folders.isEmpty
+        }
+
+        var sourceRows = [Row]()
+        for account in accounts {
             for folder in (account.folders ?? []).sorted(by: { $0.nameForDisplay < $1.nameForDisplay }) {
-                rows.append(.folder(folder))
+                let visibleFeeds = filteredFeeds(folder.topLevelFeeds)
+                if selectedFilter == .starred, NNWStarredIndex.shared.hasLoaded, visibleFeeds.isEmpty {
+                    continue
+                }
+                sourceRows.append(.folder(folder))
                 if !collapsedFolders.contains(folderKey(folder)) {
-                    rows.append(contentsOf: folder.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
+                    sourceRows.append(contentsOf: visibleFeeds.map(Row.feed))
                 }
             }
-            rows.append(contentsOf: account.topLevelFeeds.sorted(by: { $0.nameForDisplay < $1.nameForDisplay }).map(Row.feed))
+            sourceRows.append(contentsOf: filteredFeeds(account.topLevelFeeds).map(Row.feed))
         }
+        rows = [.unread]
+        if !sourceRows.isEmpty {
+            rows.append(.foldersHeader)
+            rows.append(contentsOf: sourceRows)
+        }
+        emptyLabel.text = selectedFilter == .starred ? "No Starred Feeds" : "No Feeds"
         tableView.reloadData()
+        restoreSelectedFeedIfNeeded()
         emptyLabel.isHidden = rows.contains { row in
             if case .feed = row { return true }
             return false
@@ -369,11 +354,80 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     @objc private func rebuild() { rebuildRows() }
 
-    @objc private func refreshFeeds() {
-        AccountManager.shared.refreshAllWithoutWaiting(errorHandler: ErrorHandler.log)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.tableView.refreshControl?.endRefreshing()
+    @objc private func starredIndexDidChange() {
+        guard selectedFilter == .starred else { return }
+        rebuildRows()
+    }
+
+    @objc private func feedIconDidBecomeAvailable(_ notification: Notification) {
+        guard let feed = notification.userInfo?[UserInfoKey.feed] as? Feed else { return }
+        refreshVisibleFeedIcons(matching: feed)
+    }
+
+    @objc private func faviconDidBecomeAvailable(_ notification: Notification) {
+        // Favicon notifications identify the downloaded URL, not the Feed. A
+        // homepage can be shared by several feeds, so re-query only the visible
+        // feed rows. This is cheap and avoids rebuilding or flickering the table.
+        refreshVisibleFeedIcons()
+    }
+
+    @objc private func feedSettingDidChange(_ notification: Notification) {
+        guard let feed = notification.object as? Feed,
+              let key = notification.userInfo?[Feed.SettingUserInfoKey] as? Feed.SettingKey,
+              key == .iconURL || key == .homePageURL || key == .faviconURL else { return }
+        refreshVisibleFeedIcons(matching: feed)
+    }
+
+    private func refreshVisibleFeedIcons(matching targetFeed: Feed? = nil) {
+        for indexPath in tableView.indexPathsForVisibleRows ?? [] {
+            guard rows.indices.contains(indexPath.row),
+                  case .feed(let feed) = rows[indexPath.row],
+                  targetFeed.map({ feedsRepresentSameSource(feed, $0) }) ?? true,
+                  let cell = tableView.cellForRow(at: indexPath) as? BabelFeedCell else { continue }
+            cell.updateIcon(feedIcon(for: feed), initials: feedInitials(for: feed.nameForDisplay))
         }
+    }
+
+    private func feedsRepresentSameSource(_ lhs: Feed, _ rhs: Feed) -> Bool {
+        lhs.accountID == rhs.accountID && lhs.feedID == rhs.feedID
+    }
+
+    private func feedIcon(for feed: Feed) -> UIImage? {
+        // Match the article-list hero exactly. Podcast and YouTube feeds often
+        // have no declared icon/favicon; their usable artwork is discovered as
+        // homepage metadata and persisted by FeedHeroIconLoader. This cache is
+        // why an article list can already show artwork while Feeds still showed
+        // initials. Do not start hero downloads for every row here; returning
+        // from the article list re-queries its existing memory/disk cache.
+        FeedHeroIconLoader.shared.cachedHero(for: feed)
+            ?? FeedIconDownloader.shared.icon(for: feed)?.image
+            ?? FaviconDownloader.shared.faviconAsIcon(for: feed)?.image
+    }
+
+    @objc private func syncDidBegin() {
+        updateSyncState()
+    }
+
+    @objc private func syncDidFinish() {
+        updateSyncState()
+        if !isSyncing { tableView.refreshControl?.endRefreshing() }
+    }
+
+    private func updateSyncState() {
+        isSyncing = AccountManager.shared.sortedActiveAccounts.contains(where: \.refreshInProgress)
+        updateSyncSubtitle()
+    }
+
+    private func updateSyncSubtitle() {
+        headerSubtitleLabel.text = isSyncing ? "Syncing..." : nil
+        headerSubtitleLabel.isHidden = !isSyncing
+        syncGlyph.setSyncing(isSyncing)
+    }
+
+    @objc private func refreshFeeds() {
+        // Account emits AccountRefreshDidBegin only when a real refresh begins.
+        // The passive status must not be fabricated for an idle tap.
+        AccountManager.shared.refreshAllWithoutWaiting(errorHandler: ErrorHandler.log)
     }
 
     @objc private func showFeedIssues() {
@@ -392,6 +446,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
 
     /// Deterministic entry used by simulator screenshot checks.
     func presentFeedIssuesForDebug() { showFeedIssues() }
+
+    func presentStarredFilterForDebug() { selectFilter(.starred) }
 
     @objc private func showFeedActions() {
         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
@@ -432,10 +488,8 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         onOpenSubscribe?()
     }
 
-    @objc private func switchInterface(_ sender: UISegmentedControl) {
-        guard sender.selectedSegmentIndex == 1 else { return }
-        sender.selectedSegmentIndex = 0
-        onOpenGenesisV2?()
+    @objc private func showSettings() {
+        onOpenSettings?()
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
@@ -447,50 +501,116 @@ final class BabelFeedsViewController: UIViewController, UITableViewDataSource, U
         cell.isUserInteractionEnabled = true
         switch rows[indexPath.row] {
         case .unread:
-            // Reeder renders Unread as a section-level row: no leading dot,
-            // with the same typographic hierarchy as the Folders heading.
-            cell.configure(title: "Unread", count: AccountManager.shared.unreadCount, image: nil, indent: 0, isFolder: false, sectionHeader: true)
-            cell.accessibilityIdentifier = "babel.feeds.row.unread"
-        case .sectionSpacing:
-            cell.configure(title: "", count: nil, image: nil, indent: 0, isFolder: false)
-            cell.isUserInteractionEnabled = false
+            let summary: (title: String, count: Int?)
+            switch selectedFilter {
+            case .unread: summary = ("Unread", AccountManager.shared.unreadCount)
+            case .starred: summary = ("Starred", NNWStarredIndex.shared.hasLoaded ? NNWStarredIndex.shared.totalStarredCount() : nil)
+            case .all: summary = ("All", nil)
+            }
+            cell.configure(title: summary.title, count: summary.count, image: nil, indent: 0, isFolder: false, sectionHeader: true, showsTopRule: true)
+            cell.accessibilityIdentifier = "babel.feeds.row.summary"
         case .foldersHeader:
-            // Reeder keeps an always-visible disclosure affordance on the
-            // Folders section heading, even when the heading itself is not a
-            // feed row.
-            cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: true, expanded: true, sectionHeader: true)
+            cell.configure(title: "Folders", count: nil, image: nil, indent: 0, isFolder: false, sectionHeader: true)
             cell.accessibilityIdentifier = "babel.feeds.row.folders"
         case .folder(let folder):
             let expanded = !collapsedFolders.contains(folderKey(folder))
             let key = folderKey(folder)
-            cell.configure(title: folder.nameForDisplay, count: folder.unreadCount, image: nil, indent: 0, isFolder: true, expanded: expanded) { [weak self] in
+            cell.configure(title: folder.nameForDisplay, count: displayedCount(for: folder), image: nil, indent: 0, isFolder: true, expanded: expanded) { [weak self] in
                 guard let self else { return }
                 if self.collapsedFolders.contains(key) { self.collapsedFolders.remove(key) } else { self.collapsedFolders.insert(key) }
                 self.rebuildRows()
             }
             cell.accessibilityIdentifier = "babel.feeds.row.folder.\(folder.nameForDisplay)"
         case .feed(let feed):
-            let icon = FaviconDownloader.shared.faviconAsIcon(for: feed)?.image ?? UIImage(systemName: "square.fill")
-            cell.configure(title: feed.nameForDisplay, count: feed.unreadCount, image: icon, indent: 1, isFolder: false)
+            let icon = feedIcon(for: feed)
+            cell.configure(title: feed.nameForDisplay, count: displayedCount(for: feed), image: icon, indent: 1, isFolder: false, initials: feedInitials(for: feed.nameForDisplay))
             cell.accessibilityIdentifier = "babel.feeds.row.feed.\(feed.nameForDisplay)"
         }
         return cell
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if case .sectionSpacing = rows[indexPath.row] { return 14 }
-        return 44
+        switch rows[indexPath.row] {
+        case .unread: return 68
+        case .foldersHeader: return 82
+        case .folder, .feed: return 44
+        }
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
         switch rows[indexPath.row] {
-        case .unread: onSelectUnread?()
-        case .sectionSpacing: break
-        case .foldersHeader: break
+        case .unread:
+            tableView.deselectRow(at: indexPath, animated: true)
+            onSelectUnread?(selectedFilter)
+        case .foldersHeader:
+            tableView.deselectRow(at: indexPath, animated: true)
         case .folder(let folder):
-            onSelectFolder?(folder)
-        case .feed(let feed): onSelectFeed?(feed)
+            tableView.deselectRow(at: indexPath, animated: true)
+            onSelectFolder?(folder, selectedFilter)
+        case .feed(let feed):
+            onSelectFeed?(feed, selectedFilter)
+        }
+    }
+
+    private func restoreSelectedFeedIfNeeded() {
+        guard let selectedName = debugSelectedFeedName else { return }
+        let namedRow = rows.firstIndex(where: {
+            if case .feed(let feed) = $0 { return feed.nameForDisplay == selectedName }
+            return false
+        })
+        // The connected simulator can contain a different account dataset
+        // from the locked Figma sample. In screenshot mode, use the fifth
+        // visible feed as a geometry-only fallback because it occupies the
+        // same 510pt selected-row slot as node 19:18.
+        let fallbackRow = rows.indices.filter { if case .feed = rows[$0] { return true }; return false }.dropFirst(4).first
+        guard let row = namedRow ?? fallbackRow else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.selectRow(at: IndexPath(row: row, section: 0), animated: false, scrollPosition: .none)
+        }
+    }
+
+    private func feedInitials(for title: String) -> String {
+        if title.lowercased().hasPrefix("www.") {
+            let domain = title.dropFirst(4).split(separator: ".").first.map(String.init) ?? title
+            return String(domain.prefix(1)).uppercased()
+        }
+        let characters = Array(title)
+        if characters.contains(where: { $0.unicodeScalars.contains(where: { $0.value >= 0x3000 }) }) {
+            return String(characters.prefix(2))
+        }
+        let tokens = title.split { !$0.isLetter && !$0.isNumber }.filter { !$0.isEmpty }
+        if tokens.count >= 2 {
+            return tokens.suffix(2).compactMap(\.first).map(String.init).joined().uppercased()
+        }
+        return tokens.first.map { String($0.prefix(2)).uppercased() } ?? ""
+    }
+
+    private func filteredFeeds<S: Sequence>(_ feeds: S) -> [Feed] where S.Element == Feed {
+        feeds
+            .filter { feed in
+                guard selectedFilter == .starred, NNWStarredIndex.shared.hasLoaded else { return true }
+                return NNWStarredIndex.shared.starredCount(forFeedID: feed.feedID, accountID: feed.accountID) > 0
+            }
+            .sorted(by: { $0.nameForDisplay < $1.nameForDisplay })
+    }
+
+    private func displayedCount(for feed: Feed) -> Int? {
+        switch selectedFilter {
+        case .unread: return feed.unreadCount
+        case .starred:
+            guard NNWStarredIndex.shared.hasLoaded else { return nil }
+            return NNWStarredIndex.shared.starredCount(forFeedID: feed.feedID, accountID: feed.accountID)
+        case .all: return nil
+        }
+    }
+
+    private func displayedCount(for folder: Folder) -> Int? {
+        switch selectedFilter {
+        case .unread: return folder.unreadCount
+        case .starred:
+            guard NNWStarredIndex.shared.hasLoaded else { return nil }
+            return NNWStarredIndex.shared.starredCount(for: folder)
+        case .all: return nil
         }
     }
 }
@@ -552,90 +672,279 @@ private final class BabelFeedIssuesViewController: UIViewController {
 }
 
 private final class BabelFeedCell: UITableViewCell {
-	static let reuseIdentifier = "BabelFeedCell"
-	private let iconView = UIImageView()
-	private let titleLabel = UILabel()
-	private let countLabel = UILabel()
-	private let disclosureButton = UIButton(type: .custom)
-	private var toggleFolder: (() -> Void)?
+    static let reuseIdentifier = "BabelFeedCell"
+    private let iconContainer = UIView()
+    private let iconView = UIImageView()
+    private let initialsLabel = UILabel()
+    private let titleLabel = UILabel()
+    private let countLabel = UILabel()
+    private let disclosureButton = BabelFolderDisclosureControl()
+    private let ruleView = UIView()
+    private var layoutConstraints = [NSLayoutConstraint]()
+    private var toggleFolder: (() -> Void)?
+    private var usesInitials = false
 
-	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-		super.init(style: style, reuseIdentifier: reuseIdentifier)
-		backgroundColor = .clear
-		let selection = UIView()
-		selection.backgroundColor = BabelPalette.raisedBackground
-		selection.layer.cornerRadius = 12
-		selectedBackgroundView = selection
-		iconView.contentMode = .scaleAspectFit
-		iconView.tintColor = BabelPalette.mutedInk
-		titleLabel.font = BabelTypography.title(size: 17, weight: .regular)
-		titleLabel.textColor = BabelPalette.ink
-		titleLabel.lineBreakMode = .byTruncatingTail
-        countLabel.font = BabelTypography.title(size: 15, weight: .regular)
-		countLabel.textColor = BabelPalette.mutedInk
-		countLabel.textAlignment = .right
-		for subview in [iconView, titleLabel, countLabel] {
-			subview.translatesAutoresizingMaskIntoConstraints = false
-			contentView.addSubview(subview)
-		}
-		disclosureButton.addTarget(self, action: #selector(disclosureTapped), for: .touchUpInside)
-		disclosureButton.tintColor = BabelPalette.mutedInk
-		disclosureButton.translatesAutoresizingMaskIntoConstraints = false
-		contentView.addSubview(disclosureButton)
-	}
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
 
-	override func layoutSubviews() {
-		super.layoutSubviews()
-		selectedBackgroundView?.frame = bounds.insetBy(dx: 8, dy: 3)
-	}
-	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        let selection = UIView()
+        selection.backgroundColor = BabelPalette.raisedBackground
+        selection.layer.cornerRadius = 10
+        selectedBackgroundView = selection
 
-	func configure(title: String, count: Int?, image: UIImage?, indent: Int, isFolder: Bool, expanded: Bool = false, sectionHeader: Bool = false, toggleFolder: (() -> Void)? = nil) {
-		iconView.image = image
-		iconView.isHidden = sectionHeader
-        titleLabel.font = sectionHeader ? BabelTypography.title(size: 24, weight: .semibold) : BabelTypography.title(size: 17, weight: .regular)
-		self.toggleFolder = toggleFolder
-		if isFolder {
-			disclosureButton.setImage(UIImage(systemName: expanded ? "chevron.down" : "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)), for: .normal)
-			disclosureButton.isHidden = false
-			disclosureButton.accessibilityLabel = title
-			disclosureButton.accessibilityValue = expanded ? "Expanded" : "Collapsed"
-		} else {
-			disclosureButton.isHidden = true
-			disclosureButton.accessibilityLabel = nil
-			disclosureButton.accessibilityValue = nil
-		}
-		titleLabel.text = title
-		countLabel.text = count?.formatted()
-		countLabel.isHidden = count == nil
-        // Reeder keeps the feed glyph column inset from the screen edge; the
-        // previous 18pt column sat visibly too far left in the 3x capture.
-        let leading: CGFloat = indent == 0 ? 32 : 54
-		NSLayoutConstraint.deactivate(contentView.constraints)
-		let titleLeading = sectionHeader ? 18 : leading + 32
-		var constraints = [NSLayoutConstraint]()
-		if sectionHeader {
-			constraints.append(disclosureButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36))
-		} else {
-			constraints.append(disclosureButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18))
-		}
-		constraints.append(contentsOf: [
-			disclosureButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			disclosureButton.widthAnchor.constraint(equalToConstant: 32),
-			disclosureButton.heightAnchor.constraint(equalToConstant: 44),
-			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading),
-			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 19),
-            iconView.heightAnchor.constraint(equalToConstant: 19),
-			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: titleLeading),
-			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
-            countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36),
-			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 52)
-		])
-		NSLayoutConstraint.activate(constraints)
-	}
+        iconContainer.layer.cornerRadius = 3
+        iconContainer.clipsToBounds = true
+        iconView.contentMode = .scaleAspectFit
+        initialsLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        initialsLabel.textAlignment = .center
+        titleLabel.textColor = BabelPalette.ink
+        titleLabel.lineBreakMode = .byTruncatingTail
+        countLabel.textColor = BabelPalette.tertiaryInk
+        countLabel.textAlignment = .right
+        ruleView.backgroundColor = BabelPalette.hairline
 
-	@objc private func disclosureTapped() { toggleFolder?() }
+        for subview in [iconContainer, titleLabel, countLabel, disclosureButton, ruleView] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(subview)
+        }
+        for subview in [iconView, initialsLabel] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            iconContainer.addSubview(subview)
+        }
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: iconContainer.leadingAnchor),
+            iconView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor),
+            iconView.topAnchor.constraint(equalTo: iconContainer.topAnchor),
+            iconView.bottomAnchor.constraint(equalTo: iconContainer.bottomAnchor),
+            initialsLabel.leadingAnchor.constraint(equalTo: iconContainer.leadingAnchor),
+            initialsLabel.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor),
+            initialsLabel.topAnchor.constraint(equalTo: iconContainer.topAnchor),
+            initialsLabel.bottomAnchor.constraint(equalTo: iconContainer.bottomAnchor)
+        ])
+        disclosureButton.addTarget(self, action: #selector(disclosureTapped), for: .touchUpInside)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        selectedBackgroundView?.frame = bounds.insetBy(dx: 10, dy: 0)
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        updateInitialsAppearance(selected: selected)
+    }
+
+    func configure(
+        title: String,
+        count: Int?,
+        image: UIImage?,
+        indent: Int,
+        isFolder: Bool,
+        expanded: Bool = false,
+        sectionHeader: Bool = false,
+        showsTopRule: Bool = false,
+        initials: String? = nil,
+        toggleFolder: (() -> Void)? = nil
+    ) {
+        NSLayoutConstraint.deactivate(layoutConstraints)
+        layoutConstraints.removeAll()
+
+        self.toggleFolder = toggleFolder
+        titleLabel.text = title
+        countLabel.text = count?.formatted()
+        countLabel.isHidden = count == nil
+        ruleView.isHidden = !showsTopRule
+
+        disclosureButton.isHidden = !isFolder
+        disclosureButton.isExpanded = expanded
+        disclosureButton.accessibilityLabel = isFolder ? title : nil
+        disclosureButton.accessibilityValue = isFolder ? (expanded ? "Expanded" : "Collapsed") : nil
+
+        iconView.image = image
+        usesInitials = !sectionHeader && !isFolder && image == nil
+        initialsLabel.text = usesInitials ? initials : nil
+        iconContainer.isHidden = sectionHeader || isFolder
+        iconView.isHidden = image == nil
+        initialsLabel.isHidden = !usesInitials
+        updateInitialsAppearance(selected: isSelected)
+
+        if sectionHeader {
+            titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+            countLabel.font = .systemFont(ofSize: 20, weight: .regular)
+            layoutConstraints = [
+                ruleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 111),
+                ruleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2),
+                ruleView.widthAnchor.constraint(equalToConstant: 180),
+                ruleView.heightAnchor.constraint(equalToConstant: 0.5),
+                titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+                titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 31),
+                titleLabel.heightAnchor.constraint(equalToConstant: 28),
+                titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
+                countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+                countLabel.topAnchor.constraint(equalTo: titleLabel.topAnchor),
+                countLabel.heightAnchor.constraint(equalToConstant: 28),
+                countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 92)
+            ]
+        } else if isFolder {
+            titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+            countLabel.font = .systemFont(ofSize: 18, weight: .regular)
+            layoutConstraints = [
+                disclosureButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 17),
+                disclosureButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                disclosureButton.widthAnchor.constraint(equalToConstant: 44),
+                disclosureButton.heightAnchor.constraint(equalToConstant: 44),
+                titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 56),
+                titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
+                countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+                countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
+            ]
+        } else {
+            titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+            countLabel.font = .systemFont(ofSize: 17, weight: .regular)
+            layoutConstraints = [
+                iconContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 49),
+                iconContainer.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                iconContainer.widthAnchor.constraint(equalToConstant: 24),
+                iconContainer.heightAnchor.constraint(equalToConstant: 24),
+                titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 79),
+                titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
+                countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -18),
+                countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 65)
+            ]
+        }
+        NSLayoutConstraint.activate(layoutConstraints)
+    }
+
+    func updateIcon(_ image: UIImage?, initials: String?) {
+        iconView.image = image
+        usesInitials = image == nil
+        initialsLabel.text = usesInitials ? initials : nil
+        iconView.isHidden = image == nil
+        initialsLabel.isHidden = !usesInitials
+        updateInitialsAppearance(selected: isSelected)
+    }
+
+    private func updateInitialsAppearance(selected: Bool) {
+        guard usesInitials else {
+            iconContainer.backgroundColor = .clear
+            return
+        }
+        iconContainer.backgroundColor = selected ? BabelPalette.raisedBackground : .clear
+        initialsLabel.textColor = selected ? BabelPalette.ink : BabelPalette.mutedInk
+    }
+
+    @objc private func disclosureTapped() { toggleFolder?() }
+}
+
+private final class BabelFolderDisclosureControl: UIControl {
+    var isExpanded = false { didSet { setNeedsDisplay() } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: BabelFolderDisclosureControl, _) in
+            self.setNeedsDisplay()
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let origin = CGPoint(x: rect.midX - 9, y: rect.midY - 9)
+        let path = UIBezierPath()
+        if isExpanded {
+            path.move(to: CGPoint(x: origin.x + 3, y: origin.y + 7))
+            path.addLine(to: CGPoint(x: origin.x + 9, y: origin.y + 13))
+            path.addLine(to: CGPoint(x: origin.x + 15, y: origin.y + 7))
+        } else {
+            path.move(to: CGPoint(x: origin.x + 6, y: origin.y + 3))
+            path.addLine(to: CGPoint(x: origin.x + 12, y: origin.y + 9))
+            path.addLine(to: CGPoint(x: origin.x + 6, y: origin.y + 15))
+        }
+        BabelPalette.mutedInk.setStroke()
+        path.lineWidth = 2.5
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.stroke()
+    }
+}
+
+final class BabelSyncGlyphView: UIView {
+    private static let rotationAnimationKey = "babel.sync.rotation"
+    private var syncing = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        isUserInteractionEnabled = false
+        isHidden = true
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: BabelSyncGlyphView, _) in
+            self.setNeedsDisplay()
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func setSyncing(_ syncing: Bool) {
+        self.syncing = syncing
+        isHidden = !syncing
+        updateRotationAnimation()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateRotationAnimation()
+    }
+
+    private func updateRotationAnimation() {
+        guard syncing, window != nil else {
+            layer.removeAnimation(forKey: Self.rotationAnimationKey)
+            return
+        }
+        guard layer.animation(forKey: Self.rotationAnimationKey) == nil else { return }
+        let rotation = CABasicAnimation(keyPath: "transform.rotation.z")
+        rotation.fromValue = 0
+        rotation.toValue = CGFloat.pi * 2
+        rotation.duration = 0.9
+        rotation.repeatCount = .infinity
+        rotation.timingFunction = CAMediaTimingFunction(name: .linear)
+        rotation.isRemovedOnCompletion = false
+        layer.add(rotation, forKey: Self.rotationAnimationKey)
+    }
+
+    override func draw(_ rect: CGRect) {
+        BabelPalette.raisedBackground.withAlphaComponent(0.47).setFill()
+        UIBezierPath(ovalIn: rect).fill()
+
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: 11.13, y: 7.08))
+        path.addCurve(to: CGPoint(x: 14.4405, y: 7.64817), controlPoint1: CGPoint(x: 12.26599, y: 6.88199), controlPoint2: CGPoint(x: 13.4355, y: 7.08271))
+        path.addCurve(to: CGPoint(x: 16.6444, y: 10.18281), controlPoint1: CGPoint(x: 15.4454, y: 8.21363), controlPoint2: CGPoint(x: 16.224, y: 9.10907))
+        path.addCurve(to: CGPoint(x: 16.7473, y: 13.5401), controlPoint1: CGPoint(x: 17.0648, y: 11.25656), controlPoint2: CGPoint(x: 17.1012, y: 12.44262))
+        path.addCurve(to: CGPoint(x: 14.7027, y: 16.205), controlPoint1: CGPoint(x: 16.3935, y: 14.6376), controlPoint2: CGPoint(x: 15.6712, y: 15.579))
+        path.addCurve(to: CGPoint(x: 11.43327, y: 16.9748), controlPoint1: CGPoint(x: 13.73428, y: 16.8309), controlPoint2: CGPoint(x: 12.57925, y: 17.1029))
+        path.addCurve(to: CGPoint(x: 8.41442, y: 15.5022), controlPoint1: CGPoint(x: 10.28729, y: 16.8467), controlPoint2: CGPoint(x: 9.22079, y: 16.3265))
+        path.addCurve(to: CGPoint(x: 7.00852, y: 12.45174), controlPoint1: CGPoint(x: 7.60805, y: 14.6779), controlPoint2: CGPoint(x: 7.11138, y: 13.60026))
+        path.addCurve(to: CGPoint(x: 7.85, y: 9.2), controlPoint1: CGPoint(x: 6.90565, y: 11.30322), controlPoint2: CGPoint(x: 7.20293, y: 10.15445))
+        BabelPalette.ink.withAlphaComponent(0.91).setStroke()
+        path.lineWidth = 2.2
+        path.lineCapStyle = .round
+        path.stroke()
+
+        let arrow = UIBezierPath()
+        arrow.move(to: CGPoint(x: 4.45, y: 11.1))
+        arrow.addLine(to: CGPoint(x: 7.25, y: 6.2))
+        arrow.addLine(to: CGPoint(x: 10.05, y: 10.85))
+        arrow.close()
+        BabelPalette.ink.withAlphaComponent(0.91).setFill()
+        arrow.fill()
+    }
 }

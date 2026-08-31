@@ -788,7 +788,7 @@ private final class NNWMenuRowControl: UIControl {
 			//(那张图是「More like this」那行的图标是橙的)。
 			// 颜色走 NNWAccentPalette,设置里换色这里跟着变。
 			iconView.tintColor = item.isDestructive ? .systemRed
-				: (NNWSoftMaterial.isEnabled ? NNWSoftMaterial.accent : tint)
+				: (NNWSoftMaterial.isEnabled ? NNWSoftMaterial.ink : tint)
 			iconView.contentMode = .center
 			iconView.translatesAutoresizingMaskIntoConstraints = false
 			iconView.isUserInteractionEnabled = false

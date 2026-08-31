@@ -75,9 +75,9 @@ struct IconImageView: View {
 	// Fallback tint to something sensible if preferredColor is not set (for symbols)
 	private var defaultTint: Color {
 		#if os(macOS)
-		return Color(nsColor: Assets.Colors.primaryAccent)
+		return Color(nsColor: .secondaryLabelColor)
 		#else
-		return Color(Assets.Colors.secondaryAccent)
+		return Color(uiColor: .secondaryLabel)
 		#endif
 	}
 

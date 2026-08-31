@@ -50,7 +50,7 @@ import WebKit
 		view.backgroundColor = AppAppearance.paperBackground
 
 		let icon = UIImageView(image: UIImage(systemName: "cup.and.saucer"))
-		icon.tintColor = NNWSoftMaterial.accent
+		icon.tintColor = NNWSoftMaterial.ink
 		icon.contentMode = .scaleAspectFit
 		icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 56, weight: .light)
 
@@ -71,7 +71,7 @@ import WebKit
 
 		var config = UIButton.Configuration.plain()
 		config.title = "回到列表"
-		config.baseForegroundColor = NNWSoftMaterial.accent
+		config.baseForegroundColor = NNWSoftMaterial.ink
 		let button = UIButton(configuration: config)
 		button.addTarget(self, action: #selector(backToListTapped), for: .touchUpInside)
 

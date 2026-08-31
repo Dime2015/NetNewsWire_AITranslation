@@ -76,6 +76,7 @@ import CryptoKit
 	private static let maxEntries = 4000
 	/// 超限时一次砍掉这么多最老的 —— 免得每加一条就砍一条,反复搬数组
 	private static let evictionBatch = 500
+	private static let writeQueue = DispatchQueue(label: "com.netnewswire.title-translation-cache", qos: .utility)
 
 	/// 键 → 译文。顺序由 `order` 记(先进先出,近似 LRU 够用了 —— 老文章会自然淡出列表)
 	private var entries: [String: String] = [:]
@@ -83,6 +84,10 @@ import CryptoKit
 	private var loaded = false
 
 	private init() {}
+
+	func preload() {
+		loadIfNeeded()
+	}
 
 	private static var fileURL: URL {
 		let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -124,7 +129,10 @@ import CryptoKit
 			return [key, value]
 		}
 		guard let data = try? JSONSerialization.data(withJSONObject: pairs) else { return }
-		try? data.write(to: Self.fileURL, options: .atomic)
+		let url = Self.fileURL
+		Self.writeQueue.async {
+			try? data.write(to: url, options: .atomic)
+		}
 	}
 
 	private func loadIfNeeded() {

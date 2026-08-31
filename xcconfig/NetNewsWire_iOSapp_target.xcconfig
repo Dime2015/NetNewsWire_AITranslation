@@ -6,7 +6,10 @@ LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
 INFOPLIST_FILE = iOS/Resources/Info.plist
 CODE_SIGN_ENTITLEMENTS = iOS/Resources/NetNewsWire$(DEVELOPER_ENTITLEMENTS).entitlements
 PRODUCT_BUNDLE_IDENTIFIER = $(ORGANIZATION_IDENTIFIER).NetNewsWire.iOS$(BUNDLE_ID_SUFFIX)
-PRODUCT_NAME = NetNewsWire
+// The macOS target also produces NetNewsWire.app.  A distinct iOS build
+// product keeps Xcode from treating both platforms as producers of the same
+// simulator output when resolving implicit dependencies.
+PRODUCT_NAME = NetNewsWire-iOS
 PRODUCT_MODULE_NAME = NetNewsWire
 CLANG_ENABLE_MODULES = YES
 SWIFT_OBJC_BRIDGING_HEADER = iOS/NetNewsWire-iOS-Bridging-Header.h

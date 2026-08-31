@@ -34,7 +34,7 @@ import UIKit
 	/// 开机时叫一次(SceneDelegate 里)。**幂等**:每个窗口叫一次都行。
 	static func install(in window: UIWindow) {
 		applyAppearanceProxies()
-		window.tintColor = NNWAccentPalette.live
+		window.tintColor = .label
 		observeAccentChangesOnce()
 	}
 
@@ -65,7 +65,7 @@ import UIKit
 				// ⚠️ 每次读 `live` 都会造一个**新的** UIColor 实例 —— 正因为对象换了,
 				// UIKit 才认为"颜色变了"并把 tintColorDidChange 传下去。
 				// 传同一个对象进来它会当成没变,整条链就不动(这类"设了没反应"最难查)。
-				window.tintColor = NNWAccentPalette.live
+				window.tintColor = .label
 				refreshSwitches(in: window)
 			}
 		}
