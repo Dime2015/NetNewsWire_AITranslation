@@ -92,6 +92,7 @@
 		84EE434B2DB8A44C009D3A8D /* RSDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 84EE434A2DB8A44C009D3A8D /* RSDatabase */; };
 		84EE434C2DB8A44C009D3A8D /* RSDatabase in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 84EE434A2DB8A44C009D3A8D /* RSDatabase */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9A5936FF2B764C899D29080B /* ErrorLog in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 8C00352722FF4540BF3E5072 /* ErrorLog */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		B4C6DEC530453F8400A7432B /* Babel2UI in Frameworks */ = {isa = PBXBuildFile; productRef = D1B2E2000000000000000002 /* Babel2UI */; };
 		BE939B018E9B4B13850AA286 /* ErrorLog in Embed Frameworks */ = {isa = PBXBuildFile; productRef = C1939AC39272487C923003B8 /* ErrorLog */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		C0D3B00130D3B00100BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */; };
 		CEE687C900324CE2908FCF98 /* ErrorLog in Frameworks */ = {isa = PBXBuildFile; productRef = 8C00352722FF4540BF3E5072 /* ErrorLog */; };
@@ -108,6 +109,8 @@
 		D1A7E100000000000000C005 /* Images in Frameworks */ = {isa = PBXBuildFile; productRef = D1A7E100000000000000C004 /* Images */; };
 		D1A7E100000000000000C006 /* Images in Embed Frameworks */ = {isa = PBXBuildFile; productRef = D1A7E100000000000000C004 /* Images */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		D1A7E100000000000000C008 /* Images in Frameworks */ = {isa = PBXBuildFile; productRef = D1A7E100000000000000C007 /* Images */; };
+		D1B2E2000000000000000001 /* Babel2UI in Frameworks */ = {isa = PBXBuildFile; productRef = D1B2E2000000000000000002 /* Babel2UI */; };
+		D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -339,6 +342,7 @@
 		849C64711ED37A5D003D8FC0 /* NetNewsWireTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NetNewsWireTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		84D2200922B0BC4B0019E085 /* CONTRIBUTING.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CONTRIBUTING.md; sourceTree = "<group>"; };
 		C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -600,6 +604,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B4C6DEC530453F8400A7432B /* Babel2UI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -614,6 +619,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D1B2E2000000000000000001 /* Babel2UI in Frameworks */,
 				84EE3F152DB8A0A0009D3A8D /* RSTree in Frameworks */,
 				848E84D52DB749670023F3BA /* RSCore in Frameworks */,
 				179D280B26F6F93D003B2E0A /* Zip in Frameworks */,
@@ -684,6 +690,7 @@
 			children = (
 				84719F4B2EE01A1100EEF332 /* Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift */,
 				C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */,
+				D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -858,6 +865,9 @@
 				518B2ED82351B3DD00400001 /* PBXTargetDependency */,
 			);
 			name = "NetNewsWire-iOSTests";
+			packageProductDependencies = (
+				D1B2E2000000000000000002 /* Babel2UI */,
+			);
 			productName = "NetNewsWire-iOSTests";
 			productReference = 518B2ED22351B3DD00400001 /* NetNewsWire-iOSTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -903,6 +913,7 @@
 			);
 			name = "NetNewsWire-iOS";
 			packageProductDependencies = (
+				D1B2E2000000000000000002 /* Babel2UI */,
 				516B695E24D2F33B00B5702F /* Account */,
 				8C00352722FF4540BF3E5072 /* ErrorLog */,
 				513F32702593EE6F0003048F /* Articles */,
@@ -1371,6 +1382,7 @@
 			files = (
 				84719F4C2EE01A1100EEF332 /* Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift in Sources */,
 				C0D3B00130D3B00100BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift in Sources */,
+				D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1925,6 +1937,10 @@
 		D1A7E100000000000000C007 /* Images */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Images;
+		};
+		D1B2E2000000000000000002 /* Babel2UI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Babel2UI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
