@@ -10,7 +10,7 @@
 
 ### 1.1 Babel 2.0 的定义
 
-Babel 2.0 是在现有 NetNewsWire/Babel 数据与服务能力上重建 iOS 前端体验的产品版本。目标是让 Feeds、Library、阅读器、订阅管理和设置在同一套导航、状态、几何和交互合同下工作，并达到 Reeder Classic 的克制、连续和跟手感。
+Babel 2.0 是在现有数据与服务能力上重建 iOS 前端体验的产品版本。目标是让 Feeds、Library、阅读器、订阅管理和设置在同一套导航、状态、几何和交互合同下工作，并达到 Reeder Classic 的克制、连续和跟手感。
 
 Babel 2.0 的工作范围包括：
 
@@ -22,6 +22,8 @@ Babel 2.0 的工作范围包括：
 - 既有 Core Data、账户、同步、翻译、图标缓存和阅读内容管线的复用与隔离；
 - 在真实 iPhone 上对几何、滚动、翻页、点击反馈、过渡和状态恢复的验收。
 
+根入口决策：冷启动直接进入 Babel 2.0 的 Feeds/Library 根壳；旧的账号卡片 landing page 不再作为产品页面。`.home` 与 `.library` 是导航语义而不是两个必须分别呈现的 landing screen；实现可以将它们统一到 Feeds/Library root，但不得在启动时插入旧账号卡片页面。
+
 不自动包含：
 
 - 重新设计或迁移 macOS UI；
@@ -30,27 +32,62 @@ Babel 2.0 的工作范围包括：
 - 把 Genesis 的“有代码”当作 Babel 2.0 的“已验收”；
 - 仅凭模拟器截图、单元测试或 Figma 预览宣称真机手感完成。
 
-### 1.2 版本谱系
+### 1.2 版本谱系（audit-only historical reference）
 
-远端只读核对结果（2026-08-31）：
+evidence snapshot（2026-08-31；不是实时 hosted remote 核验）：
 
-| 版本 | 产品定位 | tag peeled SHA | 远端核对 |
+| 版本 | 产品定位 | 本地 annotated tag peeled SHA | evidence snapshot |
 |---|---|---|---|
-| v0.5 | Genesis v1 stable baseline | `649f85fd50e5fff21e75818193011250baf08d50` | `origin` 一致 |
-| v1.0 | Genesis v2 stable baseline | `d1679c7f253d37eda557970fca0827c096132a05` | `origin` 一致 |
-| v1.1 | pre-Babel 2.0 UIKit redesign baseline | `a94c00626edf13bb3e869c35924bfd6ece7e6165` | `origin/codex/reeder-classic-rebuild` 与 tag 一致 |
+| v0.5 | Genesis v1 stable baseline | `649f85fd50e5fff21e75818193011250baf08d50` | 本地 annotated tag；远端 tag 仅据先前 push agent 报告记录 |
+| v1.0 | Genesis v2 stable baseline | `d1679c7f253d37eda557970fca0827c096132a05` | 本地 annotated tag；远端 tag 仅据先前 push agent 报告记录 |
+| v1.1 | pre-Babel 2.0 UIKit redesign baseline | `a94c00626edf13bb3e869c35924bfd6ece7e6165` | 本地 annotated tag；`origin/codex/reeder-classic-rebuild` remote-tracking ref=`9fda5c5650d06ff5155ead466adbe1b084ccdd44`；v1.1 是祖先而非同一 commit；远端 tag 仅据先前 push agent 报告记录 |
 
-祖先关系只读验证通过：`v0.5 → v1.0 → v1.1 → origin/codex/reeder-classic-rebuild`。
+本轮 evidence snapshot 只记录本地 annotated tags、remote-tracking ref 和先前 push agent 报告；没有重新获取 hosted remote 的 `ls-remote`，因此不称为实时远端核验。已核对的祖先关系为：`v0.5 → v1.0 → v1.1 → origin/codex/reeder-classic-rebuild`。当前 HEAD 与 `origin/codex/reeder-classic-rebuild` 均为 `9fda5c5650d06ff5155ead466adbe1b084ccdd44`；该 commit 是 v1.1 的后代，不是 v1.1 本身。
 
 当前工作树位于分支 `codex/reeder-classic-rebuild`，且存在大量未提交修改和未跟踪设计/比较产物。因此下表描述的是“当前源码和工作树证据”，不是一个干净、已发布的 v1.1 构建。
 
 ### 1.3 与旧 UI 的边界
+
+本节中涉及历史版本、旧工程路径或旧类型名的句子均标记为 `audit-only historical
+reference`：它们用于迁移回退和证据追踪，不参与 no-new-legacy-name gate，也不得被
+复制到新的 Babel 2.0 用户界面或新叶子文件。
 
 - Genesis v1（v0.5）和 Genesis v2（v1.0）是历史运行基线，用于保留数据、服务和回退能力，不是 Babel 2.0 的视觉合同。
 - v1.1 是进入 Babel 2.0 前的 UIKit 基线；它证明了当前迁移起点，不证明新 UI 的完整性。
 - 旧 Genesis 路由可以在迁移期间作为回退或功能参考，但必须由明确的 feature gate 隔离，不能与 Babel 2.0 的导航栈、颜色、布局常数、图标解析器或状态机隐式混用。
 - Babel 2.0 前端可以复用旧的数据和业务管线；“复用服务”不等于“复用旧视觉组件”。
 - 迁移期间 Release 仍可保留 Genesis fallback，但在每个 Slice 的验收记录中必须写清用户进入的是哪一套 UI。
+- Babel 2.0 的最终产品/UI/所有新增代码都采用 Babel/Babel2 命名；当前采用路线 A：旧系统 identity 暂时隐藏在唯一 `LegacyIdentityCompatibility` 兼容边界内，不放弃最终源码和 target 的技术重命名，而是等 Babel 2.0 真机稳定后分阶段迁移，避免数据断裂。可执行的四级 gate 见 1.5。
+
+### 1.4 最新产品决策覆盖层（2026-08-31）
+
+以下条款优先于本文件早先引用的静态 Figma/Batch 描述；Figma Drafts 原文件保持不改，并在文末记录 supersession 对照。
+
+- 启动：Babel 2.0 cold start 直接到 Feeds/Library root，不显示旧 account-card landing page。
+- Feed hero：expanded 状态的图像/背景连续延伸到状态栏与动态岛区域，并由 hero 自身提供完全不透明底图和足够对比的 scrim；compact/list 状态切为完全不透明的实色 chrome。日期、文章列表、Reader WebView 以及其他滚动内容不得透过状态栏显示。expanded 到 compact 是同一连续 progress surface，不能拆成离散页面。
+- Reader：顶部原长图位置改为普通系统分享；长图入口只在底栏，tap-only 生成长图，不以 long-press 承载分享。
+- Article media：横向正文图片 100vw/full-bleed 贴齐屏幕两侧且为直角；正文文字和 caption 保持 reading inset。portrait/inline 图片不强制 full-bleed；`figure`、链接和 wrapper 不得重新加圆角。
+- 颜色：全局禁止 hard-coded legacy mint/green。普通 icon、link、star、selection、reading-mode 状态使用 neutral gray/black；链接使用加粗和中性下划线，不使用绿色。accent 只由用户选择的主题色驱动 Settings switch 和 Reader progress ring；例如 Forest 不得扩散到其他控件。
+- Loading：sync arrow 是唯一同步指示器，只在真实 syncing 期间旋转并在完成后隐藏。文章、翻译和普通加载使用 skeleton/passive state；不得将系统菊花与 sync arrow 叠加，失败必须变成可读 error + retry。
+- Reader 首屏：进入文章时 title/byline 必须位于正文上方并立即可见；下滑由同一连续 motion surface 将它们移到 compact header，icon/progress 以连续渐出进入顶栏，不得因异步加载先隐藏标题。
+- 正式 AppIcon 资产事实：commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 已提交最终 Light/Dark/Mono（Tinted）三套静态资源；root 已逐图检查，独立静态 QA 与 actool QA 均通过。用户授权达标后，这三套资源直接作为 Babel 2.0 AppIcon。这里不宣称用户对最终 Light 做过逐像素再次口头确认。Light 使用明亮木桌与逐本独立的暗色调杂志封面，不使用整张黑色蒙版；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选明暗版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成；未跟踪的 Round 4 草稿只记录设计过程，不推翻该 commit 的正式资产事实。
+
+### 1.5 路线 A：命名与系统身份迁移 gate
+
+路线 A 是当前唯一有效决策：最终产品、UI、用户可见文案和所有新代码都使用 Babel
+命名；旧系统 identity 只暂时通过唯一 `LegacyIdentityCompatibility` 隐藏兼容层存在。当前阶段只执行 Gate A、Gate B
+和 compatibility isolation；阶段化不等于放弃最终源码/target 改名，而是把内部
+路径、符号、工程、target、scheme、CI 和外部仓库身份迁移放到 Babel 2.0 稳定可用
+且真机验收完成之后，并以数据迁移证据和单独授权为前提。
+
+- **Gate A — no-new-legacy-name（立即生效）**：对相对当前 Babel 2.0 基线新增或修改的文件，逐个扫描 code、resource、test、用户可见文案、新叶子文件名、类型、方法、accessibility identifier、log category 和 route；任何新增旧品牌/旧缩写 token 即失败。新文件放在既有旧 target 或 directory 下，不因继承 parent path 而失败；但新文件 basename、新增声明和新增内容仍必须使用 Babel/Babel2 命名。
+- **Gate A 检查方法**：检查器只比较当前变更集与已登记基线，扫描叶子 basename 及新增/修改内容；它不因父目录、父 target 或 inherited module 名称命中而失败。旧 token 集合必须来自显式登记的 legacy-name allowlist，并逐项记录命中文件、命中位置、例外理由和 owner；未登记的命中直接失败。`audit-only historical reference` 合同/审计区段从扫描输入排除，但不能把代码、资源或用户可见文案伪装成审计区段。
+- **Gate A 例外边界**：若当前编译必须引用旧 build target/module import，只能列入 build/test harness 的显式 allowlist；旧 persisted/system identity（包括 bundle identity 相关字符串、App Group、Keychain/access-group、CloudKit、UserDefaults 旧 key/data path/state URL 等）只能集中通过唯一 `LegacyIdentityCompatibility` 边界。allowlist 绝不能成为第二个 persisted/system identity 出口。不得把这些例外暴露给 UI、accessibility、日志分类或 route。
+- **Gate A 例外标记**：合同、历史审计和 supersession 对照中可以引用旧名，但所在段落必须明确写出 `audit-only historical reference`；这些引用不参加 no-new-name 扫描，也不构成新代码命名许可。
+- **Compatibility isolation（当前阶段必须完成）**：所有仍需保留的旧 build/module 引用只能从上述 build/test harness allowlist 进出；旧 persisted/system identity 只能从唯一 `LegacyIdentityCompatibility` 边界进出，不能从 allowlist 进入。新 Babel2 UI、route、日志、accessibility 和资源不得直接依赖或显示它们。该隔离不等于现在执行全量技术重命名。
+- **Gate B — user-visible zero legacy（当前产品发布前）**：用户可见 UI、Accessibility、分享文案、通知、错误信息、日志展示和 deep-link/route 表面不得出现任何旧品牌/旧缩写，即使底层兼容层仍存在。
+- **Gate C — internal technical rename（真机稳定后）**：待 Babel 2.0 完成目标 iPhone 的冷/热启动、数据、同步、Reader、浏览器、翻译和状态恢复验收后，再单独迁移源码类型、module、target、包产品、工程路径和内部持久化映射；迁移必须有备份、schema/version、回滚和断裂检测证据。
+- **Gate D — bundle/app/external identity change（单独授权）**：bundle identifier、App Group、Keychain/access-group、Core Data store identity、App Store/app identity、GitHub repository/remote identity 或对外项目名只能通过明确的迁移项目和用户授权变更；不能作为 UI 重建或自动全局替换的副作用。
 
 ## 2. 设计来源与证据优先级
 
@@ -63,7 +100,10 @@ Babel 2.0 的工作范围包括：
 5. 当前 Babel 代码：只作为数据流、服务依赖和可行性证据；
 6. Soft Shell：仅作为历史参考，不得当作 Babel 2.0 当前视觉来源。
 
-### 2.1 当前参考的本地路径和节点
+### 2.1 当前参考的本地路径和节点（audit-only historical reference）
+
+本节中的旧工程路径、旧模块名和旧类型名均为 `audit-only historical reference`，仅
+用于定位证据；它们不参与 Gate A，也不得作为新 Babel2 文件的命名模板。
 
 | 证据 | 路径或节点 | 用途与限制 |
 |---|---|---|
@@ -102,26 +142,29 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 - **结构通过**：静态/结构检查已能对上，但运动或真机边界仍未关闭；
 - **完成**：只有在合同条目、自动化检查、实机检查和用户验收全部有记录后使用。
 
+下表的“当前证据与状态”可能引用旧工程文件或旧类型名；这些引用均属于
+`audit-only historical reference`，不构成新 Babel2 命名或 UI 复用许可。
+
 | 区域 / 能力 | 当前证据与状态 | 用户可观察验收标准 | 数据与服务依赖 |
 |---|---|---|---|
-| Babel 2.0 根壳 | `/Users/wenbopan/Downloads/AI Projects/Babel app/iOS/BabelUI/BabelShellViewController.swift` 已将根入口接到 Feeds；Release/Debug feature gate 仍存在；**半实现** | 冷启动进入 Babel 2.0 Feeds；导航栈、状态栏和底部栏稳定；离开再返回不重复壳、不跳 Genesis；旧 UI 只能通过明确回退入口出现 | SceneDelegate、`BabelShellConfiguration`、UIKit 导航 |
+| Babel 2.0 根壳 | `/Users/wenbopan/Downloads/AI Projects/Babel app/iOS/BabelUI/BabelShellViewController.swift` 已将根入口接到 Feeds；Release/Debug feature gate 仍存在；**半实现** | 冷启动直接进入 Feeds/Library root，不经过旧 account-card landing page；导航栈、状态栏和底部栏稳定；离开再返回不重复壳、不跳旧世代 UI；旧 UI 只能通过明确回退入口出现 | SceneDelegate、feature gate、UIKit 导航 |
 | Feeds 首页 | `BabelFeedsViewController.swift` 有 unread/folder/feed rows、计数、展开；**有代码未验收** | 首屏显示 Feeds、Starred、Unread、All 及源/文件夹；选中态、计数、缩进、分隔和点击反馈与 Reeder/Figma 一致；文件夹展开原地发生并保持上下文 | Core Data feeds/folders/articles、SmartFeeds、图标缓存 |
-| Starred / Unread / All | Feeds 过滤状态已部分存在；Figma Library `22:36`、Unread `22:7`、Starred `29:8`、All `29:23`；**半实现** | 点击过滤器只在固定槽位原地 `CHANGE_TO`；列表回到顶部但路由和其他上下文保留；没有 push/card/sheet；数量与实际结果一致 | `NNWStarredIndex`、文章 read/star 状态、SmartFeeds 查询 |
+| Starred / Unread / All | Feeds 过滤状态已部分存在；Figma Library `22:36`、Unread `22:7`、Starred `29:8`、All `29:23`；**半实现** | 点击过滤器只在固定槽位原地 `CHANGE_TO`；列表回到顶部但路由和其他上下文保留；没有 push/card/sheet；数量与实际结果一致。Starred 只显示至少有 starred 文章的源/文件夹，且每个源/文件夹的计数只统计当前过滤语义下的 starred 文章 | 文章 read/star 状态、SmartFeeds 查询 |
 | 源 / 文件夹计数 | 新 Feeds 代码有 counts；**有代码未验收** | 文件夹计数等于可见子项语义；源计数等于对应过滤下文章数；0、同步中和错误时不显示过期的“成功数字” | Feed/folder 关系、文章状态、同步刷新 |
 | Feed 列表 / Timeline | `BabelTimelineViewController.swift` 有分组文章列表、底部栏、行内标题翻译；**半实现** | 日分组、标题、来源、时间、摘要、已读/未读重量、缩略图和底部操作与锁定参考一致；点击文章进入 Reader，返回保留位置 | 文章抓取、正文/摘要、日期、本地化、缩略图 |
-| Feed hero | 代码有 hero 与滚动插值；Figma Feed expanded `22:37`、transition `244:541`、compact `244:552`、no image `244:563`；**有代码未验收** | hero 从 y=59 开始；展开 `[0,59,402,169]`、收缩 `[0,59,402,99]`、toolbar `[0,802,402,72]`；标题与图像连续插值，无卡片阴影跳变；无图时有稳定 fallback | `TimelineFeedHeader`、`FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader`、dominant color/cache |
+| Feed hero | 代码有 hero 与滚动插值；Figma Feed expanded `22:37`、transition `244:541`、compact `244:552`、no image `244:563`；**有代码未验收** | expanded hero 的图像/背景延伸到状态栏与动态岛区域，并由自身提供完全不透明底图和对比 scrim；compact/list 切为完全不透明实色 chrome；日期、文章列表不透过状态栏；展开到收缩是连续 progress surface，无卡片阴影跳变；无图时有稳定 fallback | `TimelineFeedHeader`、`FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader`、dominant color/cache |
 | Feed 搜索 | `BabelArticleSearchViewController.swift` 有当前源文章搜索覆盖层；**半实现** | 搜索留在当前源上下文；键盘、取消、空结果、错误和返回不丢失原滚动位置；搜索结果仍遵守文章行合同 | 本地文章索引/过滤、iOS 搜索输入 |
 | Feed More / 反馈 | Feeds/Timeline 有 More/Feed Issues sheet；**有代码未验收** | 菜单/反馈出现和消失不破坏当前 route、filter、scroll；命令作用后有可观察结果或明确错误；菜单材料和返回时序需实机确认 | UIKit sheet/action、订阅源状态、日志 |
-| Reader 原文 | `BabelReaderViewController.swift` 有 WKWebView、header、底部 toolbar；Figma Reader Original `22:38`；**有代码未验收** | 标题、日期、byline、正文和底部 read/star/next/translation/BR 槽位稳定；进入、返回、下一篇不跳位；短文和长文均不裁切 | WKWebView、文章 HTML/正文、`ReaderViewExtractor`、文章状态 |
-| Reader 长文滚动 / 收缩标题 | 代码有 compact header/progress；Figma `180:370`、`180:424`、`143:444`、`180:520`、`227:675`；**半实现** | status bar opaque；只有文章真正滚动才收缩；progress 使用 `p=clamp((offsetY-collapseStart)/(maxScrollableOffset-collapseStart),0,1)`；42pt 真图标位于 48pt frame；返回/旋转/加载后位置保留 | WKWebView scroll、实际内容高度、安全区、Feed icon |
+| Reader 原文 | `BabelReaderViewController.swift` 有 WKWebView、header、底部 toolbar；Figma Reader Original `22:38`；**有代码未验收** | 进入时标题、日期、byline 立即位于正文上方且可见；下滑由同一连续 motion surface 移到 compact header，feed icon/progress 渐出并保持稳定；底部 read/star/next/translation/long-image 槽位稳定；进入、返回、下一篇不跳位；短文和长文均不裁切 | WKWebView、文章 HTML/正文、`ReaderViewExtractor`、文章状态 |
+| Reader 长文滚动 / 收缩标题 | 代码有 compact header/progress；Figma `180:370`、`180:424`、`143:444`、`180:520`、`227:675`；**半实现** | status bar 与 top chrome 完全不透明；只有文章真正滚动才收缩；初始 title/byline 在正文上方；progress 使用 `p=clamp((offsetY-collapseStart)/(maxScrollableOffset-collapseStart),0,1)`；42pt 真图标位于 48pt frame，icon/progress 连续渐出；返回/旋转/加载后位置保留 | WKWebView scroll、实际内容高度、安全区、Feed icon |
 | Reader pin/unpin | 代码有 Reader controls，但完整 directional contract 未有 UI 测试；**半实现** | 12pt 方向性移动后，顶部/底部控制一起显隐；180ms linear；可中断、反向跟手；不重置 route、文章或滚动位置 | UIScrollView/WKWebView、UIViewPropertyAnimator 或等价状态机 |
-| Reader 翻译 | Reader 有翻译控制；Figma Original `22:38`、Translating `117:263`、Translated `117:317`；**半实现** | `Original → Translating → Translation` 原地发生；Reader skeleton 与正文几何稳定，约 3 秒段落级渐进且不跳位；取消/失败可回到原文；不擅自增加 AI 目标语言设置 | `TranslationConfig`、翻译模型/API/key、流式绑定、文章段落解析 |
+| Reader 翻译 | Reader 有翻译控制；Figma Original `22:38`、Translating `117:263`、Translated `117:317`；**半实现** | `Original → Translating → Translation` 原地发生；Reader skeleton 与正文几何稳定，段落级渐进且不跳位；取消/失败可回到原文；不得用系统菊花或 sync arrow 叠加；不擅自增加 AI 目标语言设置 | `TranslationConfig`、翻译模型/API/key、流式绑定、文章段落解析 |
 | Feed 列表翻译 | Timeline 有标题翻译；**半实现** | 列表标题在原位置替换，不改变行高度策略；翻译中有明确但不扰乱滚动的状态；失败显示可重试结果 | 翻译 API、标题缓存、文章列表数据 |
 | 阅读模式 | `ReaderViewExtractor` 路径存在，Reader 有入口；**有代码未验收** | 阅读模式从当前文章进入，内容可读、图片/链接规则明确；返回保留位置；无正文时显示错误而不是空白 | HTML 提取、WebView、主题设置 |
-| 内置浏览器 | `/Users/wenbopan/Downloads/AI Projects/Babel app/iOS/BabelUI/BabelBrowserViewController.swift`；**有代码未验收** | 原文链接在内置 WKWebView 打开；后退/前进/刷新/分享/外部打开可用；返回 Reader 不丢状态；加载失败可重试 | WKWebView、网络、安全策略、系统分享 |
+| 内置浏览器 | `/Users/wenbopan/Downloads/AI Projects/Babel app/iOS/BabelUI/BabelBrowserViewController.swift`；**有代码未验收** | 原文链接在内置 WKWebView 打开；文章正文右向左滑进入浏览器并可在浏览器左/右边缘返回 Reader；后退/前进/刷新/分享/外部打开可用；返回 Reader 不丢状态；加载失败可重试 | WKWebView、网络、安全策略、系统分享 |
 | 系统分享 | Reader 与 Browser 有 `UIActivityViewController`；**有代码未验收** | More/Browser 分享使用系统分享面板；分享对象、标题和 URL 正确；取消后回到原文章/原滚动位置 | URL、文章 metadata、系统分享服务 |
-| 长图 | `ArticleLongImageExporter` 有调用路径；**半实现** | 由 Reader 操作明确触发；生成完整文章长图或给出可理解失败；导出过程中不阻塞错误地覆盖 Reader；保存/分享结果可观察；不能把普通点击误当长按 | HTML/WebView snapshot、图片拼接、照片/分享权限 |
-| Reader Actions | Reader 已有 UIAlertController actions；**半实现** | Reader action 顺序为 Reader mode/Translate/Long image/Star/More；More 含 Mark read/Next unread/System share；菜单返回时保持 route/位置；与 Figma/实机材料一致 | 文章状态、翻译、导出、系统分享 |
+| 长图 | `ArticleLongImageExporter` 有调用路径；**半实现** | 只由 Reader 底栏的普通 tap 明确触发；生成完整文章长图或给出可理解失败；导出过程中不阻塞错误地覆盖 Reader；保存结果可观察；长图按钮不承担 long-press 分享，普通系统分享由顶部原长图位置的 Share action 触发 | HTML/WebView snapshot、图片拼接、照片权限 |
+| Reader Actions | Reader 已有 UIAlertController actions；**半实现** | 顶部原长图位置固定为普通 System Share；长图只在底栏且 tap-only；Reader action/底栏顺序、菜单返回、route/位置与 Figma/实机材料一致；不得把长按定义为分享入口 | 文章状态、翻译、导出、系统分享 |
 | 添加订阅源 | `BabelSubscriptionViewControllers.swift` 可输入 URL 并解析 RSS/Atom/JSON alternate link；**半实现** | 添加页有取消/保存或明确完成路径；合法源可添加、重复源可解释、无效源有错误；进度/失败/重试可观察；不声称已有关键词发现 | `URLSession`、RSS/Atom/JSON parser、Account/Feed API、Core Data |
 | 添加订阅源搜索/发现 | 当前实现是网站/feed URL 抓取，不是 Feedly/Podcast/YouTube/Reddit 关键词搜索；**未迁移** | 输入关键词后能按合同的来源类别搜索；结果可预览并订阅；服务不可用、空结果、限流和错误有明确状态；若后端未提供，必须显示未支持而不是伪造结果 | Discovery API、第三方服务 key、网络、订阅写入 |
 | 订阅源管理 | 有 rename/remove 管理页；**有代码未验收** | 源和文件夹能查看、改名、删除、排序/层级关系可解释；删除有确认并立即更新 Feeds；同步失败不丢本地状态 | Account、Feed/folder persistence、sync |
@@ -129,10 +172,11 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 | Settings 二级页 | Figma `110:320`–`110:460` 及 `110:480`–`110:600`；现有编辑器部分复用旧控制器；**半实现** | 普通详情 push；可逆选择使用 anchored popover；布尔项即时生效；有延迟保存的编辑器有 Cancel/Save；不混用旧 action sheet 与新合同 | Settings 控制器、AppDefaults、账户、主题、翻译配置 |
 | Settings 动态 Translation Model | Figma `110:560`，catalog 规则为动态 Top 10 + 每供应商恰好 3 个；当前规格与旧代码 15/5/底部 refresh 有冲突；**未验收** | 专用编辑器顶部刷新；固定 logo/check 槽；加载、空、错误和选择状态稳定；供应商分组数量符合最新合同，若未实现必须标缺口 | 供应商目录 API、模型配置、缓存、网络 |
 | i18n / 目标语言 | `AppLanguageController`、TranslationConfig 和本地化资源存在；**有代码未验收** | 界面语言切换可观察且不破坏布局；全局目标语言影响列表/Reader 翻译；原文、翻译中、失败和未配置均可本地化；不把“语言选项存在”当作翻译完成 | Localizable strings、AppLanguageController、TranslationConfig、服务返回语言 |
-| 浅色/深色 | 设计 token 和部分代码存在；Figma full dark masters 标为后续 Batch；**半实现** | 浅色/深色均无反白、透明状态栏、图标不可见或文本对比不足；切换后当前 route/scroll/selection 保留；色值遵循 Reeder/Figma 语义变量 | `NNWAccentPalette`、BabelDesignSystem、traitCollection |
+| 浅色/深色/主题色 | 设计 token 和部分代码存在；Figma full dark masters 标为后续 Batch；**半实现** | 浅色/深色均无反白、透明状态栏、图标不可见或文本对比不足；切换后当前 route/scroll/selection 保留；普通 icon/link/star/selection/read-mode 使用 neutral gray/black；主题 accent 只驱动 Settings switch 与 Reader progress ring；禁止任何 hard-coded legacy mint/green | BabelDesignSystem、traitCollection、用户主题设置 |
 | 图标缓存 | 当前链 `FeedHeroIconLoader → FeedIconDownloader → FaviconDownloader` 和 fallback/dominant color 存在；**有代码未验收** | 同一 feed 不重复解析/下载；缓存命中不闪烁；坏图标、有图标、无图标和网络失败均有稳定 fallback；Feed hero 与行图标不建立第二套 resolver | URL cache/disk cache、favicon 下载、图片裁切/主色分析 |
-| 同步状态 | 根壳有 sync glyph/Feed Issues 入口，Genesis 有账户同步能力；**半实现** | 初始同步、同步中、成功、失败和离线均有可观察状态；数字、列表和 star/read 操作不会显示已失效成功值；失败可重试并保留本地内容 | Account、iCloud/local sync、Network、Core Data、活动日志 |
-| Loading / Empty / Error | Figma 有 Empty State `25:8`、Confused Bear `241:41`；完整 loading/error/empty master 未齐；**未验收** | 每个屏幕定义首次加载、刷新、无内容、无搜索结果、网络错误、解析错误和翻译错误；状态不造成布局跳变；错误有恢复动作；不以永恒 spinner 代替错误 | 网络、解析、同步、翻译、状态模型 |
+| 同步状态 | 根壳有 sync glyph/Feed Issues 入口，历史同步能力可适配；**半实现** | 初始同步、同步中、成功、失败和离线均有可观察状态；sync arrow 只在真实 syncing 期间出现并旋转，成功/停止后自动隐藏；数字、列表和 star/read 操作不会显示已失效成功值；失败可重试并保留本地内容 | 账户、同步、网络、本地模型、活动日志 |
+| Loading / Empty / Error | Figma 有 Empty State `25:8`、Confused Bear `241:41`；完整 loading/error/empty master 未齐；**未验收** | 每个屏幕定义首次加载、刷新、无内容、无搜索结果、网络错误、解析错误和翻译错误；状态不造成布局跳变；文章/翻译加载使用 skeleton/passive state；不得同时显示系统菊花和 sync arrow；错误有恢复动作；不以永恒 spinner 代替错误 | 网络、解析、同步、翻译、状态模型 |
+| Babel 2.0 AppIcon | commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中 `iOS/Babel2/Assets.xcassets` 的最终 Light/Dark/Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过；**素材与静态 QA 通过，runtime appearance 待验收** | 用户授权达标后直接作为 Babel 2.0 AppIcon。Light 为明亮木桌、逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版；Dark 使用深色木桌版本；Tinted/Mono 与主题外观一致；runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍待完成 | asset catalog、AppIcon 配置、runtime appearance wiring、模拟器与真机 Home Screen |
 | 自动化门禁 | 现有测试覆盖 shell flag、pop policy、original-link swipe；没有完整 UI/snapshot/motion/device tests；**未验收** | 每个 Slice 有结构/单元检查、关键 UI 测试和实机检查记录；测试失败阻止“完成”标签；性能/运动由设备而非单元测试单独验收 | XCTest、截图/比较工具、真机、测试数据 |
 
 ## 4. 屏幕注册表与节点合同
@@ -141,7 +185,7 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 
 | 屏幕/状态 | Figma 节点 |
 |---|---|
-| Home | `86:204` |
+| Feeds/Library root（语义 Home；旧 account-card landing page 已移除） | `86:204`（仅作历史节点回查，不作为启动页面合同） |
 | Library | `22:36` |
 | Feed expanded / transition / compact / no-image | `22:37` / `244:541` / `244:552` / `244:563` |
 | Reader Original / Translating / Translated | `22:38` / `117:263` / `117:317` |
@@ -154,20 +198,28 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 | Timeline Sort / Group popover | `223:590` / `224:632` |
 | Reader Open Links / Appearance Mode / Accent / Interface Language popover | `224:1369` / `224:1482` / `224:1538` / `224:1609` |
 
-关键组件节点包括：Status Bar `16:2`、Home Mark `82:18`、Home Account Card `83:18`、Folder Row `19:12`、Feed Row `19:23`、Article Row `20:32`、Translation Toggle `43:19`、Reading Mode `92:22`、Reader Toolbar `21:5`、Filter Pill `28:44`、Feed Toolbar `22:35`、Compact Header `143:73`、Empty State `25:8`。
+关键组件节点包括：Status Bar `16:2`、Home Mark `82:18`、Home Account Card `83:18`（`audit-only historical reference`，仅用于 supersession 回查，不得实现为启动 landing page）、Folder Row `19:12`、Feed Row `19:23`、Article Row `20:32`、Translation Toggle `43:19`、Reading Mode `92:22`、Reader Toolbar `21:5`、Filter Pill `28:44`、Feed Toolbar `22:35`、Compact Header `143:73`、Empty State `25:8`。
 
 ### 4.1 固定几何与交互约束
 
 - 设计画布为 402×874；Reeder 锁定参考为 1206×2622，约 3 px/pt。
 - 顶部控制中心约 y=81，槽位 x=`[32, 201, 290, 330, 370]`；未使用槽位必须保持空，不得自行塞入新按钮。
 - 底部 toolbar 为 `[0,802,402,72]`，中心 y=826，槽位约 `[32,104,201,290.5,362]`；可点击命中区域 44pt。
-- Feed status bar 不透明，hero 从 y=59 开始；标题可读性用无边界 feather，不用卡片阴影制造分界。
-- Reader status bar 使用不透明 `BabelPalette.background`，不使用 underlap、glass 或 blur 伪造稳定性。
+- Feed expanded hero 的图像/背景延伸到物理顶部、状态栏和动态岛区域；hero 自身底图和 scrim 必须完全不透明且保证系统文字对比。compact/list 状态使用完全不透明实色 chrome；日期、文章列表和其他滚动内容不得透过状态栏。
+- Reader status bar 与所有 compact/list chrome 使用不透明 `BabelPalette.background`；文章正文 WebView 不得 underlap 状态栏，也不得由透明、glass、blur 或 scroll-edge effect 暴露到状态栏。
 - Reader progress 是从 12 点钟方向开始的一条连续顺时针 arc；不能按离散页面硬切。
+- 正文横向图片使用 100vw/full-bleed 直角显示，贴齐屏幕两边；正文文字与 caption 保持 reading inset。portrait/inline 图片可保留 reading inset；任何 `figure`、链接或 wrapper 不得重新加圆角。
+- 全局颜色遵循语义 token：禁止 hard-coded legacy mint/green；普通 icon/link/star/selection/read-mode 用 neutral gray/black，链接用加粗与中性下划线。用户选定的 accent 仅驱动 Settings switch 与 Reader progress ring。
+- sync arrow 是唯一同步旋转指示器，只在真实 syncing 时显示并自动隐藏；文章/翻译/普通加载使用 skeleton/passive state，禁止系统菊花与 sync arrow 同时出现。
+- Reader 初始 title/byline 在正文上方立即可见；下滑时通过一个连续 motion surface 移入 compact header，icon/progress 连续渐出。
+- Reader 顶部原长图槽位为普通系统分享；长图移到底栏且只能 tap 触发，不使用 long-press 分享。
 - Feed filter、folder expansion、搜索均优先使用原地 `CHANGE_TO`；不得因复用方便而推成 push/card/sheet。
 - 短选项使用 anchored popover；Settings 的延迟保存编辑器使用 Cancel/Save；开关即时生效。
 
 ## 5. 数据与服务依赖合同
+
+本节对既有业务能力的引用属于 `audit-only historical reference` 或迁移依赖说明；
+它们不参加 Gate A 的新增命名扫描。新 Babel2 adapter 必须遵守 1.5 的例外边界。
 
 | 能力层 | 应复用/依赖的现有能力 | Babel 2.0 约束 |
 |---|---|---|
@@ -196,9 +248,9 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 
 ### Slice 1 — 根壳、tokens、导航和全局状态
 
-- 迁移状态栏、顶部/底部栏、Light/Dark、字体、命中区域、导航返回和可中断转场。
+- 迁移状态栏、顶部/底部栏、Light/Dark、字体、命中区域、导航返回和可中断转场；建立 no-new-legacy-name gate，新增 Babel 2.0 文件和用户可见标识不得出现旧产品命名。
 - 先实现 loading/empty/error 基础容器，不让每个屏幕自造一套。
-- 验收：冷启动、深浅色切换、后台回前台、push/pop 和边缘滑回均不产生跳壳或旧 UI 串入。
+- 验收：冷启动直接到 Feeds/Library root；冷/热启动、深浅色切换、后台回前台、push/pop 和边缘滑回均不产生跳壳或旧 UI 串入；sync arrow 只在真实同步时出现；AppIcon runtime wiring 已接通。
 
 ### Slice 2 — Feeds 首页、Library 和过滤
 
@@ -216,27 +268,30 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 
 - Reader header、WebView 内容、底部 toolbar、短文/长文、compact header、连续 progress、pin/unpin。
 - 先锁定原文稳定几何，再接高阶操作。
-- 验收：多种真实文章高度、不同 safe area、Light/Dark、进出后台和返回均保留位置；progress 只随真实可滚动内容变化。
+- 验收：进入文章时 title/byline 在正文上方；多种真实文章高度、不同 safe area、Light/Dark、进出后台和返回均保留位置；title/byline/icon/progress 连续收缩且不闪失；横向正文图片 full-bleed 直角；progress 只随真实可滚动内容变化并使用主题 accent。
 
 ### Slice 5 — Reader actions、翻译、阅读模式、浏览器、分享、长图
 
 - Reader action menu、原地翻译流、阅读模式、内置浏览器、系统分享、长图导出、下一篇/标记已读。
 - 明确取消、失败、网络断开和导出权限路径；不把暂时 UIAlertController 作为最终交互合同。
-- 验收：动作顺序、菜单返回、三秒段落级翻译过渡、导出/分享结果和 Reader 位置均在实机可观察且可中断。
+- 验收：顶部原长图位是普通系统分享；底栏长图为 tap-only；文章正文左滑进入内置浏览器且可边缘返回；动作顺序、菜单返回、段落级翻译过渡、导出/分享结果和 Reader 位置均在实机可观察且可中断；加载不叠加系统菊花和 sync arrow。
 
 ### Slice 6 — 订阅管理、发现、Settings 和 i18n
 
 - 添加订阅源、关键词发现（若服务实际存在）、管理源/文件夹、Settings 8 类别及二级编辑器/popover。
 - 接入全局语言、目标语言、主题、通知、诊断、翻译模型目录和 API key 状态。
-- 验收：每个编辑器有正确的保存/取消语义；服务缺失时显示真实限制；语言切换不破坏当前 route/layout。
+- 验收：订阅管理、添加订阅源、发现搜索均有真实成功/空/限流/失败状态；Settings 使用新 IA 而非旧页面；每个编辑器有正确的保存/取消语义；主题 accent 仅作用于 switch 与 Reader ring；服务缺失时显示真实限制；中文/英文全界面切换不破坏当前 route/layout；无新增旧产品命名。
 
 ### Slice 7 — 全面状态、可靠性、真机验收和清理
 
 - 补齐 loading/empty/error/offline/sync/translation/discovery 全状态；跑自动化、性能和对照截图；在目标 iPhone 完成运动验收。
 - 根据验收结果删除重复 UI、旧视觉常数和未使用回退，不提前清理数据/服务。
-- 验收：所有矩阵行有证据链接和负责人；用户接受关键屏幕的几何与手感；未完成项仍留在缺口清单。
+- 验收：所有矩阵行有证据链接和负责人；用户接受关键屏幕的几何与手感；性能/预加载、翻译稳定性、右滑/左滑浏览器手势、横向图片、AppIcon 三外观和中英文 i18n 均有当前构建证据；未完成项仍留在缺口清单。
 
 ## 7. 保留、隔离与最终删除清单
+
+本节中列出的旧路由、旧控制器和旧资源是 `audit-only historical reference`，用于
+定义隔离/删除范围；它们不参加 Gate A，也不得出现在用户可见表面。
 
 ### 7.1 应保留
 
@@ -267,6 +322,9 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 
 ## 8. 不能假装完成的项目
 
+本节中为解释历史实现而保留的旧类型名和测试名均为 `audit-only historical
+reference`；它们不参加 Gate A 命名扫描。
+
 下列事项在当前证据下不能标记为“完成”：
 
 1. 仅凭 Figma 静态图证明翻页、滑动、点击动画跟手；
@@ -279,8 +337,9 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 8. 仅凭 spinner、空数组或一个错误 alert 就证明 loading/empty/error 全状态完成；
 9. 仅凭现有 XCTest（shell flag、pop policy、original-link swipe）证明 UI、截图、运动或设备验收完成；
 10. 当前 dirty worktree 上未经重新构建、安装和设备验证的任何历史测试数字；
-11. 临时几何 B、Inter fallback、neutral thumbnail、compact T mark 等设计占位物已经是最终品牌或最终素材；
+11. 临时几何 B、Inter fallback、neutral thumbnail、compact T mark 等设计占位物已经是最终品牌或最终素材；正式 Babel 2.0 AppIcon 以 Light/Dark/Tinted（Mono）资源合同为准，Light 不得使用统一黑色蒙版；
 12. 把 Settings IA 文档中“7 个二级编辑器”和 Figma 状态文件的完整节点列表视为无冲突事实；精确屏幕注册以 `figma-state.json` 和用户当前决策为准，差异必须单独解决。
+13. 新增 Babel 2.0 代码、资源、测试或文档出现旧产品命名就视为 gate 失败；历史路径和旧 build/module/test-harness 引用仅在显式 allowlist 中保留且不可显示给用户；旧 persisted/system identity 只能在唯一 `LegacyIdentityCompatibility` 边界中保留，allowlist 不得成为第二出口。
 
 ## 9. 当前证据缺口与待补证据
 
@@ -329,3 +388,28 @@ Reeder 截图和 Figma 静态状态可以锁定位置、尺寸、颜色、层级
 - 实现代理不得从 Soft Shell 重新推导当前视觉；必须引用本合同、Reeder 本地证据和 Figma 节点。
 - 设计静态图与实际运动冲突时，暂停“像素微调”，补齐视频/实机行为证据后再决策。
 - 每个 Slice 结束时交付：改动范围、未改动范围、测试结果、设备结果、剩余缺口、回滚方式；未完成不能用“基本完成”替代状态标签。
+
+## 12. Supersession note：2026-08-31 用户决策覆盖的旧 Draft 条款
+
+本节只记录覆盖关系，不修改 `Figma Drafts/` 原文件。本节全部属于 `audit-only
+historical reference`；实现与验收以本合同最新条款为准，旧节点不能继续作为相反
+行为的依据，也不参与 Gate A。
+
+| 被覆盖的旧条款 | 覆盖后的 Babel 2.0 决策 |
+|---|---|
+| `Figma Drafts/BATCH-01-SPEC.md` §01 Home（约第 35–41 行）要求以 centered brand mark、separator 和 account card 组成 root Home；组件清单及后续变更记录仍保留 `Home Account Card` | cold start 直接进入 Feeds/Library root；旧 account-card landing page 移除。`Home` 节点只保留为历史回查/语义别名，不得作为启动页面实现。 |
+| `Figma Drafts/INTERACTION-CONTRACT.md` Feed hero 条款（约第 70–74 行）及 `BATCH-01-SPEC.md` Feed 条款（约第 57–61、287–290 行）要求 hero 从不透明 status region 下方开始、永不 underlap system status items | expanded hero 的图像/背景延伸到状态栏与动态岛区域；hero 自身提供完全不透明图像/背景和对比 scrim。compact/list 仍为完全不透明实色 chrome，日期/文章/list/WebView 不得透过状态栏；expanded→compact 仍是连续 motion surface。 |
+| `Figma Drafts/INTERACTION-CONTRACT.md` Reader action 条款（约第 152 行）及 `BATCH-01-SPEC.md` Reader header action/变更记录（约第 73、234–237 行）将顶部 action 定义为 `Share Long Image`，普通 tap 生成/分享长图、long press 打开普通分享 | 顶部原长图槽位改为普通系统 Share；长图放入 Reader 底栏且仅 tap 触发；long press 不承担分享。 |
+| 旧 Draft 的泛化 accent 规则（`Figma Drafts/BATCH-01-SPEC.md` 约第 120–121 行仅记录 accent 不进入三张 master，除 authentic favicon/subtle state 外不扩散） | 用户最新决定进一步收紧颜色语义：全局禁止 hard-coded legacy mint/green；普通 icon/link/star/selection/read-mode 用 neutral gray/black，链接用加粗+中性下划线；主题 accent 只驱动 Settings switch 与 Reader progress ring。 |
+| `Figma Drafts/BATCH-01-SPEC.md` 旧 loading/refresh 组件记录（约第 145、169–173 行）只记录组件几何与复用，并未定义常驻/重复 spinner 的 ownership/visibility | 用户最新决定补充此前未定义的 visibility/ownership：sync arrow 只在真实 syncing 时显示/旋转并自动隐藏；文章/翻译加载用 skeleton/passive state；系统菊花不得与 sync arrow 叠加，失败转为 error+retry。 |
+| 旧 Reader 静态 checkpoint 只在滚动后展示 compact identity，未锁定首屏 title/byline 与 icon 渐出连续性 | 进入 Reader 时 title/byline 必须已在正文上方可见；下滑由同一 motion surface 移至 compact header，icon/progress 连续渐出并可反向跟手。 |
+| `Figma Drafts/BATCH-01-SPEC.md` 对文章缩略图的圆角描述（约第 67 行）被误用于正文媒体 | 正文横向图片 100vw/full-bleed、贴齐屏幕两侧、直角；文字/caption 保持 reading inset；portrait/inline 不强制 full-bleed，`figure`/link/wrapper 不得加圆角。该覆盖不改变列表 thumbnail 的独立规格。 |
+| 旧 Draft 对命名、旧工程品牌或历史组件的直接引用可能被复制进新 Babel2 文件 | 新 Babel2 code/resource/test/docs 统一使用 Babel/Babel2；旧 build/module/test-harness 引用只在显式 allowlist 中出现且不可进入 UI；旧 persisted/system identity 只能经唯一 `LegacyIdentityCompatibility` 边界出现，allowlist 不得成为第二出口。完整旧技术命名迁移另立任务。 |
+
+### 12.1 AppIcon 当前状态
+
+commit `9fda5c5650d06ff5155ead466adbe1b084ccdd44` 中正式 Babel 2.0 AppIcon 的最终 Light、Dark、Mono（Tinted）静态资源已提交；root 逐图检查、独立静态 QA 与 actool QA 已通过。用户授权达标后，三套资源直接作为 Babel 2.0 AppIcon。这不是本轮重新运行的声明，也不宣称用户对最终 Light 做过逐像素再次口头确认。Light 采用明亮木桌与逐本独立暗色调杂志封面构成的俯拍 B，不使用统一黑色蒙版；Dark 使用已选定的深色木桌版本；Mono/Tinted 从获选版本派生。runtime appearance wiring、模拟器外观选择和真机 Home Screen 检查仍属于待验收项。未跟踪的 Round 4 草稿只记录设计过程，不改变该 commit 的正式资产事实。
+
+### 12.2 Release gate 汇总
+
+以下项目在发布 Babel 2.0 前必须逐项有当前构建、自动检查和目标 iPhone 证据：Feeds/Library 直达根壳；Starred 源过滤及计数；Feed hero 状态栏 full-bleed 与连续收缩；Reader 首屏标题/作者、compact header、连续 progress 和主题色；横向正文图片 full-bleed 直角；单一 loading owner；无绿色语义泄漏；Reader↔内置浏览器边缘手势；文章预加载、首屏性能和翻译稳定性；订阅管理、添加订阅源、发现搜索；新 Settings IA；中文/英文全界面 i18n；Light/Dark/Tinted AppIcon runtime wiring；以及旧 UI/死代码清理和 no-new-legacy-name gate。当前阶段只执行 Gate A、Gate B 与 compatibility isolation；Gate C 的内部技术重命名必须等 Babel 2.0 稳定可用并完成真机验收后，Gate D 的 bundle/data/GitHub 外部身份变更必须另立迁移项目并取得明确授权。未有对应证据的项目必须保持未验收，不得以静态 Figma 或模拟器截图替代。

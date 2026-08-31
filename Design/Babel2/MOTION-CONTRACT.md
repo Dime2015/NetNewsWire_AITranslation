@@ -41,16 +41,47 @@ width, and exact spring damping. Any value for those items below is explicitly
 `target` or `to-tune`. Static frames can prove checkpoints; they cannot prove
 continuous feel. Only an instrumented physical-device run can close that gap.
 
-Reference-only checkpoints used to align implementation and review:
+Reference-only checkpoints used to align implementation and review. The latest user
+decisions below supersede any older Draft checkpoint whose boundary differs:
 
-- Feed hero: `169 pt` expanded from screen `y = 59 pt` to `228 pt`, `99 pt` compact;
-  toolbar frame `[0, 802, 402, 72]` (`reference`, Figma contract).
+- Feed hero: compact/list toolbar frame `[0, 802, 402, 72]` and the `99 pt` compact
+  geometry remain `reference`; the expanded hero is now full-bleed through the physical
+  top/status-bar/dynamic-island region, with its own fully opaque image/background and
+  contrast scrim. The older “expanded begins below the 59 pt status region” clause is
+  superseded for the expanded state.
 - Reader controls-visible layout: `14 pt` empty-padding overlap; compact identity starts
   around `y = 103 pt` and article content around `y = 189 pt` in a `402 × 874 pt`
   reference frame (`reference`, Figma contract).
 - Reader static capture: bright top-control band around `y = 140–196 px` in the local
   reference and around `y = 141–202 px` in the current Babel comparison (`reference`);
   these are screenshot coordinates, not scroll thresholds.
+
+Latest product constraints carried by this motion contract:
+
+- Babel 2.0 cold start lands directly in Feeds/Library root; the old account-card
+  landing page is not a route.
+- Reader enters with title/byline visible above the article body. One continuous motion
+  surface moves them into the compact header on scroll; feed icon/progress fade in along
+  the same progress, rather than appearing after an asynchronous snap.
+- The Reader top long-image slot is ordinary system Share. Long image is a bottom-toolbar
+  tap-only action; long-press is not a share path.
+- Sync arrow is visible/rotating only during real syncing and hides on completion. It is
+  not a generic article/translation loading indicator. Article/translation loading uses
+  skeleton/passive state and must not show a system spinner alongside the sync arrow.
+- All expanded/list/status-bar surfaces are fully opaque at their respective states.
+  Horizontal article media is full-bleed 100vw and square-cornered; text/caption retain
+  reading inset. Ordinary controls and links use neutral gray/black; user accent is
+  reserved for Settings switches and the Reader progress ring.
+- Naming follows Route A in the product contract: new Babel2 motion code, resources,
+  tests, leaf filenames, types, methods, accessibility identifiers, log categories, and
+  routes use Babel/Babel2 names. Existing parent target/directory names do not fail the
+  gate merely by inheritance. Required old build/module references are build/test
+  harness allowlist entries only; persisted/system identity is centralized behind the
+  single `LegacyIdentityCompatibility` boundary, and an allowlist can never be a second
+  persisted/system identity outlet. The current motion phase executes no-new-name, user-visible
+  Babel naming, and compatibility isolation only. Technical source/target/project/scheme/
+  CI renaming waits for Babel 2.0 device stability; bundle/data identity and external
+  repository identity require a separate migration project and explicit authorization.
 
 ## 2. Motion invariants
 
@@ -72,11 +103,19 @@ Reference-only checkpoints used to align implementation and review:
    gesture recognizer state.
 8. Reduced Motion changes presentation (crossfade/no parallax where required), not
    route semantics, gesture ownership, or state persistence.
+9. Loading has one visible owner per surface. Sync owns the rotating sync arrow only
+   while a real sync operation is active; article/translation preparation owns a passive
+   skeleton or an explicit error/retry state, never a second spinner layered over sync.
 
-## 2A. Audited legacy failure modes
+## 2A. Audited legacy failure modes（audit-only historical reference）
 
 The following are `measured from current source` observations. They explain why the
 existing motion must not be treated as the Babel 2.0 baseline:
+
+All old type names, file names, and paths in this subsection are explicitly
+`audit-only historical reference`; they do not participate in Gate A and cannot be copied
+into new Babel2 motion code, resources, tests, accessibility identifiers, log categories,
+or routes.
 
 | Current behavior | Code-level cause | Contract consequence |
 |---|---|---|
@@ -280,8 +319,10 @@ scroll.
 `expanded → collapsing → compactPinned → controlsChanging → compactPinned`.
 
 Eligibility is `maxScrollableOffset > collapseStart` (`measured` at runtime). A short
-article stays `expanded`. The compact identity may include title, feed icon, and progress
-ring only after the article has a genuine usable scroll range.
+article stays `expanded` for chrome collapse purposes. On every Reader entry, title,
+date, and byline are already visible above the article body; they must not be withheld
+while WebView content or translation prepares. The compact identity may include title,
+feed icon, and progress ring after the article has a genuine usable scroll range.
 
 ### Collapse progress
 
@@ -298,12 +339,16 @@ distance is `measured from current source`, not an approved motion constant. Do 
 mutate scroll insets or WebView geometry on every update. Render the large title,
 compact title, icon, ring, and article surface from this one `pCollapse`.
 
-At `pCollapse = 1` (`target` settled endpoint), pin the compact identity. Title/icon/ring
-interpolation is linear (`reference` from Figma); any additional scale/opacity curve
-must be marked `to-tune`.
+At `pCollapse = 1` (`target` settled endpoint), pin the compact identity. Title/byline
+move from their initial above-body position into that identity through the same
+continuous surface. The feed icon and progress ring fade in continuously during this
+motion; they must not pop in as a late asynchronous state. Title/icon/ring interpolation
+is linear (`reference` from Figma); any additional scale/opacity curve must be marked
+`to-tune`.
 The progress ring is a full neutral track plus one uninterrupted clockwise accent arc,
-starting at 12 o’clock (`reference`). Do not quantize to Figma’s 0/25/60/100% samples
-(`reference` QA checkpoints).
+starting at 12 o’clock (`reference`). The accent value comes only from the user-selected
+theme accent and is allowed to color the Reader ring; no other Reader/control color may
+inherit it. Do not quantize to Figma’s 0/25/60/100% samples (`reference` QA checkpoints).
 
 Continuous normalized reading progress is:
 
@@ -317,7 +362,9 @@ pReading = clamp(
 
 The denominator and offset are `measured` at runtime; the normalized formula is
 `reference` from Figma. Render `pReading` directly into the ring. Preserve it across
-translation, theme changes, chrome changes, and pager rebasing.
+translation, theme changes, chrome changes, and pager rebasing. A theme change updates
+the ring accent in place and does not recolor ordinary controls, links, stars, selection,
+or reading-mode state.
 
 ## 10. Reader toolbar hide/show
 
@@ -354,7 +401,11 @@ Chrome visibility changes are never binary-only in the tracking path.
 
 The hero is conditional presentation attached to one Feed route. Expanded, 50%, and
 compact are checkpoints of one continuous surface (`reference` checkpoint at 50%);
-they are not controller destinations.
+they are not controller destinations. In expanded state the hero image/background
+extends through the physical top, status-bar, and dynamic-island region. Its own image/
+background and contrast scrim are fully opaque. Compact/list state uses fully opaque
+solid chrome, and no date, article list, WebView, or other scroll surface may show
+through the status bar.
 
 ### State machine
 
@@ -380,11 +431,11 @@ values, not automatically accepted Babel 2.0 constants. Confirm safe-area behavi
 device before assigning `target` status.
 
 Map the same `pHero` to image crop/opacity, source mark position/scale, title position/
-size, readability feather, and list origin. Do not call `layoutIfNeeded`, mutate table
-insets, or independently reflow date/article rows for every scroll tick. The date header
-and article rows translate as one list surface. At `pHero = 1`, the image is absent and
-the compact paper header is pinned. Reversing uses the same mapping without resetting
-filter, route, or scroll context.
+size, readability feather, status-bar scrim, and list origin. Do not call `layoutIfNeeded`,
+mutate table insets, or independently reflow date/article rows for every scroll tick.
+The date header and article rows translate as one list surface. At `pHero = 1`, the image
+is absent and the compact paper header is pinned as fully opaque chrome. Reversing uses
+the same mapping without resetting filter, route, or scroll context.
 
 ## 12. WebView and content isolation
 
@@ -397,6 +448,20 @@ Each prepared WebView must have stable configuration, script namespace, scroll d
 and route token. Article HTML replacement, translation streaming, image decode, and
 progress measurement are scheduled around the motion driver. They cannot synchronously
 rebuild the view hierarchy or trigger an unbounded DOM/layout pass in a tracking frame.
+
+Reader entry must use a warm-or-progressive preparation path: the selected article’s
+title, date, byline, body shell, and first readable content are available from the local
+snapshot before navigation settles whenever the data exists. Prepare the current Reader
+surface and, where budget permits, the adjacent article/browser surface off the tracking
+path. Network fetch, translation, image decode, and WebView navigation may continue in
+place, but none may block the first frame or temporarily replace visible title/byline
+with a full-screen loading page. A cold/failed preparation uses a stable skeleton and
+then an explicit error+retry state.
+
+Article media rendering is part of the prepared content contract: a landscape image
+must be laid out at 100vw/full-bleed to both screen edges with square corners, while
+body text and captions retain reading inset. Portrait/inline media is not forced to
+full-bleed. No `figure`, link, or wrapper style may reintroduce a corner radius.
 
 ## 13. Performance budgets and red lines
 
@@ -418,6 +483,10 @@ Forbidden in the direct tracking path:
 - creating fonts, paths, gradients, or image filters per frame;
 - adding/removing view hierarchies or navigation controllers;
 - an unbounded `UIView.animate` started from every changed event.
+- a system activity spinner layered with the sync arrow, or a persistent sync arrow
+  shown after the real sync operation has completed;
+- an article/translation loading screen that hides already available title/byline/body
+  content while waiting for network or translation work.
 
 Allowed per frame: bounded transform, alpha, crop/contents rect, shadow opacity,
 `CAShapeLayer.strokeEnd`, and cached geometry updates. Any new exception requires a
@@ -437,6 +506,7 @@ Instrument the motion layer with `os_signpost` intervals/events (names are norma
 | `Babel2.Reader.Pager` | pager arm/commit/cancel | article IDs, p |
 | `Babel2.Feed.Hero` | hero tracking | pHero, imageReady |
 | `Babel2.Web.Prepared` | Browser/adjacent article ready | route token, warm/cold |
+| `Babel2.Loading.Owner` | visible loading owner changes | surface, owner, state |
 
 Measure on physical devices with Instruments Animation Hitches/Core Animation and Time
 Profiler, correlated to the signposts. Repeat on 60 Hz and 120 Hz hardware, cold and
@@ -462,12 +532,18 @@ identity and anchor persistence; they cannot certify feel alone.
 | Pager | at top/bottom, slow drag and velocity release | neighbor commit/cancel follows projection; three-surface window rebases once | automated + device |
 | Pager | rapid next/previous reversal | no duplicate article, stale token, or stack growth | stress device |
 | Collapse | long article slow down/up through range | title/icon/ring track continuously and reverse without snap | device |
+| Reader entry | cold and warm article open | title/date/byline are visible above body on first settled frame; no full-screen loader or progress bar masks available content | device + signpost |
 | Collapse | short article | no compact identity or artificial collapse | UI test + device |
 | Toolbar | downward/upward micro-reversals under `12 pt` | no flicker | device + signpost |
 | Toolbar | top/bottom elastic overscroll | bars do not change spuriously; top forces shown | device |
 | Hero | expanded → 50% → compact → reverse | one route/list surface; no row reflow or image snap | device |
+| Hero | expanded at status bar/dynamic island | image/background and scrim remain fully opaque; compact/list chrome is fully opaque; no date/article/WebView underlap | device + screenshot |
 | Hero | image ready late / no image fallback | motion unaffected; fallback remains valid | stress device |
+| Media | landscape body image | 100vw/full-bleed to both screen edges, square corners; text/caption retain inset | device + screenshot |
 | Async | translation/theme/filter update during tracking | no ownership change, layout jump, or anchor loss | stress device |
+| Loading | sync, article, and translation operations overlap | exactly one visible owner per surface; sync arrow only during real sync; no system spinner duplication; failure becomes error+retry | stress device + signpost |
+| Color | theme accent changes | only Settings switch and Reader progress ring use accent; ordinary icon/link/star/selection/read-mode remain neutral gray/black; no legacy mint/green | device + source check |
+| Naming | new Babel 2.0 source/resource/test/doc | Gate A forbids new legacy tokens in code, resources, tests, user-visible copy, leaf filenames, types, methods, accessibility IDs, log categories, and routes; inherited parent target/directory names are ignored, while required old build/module references are explicit build/test harness allowlist entries and persisted/system identity is confined to the single `LegacyIdentityCompatibility` boundary; an allowlist cannot be a second persisted/system identity outlet | source check |
 | Refresh | 60 Hz and 120 Hz | no visible hitch; budgets respected | Instruments + device |
 | Stress | 30 repeated transitions (`target` stress count) and rapid interruptions | no retained controllers, broken tokens, or stuck recognizers | device + memory trace |
 
@@ -475,12 +551,20 @@ Acceptance is two-stage: automated/static checks establish invariants and math; 
 physical iPhone run establishes continuity, touch-following, perceived latency, and
 visual stability. A screenshot or static overlay cannot close the second stage.
 
-## 16. Legacy boundaries and first implementation slice
+## 16. Legacy boundaries and first implementation slice（audit-only historical reference）
 
 The first implementation slice should introduce an isolated motion/navigation layer and
 route-level adapters, then migrate one interaction at a time. It should not become a
 second formal app target. Data/domain objects may be reused where behavior is not owned
 by the legacy UI.
+
+The old type names and paths in this section are `audit-only historical reference`; they
+define the migration boundary only and are excluded from Gate A. Route A still requires
+all new motion code and user-visible surfaces to use Babel/Babel2 names, with required
+old build/module/test-harness references isolated in the explicit build/test harness
+allowlist and persisted/system identity isolated behind the single
+`LegacyIdentityCompatibility` boundary; the allowlist cannot be a second persisted/system
+identity outlet.
 
 Do not use these as the Babel 2.0 motion base: `BabelShellViewController`’s full-screen
 pan policy and non-interruptible animator; `BabelReaderViewController`’s push-per-article
@@ -496,3 +580,53 @@ The migration is complete only when the old owner is removed from the relevant r
 the new owner has signposts and pure math tests, and the corresponding device row in the
 acceptance matrix passes. Reeder Classic remains a reference throughout; it is never a
 permission to copy its assets, identity, or product behavior wholesale.
+
+## 17. Supersession note: latest user decisions over older Figma Draft clauses（audit-only historical reference）
+
+This note records the motion-specific overrides without editing the source files under
+`Figma Drafts/`. Every old clause, type, and path named below is an `audit-only historical
+reference`; these citations do not participate in Gate A. The current contract and its
+acceptance matrix are authoritative when an older static Draft describes a different
+boundary.
+
+- `Figma Drafts/INTERACTION-CONTRACT.md` Feed hero bullets (approximately lines 70–74),
+  and `Figma Drafts/BATCH-01-SPEC.md` Feed bullets (approximately lines 57–61 and
+  287–290), formerly put expanded hero below the opaque status region and forbade
+  underlap. Superseded for expanded state: hero image/background extends through the
+  status-bar/dynamic-island region with its own fully opaque image/background and
+  contrast scrim. Compact/list chrome remains fully opaque; scroll content never shows
+  through it.
+- `Figma Drafts/INTERACTION-CONTRACT.md` Reader action rule (approximately line 152)
+  and `Figma Drafts/BATCH-01-SPEC.md` Reader action/change-log rules (approximately
+  lines 73 and 234–237) formerly made the top action `Share Long Image` and assigned
+  ordinary sharing to long press. Superseded: top slot is system Share; long image is a
+  bottom-toolbar tap-only action; long press is not a share route.
+- The earlier Reader checkpoints did not require title/byline to be visible on the
+  first settled frame. Superseded: title/date/byline are visible above body on entry;
+  one continuous collapse surface moves them into compact chrome while icon/progress
+  fade in, with no asynchronous snap or disappearance.
+- Older loading/refresh component notes in `Figma Drafts/BATCH-01-SPEC.md` (approximately
+  lines 145 and 169–173) record component geometry and reuse, but do not define a
+  visibility/ownership rule. The latest user decision adds that missing rule: sync arrow
+  is only shown and rotated during real syncing and hides on completion;
+  article/translation loading uses skeleton/passive state, with no system spinner
+  duplication.
+- The latest user decision tightens the older generalized accent rule in
+  `Figma Drafts/BATCH-01-SPEC.md` (approximately lines 120–121, which only keeps accent
+  out of the three master screens except authentic favicon/subtle state); it does not
+  claim those lines prescribed green links. The tightened rule is: neutral gray/black
+  owns ordinary controls and links, no hard-coded legacy mint/green is allowed, and the
+  user accent is reserved for Settings switches and the Reader progress ring.
+- Any interpretation of rounded thumbnail/media guidance as a body-image rule is
+  superseded: landscape body media is 100vw/full-bleed and square-cornered; text/caption
+  retain reading inset, portrait/inline media is not forced full-bleed, and wrappers may
+  not add radius.
+
+The naming gate is also normative: all new Babel 2.0 motion code, resources, tests, and
+documentation use Babel/Babel2 naming. Historical build/module/test-harness identifiers
+may remain only in a clearly scoped explicit allowlist; historical persisted/system
+identity may remain only behind the single `LegacyIdentityCompatibility` boundary. The
+allowlist is never a second persisted/system identity outlet, and neither category may
+appear in user-visible UI. The current phase does not perform internal path/symbol/project/target/scheme/CI renaming; that work
+waits for stable real-device acceptance. Bundle/data identity and external repository
+identity require a separate migration project and explicit authorization.
