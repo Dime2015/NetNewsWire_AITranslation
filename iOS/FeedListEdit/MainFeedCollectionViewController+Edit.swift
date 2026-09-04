@@ -529,7 +529,8 @@ extension MainFeedCollectionViewController {
 		}
 
 		// 删掉的可能正是当前正在看的那个源 —— 先把选中清掉,免得文章列表指着一个不存在的东西
-		if let current = coordinator.currentFeedIndexPath,
+		if let coordinator,
+		   let current = coordinator.currentFeedIndexPath,
 		   let currentNode = dataSource?.itemIdentifier(for: current)?.node,
 		   nodes.contains(where: { $0 === currentNode }) {
 			coordinator.selectSidebarItem(indexPath: nil)

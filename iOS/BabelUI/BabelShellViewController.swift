@@ -9,6 +9,10 @@ import Account
 final class BabelShellViewController: UINavigationController, UIGestureRecognizerDelegate, UINavigationControllerDelegate {
 
 	var onOpenSubscribe: (() -> Void)?
+	/// Production probes go to the AppDelegate-owned recorder. An explicitly
+	/// supplied sink lets an isolated fixture observe the same event without
+	/// mutating the live launch session.
+	var legacyBootstrapObserver: ((String, String?) -> Void)?
 
 	private let responsivePopAnimator = BabelResponsivePopAnimator()
 	private var responsivePopInteraction: UIPercentDrivenInteractiveTransition?
@@ -21,6 +25,17 @@ final class BabelShellViewController: UINavigationController, UIGestureRecognize
 	}()
 
 	override func viewDidLoad() {
+		if let legacyBootstrapObserver {
+			legacyBootstrapObserver(
+				"BabelShellViewController.viewDidLoad",
+				"legacy shell bootstrap"
+			)
+		} else {
+			appDelegate?.recordLegacyBootstrap(
+				source: "BabelShellViewController.viewDidLoad",
+				detail: "legacy shell bootstrap"
+			)
+		}
 		super.viewDidLoad()
 		configureNavigation()
 		installFeedsRoot()

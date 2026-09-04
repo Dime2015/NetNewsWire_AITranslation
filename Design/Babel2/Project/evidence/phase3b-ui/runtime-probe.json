@@ -1,0 +1,104 @@
+{
+  "schema": "babel2.phase3b.ui.runtime-probe.v1",
+  "device": {
+    "name": "iPhone 17",
+    "os": "iOS 27.0 Simulator",
+    "udid": "555E35FA-6BFE-45F0-BCFC-0819FFE48CD2"
+  },
+  "launch": {
+    "arguments": [],
+    "environment": "six secret environment variables unset",
+    "data_cleared": false,
+    "subscription_added": false,
+    "result": "success"
+  },
+  "root": {
+    "screen": "Feeds",
+    "table_count": 1,
+    "feed_row_count": 10,
+    "metrics_source": "xcresult root and back metrics attachments",
+    "back_restored_feed_row_count": 10,
+    "feed_screenshot": {
+      "path": "screenshots/feed.png",
+      "width": 1206,
+      "height": 390,
+      "content_boundary": "top status/header/feed name/count only; no article title/date/body/URL"
+    }
+  },
+  "feed_to_reader": {
+    "real_feed_selected_in_current_ui_order": true,
+    "article_table_identifier_resolved": true,
+    "cached_article_row_resolved": true,
+    "body_state": "non-empty, not Loading, not pure tags or script",
+    "loaded_snapshot_passed_to_reader": true,
+    "reader_screenshot_persisted": false,
+    "reader_screenshot_reason": "article body is intentionally not copied to repository evidence"
+  },
+  "open_original": {
+    "button_enabled": true,
+    "result": "passed",
+    "foreground_system_surface": "SafariViewService",
+    "external_content_asserted": false,
+    "url_persisted": false
+  },
+  "restoration": {
+    "article_back": true,
+    "feed_back": true,
+    "root_feed_count_preserved": true
+  },
+  "data_probe": {
+    "baseline_before_phase3b": {
+      "feed_settings": 10,
+      "articles": 424,
+      "statuses": 424,
+      "search": 424,
+      "integrity": "ok"
+    },
+    "before_ui_r2_after_bft_r1": {
+      "feed_settings": 10,
+      "articles": 425,
+      "statuses": 425,
+      "search": 425,
+      "integrity": "ok"
+    },
+    "after_ui_r2": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "integrity": "ok"
+    },
+    "before_ui_r3": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "integrity": "ok"
+    },
+    "after_ui_r3": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "integrity": "ok"
+    },
+    "status": "UNEXPECTED_DATA_MUTATION",
+    "boundary": "424 to 425 to 426 was observed across installation/test phases; the cause is unproven and is not labeled background sync or a read-only pass"
+  },
+  "privacy": {
+    "raw_logs_copied": false,
+    "ui_hierarchies_copied": false,
+    "article_body_copied": false,
+    "article_titles_copied": false,
+    "urls_copied": false,
+    "tokens_or_credentials_copied": false
+  },
+  "sources": {
+    "ui_test_r2_log": "/private/tmp/babel2-phase3b-ui-test-r2.log",
+    "ui_test_r3_log": "/private/tmp/babel2-phase3b-ui-test-r3.log",
+    "r2_pretest_probe": "/private/tmp/babel2-phase3b-ui-pretest-r2/",
+    "r2_posttest_probe": "/private/tmp/babel2-phase3b-ui-posttest-r2/",
+    "r3_pretest_probe": "/private/tmp/babel2-phase3b-ui-pretest-r3/",
+    "r3_posttest_probe": "/private/tmp/babel2-phase3b-ui-posttest-r3/"
+  }
+}

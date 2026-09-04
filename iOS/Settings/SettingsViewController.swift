@@ -398,7 +398,7 @@ final class SettingsViewController: UITableViewController {
 						}
 						self.dismiss(animated: true) {
 							if let rootSplit = self.presentingParentController as? RootSplitViewController {
-								rootSplit.coordinator.discloseFeed(dinosaur.feed, animations: [.scroll, .navigation])
+								rootSplit.coordinator?.discloseFeed(dinosaur.feed, animations: [.scroll, .navigation])
 							}
 						}
 					}))

@@ -1,0 +1,67 @@
+{
+  "hash_method": "SHA-256 of terminal log; xcresult_tree_sha256 is sorted per-file SHA-256 list digest",
+  "builds": [
+    {
+      "name": "Debug build r1",
+      "result": "failed",
+      "terminal_result": "3 unique defer guard-return Swift compile errors; xcodebuild footer reported 4 failures",
+      "log": "/private/tmp/babel2-phase3-debug-build-r1.log",
+      "log_sha256": "c6ab9bfbf599047e2420f1c7750a68c402f449961d8921f9501a60671518ff68",
+      "xcresult": "/private/tmp/babel2-phase3-debug-build-r1.xcresult",
+      "xcresult_tree_sha256": "4fcb0e18f24d2c2c30c34663905312ae68cb220540234f9205f5aa1c6b6feda0"
+    },
+    {
+      "name": "Debug build r2",
+      "result": "success",
+      "terminal_result": "BUILD SUCCEEDED",
+      "log": "/private/tmp/babel2-phase3-debug-build-r2.log",
+      "log_sha256": "c1b9242f5d8e4ab07842b453c35cf36984940004873f69f8ed0301b8685f047d",
+      "xcresult": "/private/tmp/babel2-phase3-debug-build-r2.xcresult",
+      "xcresult_tree_sha256": "0745a7c50d9998223596adcb7bfb783ec2f9e3df77aacaa01f744fd8ad03fa5c"
+    },
+    {
+      "name": "Debug build r3",
+      "result": "success",
+      "terminal_result": "BUILD SUCCEEDED",
+      "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-debug-build-r3-dd -resultBundlePath /private/tmp/babel2-phase3-debug-build-r3.xcresult build",
+      "log": "/private/tmp/babel2-phase3-debug-build-r3.log",
+      "log_sha256": "32576349d4673a9e860ea293e5237ebd1db4af52860ad4627c096ddc112b05ac",
+      "xcresult": "/private/tmp/babel2-phase3-debug-build-r3.xcresult",
+      "xcresult_tree_sha256": "a0bacc7c4d9338025b5e6228764599453f99aa7d876d9fcfde1a4d4bc50d1aca"
+    },
+    {
+      "name": "Release build r1",
+      "result": "success",
+      "terminal_result": "BUILD SUCCEEDED",
+      "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-release-build-r1-dd -resultBundlePath /private/tmp/babel2-phase3-release-build-r1.xcresult build",
+      "log": "/private/tmp/babel2-phase3-release-build-r1.log",
+      "log_sha256": "27d5e1b51b86cb3df0104c37ed777dd62ea27a7bdde7dfed67d8f24aad2b4b59",
+      "xcresult": "/private/tmp/babel2-phase3-release-build-r1.xcresult",
+      "xcresult_tree_sha256": "af32e89e9f3aca63e63ad721e0a40df9d2062f9b1f266d6a7d7664e94c6a52ec"
+    },
+    {
+      "name": "Release build r2",
+      "result": "success",
+      "terminal_result": "BUILD SUCCEEDED",
+      "log": "/private/tmp/babel2-phase3-release-build-r2.log",
+      "log_sha256": "7e158c96854d4e237e517112c1c48111e87e8ce4ee32584cc4e5640e1bcec3c3",
+      "xcresult": "/private/tmp/babel2-phase3-release-build-r2.xcresult",
+      "xcresult_tree_sha256": "a0d66e3724b63fd0af5e2035e2bf7d67d9162911c4c398bfafdda12027921f4b",
+      "note": "retained validation iteration; runtime evidence is explicitly Release r1"
+    }
+  ],
+  "targeted_final": {
+    "result": "TEST SUCCEEDED; 4/4",
+    "log": "/private/tmp/babel2-phase3-targeted-feed-r5.log",
+    "log_sha256": "cdd9bf06c3f542e8a8e6b2a2757bd0d6d3cca8ec5336f9d2f12ad5c4ad839b4b",
+    "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r5.xcresult",
+    "xcresult_tree_sha256": "c90c90bede62311ba0ebea370e58e5c2688aafa0202ad18f920121418344dbd0"
+  },
+  "full_debug_tests": {
+    "result": "TEST SUCCEEDED; logical 56/56",
+    "log": "/private/tmp/babel2-phase3-full-debug-tests.log",
+    "log_sha256": "a5ef7a46b9ebc5ed5edc7518984257a3b5f657a09d703fe67a5b67c818e36b24",
+    "xcresult": "/private/tmp/babel2-phase3-full-debug-tests.xcresult",
+    "xcresult_tree_sha256": "5028eac05e40bf478ea7b69c463ca7c1e13ae6dbd8ab8a8d779217da0e60ff8d"
+  }
+}

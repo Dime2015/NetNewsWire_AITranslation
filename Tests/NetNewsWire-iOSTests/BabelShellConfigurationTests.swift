@@ -6,6 +6,8 @@
 import Testing
 import CoreGraphics
 import UIKit
+import Babel2Core
+import Babel2UI
 @testable import NetNewsWire
 
 @Suite struct BabelShellConfigurationTests {
@@ -38,14 +40,35 @@ import UIKit
 
 	@Test @MainActor func startsDirectlyAtFeeds() {
 		let shell = BabelShellViewController()
+		let recorder = Babel2LaunchTraceRecorder(
+			decision: Babel2FeatureGate.decision(buildChannel: .test),
+			buildChannel: .test,
+			gateUptime: 2,
+			processEntryUptime: 1,
+			sessionID: "isolated-babel-shell"
+		)
+		shell.legacyBootstrapObserver = { source, detail in
+			recorder.recordLegacyBootstrap(source: source, detail: detail)
+		}
 		shell.loadViewIfNeeded()
 
 		#expect(shell.viewControllers.count == 1)
 		#expect(shell.viewControllers.first is BabelFeedsViewController)
+		#expect(recorder.snapshot.legacyBootstrapStarted)
 	}
 
 	@Test @MainActor func feedsSettingsControlOpensFigmaSettingsFlow() {
 		let shell = BabelShellViewController()
+		let recorder = Babel2LaunchTraceRecorder(
+			decision: Babel2FeatureGate.decision(buildChannel: .test),
+			buildChannel: .test,
+			gateUptime: 2,
+			processEntryUptime: 1,
+			sessionID: "isolated-babel-shell-settings"
+		)
+		shell.legacyBootstrapObserver = { source, detail in
+			recorder.recordLegacyBootstrap(source: source, detail: detail)
+		}
 		shell.loadViewIfNeeded()
 		let feeds = shell.viewControllers.first as? BabelFeedsViewController
 
@@ -55,6 +78,7 @@ import UIKit
 
 		let settings = shell.topViewController as? BabelSettingsViewController
 		#expect(settings != nil)
+		#expect(recorder.snapshot.legacyBootstrapStarted)
 	}
 }
 

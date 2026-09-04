@@ -1,13 +1,23 @@
 import Foundation
 
 public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
-	public typealias ID = String
+	public struct ID: Hashable, Sendable {
+		public let accountID: String
+		public let feedID: String
+		public let articleID: String
+
+		public init(accountID: String, feedID: String, articleID: String) {
+			self.accountID = accountID
+			self.feedID = feedID
+			self.articleID = articleID
+		}
+	}
 
 	public let id: ID
 	public let title: String
 	public let summary: String
 	public let content: String
-	public let url: URL
+	public let url: URL?
 	public let feedID: FeedSnapshot.ID
 	public let publishedAt: Date?
 	public let imageURL: URL?
@@ -19,7 +29,7 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 		title: String,
 		summary: String = "",
 		content: String = "",
-		url: URL,
+		url: URL?,
 		feedID: FeedSnapshot.ID,
 		publishedAt: Date? = nil,
 		imageURL: URL? = nil,
@@ -40,12 +50,22 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 }
 
 public struct FeedSnapshot: Identifiable, Hashable, Sendable {
-	public typealias ID = String
+	public struct ID: Hashable, Sendable {
+		public let accountID: String
+		public let feedID: String
+
+		public init(accountID: String, feedID: String) {
+			self.accountID = accountID
+			self.feedID = feedID
+		}
+	}
 
 	public let id: ID
 	public let title: String
 	public let url: URL
 	public let articleIDs: [ArticleSnapshot.ID]
+	public let articleCount: Int?
+	public let iconData: Data?
 	public let isMuted: Bool
 
 	public init(
@@ -53,12 +73,16 @@ public struct FeedSnapshot: Identifiable, Hashable, Sendable {
 		title: String,
 		url: URL,
 		articleIDs: [ArticleSnapshot.ID] = [],
+		articleCount: Int? = nil,
+		iconData: Data? = nil,
 		isMuted: Bool = false
 	) {
 		self.id = id
 		self.title = title
 		self.url = url
 		self.articleIDs = articleIDs
+		self.articleCount = articleCount
+		self.iconData = iconData
 		self.isMuted = isMuted
 	}
 }
@@ -82,16 +106,19 @@ public struct LibrarySnapshot: Hashable, Sendable {
 	public let folders: [FolderSnapshot]
 	public let articles: [ArticleSnapshot]
 	public let generatedAt: Date
+	public let isSyncing: Bool
 
 	public init(
 		feeds: [FeedSnapshot] = [],
 		folders: [FolderSnapshot] = [],
 		articles: [ArticleSnapshot] = [],
-		generatedAt: Date = .now
+		generatedAt: Date = .now,
+		isSyncing: Bool = false
 	) {
 		self.feeds = feeds
 		self.folders = folders
 		self.articles = articles
 		self.generatedAt = generatedAt
+		self.isSyncing = isSyncing
 	}
 }

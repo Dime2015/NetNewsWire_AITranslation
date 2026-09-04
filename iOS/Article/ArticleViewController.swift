@@ -57,7 +57,7 @@ final class ArticleViewController: UIViewController {
 		self?.currentWebViewController
 	}
 
-	weak var coordinator: SceneCoordinator!
+	weak var coordinator: SceneCoordinator?
 
 	private let poppableDelegate = PoppableGestureRecognizerDelegate()
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "ArticleViewController")
@@ -255,7 +255,7 @@ final class ArticleViewController: UIViewController {
 		if #available(iOS 26, *) {
 			navigationController?.navigationBar.topItem?.subtitle = nil
 		}
-		coordinator.isArticleViewControllerPending = false
+		coordinator?.isArticleViewControllerPending = false
 		searchBar.shouldBeginEditing = true
 		if let parentNavController = navigationController?.parent as? UINavigationController {
 			poppableDelegate.navigationController = parentNavController
@@ -301,9 +301,9 @@ final class ArticleViewController: UIViewController {
 			return
 		}
 
-		nextUnreadBarButtonItem.isEnabled = coordinator.isNextUnreadAvailable
-		prevArticleBarButtonItem.isEnabled = coordinator.isPrevArticleAvailable
-		nextArticleBarButtonItem.isEnabled = coordinator.isNextArticleAvailable
+		nextUnreadBarButtonItem.isEnabled = coordinator?.isNextUnreadAvailable ?? false
+		prevArticleBarButtonItem.isEnabled = coordinator?.isPrevArticleAvailable ?? false
+		nextArticleBarButtonItem.isEnabled = coordinator?.isNextArticleAvailable ?? false
 		readBarButtonItem.isEnabled = true
 		starBarButtonItem.isEnabled = true
 
@@ -378,23 +378,23 @@ final class ArticleViewController: UIViewController {
 	}
 
 	@IBAction func nextUnread(_ sender: Any) {
-		coordinator.selectNextUnread()
+		coordinator?.selectNextUnread()
 	}
 
 	@IBAction func prevArticle(_ sender: Any) {
-		coordinator.selectPrevArticle()
+		coordinator?.selectPrevArticle()
 	}
 
 	@IBAction func nextArticle(_ sender: Any) {
-		coordinator.selectNextArticle()
+		coordinator?.selectNextArticle()
 	}
 
 	@IBAction func toggleRead(_ sender: Any) {
-		coordinator.toggleReadForCurrentArticle()
+		coordinator?.toggleReadForCurrentArticle()
 	}
 
 	@IBAction func toggleStar(_ sender: Any) {
-		coordinator.toggleStarredForCurrentArticle()
+		coordinator?.toggleStarredForCurrentArticle()
 	}
 
 	@IBAction func showActivityDialog(_ sender: Any) {
@@ -410,7 +410,7 @@ final class ArticleViewController: UIViewController {
 	// MARK: Keyboard Shortcuts
 
 	@objc func navigateToTimeline(_ sender: Any?) {
-		coordinator.navigateToTimeline()
+		coordinator?.navigateToTimeline()
 	}
 
 	// MARK: API
@@ -579,7 +579,7 @@ extension ArticleViewController: UIPageViewControllerDelegate {
 		guard finished, completed else { return }
 		guard let article = currentWebViewController?.article else { return }
 
-		coordinator.selectArticle(article, animations: [.select, .scroll, .navigation])
+		coordinator?.selectArticle(article, animations: [.select, .scroll, .navigation])
 		articleExtractorButton.buttonState = currentWebViewController?.articleExtractorButtonState ?? .off
 		translationController.resetForNewArticle()	// [翻译] 本 fork 新增:滑动翻页后重置按钮图标
 		nnwTrackCurrentArticleScrolling()	// [外观] 翻页后顶栏要改盯新这一页的滚动(实现在本文件末尾扩展)
@@ -679,9 +679,9 @@ extension ArticleViewController {
 		// 无害,而且**故意不改那段上游代码**(最小 diff)。
 		let board = NNWArticleControlBoard(readerButton: articleExtractorButton,
 										   translationButton: translationController.button)
-		board.onToggleRead = { [weak self] in self?.coordinator.toggleReadForCurrentArticle() }
-		board.onToggleStar = { [weak self] in self?.coordinator.toggleStarredForCurrentArticle() }
-		board.onNextUnread = { [weak self] in self?.coordinator.selectNextUnread() }
+		board.onToggleRead = { [weak self] in self?.coordinator?.toggleReadForCurrentArticle() }
+		board.onToggleStar = { [weak self] in self?.coordinator?.toggleStarredForCurrentArticle() }
+		board.onNextUnread = { [weak self] in self?.coordinator?.selectNextUnread() }
 		board.onShareLongImage = { [weak self] in self?.nnwShareLongImage() }
 		board.onShare = { [weak self] sourceView in
 			// 镜像上游 showActivityDialog,只是锚点从工具栏按钮换成板上的分享键(iPad 气泡用)

@@ -49,6 +49,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>netnewswire</string>
+				<string>nnw</string>
 			</array>
 		</dict>
 	</array>
@@ -86,15 +87,13 @@
 		<false/>
 		<key>UISceneConfigurations</key>
 		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
+		<key>UIWindowSceneSessionRoleApplication</key>
+		<array>
 				<dict>
 					<key>UISceneConfigurationName</key>
-					<string>Default Configuration</string>
+					<string>Babel2 Configuration</string>
 					<key>UISceneDelegateClassName</key>
 					<string>NetNewsWire.SceneDelegate</string>
-					<key>UISceneStoryboardFile</key>
-					<string>Main</string>
 				</dict>
 			</array>
 		</dict>

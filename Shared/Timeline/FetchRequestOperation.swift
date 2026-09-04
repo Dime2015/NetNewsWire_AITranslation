@@ -33,6 +33,12 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 	var isCanceled = false
 	var isFinished = false
 	private let fetchers: [ArticleFetcher]
+	private var task: Task<Void, Never>?
+	private var completionHandler: ((FetchRequestOperation) -> Void)?
+	private var didCallCompletion = false
+	private var hasStarted = false
+	private(set) var taskCancellationRequested = false
+	private(set) var taskDidComplete = false
 
 	init(id: Int, readFilterEnabledTable: [SidebarItemIdentifier: Bool], fetchers: [ArticleFetcher], resultBlock: @escaping FetchRequestOperationResultBlock) {
 		precondition(Thread.isMainThread)
@@ -45,39 +51,37 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 	@MainActor func run(_ completion: @escaping (FetchRequestOperation) -> Void) {
 		precondition(Thread.isMainThread)
 		precondition(!isFinished)
+		hasStarted = true
+		completionHandler = completion
 
-		Task { @MainActor in
-			var didCallCompletion = false
-
-			func callCompletionIfNeeded() {
-				if !didCallCompletion {
-					didCallCompletion = true
-					completion(self)
-				}
+		task = Task { @MainActor [self] in
+			defer {
+				self.taskDidComplete = true
+				self.task = nil
 			}
 
-			if isCanceled {
-				callCompletionIfNeeded()
+			if self.isCanceled {
+				self.callCompletionIfNeeded()
 				return
 			}
 
-			if fetchers.isEmpty {
-				isFinished = true
-				resultBlock(Set<Article>(), self)
-				callCompletionIfNeeded()
+			if self.fetchers.isEmpty {
+				self.isFinished = true
+				self.resultBlock(Set<Article>(), self)
+				self.callCompletionIfNeeded()
 				return
 			}
 
 			Self.logger.debug("FetchRequestOperation \(self.id, privacy: .public): run starting — \(self.fetchers.count) fetcher(s)")
 
-			let numberOfFetchers = fetchers.count
+			let numberOfFetchers = self.fetchers.count
 			var fetchersReturned = 0
 			var fetchedArticles = Set<Article>()
 
 			@MainActor func process(_ articles: Set<Article>) {
 				precondition(Thread.isMainThread)
 				guard !self.isCanceled else {
-					callCompletionIfNeeded()
+					self.callCompletionIfNeeded()
 					return
 				}
 
@@ -88,14 +92,14 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 				if fetchersReturned == numberOfFetchers {
 					self.isFinished = true
 					self.resultBlock(fetchedArticles, self)
-					callCompletionIfNeeded()
+					self.callCompletionIfNeeded()
 				}
 			}
 
-			for fetcher in fetchers {
+			for fetcher in self.fetchers {
 				let articles: Set<Article>
 
-				if (fetcher as? SidebarItem)?.readFiltered(readFilterEnabledTable: readFilterEnabledTable) ?? true {
+				if (fetcher as? SidebarItem)?.readFiltered(readFilterEnabledTable: self.readFilterEnabledTable) ?? true {
 					articles = await fetcher.fetchUnreadArticlesAsync()
 				} else {
 					articles = await fetcher.fetchArticlesAsync()
@@ -106,6 +110,21 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 
 			// Belt-and-suspenders: ensure the queue never deadlocks even if
 			// the loop above is ever refactored to skip process().
+			self.callCompletionIfNeeded()
+		}
+	}
+
+	/// Cancel both the operation's state and the unstructured task that is
+	/// awaiting fetchers. The queue completion barrier is idempotent, so a
+	/// cancellation can detach the current request immediately while the
+	/// underlying fetcher unwinds cooperatively in the background.
+	@MainActor func cancel() {
+		guard !isCanceled else { return }
+		isCanceled = true
+		isFinished = true
+		taskCancellationRequested = true
+		task?.cancel()
+		if hasStarted {
 			callCompletionIfNeeded()
 		}
 	}
@@ -121,6 +140,12 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 	var isCanceled = false
 	var isFinished = false
 	private let fetchers: [ArticleFetcher]
+	private var task: Task<Void, Never>?
+	private var completionHandler: ((FetchRequestOperation) -> Void)?
+	private var didCallCompletion = false
+	private var hasStarted = false
+	private(set) var taskCancellationRequested = false
+	private(set) var taskDidComplete = false
 
 	init(id: Int, hidingReadArticlesState: HidingReadArticlesState, fetchers: [ArticleFetcher], resultBlock: @escaping FetchRequestOperationResultBlock) {
 		precondition(Thread.isMainThread)
@@ -133,39 +158,37 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 	@MainActor func run(_ completion: @escaping (FetchRequestOperation) -> Void) {
 		precondition(Thread.isMainThread)
 		precondition(!isFinished)
+		hasStarted = true
+		completionHandler = completion
 
-		Task { @MainActor in
-			var didCallCompletion = false
-
-			func callCompletionIfNeeded() {
-				if !didCallCompletion {
-					didCallCompletion = true
-					completion(self)
-				}
+		task = Task { @MainActor [self] in
+			defer {
+				self.taskDidComplete = true
+				self.task = nil
 			}
 
-			if isCanceled {
-				callCompletionIfNeeded()
+			if self.isCanceled {
+				self.callCompletionIfNeeded()
 				return
 			}
 
-			if fetchers.isEmpty {
-				isFinished = true
-				resultBlock(Set<Article>(), self)
-				callCompletionIfNeeded()
+			if self.fetchers.isEmpty {
+				self.isFinished = true
+				self.resultBlock(Set<Article>(), self)
+				self.callCompletionIfNeeded()
 				return
 			}
 
 			Self.logger.debug("FetchRequestOperation \(self.id, privacy: .public): run starting — \(self.fetchers.count) fetcher(s)")
 
-			let numberOfFetchers = fetchers.count
+			let numberOfFetchers = self.fetchers.count
 			var fetchersReturned = 0
 			var fetchedArticles = Set<Article>()
 
 			@MainActor func process(_ articles: Set<Article>) {
 				precondition(Thread.isMainThread)
 				guard !self.isCanceled else {
-					callCompletionIfNeeded()
+					self.callCompletionIfNeeded()
 					return
 				}
 
@@ -176,7 +199,7 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 				if fetchersReturned == numberOfFetchers {
 					self.isFinished = true
 					self.resultBlock(fetchedArticles, self)
-					callCompletionIfNeeded()
+					self.callCompletionIfNeeded()
 				}
 			}
 
@@ -194,7 +217,7 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 				return hidingReadArticlesState.isHidingReadArticles(for: sidebarItemID)
 			}
 
-			for fetcher in fetchers {
+			for fetcher in self.fetchers {
 				let articles: Set<Article>
 				// [阅读档] ★ 档:只要加过星的。
 				// **取全部再在内存里筛** —— 和上游自己算未读是同一个套路
@@ -212,6 +235,21 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 
 			// Ensure the queue never deadlocks even if
 			// the loop above is ever refactored to skip process().
+					self.callCompletionIfNeeded()
+		}
+	}
+
+	/// Cancel both the operation's state and the unstructured task that is
+	/// awaiting fetchers. The queue completion barrier is idempotent, so a
+	/// cancellation can detach the current request immediately while the
+	/// underlying fetcher unwinds cooperatively in the background.
+	@MainActor func cancel() {
+		guard !isCanceled else { return }
+		isCanceled = true
+		isFinished = true
+		taskCancellationRequested = true
+		task?.cancel()
+		if hasStarted {
 			callCompletionIfNeeded()
 		}
 	}
@@ -220,6 +258,14 @@ typealias FetchRequestOperationResultBlock = (Set<Article>, FetchRequestOperatio
 #endif
 
 private extension FetchRequestOperation {
+
+	func callCompletionIfNeeded() {
+		guard !didCallCompletion else { return }
+		didCallCompletion = true
+		let completion = completionHandler
+		completionHandler = nil
+		completion?(self)
+	}
 
 	static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "FetchRequestOperation")
 	static let errorLogSourceID = 101

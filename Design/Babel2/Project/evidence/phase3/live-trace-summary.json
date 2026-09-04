@@ -1,0 +1,36 @@
+{
+  "schema": "babel2.phase3.live-trace-summary.v1",
+  "source_log": "/private/tmp/babel2-phase3-runtime-r1/live-application.log",
+  "build_channel": "release",
+  "release_round": "r1",
+  "event_count": 7,
+  "event_kinds": [
+    "processEntry",
+    "decision",
+    "sceneConfigurationObserved",
+    "rootInstalled",
+    "rootVisible",
+    "containerAppeared",
+    "contentFirstFramePresented"
+  ],
+  "root_and_content_frame_observed": true,
+  "legacy_bootstrap_started": false,
+  "legacy_counters": {
+    "coordinator_creations": 0,
+    "storyboard_instantiations": 0,
+    "webview_bootstrap_calls": 0
+  },
+  "final_result": {
+    "is_valid": false,
+    "is_complete": false,
+    "invalid_reasons": [
+      "sceneConfigurationSelectionMissing"
+    ]
+  },
+  "privacy": {
+    "session_identifier_retained": false,
+    "surface_geometry_retained": false,
+    "urls_or_article_content_retained": false
+  },
+  "interpretation": "privacy-safe structural summary only; invalid trace is not a Phase 1A pass"
+}

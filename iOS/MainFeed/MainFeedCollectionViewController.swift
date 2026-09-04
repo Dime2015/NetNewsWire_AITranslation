@@ -56,7 +56,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	private var currentActivityButton: UIBarButtonItem?
 
 	var undoableCommands = [UndoableCommand]()
-	weak var coordinator: SceneCoordinator!
+	weak var coordinator: SceneCoordinator?
 
 	/// On iPhone, this property is used to prevent the user from selecting a new feed while the current feed is being deselected.
 	/// While `isAnimating` is `true`, `shouldSelectItemAt()` will not allow new selection.
@@ -188,11 +188,12 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		// Pro Max may have split view in landscape — give the device some
 		// time to change its size class and then decide to deselect
 		// <https://github.com/Ranchero-Software/NetNewsWire/issues/5043>
-		DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: {
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: { [weak self] in
+			guard let self else { return }
 			// If the iPhone is in portrait, deselect.
 			if UIDevice.current.orientation.isPortrait {
 				if self.collectionView.indexPathsForSelectedItems != nil {
-					self.coordinator.selectSidebarItem(indexPath: nil, animations: [.select])
+					self.coordinator?.selectSidebarItem(indexPath: nil, animations: [.select])
 				}
 				return
 			}
@@ -200,7 +201,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			// If the iPhone is in landscape, and the horizontal
 			// size class is compact, deselect.
 			if self.view.window?.traitCollection.horizontalSizeClass == .compact {
-				if self.collectionView.indexPathsForSelectedItems != nil { self.coordinator.selectSidebarItem(indexPath: nil, animations: [.select])
+				if self.collectionView.indexPathsForSelectedItems != nil { self.coordinator?.selectSidebarItem(indexPath: nil, animations: [.select])
 				}
 				return
 			}
@@ -428,7 +429,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 				headerView.sectionHeaderType = .smartFeeds
 				headerView.headerTitle.text = SmartFeedsController.shared.nameForDisplay
 				headerView.unreadCount = 0
-				headerView.disclosureExpanded = self.coordinator.isExpanded(SmartFeedsController.shared)
+				headerView.disclosureExpanded = self.coordinator?.isExpanded(SmartFeedsController.shared) ?? false
 				return headerView
 			}
 
@@ -441,7 +442,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			headerView.headerTitle.text = account.nameForDisplay
 			// [阅读档] 一行换一行:账户分组头上的数字也跟着档位走(全部档不显示;★档显示星标合计)
 			headerView.unreadCount = NNWReadingModeStore.shared.displayedAccountCount(for: account)
-			headerView.disclosureExpanded = self.coordinator.isExpanded(account)
+			headerView.disclosureExpanded = self.coordinator?.isExpanded(account) ?? false
 			headerView.addInteraction(UIContextMenuInteraction(delegate: self))
 
 			return headerView
@@ -465,11 +466,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	@IBAction func settings(_ sender: UIBarButtonItem) {
-		coordinator.showSettings()
+		coordinator?.showSettings()
 	}
 
 	@objc func showCurrentActivity(_ sender: Any?) {
-		coordinator.showCurrentActivity()
+		coordinator?.showCurrentActivity()
 	}
 
     // MARK: UICollectionViewDelegate
@@ -479,7 +480,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		if nnwHandleSelectionWhileEditing(at: indexPath) { return }
 
 		becomeFirstResponder()
-		coordinator.selectSidebarItem(indexPath: indexPath, animations: [.navigation, .select, .scroll])
+		coordinator?.selectSidebarItem(indexPath: indexPath, animations: [.navigation, .select, .scroll])
 	}
 
 
@@ -535,10 +536,11 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	// MARK: - Keyboard shortcuts
 
 	@objc func collapseAllExceptForGroupItems(_ sender: Any?) {
-		coordinator.collapseAllFolders()
+		coordinator?.collapseAllFolders()
 	}
 
 	@objc func collapseSelectedRows(_ sender: Any?) {
+		guard let coordinator else { return }
 		if let indexPath = coordinator.currentFeedIndexPath, let node = coordinator.nodeFor(indexPath) {
 			coordinator.collapse(node)
 			if let folder = collectionView.cellForItem(at: indexPath) as? MainFeedCollectionViewFolderCell {
@@ -548,16 +550,17 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	@objc override func delete(_ sender: Any?) {
-		if let indexPath = coordinator.currentFeedIndexPath {
+		if let indexPath = coordinator?.currentFeedIndexPath {
 			delete(indexPath: indexPath)
 		}
 	}
 
 	@objc func expandAll(_ sender: Any?) {
-		coordinator.expandAllSectionsAndFolders()
+		coordinator?.expandAllSectionsAndFolders()
 	}
 
 	@objc func expandSelectedRows(_ sender: Any?) {
+		guard let coordinator else { return }
 		if let indexPath = coordinator.currentFeedIndexPath, let node = coordinator.nodeFor(indexPath) {
 			coordinator.expand(node)
 			if let folder = collectionView.cellForItem(at: indexPath) as? MainFeedCollectionViewFolderCell {
@@ -573,28 +576,28 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 
 		let title = NSLocalizedString("Mark All as Read", comment: "Command")
 		MarkAsReadAlertController.confirm(self, coordinator: coordinator, confirmTitle: title, sourceType: contentView) { [weak self] in
-			self?.coordinator.markAllAsReadInTimeline()
+			self?.coordinator?.markAllAsReadInTimeline()
 		}
 	}
 
 	@objc func navigateToTimeline(_ sender: Any?) {
-		coordinator.navigateToTimeline()
+		coordinator?.navigateToTimeline()
 	}
 
 	@objc func openInBrowser(_ sender: Any?) {
-		coordinator.showBrowserForCurrentFeed()
+		coordinator?.showBrowserForCurrentFeed()
 	}
 
 	@objc func selectNextDown(_ sender: Any?) {
-		coordinator.selectNextFeed()
+		coordinator?.selectNextFeed()
 	}
 
 	@objc func selectNextUp(_ sender: Any?) {
-		coordinator.selectPrevFeed()
+		coordinator?.selectPrevFeed()
 	}
 
 	@objc func showFeedInspector(_ sender: Any?) {
-		coordinator.showFeedInspector()
+		coordinator?.showFeedInspector()
 	}
 
 	// MARK: - API
@@ -604,7 +607,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func updateUI() {
-		if coordinator.isReadFeedsFiltered {
+		if coordinator?.isReadFeedsFiltered == true {
 			setFilterButtonToActive()
 		} else {
 			setFilterButtonToInactive()
@@ -631,7 +634,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func updateFeedSelection(animations: Animations) {
-		if let indexPath = coordinator.currentFeedIndexPath {
+		if let indexPath = coordinator?.currentFeedIndexPath {
 			collectionView.selectItemAndScrollIfNotVisible(at: indexPath, animations: animations)
 		} else {
 			if let indexPath = collectionView.indexPathsForSelectedItems?.first {
@@ -645,7 +648,8 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func openInAppBrowser() {
-		if let indexPath = coordinator.currentFeedIndexPath,
+		if let coordinator,
+			let indexPath = coordinator.currentFeedIndexPath,
 			let url = coordinator.homePageURLForFeed(indexPath) {
 			let vc = SFSafariViewController(url: url)
 			vc.modalPresentationStyle = .overFullScreen
@@ -713,7 +717,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	func restoreSelectionIfNecessary(adjustScroll: Bool) {
-		if let indexPath = coordinator.mainFeedIndexPathForCurrentTimeline() {
+		if let indexPath = coordinator?.mainFeedIndexPathForCurrentTimeline() {
 			if adjustScroll {
 				collectionView.selectItemAndScrollIfNotVisible(at: indexPath, animations: [])
 			} else {
@@ -785,7 +789,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		}
 
 		if let containerID = (node.representedObject as? Container)?.containerID {
-			cell.setDisclosure(isExpanded: coordinator.isExpanded(containerID), animated: false)
+			cell.setDisclosure(isExpanded: coordinator?.isExpanded(containerID) ?? false, animated: false)
 		}
 
 		// [编辑] 加一行,理由同上面那个 configure
@@ -910,14 +914,14 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 		var menuItems: [UIAction] = []
 
 		let addFeedActionTitle = NSLocalizedString("Add Feed", comment: "Add Feed")
-		let addFeedAction = UIAction(title: addFeedActionTitle, image: Assets.Images.plus) { _ in
-			self.coordinator.showAddFeed()
+		let addFeedAction = UIAction(title: addFeedActionTitle, image: Assets.Images.plus) { [weak self] _ in
+			self?.coordinator?.showAddFeed()
 		}
 		menuItems.append(addFeedAction)
 
 		let addFolderActionTitle = NSLocalizedString("Add Folder", comment: "Add Folder")
-		let addFolderAction = UIAction(title: addFolderActionTitle, image: Assets.Images.folderOutlinePlus) { _ in
-			self.coordinator.showAddFolder()
+		let addFolderAction = UIAction(title: addFolderActionTitle, image: Assets.Images.folderOutlinePlus) { [weak self] _ in
+			self?.coordinator?.showAddFolder()
 		}
 
 		menuItems.append(addFolderAction)
@@ -944,7 +948,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 	}
 
 	@IBAction func toggleFilter(_ sender: Any) {
-		coordinator.toggleReadFeedsFilter()
+		coordinator?.toggleReadFeedsFilter()
 	}
 
 	func toggle(_ headerView: MainFeedCollectionHeaderReusableView) {
@@ -967,6 +971,7 @@ final class MainFeedCollectionViewController: UICollectionViewController, Undoab
 			containerID = id
 		}
 
+		guard let coordinator else { return }
 		if coordinator.isExpanded(containerID) {
 			headerView.disclosureExpanded = false
 			coordinator.collapse(containerID)
@@ -1011,7 +1016,7 @@ extension MainFeedCollectionViewController: MainFeedCollectionViewFolderCellDele
 			  let node = dataSource.itemIdentifier(for: indexPath)?.node else {
 			return
 		}
-		coordinator.expand(node)
+		coordinator?.expand(node)
 	}
 
 	func collapse(_ cell: MainFeedCollectionViewFolderCell) {
@@ -1019,7 +1024,7 @@ extension MainFeedCollectionViewController: MainFeedCollectionViewFolderCellDele
 			  let node = dataSource.itemIdentifier(for: indexPath)?.node else {
 			return
 		}
-		coordinator.collapse(node)
+		coordinator?.collapse(node)
 	}
 }
 
@@ -1258,7 +1263,7 @@ extension MainFeedCollectionViewController {
 
 		let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
 			MarkAsReadAlertController.confirm(self, coordinator: self?.coordinator, confirmTitle: title, sourceType: contentView, cancelCompletion: cancel) { [weak self] in
-				self?.coordinator.markAllAsRead(Array(articles))
+				self?.coordinator?.markAllAsRead(Array(articles))
 				completion(true)
 			}
 		}
@@ -1296,7 +1301,7 @@ extension MainFeedCollectionViewController {
 
 		let title = NSLocalizedString("Get Info", comment: "Get Info")
 		let action = UIAction(title: title, image: Assets.Images.info) { [weak self] _ in
-			self?.coordinator.showFeedInspector(for: feed)
+			self?.coordinator?.showFeedInspector(for: feed)
 		}
 		return action
 	}
@@ -1304,7 +1309,7 @@ extension MainFeedCollectionViewController {
 	func getAccountInfoAction(account: Account) -> UIAction {
 		let title = NSLocalizedString("Get Info", comment: "Get Info")
 		let action = UIAction(title: title, image: Assets.Images.info) { [weak self] _ in
-			self?.coordinator.showAccountInspector(for: account)
+			self?.coordinator?.showAccountInspector(for: account)
 		}
 		return action
 	}
@@ -1312,7 +1317,7 @@ extension MainFeedCollectionViewController {
 	func getAccountNotificationsAction(account: Account) -> UIAction {
 		let title = NSLocalizedString("Notifications", comment: "Notifications")
 		let action = UIAction(title: title, image: UIImage(systemName: "bell.badge")) { [weak self] _ in
-			self?.coordinator.showNotificationInspector(for: account)
+			self?.coordinator?.showNotificationInspector(for: account)
 		}
 		return action
 	}
@@ -1332,7 +1337,7 @@ extension MainFeedCollectionViewController {
 
 		let title = NSLocalizedString("Get Info", comment: "Get Info")
 		let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
-			self?.coordinator.showFeedInspector(for: feed)
+			self?.coordinator?.showFeedInspector(for: feed)
 			completion(true)
 		}
 		return action
@@ -1350,7 +1355,7 @@ extension MainFeedCollectionViewController {
 		let action = UIAction(title: title, image: Assets.Images.markAllAsRead) { [weak self] _ in
 			MarkAsReadAlertController.confirm(self, coordinator: self?.coordinator, confirmTitle: title, sourceType: contentView) { [weak self] in
 				let articles = sidebarItem.fetchUnreadArticles()
-				self?.coordinator.markAllAsRead(Array(articles))
+				self?.coordinator?.markAllAsRead(Array(articles))
 			}
 		}
 
@@ -1367,9 +1372,9 @@ extension MainFeedCollectionViewController {
 		let action = UIAction(title: title, image: Assets.Images.markAllAsRead) { [weak self] _ in
 			MarkAsReadAlertController.confirm(self, coordinator: self?.coordinator, confirmTitle: title, sourceType: contentView) { [weak self] in
 				// If you don't have this delay the screen flashes when it executes this code
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 					let articles = account.fetchArticles(.unread())
-					self?.coordinator.markAllAsRead(Array(articles))
+					self?.coordinator?.markAllAsRead(Array(articles))
 				}
 			}
 		}
@@ -1482,8 +1487,8 @@ extension MainFeedCollectionViewController {
 			ActivityManager.cleanUp(feed)
 		}
 
-		if indexPath == coordinator.currentFeedIndexPath {
-			coordinator.selectSidebarItem(indexPath: nil)
+		if indexPath == coordinator?.currentFeedIndexPath {
+			coordinator?.selectSidebarItem(indexPath: nil)
 		}
 
 		pushUndoableCommand(deleteCommand)

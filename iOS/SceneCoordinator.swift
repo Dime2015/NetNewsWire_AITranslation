@@ -46,15 +46,67 @@ struct SidebarItemNode: Hashable, Sendable {
 	}
 }
 
+/// The teardown contract is intentionally a value snapshot. It lets the
+/// scene owner and the iOS runtime tests prove that cancellation happened,
+/// rather than only proving that a later callback was rejected by a token.
+struct SceneCoordinatorTeardownAudit: Equatable {
+	let fetchAndMergeQueueCancelled: Bool
+	let rebuildBackingStoresQueueCancelled: Bool
+	let pendingFetchCancellationRequested: Bool
+	let pendingFetchTaskCompleted: Bool
+	let pendingFetchQueueDrained: Bool
+	let delayedSceneWorkCancelled: Int
+	let webViewCancellationRequested: Bool
+	let webViewOperationsCompleted: Bool
+	let webViewPreloadedViewsDetached: Bool
+	let activitiesInvalidated: Bool
+	let activityObserverRemoved: Bool
+	let generationInvalidated: Bool
+	let observersRemoved: Bool
+
+	/// Compatibility projection for older tests. It intentionally requires the
+	/// cancellation request and queue detachment, but does not claim that an
+	/// in-flight network task has already completed.
+	var pendingFetchesCancelled: Bool {
+		pendingFetchCancellationRequested && pendingFetchQueueDrained && pendingFetchTaskCompleted
+	}
+
+	var webViewPreloadingCancelled: Bool {
+		webViewPreloadedViewsDetached && (!webViewCancellationRequested || webViewOperationsCompleted)
+	}
+
+	var diagnosticSummary: String {
+		"fetchAndMergeQueueCancelled=\(fetchAndMergeQueueCancelled) rebuildBackingStoresQueueCancelled=\(rebuildBackingStoresQueueCancelled) pendingFetchCancellationRequested=\(pendingFetchCancellationRequested) pendingFetchTaskCompleted=\(pendingFetchTaskCompleted) pendingFetchQueueDrained=\(pendingFetchQueueDrained) delayedSceneWorkCancelled=\(delayedSceneWorkCancelled) webViewCancellationRequested=\(webViewCancellationRequested) webViewOperationsCompleted=\(webViewOperationsCompleted) webViewPreloadedViewsDetached=\(webViewPreloadedViewsDetached) activitiesInvalidated=\(activitiesInvalidated) activityObserverRemoved=\(activityObserverRemoved) generationInvalidated=\(generationInvalidated) observersRemoved=\(observersRemoved)"
+	}
+}
+
 @MainActor final class SceneCoordinator: NSObject, UndoableCommandRunner {
 	var undoableCommands = [UndoableCommand]()
 	var undoManager: UndoManager? {
 		return rootSplitViewController.undoManager
 	}
 
-	lazy var webViewProvider = WebViewProvider(coordinator: self)
+	private var webViewProviderStorage: WebViewProvider?
+	var webViewProvider: WebViewProvider {
+		if let webViewProviderStorage {
+			return webViewProviderStorage
+		}
+		let provider = WebViewProvider(coordinator: self)
+		webViewProviderStorage = provider
+		return provider
+	}
 
 	private var activityManager = ActivityManager()
+	private var userDefaultsDidChangeObserver: NSObjectProtocol?
+	private var observerGeneration = UUID()
+	private var pendingSceneWorkItems = [UUID: DispatchWorkItem]()
+	private var hasBeenTornDown = false
+	private var teardownFixtureOperationForTesting: FetchRequestOperation?
+	private(set) var teardownAuditForTesting: SceneCoordinatorTeardownAudit?
+	private(set) var teardownFixtureCallbackCountForTesting = 0
+	var teardownFixtureTaskDidCompleteForTesting: Bool {
+		teardownFixtureOperationForTesting?.taskDidComplete ?? true
+	}
 
 	private var rootSplitViewController: RootSplitViewController!
 
@@ -305,6 +357,10 @@ struct SidebarItemNode: Hashable, Sendable {
 	}
 
 	init(rootSplitViewController: RootSplitViewController) {
+		appDelegate?.recordLegacyCoordinatorCreation(
+			source: "SceneCoordinator.init(rootSplitViewController:)",
+			detail: "legacy coordinator construction"
+		)
 		self.rootSplitViewController = rootSplitViewController
 		self.rootSplitViewController.minimumPrimaryColumnWidth = 300
 		self.rootSplitViewController.maximumPrimaryColumnWidth = 500
@@ -318,7 +374,7 @@ struct SidebarItemNode: Hashable, Sendable {
 		super.init()
 
 		self.mainFeedCollectionViewController = rootSplitViewController.viewController(for: .primary) as? MainFeedCollectionViewController
-		self.mainFeedCollectionViewController.coordinator = self
+		self.mainFeedCollectionViewController?.coordinator = self
 		self.mainFeedCollectionViewController?.navigationController?.delegate = self
 		updateNavigationBarSubtitles(nil)
 
@@ -349,11 +405,60 @@ struct SidebarItemNode: Hashable, Sendable {
 		NotificationCenter.default.addObserver(self, selector: #selector(themeDownloadDidFail(_:)), name: .didFailToImportThemeWithError, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(updateNavigationBarSubtitles(_:)), name: .progressInfoDidChange, object: CombinedRefreshProgress.shared)
 
-		NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-			Task { @MainActor in
-				self?.userDefaultsDidChange()
+		let observerGeneration = self.observerGeneration
+		userDefaultsDidChangeObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let self else { return }
+				self.scheduleSceneWork(after: 0) { coordinator in
+					guard coordinator.observerGeneration == observerGeneration else { return }
+					coordinator.userDefaultsDidChange()
+				}
 			}
 		}
+	}
+
+	/// Schedule work owned by this coordinator so teardown can cancel the
+	/// dispatch item itself. Every callback also carries the generation guard as
+	/// protection for work that was already executing when cancellation began.
+	private func scheduleSceneWork(after delay: TimeInterval, _ action: @escaping @MainActor (SceneCoordinator) -> Void) {
+		guard !hasBeenTornDown else { return }
+		let generation = observerGeneration
+		let workID = UUID()
+		let workItem = DispatchWorkItem { [weak self] in
+			MainActor.assumeIsolated {
+				guard let self else { return }
+				self.pendingSceneWorkItems.removeValue(forKey: workID)
+				guard !self.hasBeenTornDown, self.observerGeneration == generation else { return }
+				action(self)
+			}
+		}
+		pendingSceneWorkItems[workID] = workItem
+		DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+	}
+
+	/// Install one instance of each scene-owned asynchronous primitive for the
+	/// iOS test host. The fixture deliberately uses a long delay and an empty
+	/// fetcher list, so the test can inspect cancellation before any callback is
+	/// allowed to run. This is a test seam, not a retention mechanism.
+	func enqueueTeardownCancellationFixtureForTesting() {
+		guard !hasBeenTornDown else { return }
+		// Force the lazy preloader to exist so this fixture proves cancellation
+		// of MainThreadOperationQueue work as well as the two coalescing queues
+		// and FetchRequestQueue.
+		_ = webViewProvider
+		fetchAndMergeArticlesQueue.add(self, #selector(userDidAddFeed(_:)))
+		rebuildBackingStoresQueue.add(self, #selector(userDidAddFeed(_:)))
+		scheduleSceneWork(after: 60) { _ in }
+		let operation = FetchRequestOperation(
+			id: -1,
+			hidingReadArticlesState: HidingReadArticlesState(),
+			fetchers: [],
+			resultBlock: { [weak self] _, _ in
+				self?.teardownFixtureCallbackCountForTesting += 1
+			}
+		)
+		teardownFixtureOperationForTesting = operation
+		fetchRequestQueue.add(operation)
 	}
 
 	func restoreWindowState(activity: NSUserActivity?) {
@@ -620,8 +725,10 @@ struct SidebarItemNode: Hashable, Sendable {
 			return
 		}
 
-		DispatchQueue.main.async {
-			self.importTheme(filename: url.path)
+		let generation = observerGeneration
+		scheduleSceneWork(after: 0) { coordinator in
+			guard coordinator.observerGeneration == generation else { return }
+			coordinator.importTheme(filename: url.path)
 		}
 	}
 
@@ -629,9 +736,11 @@ struct SidebarItemNode: Hashable, Sendable {
 		guard let userInfo = note.userInfo,
 			  let error = userInfo["error"] as? Error else {
 				  return
-			  }
-		DispatchQueue.main.async {
-			self.rootSplitViewController.presentError(error, dismiss: nil)
+				  }
+		let generation = observerGeneration
+		scheduleSceneWork(after: 0) { coordinator in
+			guard coordinator.observerGeneration == generation else { return }
+			coordinator.rootSplitViewController.presentError(error, dismiss: nil)
 		}
 	}
 
@@ -735,9 +844,11 @@ struct SidebarItemNode: Hashable, Sendable {
 			return
 		}
 		isNavigationBarSubtitleRefreshScheduled = true
-		DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
-			self?.isNavigationBarSubtitleRefreshScheduled = false
-			self?.updateNavigationBarSubtitles(nil)
+		let generation = observerGeneration
+		scheduleSceneWork(after: 60) { coordinator in
+			guard coordinator.observerGeneration == generation else { return }
+			coordinator.isNavigationBarSubtitleRefreshScheduled = false
+			coordinator.updateNavigationBarSubtitles(nil)
 		}
 	}
 
@@ -766,6 +877,86 @@ struct SidebarItemNode: Hashable, Sendable {
 		if isReadArticlesFiltered && (AppDefaults.shared.refreshClearsReadArticles || !conditional) {
 			refreshTimeline(resetScroll: false)
 		}
+	}
+
+	/// Remove coordinator-owned observers before a scene generation is torn
+	/// down. In particular, the block observer is retained by NotificationCenter
+	/// and cannot be cleaned up by merely dropping the coordinator reference.
+	@discardableResult
+	func tearDown() -> SceneCoordinatorTeardownAudit? {
+		guard !hasBeenTornDown else {
+			return teardownAuditForTesting
+		}
+		hasBeenTornDown = true
+
+		// Break UIKit's callback/delegate graph before cancellation can resume
+		// any completion on the main actor. This is the owner barrier: callbacks
+		// after this point observe nil, while the generation check below protects
+		// work that was already executing.
+		rootSplitViewController?.onContainerAppeared = nil
+		if let navigationController = mainFeedCollectionViewController?.navigationController,
+		   navigationController.delegate === self {
+			navigationController.delegate = nil
+		}
+		if let navigationController = mainTimelineViewController?.navigationController,
+		   navigationController.delegate === self {
+			navigationController.delegate = nil
+		}
+		if let navigationController = articleViewController?.navigationController,
+		   navigationController.delegate === self {
+			navigationController.delegate = nil
+		}
+		rootSplitViewController?.coordinator = nil
+		rootSplitViewController?.delegate = nil
+		mainFeedCollectionViewController?.coordinator = nil
+		mainTimelineViewController?.coordinator = nil
+		articleViewController?.coordinator = nil
+
+		// Cancellation must precede invalidation. The invalidation token is a
+		// safety net for work already executing; it is not a substitute for
+		// cancelling timer-backed queues, fetch operations, or delayed blocks.
+		fetchAndMergeArticlesQueue.cancelPendingCalls()
+		rebuildBackingStoresQueue.cancelPendingCalls()
+		let fetchCancellationAudit = cancelPendingAsyncFetches()
+		let cancelledDelayedSceneWork = pendingSceneWorkItems.count
+		pendingSceneWorkItems.values.forEach { $0.cancel() }
+		pendingSceneWorkItems.removeAll()
+		isNavigationBarSubtitleRefreshScheduled = false
+
+		let webViewAudit = webViewProviderStorage?.tearDown()
+		webViewProviderStorage = nil
+		let activityAudit = activityManager.tearDown()
+
+		observerGeneration = UUID()
+		NotificationCenter.default.removeObserver(self)
+		if let userDefaultsDidChangeObserver {
+			NotificationCenter.default.removeObserver(userDefaultsDidChangeObserver)
+			self.userDefaultsDidChangeObserver = nil
+		}
+
+		let audit = SceneCoordinatorTeardownAudit(
+			fetchAndMergeQueueCancelled: fetchAndMergeArticlesQueue.pendingCallsCount == 0,
+			rebuildBackingStoresQueueCancelled: rebuildBackingStoresQueue.pendingCallsCount == 0,
+			pendingFetchCancellationRequested: fetchCancellationAudit.cancellationRequested,
+			pendingFetchTaskCompleted: fetchCancellationAudit.currentOperationTaskCompleted,
+			pendingFetchQueueDrained: fetchCancellationAudit.queueDrained,
+			delayedSceneWorkCancelled: cancelledDelayedSceneWork,
+			webViewCancellationRequested: webViewAudit?.cancellationRequested ?? false,
+			webViewOperationsCompleted: webViewAudit?.operationsCompleted ?? true,
+			webViewPreloadedViewsDetached: webViewAudit?.preloadedViewsDetached ?? true,
+			activitiesInvalidated: activityAudit.activitiesInvalidated,
+			activityObserverRemoved: activityAudit.feedIconObserverRemoved,
+			generationInvalidated: true,
+			observersRemoved: userDefaultsDidChangeObserver == nil
+		)
+		teardownAuditForTesting = audit
+		undoableCommands.removeAll()
+		rootSplitViewController = nil
+		mainFeedCollectionViewController = nil
+		mainTimelineViewController = nil
+		articleViewController = nil
+		Self.logger.info("SceneCoordinator teardown cancellation \(audit.diagnosticSummary, privacy: .public)")
+		return audit
 	}
 
 	func toggleReadFeedsFilter() {
@@ -1325,12 +1516,16 @@ struct SidebarItemNode: Hashable, Sendable {
 			self.treeControllerDelegate.addFilterException(parentFolderSidebarItemID)
 		}
 
-		rebuildBackingStores(initialLoad: initialLoad, completion: {
+		let generation = observerGeneration
+		rebuildBackingStores(initialLoad: initialLoad, completion: { [weak self] in
+			guard let self, self.observerGeneration == generation else { return }
 			self.treeControllerDelegate.resetFilterExceptions()
-			self.selectFeed(nil) {
+			self.selectFeed(nil) { [weak self] in
+				guard let self, self.observerGeneration == generation else { return }
 				if self.rootSplitViewController.traitCollection.horizontalSizeClass == .compact {
-					DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-						self.selectFeed(feed, animations: animations, completion: completion)
+					self.scheduleSceneWork(after: 1) { coordinator in
+						guard coordinator.observerGeneration == generation else { return }
+						coordinator.selectFeed(feed, animations: animations, completion: completion)
 					}
 				} else {
 					self.selectFeed(feed, animations: animations, completion: completion)
@@ -1642,7 +1837,9 @@ private extension SceneCoordinator {
 		addToFilterExceptionsIfNecessary(sidebarItem)
 		addVisibleSidebarItemsToFilterExceptions()
 
-		rebuildBackingStores(completion: {
+		let generation = observerGeneration
+		rebuildBackingStores(completion: { [weak self] in
+			guard let self, self.observerGeneration == generation else { return }
 			self.treeControllerDelegate.resetFilterExceptions()
 			completion()
 		})
@@ -2184,9 +2381,10 @@ private extension SceneCoordinator {
 
 	}
 
-	func cancelPendingAsyncFetches() {
+	@discardableResult
+	func cancelPendingAsyncFetches() -> FetchRequestQueueCancellationAudit {
 		fetchSerialNumber += 1
-		fetchRequestQueue.cancelAllRequests()
+		return fetchRequestQueue.cancelAllRequests()
 	}
 
 	func fetchAndReplaceArticlesAsync(animated: Bool, emptyFirst: Bool = true, completion: @escaping () -> Void) {
@@ -2278,20 +2476,23 @@ private extension SceneCoordinator {
 			let sidebarItemIDUserInfo = userInfo[UserInfoKey.sidebarItemID] as? [String: String],
 			let sidebarItemID = SidebarItemIdentifier(userInfo: sidebarItemIDUserInfo) else {
 				return
-		}
+			}
 
-		treeControllerDelegate.addFilterException(sidebarItemID)
+			treeControllerDelegate.addFilterException(sidebarItemID)
+		let generation = observerGeneration
 
-		switch sidebarItemID {
+			switch sidebarItemID {
 
 		case .smartFeed:
 			guard let smartFeed = SmartFeedsController.shared.find(by: sidebarItemID) else { return }
 
 			markExpanded(SmartFeedsController.shared)
-			rebuildBackingStores(initialLoad: true, completion: {
+			rebuildBackingStores(initialLoad: true, completion: { [weak self] in
+				guard let self, self.observerGeneration == generation else { return }
 				self.treeControllerDelegate.resetFilterExceptions()
 				if let indexPath = self.indexPathFor(smartFeed) {
-					self.selectSidebarItem(indexPath: indexPath) {
+					self.selectSidebarItem(indexPath: indexPath) { [weak self] in
+						guard let self, self.observerGeneration == generation else { return }
 						self.mainFeedCollectionViewController.focus()
 					}
 				}
@@ -2305,11 +2506,13 @@ private extension SceneCoordinator {
 
 			markExpanded(account)
 
-			rebuildBackingStores(initialLoad: true, completion: {
+			rebuildBackingStores(initialLoad: true, completion: { [weak self] in
+				guard let self, self.observerGeneration == generation else { return }
 				self.treeControllerDelegate.resetFilterExceptions()
 
 				if let folderNode = self.findFolderNode(folderName: folderName, beginningAt: accountNode), let indexPath = self.indexPathFor(folderNode) {
-					self.selectSidebarItem(indexPath: indexPath) {
+					self.selectSidebarItem(indexPath: indexPath) { [weak self] in
+						guard let self, self.observerGeneration == generation else { return }
 						self.mainFeedCollectionViewController.focus()
 					}
 				}
@@ -2322,7 +2525,8 @@ private extension SceneCoordinator {
 				return
 			}
 
-			self.discloseFeed(feed, initialLoad: true) {
+			self.discloseFeed(feed, initialLoad: true) { [weak self] in
+				guard let self, self.observerGeneration == generation else { return }
 				self.mainFeedCollectionViewController.focus()
 			}
 		}
@@ -2353,10 +2557,13 @@ private extension SceneCoordinator {
 			return
 		}
 
-		discloseFeed(feed) {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: {
-				self.selectArticleInCurrentFeed(articleID)
-			})
+		let generation = observerGeneration
+		discloseFeed(feed) { [weak self] in
+			guard let self, self.observerGeneration == generation else { return }
+			self.scheduleSceneWork(after: 0.5) { coordinator in
+				guard coordinator.observerGeneration == generation else { return }
+				coordinator.selectArticleInCurrentFeed(articleID)
+			}
 		}
 	}
 
@@ -2564,9 +2771,12 @@ extension SceneCoordinator {
 
 		exceptionArticleFetcher = SingleArticleFetcher(account: account, articleID: article.articleID)
 
-		discloseFeed(feed) {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				self.selectArticleInCurrentFeed(article.articleID)
+		let generation = observerGeneration
+		discloseFeed(feed) { [weak self] in
+			guard let self, self.observerGeneration == generation else { return }
+			self.scheduleSceneWork(after: 0.5) { coordinator in
+				guard coordinator.observerGeneration == generation else { return }
+				coordinator.selectArticleInCurrentFeed(article.articleID)
 			}
 		}
 	}
@@ -2580,4 +2790,3 @@ extension SceneCoordinator {
 // 别再把任何"回首页"机制加回来:`rootSplitViewController.show(.primary)` 在 iPhone 的
 // collapsed 分栏里**实测无效**(日志实锤:调用执行了、完成回调也跑了,界面纹丝不动),
 // 7 个版本全部失败。真需要代码回首页,用 `nnwShowGlobalSearch()` 注释里写的 pop 原语。
-

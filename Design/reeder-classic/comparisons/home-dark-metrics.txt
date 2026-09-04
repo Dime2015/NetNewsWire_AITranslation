@@ -1,0 +1,3 @@
+mean_channel_abs_difference=2.001
+nonzero_pixel_count=144410
+canvas=1206x2622

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 import Babel2Core
 import Babel2UI
 @testable import NetNewsWire
@@ -112,10 +113,11 @@ import Babel2UI
 			(appRoot, uiAndAppProhibitedTokens)
 		]
 		var filesToScan = [packageManifest]
+		let sourceExtensions: Set<String> = ["swift", "xcstrings", "json"]
 
 		for (root, _) in rootsAndTokens {
 			let enumerator = try #require(fileManager.enumerator(at: root, includingPropertiesForKeys: nil))
-			for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+			for case let fileURL as URL in enumerator where sourceExtensions.contains(fileURL.pathExtension) {
 				filesToScan.append(fileURL)
 			}
 		}
@@ -138,8 +140,14 @@ import Babel2UI
 			}
 
 			let tokens = fileURL.path.hasPrefix(coreRoot.path) ? coreProhibitedTokens : uiAndAppProhibitedTokens
+			// These are trace-only identity/diagnostic tokens in this model, not
+			// legacy UI dependencies. Keep the exception exact and file-scoped;
+			// all other legacy tokens remain prohibited.
+			let traceOnlyTokens: Set<String> = fileURL.lastPathComponent == "Babel2FeatureGate.swift"
+				? ["SceneCoordinator", "SceneDelegate"]
+				: []
 			for token in tokens {
-				#expect(!source.contains(token), "Babel 2.0 source contains prohibited token \(token): \(fileURL.path)")
+				#expect(traceOnlyTokens.contains(token) || !source.contains(token), "Babel 2.0 source contains prohibited token \(token): \(fileURL.path)")
 			}
 			for token in permanentLegacyTokens {
 				#expect(!source.contains(token), "Babel 2.0 source contains permanent legacy token \(token): \(fileURL.path)")
@@ -153,7 +161,80 @@ import Babel2UI
 			}
 		}
 	}
+
+	@Test func productionLifecycleHasNoLegacyRootOrFallbackRoute() throws {
+		let projectRoot = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let appDelegateURL = projectRoot.appendingPathComponent("iOS/AppDelegate.swift")
+		let sceneDelegateURL = projectRoot.appendingPathComponent("iOS/SceneDelegate.swift")
+		let integrationURL = projectRoot.appendingPathComponent("iOS/Babel2Integration/Babel2LiveDataAdapters.swift")
+		let parserURL = projectRoot.appendingPathComponent("iOS/Babel2ExternalActionParser.swift")
+		let infoPlistURL = projectRoot.appendingPathComponent("iOS/Resources/Info.plist")
+		let appDelegate = try String(contentsOf: appDelegateURL, encoding: .utf8)
+		let sceneDelegate = try String(contentsOf: sceneDelegateURL, encoding: .utf8)
+		let integration = try String(contentsOf: integrationURL, encoding: .utf8)
+		let parser = try String(contentsOf: parserURL, encoding: .utf8)
+		let infoPlist = try String(contentsOf: infoPlistURL, encoding: .utf8)
+
+		let forbiddenProductionRoutes = [
+			"bootstrapLegacyGenerationIfNeeded",
+			"startLegacyLifecycleIfNeeded",
+			"ensureLegacyGeneration",
+			"showLegacyCompatibilityInterface",
+			"fallbackToLegacyForExternalAction",
+			"scheduleLegacyExternalActionDismissal",
+			"beginLaunchCompatibilityFallback",
+			"RootSplitViewController",
+			"SceneCoordinator",
+			"BabelShellViewController",
+			"BabelReaderWebViewPool",
+			"WebViewConfiguration.compileContentBlockingRules",
+			"ProcessInfo.processInfo.arguments",
+			"UIStoryboard(name: \"Main\"",
+			"Main.storyboard"
+		]
+		for token in forbiddenProductionRoutes {
+			#expect(!appDelegate.contains(token), "AppDelegate contains removed production route \(token)")
+			#expect(!sceneDelegate.contains(token), "SceneDelegate contains removed production route \(token)")
+		}
+
+		#expect(integration.contains("final class Babel2LiveDataProvider"))
+		#expect(integration.contains("final class Babel2LiveActionHandler"))
+		#expect(parser.components(separatedBy: "enum Babel2ExternalActionParser").count == 2)
+		#expect(!sceneDelegate.contains("enum Babel2ExternalActionParser"))
+		#expect(infoPlist.contains("<key>UISceneConfigurations</key>"))
+		#expect(infoPlist.contains("<string>Babel2 Configuration</string>"))
+		#expect(!infoPlist.contains("Default Configuration"))
+		#expect(!infoPlist.contains("Main.storyboard"))
+	}
+
+	@Test func repositoryHasExactlyOneCanonicalExternalActionParser() throws {
+		let projectRoot = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let parserURL = projectRoot.appendingPathComponent("iOS/Babel2ExternalActionParser.swift").standardizedFileURL
+		let fileManager = FileManager.default
+		var declarationFiles = [URL]()
+		for root in ["iOS", "Modules", "Tests"].map({ projectRoot.appendingPathComponent($0) }) {
+			let enumerator = try #require(fileManager.enumerator(at: root, includingPropertiesForKeys: nil))
+			for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+				let source = try String(contentsOf: fileURL, encoding: .utf8)
+				let declaresParser = source.split(separator: "\n", omittingEmptySubsequences: false).contains { line in
+					let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+					return trimmed.hasPrefix("enum Babel2ExternalActionParser") ||
+						trimmed.hasPrefix("public enum Babel2ExternalActionParser") ||
+						trimmed.hasPrefix("internal enum Babel2ExternalActionParser")
+				}
+				if declaresParser { declarationFiles.append(fileURL.standardizedFileURL) }
+			}
+		}
+		#expect(declarationFiles == [parserURL])
+	}
 }
+
 
 private func section(named name: String, in source: String, endingAt marker: String) -> String? {
 	guard let start = source.range(of: "name: \"" + name + "\"") else { return nil }

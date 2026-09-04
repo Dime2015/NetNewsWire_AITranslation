@@ -54,6 +54,15 @@ import Foundation
 		return pendingNonCanceledOperations.count
 	}
 
+	/// Number of operations still owned by this queue, including a current
+	/// operation that has been marked canceled but has not reached its
+	/// completion barrier yet. This is deliberately different from
+	/// `pendingOperationsCount`: teardown evidence must distinguish a
+	/// cancellation request from asynchronous completion.
+	public var activeOperationsCount: Int {
+		pendingOperations.count + (currentOperation == nil ? 0 : 1)
+	}
+
 	public init() {}
 
 	/// Add an operation to the queue.

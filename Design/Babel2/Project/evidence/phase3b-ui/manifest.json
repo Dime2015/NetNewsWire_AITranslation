@@ -1,0 +1,286 @@
+{
+  "schema": "babel2.phase3b.ui.evidence.v1",
+  "captured_at": "2026-09-01T04:11:18+09:00",
+  "owner": "phase3_slice_impl_r1",
+  "status": "phase3b_evidence_gate_closed_after_independent_recheck",
+  "corrections": [
+    {
+      "id": "P1-feed-screenshot",
+      "action": "replaced the persisted feed screenshot with a deterministic top crop from the original r2 attachment",
+      "boundary": "source 1206x2622; crop box [0,0,1206,390] in top-left x/y coordinates; output contains status/header/feed name/count only and no article title/date/body/URL",
+      "source_attachment": "/private/tmp/babel2-phase3b-ui-export-r2/2F8FFFBE-9EE2-40A6-A153-E7D03EB2C5A9.png",
+      "source_sha256": "77447546af94445f9ee7514570f2424718c3fabe2c2c291f1682298eccdc6026",
+      "record": "screenshot-inventory.json"
+    },
+    {
+      "id": "P1-bundle-tree-hash",
+      "action": "recomputed BFT r2 and installed r3 bundle digests using bundle-root-relative paths",
+      "record": "build-summary.json"
+    }
+  ],
+  "independent_recheck": {
+    "result": "pass",
+    "scope": "Phase3B implementation + automation + persistent evidence",
+    "implementation_p0": 0,
+    "implementation_p1": 0,
+    "verified_items": [
+      "all 7 phase3b JSON files parse",
+      "cropped feed screenshot and screenshot inventory agree on source, boundary, dimensions, bytes and SHA-256; article_titles_copied remains false",
+      "BFT r2 and installed r3 contain 245 bundle-root-relative files with equal tree SHA and equal executable SHA; content_identical=true",
+      "retained build/test logs, xcresult summaries, actual test counts and data-count probes are indexed without raw sensitive content",
+      "Phase3B README and five project documents reflect the correction status and open boundaries",
+      "SecretKey/.gyb hashes, six-env unset status, branch, HEAD, remote-tracking ref and diff checks verified"
+    ],
+    "correction_closure": "read-only verification only; no rebuild, test, install or launch was run for correction closure"
+  },
+  "worktree": "/Users/wenbopan/Downloads/AI Projects/Babel app",
+  "git": {
+    "branch": "codex/reeder-classic-rebuild",
+    "head": "5db240499806bc4cae9be0b82194c838a32229de",
+    "remote_tracking": "1269bb9087d896a7a9e29f174461d60b47134575",
+    "commit": false,
+    "push": false,
+    "tree_hash_method": "sorted absolute-path/file-SHA256 records"
+  },
+  "environment": {
+    "device_name": "iPhone 17",
+    "platform": "iOS Simulator",
+    "os_version": "27.0",
+    "os_build": "24A5423a",
+    "simulator_udid": "555E35FA-6BFE-45F0-BCFC-0819FFE48CD2",
+    "sdk": "iPhoneSimulator 27.0",
+    "xcode": "Xcode 27.0 (27A5252f)",
+    "host_description": "macOS 27.0",
+    "app_bundle_identifier": "com.wenbopan.NetNewsWire.iOS"
+  },
+  "scope": {
+    "slice": "real simulator UI driver for Feeds to single source to cached Article",
+    "launch_contract": "no launch arguments, no launch environment, no deep link, no data clearing, no subscription mutation",
+    "implementation_p0_p1": "0 by implementation-code review; not a whole-product claim",
+    "changed_files": [
+      "Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift",
+      "NetNewsWire.xcodeproj/project.pbxproj",
+      "NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS UI Driver.xcscheme",
+      "xcconfig/NetNewsWire_iOSUITests_target.xcconfig",
+      "iOS/Babel2/Babel2LibraryViewControllers.swift",
+      "Design/Babel2/Project/evidence/phase3/manifest.json",
+      "Design/Babel2/Project/evidence/phase3b-ui/manifest.json",
+      "Design/Babel2/Project/evidence/phase3b-ui/build-summary.json",
+      "Design/Babel2/Project/evidence/phase3b-ui/runtime-probe.json",
+      "Design/Babel2/Project/evidence/phase3b-ui/screenshot-inventory.json",
+      "Design/Babel2/Project/evidence/phase3b-ui/README.md"
+    ],
+    "source_fingerprint": {
+      "method": "sorted absolute-path/file-SHA256 records (SHA-256 first, two spaces, newline-delimited)",
+      "aggregate_sha256": "89e46e4c708c3b2e0d48f477fe6bf657f552ebdc726fd5712deb97f3083c68ae",
+      "prior_recorded_aggregate_sha256": "d5693ed73704ab02c77d5bbc325310b290de27f0fd53802f95829461cf4ba8a6",
+      "files": {
+        "NetNewsWire.xcodeproj/project.pbxproj": "cf0e9afed409869aa0f3c019a5fbf4f962c5f45a443257590c56a8b79a7efe3a",
+        "NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS UI Driver.xcscheme": "3fbed11d9fbb71f94f80cb1207b18042cab0971e5af964dd1ab1d6a0c62f2685",
+        "Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift": "b37350b979737161abb4c1b0fc2504fbfb6389ab58f530fad41bab536bfd5d80",
+        "iOS/Babel2/Babel2LibraryViewControllers.swift": "e0a792c2e4e60c8b7120b6370d741c27c041a4430c58b1160bf3a96e5a60c69f",
+        "xcconfig/NetNewsWire_iOSUITests_target.xcconfig": "9d543bd8eee0bc56279959425e5f4aacd8646ad86121ccd3055fab58e315aeea"
+      }
+    }
+  },
+  "commands": {
+    "environment_policy": "MERCURY_CLIENT_ID, MERCURY_CLIENT_SECRET, FEEDLY_CLIENT_ID, FEEDLY_CLIENT_SECRET, INOREADER_APP_ID, INOREADER_APP_KEY explicitly unset for all build/test commands",
+    "static_list": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -list",
+    "static_list_log": "/private/tmp/babel2-phase3b-ui-static-r1-escalated.log",
+    "show_settings": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -target NetNewsWire-iOSUITests -configuration Release -showBuildSettings",
+    "show_settings_log": "/private/tmp/babel2-phase3b-ui-show-settings-target-r1.log",
+    "build_for_testing_r1": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme \"NetNewsWire-iOS UI Driver\" -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3b-ui-release-bft-r1-dd -resultBundlePath /private/tmp/babel2-phase3b-ui-release-bft-r1.xcresult build-for-testing",
+    "build_for_testing_r2": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme \"NetNewsWire-iOS UI Driver\" -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3b-ui-release-bft-r2-dd -resultBundlePath /private/tmp/babel2-phase3b-ui-release-bft-r2.xcresult build-for-testing",
+    "ui_test_r1": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme \"NetNewsWire-iOS UI Driver\" -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3b-ui-release-bft-r1-dd -resultBundlePath /private/tmp/babel2-phase3b-ui-test-r1.xcresult \"-only-testing:NetNewsWire-iOSUITests/Babel2FeedReaderUITests\" test-without-building",
+    "ui_test_r2": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme \"NetNewsWire-iOS UI Driver\" -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3b-ui-release-bft-r2-dd -resultBundlePath /private/tmp/babel2-phase3b-ui-test-r2.xcresult \"-only-testing:NetNewsWire-iOSUITests/Babel2FeedReaderUITests\" test-without-building",
+    "ui_test_r3": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme \"NetNewsWire-iOS UI Driver\" -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3b-ui-release-bft-r2-dd -resultBundlePath /private/tmp/babel2-phase3b-ui-test-r3.xcresult \"-only-testing:NetNewsWire-iOSUITests/Babel2FeedReaderUITests\" test-without-building",
+    "summary_export": "xcrun xcresulttool get test-results summary --path <xcresult> --compact; summaries were parsed from the listed xcresult bundles",
+    "attachment_export": "xcrun xcresulttool export attachments --path /private/tmp/babel2-phase3b-ui-test-r2.xcresult --output-path /private/tmp/babel2-phase3b-ui-export-r2 --filter '*.png'",
+    "feed_header_crop": "python3 -c 'from PIL import Image; src=\"/private/tmp/babel2-phase3b-ui-export-r2/2F8FFFBE-9EE2-40A6-A153-E7D03EB2C5A9.png\"; dst=\"Design/Babel2/Project/evidence/phase3b-ui/screenshots/feed.png\"; im=Image.open(src); assert im.size==(1206,2622); im.crop((0,0,1206,390)).save(dst, format=\"PNG\", optimize=False)'"
+  },
+  "results": {
+    "static_target_and_scheme": "passed under escalated xcodebuild -list; UI target and NetNewsWire-iOS UI Driver scheme enumerated",
+    "build_for_testing_r1": "success",
+    "build_for_testing_r2": "success",
+    "ui_test_r1": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "classification": "UI_SELECTOR_TIMEOUT",
+      "reason": "pre-fix generic second-table lookup; preserved as a failed iteration",
+      "summary": "ui-test-r1-summary.json"
+    },
+    "ui_test_r2": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "summary": "ui-test-r2-summary.json"
+    },
+    "ui_test_r3": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "summary": "ui-test-r3-summary.json",
+      "purpose": "same r2 artifact repetition; no further row-count increase observed"
+    },
+    "actual_test_count_is_nonzero": true
+  },
+  "prior_phase3_runtime_boundary": {
+    "artifact_round": "Release r1; not a Release r2 runtime",
+    "feed_settings": 10,
+    "articles": 424,
+    "statuses": 424,
+    "search": 424,
+    "sqlite_integrity": "ok",
+    "interaction_status": "INTERACTION_BLOCKED",
+    "trace_event_count": 7,
+    "trace_invalid_reason": "sceneConfigurationSelectionMissing",
+    "trace_is_valid": false,
+    "source": "../phase3/{runtime-summary,runtime-probe,live-trace-summary}.json"
+  },
+  "artifacts": {
+    "prior_phase3_release_r1_provenance": {
+      "executable_sha256": "6be10d30fbfa7581c667557bf93456d0761801cd965c64a6beb48151954ee286",
+      "note": "prior Phase3 runtime artifact; no equality is expected with the Phase3B UI-driver artifact"
+    },
+    "phase3b_release_bft_r1": {
+      "app_executable_sha256": "40094ed9a0103dab365434619619d27691c4f086a48f649952bad597ca0f4679",
+      "ui_test_executable_sha256": "54710460bcae8a2cfa91bb452b85f1e99352d06c5a358fabf9d6654218abc840",
+      "result_bundle": {
+        "path": "/private/tmp/babel2-phase3b-ui-release-bft-r1.xcresult",
+        "file_count": 7,
+        "bytes": 327680,
+        "tree_sha256": "2e7c9dfb760870c1a497d1bb9777f0eb3af7651e421c08b0cbf205a38452f256"
+      }
+    },
+    "phase3b_release_bft_r2": {
+      "app_executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2",
+      "ui_test_executable_sha256": "326c70e95a0a15896dec3819ac2983b3d0c9804ea4bea1c7436654e778c2d7c1",
+      "app_bundle_tree_sha256": "64ef2ec590542aef494327b4d9b1de08bb6c881f0df32167ef817ac0a73e4e60",
+      "app_bundle_tree_scope": "bundle root relative; no ./ prefix; paths sorted lexicographically; each record is SHA256␠␠relative/path\\n",
+      "previous_absolute_path_digest": "61389c425994302a48793788c789e6baa7351810775ea1d3ca92e7226e4eaab4",
+      "previous_absolute_path_digest_status": "historical/path-bound and not used as current completeness proof",
+      "result_bundle": {
+        "path": "/private/tmp/babel2-phase3b-ui-release-bft-r2.xcresult",
+        "file_count": 7,
+        "bytes": 331776,
+        "tree_sha256": "ae3be3c5d6c3e03a5eb943ee6d7a847bf73224de2c04487fe97be7dfb3c88d5e"
+      }
+    },
+    "installed_after_r2": {
+      "app_executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2",
+      "bundle_tree_sha256": "0723845ea0eb10e2e952da1ad523ea62cb87b116254b18e438ca0dc1aaac18d4",
+      "bundle_tree_sha256_status": "historical absolute-path digest; app-container path rotated; not current completeness proof",
+      "data_container_uuid": "88CDBCFE-16F9-4572-BE2F-FB6756D4148C"
+    },
+    "installed_after_r3": {
+      "app_executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2",
+      "bundle_root_relative_tree_sha256": "64ef2ec590542aef494327b4d9b1de08bb6c881f0df32167ef817ac0a73e4e60",
+      "bundle_file_count": 245,
+      "bundle_content_matches_bft_r2": true,
+      "data_container_uuid": "B4915587-EB15-4B2C-84CF-337DB2658470"
+    }
+  },
+  "runtime": {
+    "release_artifact_round": "phase3b BFT r2; UI r2 and r3 used this same artifact",
+    "test": "Babel2FeedReaderUITests/testRealFeedsToArticleAndOpenOriginal",
+    "assertions": [
+      "no-argument/no-environment launch",
+      "babel2.feeds.table visible with 10 real feed rows",
+      "real feed selected in current UI order",
+      "babel2.feed.articles.table visible and cached article row resolved",
+      "babel2.article.body non-empty, not Loading, and not pure tag/script text",
+      "Open Original enabled path brought SafariViewService to foreground",
+      "article back and feed back restored Feeds with 10 rows"
+    ],
+    "open_original": "passed via SafariViewService foreground; app was reactivated after the handoff",
+    "screenshots": [
+      "screenshots/root.png",
+      "screenshots/feed.png",
+      "screenshots/back.png"
+    ],
+    "sensitive_screenshots": "reader and after-browser attachments remain only in temporary xcresult; not copied to repository because they can contain article body or URL",
+    "feed_screenshot": "header/count crop only; no article title/date/body/URL",
+    "probe": "runtime-probe.json"
+  },
+  "data": {
+    "baseline_before_phase3b": {
+      "feed_settings": 10,
+      "articles": 424,
+      "statuses": 424,
+      "search": 424,
+      "sqlite_integrity": "ok",
+      "data_container_uuid": "0C1E8842-AC99-4D9D-B725-65FBE8471266"
+    },
+    "before_ui_r2_after_bft_r1": {
+      "feed_settings": 10,
+      "articles": 425,
+      "statuses": 425,
+      "search": 425,
+      "sqlite_integrity": "ok",
+      "data_container_uuid": "4588C256-C4B8-43D3-A76F-6D1607623FC6"
+    },
+    "after_ui_r2": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "sqlite_integrity": "ok",
+      "data_container_uuid": "88CDBCFE-16F9-4572-BE2F-FB6756D4148C"
+    },
+    "before_ui_r3": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "sqlite_integrity": "ok",
+      "data_container_uuid": "88CDBCFE-16F9-4572-BE2F-FB6756D4148C"
+    },
+    "after_ui_r3": {
+      "feed_settings": 10,
+      "articles": 426,
+      "statuses": 426,
+      "search": 426,
+      "sqlite_integrity": "ok",
+      "data_container_uuid": "B4915587-EB15-4B2C-84CF-337DB2658470"
+    },
+    "mutation_status": "UNEXPECTED_DATA_MUTATION",
+    "observation": "Two row-count increments were observed across the install/test sequence (424 to 425 to 426), with container rotation. The same r2 artifact remained at 426 before and after r3. Cause is not proven; no read-only or background-sync attribution is claimed."
+  },
+  "security": {
+    "secret_file_sha256": "6bd845d77bbc4838bc81495161c2ddf07d5147349c209ee8530213c568db6fba",
+    "gyb_file_sha256": "46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292",
+    "trusted_snapshot_byte_identical": true,
+    "six_secret_environment_variables": "all unset",
+    "raw_secret_content_persisted": false
+  },
+  "open_items": [
+    "Phase1A and complete scene recovery",
+    "physical iPhone validation",
+    "old storyboard/nib and three appex bundle/allowlist cleanup",
+    "cache first-hit/validation and unbounded-cache P2",
+    "same-title stable tie-break P2",
+    "Open Original no-URL semantic gap P2; enabled URL path passed SafariViewService foreground",
+    "human visual/performance acceptance beyond the deterministic driver",
+    "cause of observed data increments remains unproven"
+  ],
+  "limitations": [
+    "the driver validates the existing simulator state only and cannot attribute the observed row-count increments",
+    "Open Original proves system-surface foreground handoff, not network or external page content",
+    "reader and after-browser screenshots and UI hierarchies remain only in temporary xcresult because they can contain private article data",
+    "Phase1A, physical iPhone, allowlist, full scene recovery, visual/performance acceptance and later P2 work remain open"
+  ],
+  "evidence_files": [
+    "manifest.json",
+    "build-summary.json",
+    "runtime-probe.json",
+    "screenshot-inventory.json",
+    "ui-test-r1-summary.json",
+    "ui-test-r2-summary.json",
+    "ui-test-r3-summary.json",
+    "screenshots/root.png",
+    "screenshots/feed.png",
+    "screenshots/back.png"
+  ],
+  "temporary_sources": "/private/tmp/babel2-phase3b-ui-* logs, summaries, derived data and xcresult bundles; no raw bundle is copied into this repository evidence package"
+}

@@ -9,353 +9,151 @@
 import UIKit
 import UserNotifications
 import Account
+import Babel2Core
+import Babel2UI
 
+@MainActor
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 	var window: UIWindow?
-	var coordinator: SceneCoordinator!
-	private var genesisV2RootViewController: RootSplitViewController?
-	private weak var babelShellViewController: BabelShellViewController?
-	private var legacyToggleButton: UIButton?
+	private var babel2NavigationController: Babel2NavigationController?
+	private var sceneGenerationToken = UUID()
+	/// Narrow test seam for proving that the URL callback passes the parser's
+	/// typed value directly to the executor. Production leaves this nil.
+	var externalActionExecutionObserverForTesting: ((Babel2LegacyURLAction) -> Void)?
 
 	// UIWindowScene delegate
 
 	func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+		guard let windowScene = scene as? UIWindowScene else { return }
+		// Observe the configuration UIKit actually attached to this session. The
+		// AppDelegate's selected configuration is recorded separately; missing or
+		// unnamed session evidence remains incomplete rather than being invented.
+		appDelegate.recordObservedSceneConfiguration(session.configuration)
+		installBabel2Root(in: windowScene, restoration: restorationValue(from: session.stateRestorationActivity))
 
-		// [外观] 一行换一行:窗口的 tint 改走调色板,并且**换色时会重设**
-		// (原来这里设一次静态色板就不管了 —— 用户第 9 件的病根之一)。见 NNWAccentTint。
-		NNWAccentTint.install(in: window!)
-
-		let rootViewController = window!.rootViewController as! RootSplitViewController
-		genesisV2RootViewController = rootViewController
-		rootViewController.presentsWithGesture = true
-		rootViewController.showsSecondaryOnlyButton = true
-		rootViewController.preferredDisplayMode = UISplitViewController.DisplayMode(rawValue: AppDefaults.shared.splitViewPreferredDisplayMode) ?? .oneBesideSecondary
-
-		// On first run on iPad, show all three columns so the sidebar is visible
-		if AppDefaults.shared.isFirstRun && UIDevice.current.userInterfaceIdiom == .pad {
-			rootViewController.preferredDisplayMode = .twoBesideSecondary
-		}
-
-		coordinator = SceneCoordinator(rootSplitViewController: rootViewController)
-		rootViewController.coordinator = coordinator
-		rootViewController.delegate = coordinator
-
-		coordinator.restoreWindowState(activity: session.stateRestorationActivity)
-
-		updateUserInterfaceStyle()
-		installBabelShellIfRequested()
-
-		NotificationCenter.default.addObserver(self, selector: #selector(handleUserInterfaceColorPaletteDidUpdate(_:)), name: .userInterfaceColorPaletteDidUpdate, object: AppDefaults.self)
-
-		if connectionOptions.urlContexts.first?.url != nil {
-			self.scene(scene, openURLContexts: connectionOptions.urlContexts)
-			return
-		}
-
-		if let shortcutItem = connectionOptions.shortcutItem {
+		if let context = connectionOptions.urlContexts.first {
+			_ = handleExternalActionURL(context.url)
+		} else if let shortcutItem = connectionOptions.shortcutItem {
 			handleShortcutItem(shortcutItem)
-			return
-		}
-
-		if let notificationResponse = connectionOptions.notificationResponse {
-			showGenesisV2Interface()
-			coordinator.handle(notificationResponse)
-			return
-		}
-
-		// Handle activities from external sources (Handoff, Spotlight, Siri Shortcuts).
-		// Skip handling session.stateRestorationActivity since UserDefaults now handles state restoration.
-		if let userActivity = connectionOptions.userActivities.first {
-			showGenesisV2Interface()
-			coordinator.handle(userActivity)
+		} else if let notificationResponse = connectionOptions.notificationResponse {
+			handle(notificationResponse)
+		} else if let userActivity = connectionOptions.userActivities.first {
+			continueUserActivity(userActivity)
 		}
 	}
 
 	func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
-		appDelegate.resumeIfNecessary()
 		handleShortcutItem(shortcutItem)
 		completionHandler(true)
 	}
 
 	func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-		appDelegate.resumeIfNecessary()
-		showGenesisV2Interface()
-		coordinator.handle(userActivity)
+		continueUserActivity(userActivity)
 	}
 
 	func sceneDidEnterBackground(_ scene: UIScene) {
-		coordinator.didEnterBackground()
 		appDelegate.prepareAccountsForBackground()
 	}
 
 	func sceneWillEnterForeground(_ scene: UIScene) {
 		appDelegate.resumeIfNecessary()
 		appDelegate.prepareAccountsForForeground()
-		coordinator.resetFocus()
+	}
+
+	func sceneDidBecomeActive(_ scene: UIScene) {}
+
+	func sceneDidDisconnect(_ scene: UIScene) {
+		sceneGenerationToken = UUID()
+		appDelegate.recordTeardown("sceneDidDisconnect.babel2")
+		babel2NavigationController?.tearDown()
+		babel2NavigationController = nil
+		window?.rootViewController = nil
+		window?.isHidden = true
+		window = nil
 	}
 
 	func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
-		return coordinator.stateRestorationActivity
+		babel2NavigationController?.makeRestorationActivity()
 	}
 
 	// API
 
 	func handle(_ response: UNNotificationResponse) {
-		appDelegate.resumeIfNecessary()
-		showGenesisV2Interface()
-		coordinator.handle(response)
+		appDelegate.logExternalAction("ignored notification while Babel2 root remains active")
 	}
 
-	func suspend() {
-		coordinator.suspend()
-	}
-
-	func cleanUp(conditional: Bool) {
-		coordinator.cleanUp(conditional: conditional)
-	}
+	func suspend() {}
+	func cleanUp(conditional: Bool) {}
 
 	// Handle Opening of URLs
 
 	func scene(_ scene: UIScene, openURLContexts urlContexts: Set<UIOpenURLContext>) {
-		guard let context = urlContexts.first else { return }
-		showGenesisV2Interface()
-
-		DispatchQueue.main.async {
-
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				self.coordinator.dismissIfLaunchingFromExternalAction()
-			}
-
-			let urlString = context.url.absoluteString
-
-			// Handle the feed: and feeds: schemes
-			if urlString.starts(with: "feed:") || urlString.starts(with: "feeds:") {
-				let normalizedURLString = urlString.normalizedURL
-				if normalizedURLString.mayBeURL {
-					self.coordinator.showAddFeed(initialFeed: normalizedURLString, initialFeedName: nil)
-				}
-			}
-
-			// Show Unread View or Article
-			if urlString.contains(WidgetDeepLink.unread.url.absoluteString) {
-				guard let comps = URLComponents(string: urlString ) else { return  }
-				let id = comps.queryItems?.first(where: { $0.name == "id" })?.value
-				if id != nil {
-					if AccountManager.shared.isSuspended {
-						AccountManager.shared.resumeAll()
-					}
-					self.coordinator.selectAllUnreadFeed {
-						DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-							self.coordinator.selectArticleInCurrentFeed(id!)
-						}
-					}
-				} else {
-					self.coordinator.selectAllUnreadFeed()
-				}
-			}
-
-			// Show Today View or Article
-			if urlString.contains(WidgetDeepLink.today.url.absoluteString) {
-				guard let comps = URLComponents(string: urlString ) else { return  }
-				let id = comps.queryItems?.first(where: { $0.name == "id" })?.value
-				if id != nil {
-					if AccountManager.shared.isSuspended {
-						AccountManager.shared.resumeAll()
-					}
-					self.coordinator.selectTodayFeed {
-						DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-							self.coordinator.selectArticleInCurrentFeed(id!)
-						}
-					}
-				} else {
-					self.coordinator.selectTodayFeed()
-				}
-			}
-
-			// Show Starred View or Article
-			if urlString.contains(WidgetDeepLink.starred.url.absoluteString) {
-				guard let comps = URLComponents(string: urlString ) else { return  }
-				let id = comps.queryItems?.first(where: { $0.name == "id" })?.value
-				if id != nil {
-					if AccountManager.shared.isSuspended {
-						AccountManager.shared.resumeAll()
-					}
-					self .coordinator.selectStarredFeed {
-						DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-							self.coordinator.selectArticleInCurrentFeed(id!)
-						}
-					}
-				} else {
-					self.coordinator.selectStarredFeed()
-				}
-			}
-
-			let filename = context.url.standardizedFileURL.path
-			if filename.hasSuffix(ArticleTheme.nnwThemeSuffix) {
-				self.coordinator.importTheme(filename: filename)
-				return
-			}
-
-			// Handle theme URLs: netnewswire://theme/add?url={url}
-			guard let comps = URLComponents(url: context.url, resolvingAgainstBaseURL: false),
-				  "theme" == comps.host,
-				 let queryItems = comps.queryItems else {
-				return
-			}
-
-			if let providedThemeURL = queryItems.first(where: { $0.name == "url" })?.value {
-				if let themeURL = URL(string: providedThemeURL) {
-					let request = URLRequest(url: themeURL)
-
-					DispatchQueue.main.async {
-						NotificationCenter.default.post(name: .didBeginDownloadingTheme, object: nil)
-					}
-					let task = URLSession.shared.downloadTask(with: request) { location, _, error in
-						guard
-							  let location = location else { return }
-
-						Task { @MainActor in
-							do {
-								try ArticleThemeDownloader.shared.handleFile(at: location)
-							} catch {
-								NotificationCenter.default.post(name: .didFailToImportThemeWithError, object: nil, userInfo: ["error": error])
-							}
-						}
-					}
-					task.resume()
-				} else {
-					print("No theme URL")
-					return
-				}
-			} else {
-				return
-			}
+		for context in urlContexts {
+			_ = handleExternalActionURL(context.url)
 		}
+	}
+
+	@discardableResult
+	func handleExternalActionURL(_ url: URL) -> Babel2LegacyURLAction? {
+		guard let action = Babel2ExternalActionParser.parse(url) else {
+			appDelegate.logExternalAction("ignored unknown external action")
+			return nil
+		}
+		externalActionExecutionObserverForTesting?(action)
+		appDelegate.logExternalAction("ignored \(action.traceName) while Babel2 root remains active")
+		return action
 	}
 }
 
 private extension SceneDelegate {
 
-	func installBabelShellIfRequested() {
-		guard BabelShellConfiguration.isEnabled else { return }
+	func installBabel2Root(in windowScene: UIWindowScene, restoration: Babel2NavigationRestoration?) {
+		guard babel2NavigationController == nil else { return }
 
-		let shellViewController = BabelShellViewController()
-		// Babel reader shares the legacy reader's pre-warmed WKWebView pool. This
-		// removes the cold WebKit process start from the article-open path.
-		BabelReaderWebViewPool.provider = coordinator.webViewProvider
-		shellViewController.onOpenSubscribe = { [weak self] in
-			self?.coordinator.showAddFeed()
+		let navigationController = Babel2SceneComposition.makeRoot(restoration: restoration)
+		let generationToken = sceneGenerationToken
+		navigationController.onContainerAppeared = { [weak self, weak navigationController] in
+			guard let self,
+				  let navigationController,
+				  self.sceneGenerationToken == generationToken,
+				  self.babel2NavigationController === navigationController else { return }
+			appDelegate.recordContainerAppeared(window: navigationController.view.window, root: navigationController)
+			appDelegate.logLaunchTrace()
 		}
-		babelShellViewController = shellViewController
-		window?.rootViewController = shellViewController
-		window?.makeKeyAndVisible()
-		if ProcessInfo.processInfo.arguments.contains("-BabelSettings") {
-			DispatchQueue.main.async { shellViewController.openSettingsForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelAddSubscription") {
-			DispatchQueue.main.async { shellViewController.openAddSubscriptionForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedDiscovery") {
-			DispatchQueue.main.async { shellViewController.openFeedDiscoveryForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelSubscriptionManagement") {
-			DispatchQueue.main.async { shellViewController.openSubscriptionManagementForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelSearch") {
-			DispatchQueue.main.async { shellViewController.openSearchForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedsStarred") {
-			DispatchQueue.main.async { shellViewController.openFeedsStarredForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedsTop") {
-			DispatchQueue.main.async { shellViewController.openFeedsAtTopForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeeds") {
-			DispatchQueue.main.async { shellViewController.openFeedsForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedIssues") {
-			DispatchQueue.main.async { shellViewController.openFeedIssuesForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderMenu") {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderMenuForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderPinnedUp") {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderPinnedUpForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelReaderScrolled") {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderScrolledForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFilter") {
-			DispatchQueue.main.async { shellViewController.openTimelineFilterForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelReader") {
-			DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { shellViewController.openReaderForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineTranslationStress") {
-			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineTranslationStressForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFeedCompact") {
-			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineCompactForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimelineFeed") {
-			DispatchQueue.main.async { shellViewController.openFirstFeedTimelineForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelTimeline") {
-			DispatchQueue.main.async { shellViewController.openTimelineForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelFeedReader") {
-			DispatchQueue.main.async { shellViewController.openFirstFeedReaderForDebug() }
-		} else if ProcessInfo.processInfo.arguments.contains("-BabelUnreadReader") {
-			DispatchQueue.main.async { shellViewController.openUnreadReaderForDebug() }
+		if let root = navigationController.viewControllers.first as? Babel2RootViewController {
+			root.onContentFirstFramePresented = { [weak self, weak root, weak navigationController] in
+				guard let self,
+					  let root,
+					  let navigationController,
+					  self.sceneGenerationToken == generationToken,
+					  self.babel2NavigationController === navigationController,
+					  root === navigationController.viewControllers.first else { return }
+				appDelegate.recordContentFirstFramePresented(window: navigationController.view.window, root: navigationController, content: root.viewIfLoaded)
+				appDelegate.logLaunchTrace()
+			}
 		}
+
+		babel2NavigationController = navigationController
+		let babel2Window = UIWindow(windowScene: windowScene)
+		babel2Window.rootViewController = navigationController
+		window = babel2Window
+		appDelegate.recordRootInstalled(window: babel2Window, root: navigationController)
+		babel2Window.makeKeyAndVisible()
+		appDelegate.recordRootVisible(window: babel2Window, root: navigationController)
+		appDelegate.logLaunchTrace()
 	}
 
-	func showGenesisV2Interface() {
-		guard let genesisV2RootViewController,
-			  window?.rootViewController !== genesisV2RootViewController else {
-			return
-		}
-		legacyToggleButton?.removeFromSuperview()
-		legacyToggleButton = nil
-
-		window?.rootViewController = genesisV2RootViewController
-		window?.makeKeyAndVisible()
-		let button = UIButton(type: .system)
-		button.setTitle("Babel", for: .normal)
-		button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
-		button.backgroundColor = .secondarySystemBackground
-		button.layer.cornerRadius = 16
-		button.addTarget(self, action: #selector(showBabelInterface), for: .touchUpInside)
-		button.translatesAutoresizingMaskIntoConstraints = false
-		genesisV2RootViewController.view.addSubview(button)
-		NSLayoutConstraint.activate([
-			button.trailingAnchor.constraint(equalTo: genesisV2RootViewController.view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-			button.topAnchor.constraint(equalTo: genesisV2RootViewController.view.safeAreaLayoutGuide.topAnchor, constant: 8),
-			button.widthAnchor.constraint(equalToConstant: 62), button.heightAnchor.constraint(equalToConstant: 32)
-		])
-		legacyToggleButton = button
-	}
-
-	@objc private func showBabelInterface() {
-		legacyToggleButton?.removeFromSuperview()
-		legacyToggleButton = nil
-		guard let babelShellViewController else { return }
-		window?.rootViewController = babelShellViewController
-		window?.makeKeyAndVisible()
+	func restorationValue(from activity: NSUserActivity?) -> Babel2NavigationRestoration? {
+		guard let data = activity?.userInfo?["babel2.restoration"] as? Data else { return nil }
+		return Babel2NavigationRestoration.validated(data)
 	}
 
 	func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) {
-		showGenesisV2Interface()
-		switch shortcutItem.type {
-		case "com.ranchero.NetNewsWire.FirstUnread":
-			coordinator.selectFirstUnreadInAllUnread()
-		case "com.ranchero.NetNewsWire.ShowSearch":
-			coordinator.showSearch()
-		case "com.ranchero.NetNewsWire.ShowAdd":
-			coordinator.showAddFeed()
-		default:
-			break
-		}
+		appDelegate.logExternalAction("ignored shortcut while Babel2 root remains active")
 	}
 
-	@objc func handleUserInterfaceColorPaletteDidUpdate(_ notification: Notification) {
-		assert(Thread.isMainThread)
-		Task {
-			updateUserInterfaceStyle()
-		}
-	}
-
-	@MainActor func updateUserInterfaceStyle() {
-		switch AppDefaults.userInterfaceColorPalette {
-		case .automatic:
-			self.window?.overrideUserInterfaceStyle = .unspecified
-		case .light:
-			self.window?.overrideUserInterfaceStyle = .light
-		case .dark:
-			self.window?.overrideUserInterfaceStyle = .dark
-		}
+	func continueUserActivity(_ activity: NSUserActivity) {
+		appDelegate.logExternalAction("ignored user activity while Babel2 root remains active")
 	}
 }

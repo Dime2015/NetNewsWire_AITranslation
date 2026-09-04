@@ -10,6 +10,7 @@ import UIKit
 @preconcurrency import BackgroundTasks
 import os
 import WidgetKit
+import Babel2UI
 import RSCore
 import RSWeb
 import Account
@@ -22,20 +23,20 @@ import Images
 
 @main
 @MainActor final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, UnreadCountProvider {
-	private static func requestNotificationAuthorization() {
-		UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .sound, .alert]) { granted, _ in
-			if granted {
-				DispatchQueue.main.async {
-					UIApplication.shared.registerForRemoteNotifications()
-				}
-			}
-		}
-	}
-
 	private let backgroundTaskDispatchQueue = DispatchQueue.init(label: "BGTaskScheduler")
 
 	private var waitBackgroundUpdateTask = UIBackgroundTaskIdentifier.invalid
 	private var syncBackgroundUpdateTask = UIBackgroundTaskIdentifier.invalid
+	private(set) var launchDecision: Babel2FeatureGateDecision
+	private let launchTraceRecorder: Babel2LaunchTraceRecorder
+	private var babel2BootstrapStarted = false
+	private var lastLoggedLaunchSequence = -1
+
+	/// A read-only value snapshot for diagnostics and tests. All writes go
+	/// through the recorder so the event stream remains append-only.
+	var launchTrace: Babel2LaunchTrace {
+		launchTraceRecorder.snapshot
+	}
 
 	var shuttingDown = false {
 		didSet {
@@ -60,77 +61,181 @@ import Images
 	var isWaitingForSyncTasks = false
 
 	override init() {
+		// Capture the process boundary before evaluating any generation policy.
+		// The session id is created at the same boundary so every later event can
+		// be joined to this exact process launch.
+		let processEntryUptime = ProcessInfo.processInfo.systemUptime
+		let launchSessionID = UUID().uuidString
+		let gateUptime = ProcessInfo.processInfo.systemUptime
+		#if DEBUG
+		let buildChannel: Babel2BuildChannel = .debug
+		#else
+		let buildChannel: Babel2BuildChannel = .release
+		#endif
+		launchDecision = Babel2FeatureGate.decision(buildChannel: buildChannel)
+		let recorder = Babel2LaunchTraceRecorder(
+			decision: launchDecision,
+			buildChannel: buildChannel,
+			gateUptime: gateUptime,
+			processEntryUptime: processEntryUptime,
+			sessionID: launchSessionID
+		)
+		launchTraceRecorder = recorder
 		super.init()
 		appDelegate = self
-
-		AccountManager.shared.start()
-
-		NotificationCenter.default.addObserver(self, selector: #selector(unreadCountDidChange(_:)), name: .UnreadCountDidChange, object: nil)
-		NotificationCenter.default.addObserver(self, selector: #selector(accountRefreshDidFinish(_:)), name: .AccountRefreshDidFinish, object: nil)
+		startBabel2LifecycleIfNeeded()
 	}
 
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-		FaviconGenerator.templateImage = Assets.Images.faviconTemplate
+		bootstrapBabel2RuntimeIfNeeded()
+		return true
+	}
 
-		// [翻译] 摸一下标题翻译的单例,让它的"刷新→预翻译"观察者在**启动刷新之前**就位。
-		// 单例是懒加载的,不摸的话冷启动第一轮刷新拉回的新文章会整段错过预翻译。
-		_ = NNWTitleTranslationController.shared
-
-		// [外文] 把「外文」这个智能源追加进侧栏。**必须在造树之前**,这里最早(scene 还没连上)。
-		// 上游 Shared/SmartFeeds/ 一行没改,详见 NNWForeignSmartFeed.swift 的文件头。
-		NNWForeignSmartFeed.install()
-
-		Task {
-			await WebViewConfiguration.compileContentBlockingRules()
-		}
+	/// Starts only services shared by the Babel 2 runtime. UI composition belongs
+	/// to `SceneDelegate` and is never selected by process arguments.
+	private func startBabel2LifecycleIfNeeded() {
+		guard !babel2BootstrapStarted else { return }
+		babel2BootstrapStarted = true
 		AppDefaults.registerDefaults()
-
-		let isFirstRun = AppDefaults.shared.isFirstRun
-		if isFirstRun {
-			Self.logger.info("Is first run.")
-		}
-
-		if isFirstRun && !AccountManager.shared.anyAccountHasAtLeastOneFeed() {
-			let localAccount = AccountManager.shared.defaultAccount
-			DefaultFeedsImporter.importDefaultFeeds(account: localAccount)
-		}
-
-		registerBackgroundTasks()
-		CacheCleaner.purgeIfNecessary()
-		initializeDownloaders()
-		initializeHomeScreenQuickActions()
-
-		DispatchQueue.main.async {
-			self.unreadCount = AccountManager.shared.unreadCount
-			// Force the badge to update on launch.
-			self.updateBadge()
-			// [外文] 冷启动也认一遍 —— 用户可能很久不手动刷新,不能只挂在刷新完成上
-			NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
-		}
-
-		#if targetEnvironment(simulator)
-		// Keep Simulator visual checks unobstructed by the system permission sheet.
-		#else
-		Self.requestNotificationAuthorization()
-		#endif
-
-		UNUserNotificationCenter.current().delegate = self
-		UserNotificationManager.shared.start()
-
+		AccountManager.shared.start()
+		NotificationCenter.default.addObserver(self, selector: #selector(unreadCountDidChange(_:)), name: .UnreadCountDidChange, object: nil)
+		FaviconGenerator.templateImage = Assets.Images.faviconTemplate
 		ArticleThemesManager.shared.start()
 		NetworkMonitor.shared.start()
+	}
 
-#if !SKIP_APP_GROUP_ACCESS
-		ExtensionContainersFile.shared.start()
-		ExtensionFeedAddRequestFile.shared.start()
-#endif
+	private func bootstrapBabel2RuntimeIfNeeded() {
+		startBabel2LifecycleIfNeeded()
+		registerBackgroundTasks()
+		if AppDefaults.shared.isFirstRun && !AccountManager.shared.anyAccountHasAtLeastOneFeed() {
+			DefaultFeedsImporter.importDefaultFeeds(account: AccountManager.shared.defaultAccount)
+		}
+		unreadCount = AccountManager.shared.unreadCount
+		updateBadge()
+		UNUserNotificationCenter.current().delegate = self
+	}
 
-		#if DEBUG
-		ArticleStatusSyncTimer.shared.update()
-		#endif
+	func application(
+		_ application: UIApplication,
+		configurationForConnecting connectingSceneSession: UISceneSession,
+		options: UIScene.ConnectionOptions
+	) -> UISceneConfiguration {
+		let configuration = Babel2SceneConfiguration.makeBabel2(for: connectingSceneSession.role)
+		recordSelectedSceneConfiguration(Babel2SceneConfiguration.name)
+		return configuration
+	}
 
-		return true
+	func recordSelectedSceneConfiguration(_ lookupName: String) {
+		launchTraceRecorder.recordSceneConfigurationSelected(lookupName)
+	}
 
+	func recordObservedSceneConfiguration(_ configuration: UISceneConfiguration) {
+		launchTraceRecorder.recordSceneConfigurationObserved(
+			name: configuration.name,
+			delegateClassName: configuration.delegateClass.map { String(describing: $0) },
+			delegateMatchesExpected: configuration.delegateClass === SceneDelegate.self,
+			storyboardPresent: configuration.storyboard != nil
+		)
+	}
+
+	func recordRootInstalled(window: UIWindow, root: UIViewController) {
+		launchTraceRecorder.recordRootInstalled(surface: launchTraceSurface(window: window, root: root))
+	}
+
+	func recordRootVisible(window: UIWindow, root: UIViewController) {
+		launchTraceRecorder.recordRootVisible(surface: launchTraceSurface(window: window, root: root))
+	}
+
+	func recordContainerAppeared(window: UIWindow?, root: UIViewController) {
+		launchTraceRecorder.recordContainerAppeared(surface: launchTraceSurface(window: window, root: root))
+	}
+
+	func recordContentFirstFramePresented(window: UIWindow?, root: UIViewController, content: UIView?) {
+		launchTraceRecorder.recordContentFirstFramePresented(
+			surface: launchTraceSurface(window: window, root: root, content: content)
+		)
+	}
+
+	func recordTeardown(_ detail: String) {
+		launchTraceRecorder.recordTeardown(detail)
+		logLaunchTrace()
+	}
+
+	func recordLegacyUILifecycle(source: String, detail: String? = nil) {
+		launchTraceRecorder.recordLegacyUILifecycle(source: source, detail: detail)
+		logLaunchTrace()
+	}
+
+	func recordLegacyBootstrap(source: String, detail: String? = nil) {
+		launchTraceRecorder.recordLegacyBootstrap(source: source, detail: detail)
+		logLaunchTrace()
+	}
+
+	@discardableResult
+	func recordLegacyBlankWebViewBootstrap(source: String, detail: String? = nil) -> Bool {
+		let accepted = launchTraceRecorder.recordLegacyBlankWebViewBootstrap(source: source, detail: detail)
+		if accepted { logLaunchTrace() }
+		return accepted
+	}
+
+	func recordLegacyStoryboardDecode(source: String, detail: String? = nil) {
+		launchTraceRecorder.recordLegacyStoryboardDecode(source: source, detail: detail)
+		logLaunchTrace()
+	}
+
+	func recordLegacyCoordinatorCreation(source: String, detail: String? = nil) {
+		launchTraceRecorder.recordLegacyCoordinatorCreation(source: source, detail: detail)
+		logLaunchTrace()
+	}
+
+	@discardableResult
+	func recordLegacyWebViewBootstrap(source: String, detail: String? = nil) -> Bool {
+		let accepted = launchTraceRecorder.recordLegacyWebViewBootstrap(source: source, detail: detail)
+		if accepted { logLaunchTrace() }
+		return accepted
+	}
+
+	func logLaunchTrace() {
+		let trace = launchTrace
+		guard let latestSequence = trace.events.last?.sequence, latestSequence > lastLoggedLaunchSequence else { return }
+		for event in trace.events where event.sequence > lastLoggedLaunchSequence {
+			Self.logger.info("Babel2 launch trace event \(event.structuredJSONLine, privacy: .public)")
+		}
+		lastLoggedLaunchSequence = latestSequence
+		Self.logger.info("Babel2 launch trace result \(trace.resultJSONLine, privacy: .public)")
+	}
+
+	func logExternalAction(_ detail: String) {
+		Self.logger.info("Babel2 external action \(detail)")
+	}
+
+	private func launchTraceSurface(window: UIWindow?, root: UIViewController, content: UIView? = nil) -> Babel2TraceSurface {
+		let rootView = root.viewIfLoaded
+		let contentView = content ?? rootView
+		return Babel2TraceSurface(
+			controllerType: String(describing: type(of: root)),
+			contentType: contentView.map { String(describing: type(of: $0)) },
+			windowBounds: window.map { traceRect($0.bounds) },
+			rootBounds: rootView.map { traceRect($0.bounds) },
+			rootFrame: rootView.map { traceRect($0.frame) },
+			contentBounds: contentView.map { traceRect($0.bounds) },
+			contentFrame: contentView.map { traceRect($0.frame) },
+			safeAreaInsets: rootView.map {
+				Babel2TraceInsets(
+					top: Double($0.safeAreaInsets.top),
+					left: Double($0.safeAreaInsets.left),
+					bottom: Double($0.safeAreaInsets.bottom),
+					right: Double($0.safeAreaInsets.right)
+				)
+			},
+			windowIsHidden: window.map(\.isHidden),
+			windowIsKey: window.map(\.isKeyWindow),
+			rootMatchesExpected: root is Babel2NavigationController
+		)
+	}
+
+	private func traceRect(_ rect: CGRect) -> Babel2TraceRect {
+		Babel2TraceRect(x: Double(rect.origin.x), y: Double(rect.origin.y), width: Double(rect.size.width), height: Double(rect.size.height))
 	}
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
@@ -167,19 +272,9 @@ import Images
 		}
 	}
 
-	@objc func accountRefreshDidFinish(_ note: Notification) {
-		AppDefaults.shared.lastRefresh = Date()
-		// [外文] 刷新拉回新文章之后,把还没认过语言的源认一遍(幂等,已认过的直接跳过)
-		NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
-	}
-
 	// MARK: - API
 
 	func manualRefresh(errorHandler: @escaping @Sendable (Error) -> Void) {
-		let sceneDelegates = UIApplication.shared.connectedScenes.compactMap { $0.delegate as? SceneDelegate }
-		for sceneDelegate in sceneDelegates {
-			sceneDelegate.cleanUp(conditional: true)
-		}
 		AccountManager.shared.refreshAllWithoutWaiting(errorHandler: errorHandler)
 	}
 
@@ -227,7 +322,7 @@ import Images
 		completionHandler([.list, .banner, .badge, .sound])
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+	nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
 
 		// Wrapper to safely transfer non-Sendable values to MainActor
 		struct UnsafeSendable<T>: @unchecked Sendable {
@@ -239,53 +334,28 @@ import Images
 
 		Task { @MainActor in
 			let response = wrappedResponse.value
-			let userInfo = response.notification.request.content.userInfo
-
-			switch response.actionIdentifier {
-			case UserNotificationManager.ActionIdentifier.markAsRead:
-				handleMarkAsRead(userInfo: userInfo)
-			case UserNotificationManager.ActionIdentifier.markAsStarred:
-				handleMarkAsStarred(userInfo: userInfo)
-			default:
-				if let sceneDelegate = response.targetScene?.delegate as? SceneDelegate {
-					sceneDelegate.handle(response)
-					DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: {
-						sceneDelegate.coordinator.dismissIfLaunchingFromExternalAction()
-					})
-				}
+			if let sceneDelegate = response.targetScene?.delegate as? SceneDelegate {
+				sceneDelegate.handle(response)
+			} else {
+				self.logExternalAction("ignored notification without a Babel2 scene")
 			}
 			wrappedCompletionHandler.value()
 		}
     }
 }
 
-// MARK: App Initialization
+@MainActor
+enum Babel2SceneConfiguration {
+	static let name = "Babel2 Configuration"
 
-private extension AppDelegate {
-
-	private func initializeDownloaders() {
-		let tempDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-		let imagesFolderURL = tempDir.appendingPathComponent("Images")
-		try! FileManager.default.createDirectory(at: imagesFolderURL, withIntermediateDirectories: true, attributes: nil)
-	}
-
-	private func initializeHomeScreenQuickActions() {
-		let unreadTitle = NSLocalizedString("First Unread", comment: "First Unread")
-		let unreadIcon = UIApplicationShortcutIcon(systemImageName: "chevron.down.circle")
-		let unreadItem = UIApplicationShortcutItem(type: "com.ranchero.NetNewsWire.FirstUnread", localizedTitle: unreadTitle, localizedSubtitle: nil, icon: unreadIcon, userInfo: nil)
-
-		let searchTitle = NSLocalizedString("Search", comment: "Search")
-		let searchIcon = UIApplicationShortcutIcon(systemImageName: "magnifyingglass")
-		let searchItem = UIApplicationShortcutItem(type: "com.ranchero.NetNewsWire.ShowSearch", localizedTitle: searchTitle, localizedSubtitle: nil, icon: searchIcon, userInfo: nil)
-
-		let addTitle = NSLocalizedString("Add Feed", comment: "Add Feed")
-		let addIcon = UIApplicationShortcutIcon(systemImageName: "plus")
-		let addItem = UIApplicationShortcutItem(type: "com.ranchero.NetNewsWire.ShowAdd", localizedTitle: addTitle, localizedSubtitle: nil, icon: addIcon, userInfo: nil)
-
-		UIApplication.shared.shortcutItems = [addItem, searchItem, unreadItem]
+	static func makeBabel2(for role: UISceneSession.Role) -> UISceneConfiguration {
+		let configuration = UISceneConfiguration(name: name, sessionRole: role)
+		return configuration
 	}
 
 }
+
+// MARK: App Initialization
 
 // MARK: Go To Background
 
@@ -446,41 +516,6 @@ private extension AppDelegate {
 			Task { @MainActor in
 				self.suspendApplication()
 			}
-		}
-	}
-}
-
-// MARK: - Handle Notification Actions
-
-private extension AppDelegate {
-	func handleMarkAsRead(userInfo: [AnyHashable: Any]) {
-		handleStatusNotification(userInfo: userInfo, statusKey: .read)
-	}
-
-	func handleMarkAsStarred(userInfo: [AnyHashable: Any]) {
-		handleStatusNotification(userInfo: userInfo, statusKey: .starred)
-	}
-
-	private func handleStatusNotification(userInfo: [AnyHashable: Any], statusKey: ArticleStatus.Key) {
-		guard let articlePathUserInfo = userInfo[UserInfoKey.articlePath] as? [AnyHashable: Any],
-			let accountID = articlePathUserInfo[ArticlePathKey.accountID] as? String,
-			let articleID = articlePathUserInfo[ArticlePathKey.articleID] as? String else {
-				return
-		}
-
-		resumeIfNecessary()
-
-		guard let account = AccountManager.shared.existingAccount(accountID: accountID) else {
-			assertionFailure("Expected account with \(accountID)")
-			Self.logger.error("No account with accountID \(accountID) found from status notification")
-			return
-		}
-
-		Task { @MainActor in
-			try? await account.markArticles(articleIDs: [articleID], statusKey: statusKey, flag: true)
-			_ = try? await account.syncArticleStatus()
-			prepareAccountsForBackground()
-			suspendApplication()
 		}
 	}
 }

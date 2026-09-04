@@ -32,6 +32,13 @@ struct QueueCall: Equatable {
 	public static let standard = CoalescingQueue(name: "Standard", interval: 0.05, maxInterval: 0.1)
 	public let name: String
 	public var isPaused = false
+
+	/// The number of calls waiting for this queue's coalescing timer. This is
+	/// intentionally observable so an owner can prove that scene teardown did
+	/// not leave a timer-backed callback behind.
+	public var pendingCallsCount: Int {
+		calls.count
+	}
 	private let interval: TimeInterval
 	private let maxInterval: TimeInterval
 	private var lastCallTime = Date.distantFuture
@@ -59,6 +66,14 @@ struct QueueCall: Equatable {
 		for call in callsToMake {
 			call.perform()
 		}
+	}
+
+	/// Cancel the timer and discard every coalesced call without invoking it.
+	/// A scene owner must use this when it is being destroyed; merely invalidating
+	/// a generation token still leaves the timer and target queue alive.
+	public func cancelPendingCalls() {
+		invalidateTimer()
+		resetCalls()
 	}
 
 	@objc func timerDidFire(_ sender: Any?) {

@@ -1,5 +1,11 @@
 import Foundation
 
+public enum Babel2FeedScope: String, CaseIterable, Hashable, Sendable {
+	case all
+	case unread
+	case starred
+}
+
 public enum LibraryAction: Hashable, Sendable {
 	case markRead(ArticleSnapshot.ID)
 	case markUnread(ArticleSnapshot.ID)
@@ -43,7 +49,8 @@ public struct ArticleRenderSnapshot: Hashable, Sendable {
 }
 
 public protocol DataProviding: Sendable {
-	func librarySnapshot() async throws -> LibrarySnapshot
+	func librarySnapshot(for scope: Babel2FeedScope) async throws -> LibrarySnapshot
+	func feedArticlesSnapshot(for id: FeedSnapshot.ID, scope: Babel2FeedScope) async throws -> [ArticleSnapshot]
 	func articleSnapshot(for id: ArticleSnapshot.ID) async throws -> ArticleSnapshot?
 }
 

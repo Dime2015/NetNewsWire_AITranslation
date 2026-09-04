@@ -112,6 +112,10 @@
 		D1B2E2000000000000000001 /* Babel2UI in Frameworks */ = {isa = PBXBuildFile; productRef = D1B2E2000000000000000002 /* Babel2UI */; };
 		D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */; };
 		D1B2E2000000000000000006 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */; };
+		D1B2E2000000000000000008 /* Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000007 /* Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift */; };
+		D1B2E200000000000000000A /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E2000000000000000009 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift */; };
+		D1B2E2000000000000000010 /* Babel2UI in Embed Frameworks */ = {isa = PBXBuildFile; productRef = D1B2E2000000000000000002 /* Babel2UI */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		D1B2E3000000000000000001 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2E3000000000000000002 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -144,6 +148,13 @@
 			remoteInfo = "NetNewsWire iOS Share Extension";
 		};
 		518B2ED72351B3DD00400001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 849C64581ED37A5D003D8FC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 840D617B2029031C009BC708;
+			remoteInfo = "NetNewsWire-iOS";
+		};
+		D1B2E3000000000000000010 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 849C64581ED37A5D003D8FC0 /* Project object */;
 			proxyType = 1;
@@ -252,6 +263,7 @@
 				513F32812593EF180003048F /* Account in Embed Frameworks */,
 				513F32752593EE6F0003048F /* ArticlesDatabase in Embed Frameworks */,
 				9A5936FF2B764C899D29080B /* ErrorLog in Embed Frameworks */,
+				D1B2E2000000000000000010 /* Babel2UI in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -345,6 +357,10 @@
 		C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift"; sourceTree = SOURCE_ROOT; };
 		D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift"; sourceTree = SOURCE_ROOT; };
 		D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E2000000000000000007 /* Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E2000000000000000009 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E3000000000000000002 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift"; sourceTree = SOURCE_ROOT; };
+		D1B2E3000000000000000003 /* NetNewsWire-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "NetNewsWire-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -610,6 +626,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1B2E3000000000000000013 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6581C73020CED60000F4AD34 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -694,6 +717,9 @@
 				C0D3B00230D3B00200BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift */,
 				D1B2E2000000000000000003 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift */,
 				D1B2E2000000000000000005 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift */,
+				D1B2E2000000000000000007 /* Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift */,
+				D1B2E2000000000000000009 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift */,
+				D1B2E3000000000000000002 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -751,6 +777,7 @@
 				51314637235A7BBE00387FDC /* NetNewsWire iOS Intents Extension.appex */,
 				510C415C24E5CDE3008226FD /* NetNewsWire Share Extension.appex */,
 				176813F32564BB2C00D98635 /* NetNewsWire iOS Widget Extension.appex */,
+				D1B2E3000000000000000003 /* NetNewsWire-iOSUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -874,6 +901,24 @@
 			productName = "NetNewsWire-iOSTests";
 			productReference = 518B2ED22351B3DD00400001 /* NetNewsWire-iOSTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D1B2E3000000000000000004 /* NetNewsWire-iOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1B2E3000000000000000005 /* Build configuration list for PBXNativeTarget "NetNewsWire-iOSUITests" */;
+			buildPhases = (
+				D1B2E3000000000000000012 /* Sources */,
+				D1B2E3000000000000000013 /* Frameworks */,
+				D1B2E3000000000000000014 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D1B2E3000000000000000011 /* PBXTargetDependency */,
+			);
+			name = "NetNewsWire-iOSUITests";
+			productName = "NetNewsWire-iOSUITests";
+			productReference = D1B2E3000000000000000003 /* NetNewsWire-iOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		6581C73220CED60000F4AD34 /* Subscribe to Feed */ = {
 			isa = PBXNativeTarget;
@@ -1042,13 +1087,19 @@
 						DevelopmentTeam = SHJK2V3AJG;
 						ProvisioningStyle = Automatic;
 					};
-					518B2ED12351B3DD00400001 = {
-						CreatedOnToolsVersion = 11.2;
-						DevelopmentTeam = SHJK2V3AJG;
-						ProvisioningStyle = Automatic;
-						TestTargetID = 840D617B2029031C009BC708;
-					};
-					6581C73220CED60000F4AD34 = {
+						518B2ED12351B3DD00400001 = {
+							CreatedOnToolsVersion = 11.2;
+							DevelopmentTeam = SHJK2V3AJG;
+							ProvisioningStyle = Automatic;
+							TestTargetID = 840D617B2029031C009BC708;
+						};
+						D1B2E3000000000000000004 = {
+							CreatedOnToolsVersion = 27.0;
+							DevelopmentTeam = SHJK2V3AJG;
+							ProvisioningStyle = Automatic;
+							TestTargetID = 840D617B2029031C009BC708;
+						};
+						6581C73220CED60000F4AD34 = {
 						DevelopmentTeam = SHJK2V3AJG;
 						ProvisioningStyle = Automatic;
 					};
@@ -1108,9 +1159,10 @@
 				6581C73220CED60000F4AD34 /* Subscribe to Feed */,
 				513C5CE5232571C2003D4054 /* NetNewsWire iOS Share Extension */,
 				51314636235A7BBE00387FDC /* NetNewsWire iOS Intents Extension */,
-				176813F22564BB2C00D98635 /* NetNewsWire iOS Widget Extension */,
-				518B2ED12351B3DD00400001 /* NetNewsWire-iOSTests */,
-				510C415B24E5CDE3008226FD /* NetNewsWire Share Extension */,
+					176813F22564BB2C00D98635 /* NetNewsWire iOS Widget Extension */,
+					518B2ED12351B3DD00400001 /* NetNewsWire-iOSTests */,
+					D1B2E3000000000000000004 /* NetNewsWire-iOSUITests */,
+					510C415B24E5CDE3008226FD /* NetNewsWire Share Extension */,
 			);
 		};
 /* End PBXProject section */
@@ -1145,6 +1197,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		518B2ED02351B3DD00400001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1B2E3000000000000000014 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1387,6 +1446,16 @@
 				C0D3B00130D3B00100BABEL1 /* Tests/NetNewsWire-iOSTests/BabelShellConfigurationTests.swift in Sources */,
 				D1B2E2000000000000000004 /* Tests/NetNewsWire-iOSTests/Babel2BoundaryTests.swift in Sources */,
 				D1B2E2000000000000000006 /* Tests/NetNewsWire-iOSTests/Babel2MotionDriverRuntimeTests.swift in Sources */,
+				D1B2E2000000000000000008 /* Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift in Sources */,
+				D1B2E200000000000000000A /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1B2E3000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1B2E3000000000000000001 /* Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1445,6 +1514,11 @@
 			isa = PBXTargetDependency;
 			target = 840D617B2029031C009BC708 /* NetNewsWire-iOS */;
 			targetProxy = 518B2ED72351B3DD00400001 /* PBXContainerItemProxy */;
+		};
+		D1B2E3000000000000000011 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 840D617B2029031C009BC708 /* NetNewsWire-iOS */;
+			targetProxy = D1B2E3000000000000000010 /* PBXContainerItemProxy */;
 		};
 		65ED41C5235E61550081F399 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1547,6 +1621,22 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 84719F372DB9C60400EEF332 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = NetNewsWire_iOSTests_target.xcconfig;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		D1B2E3000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 84719F372DB9C60400EEF332 /* xcconfig */;
+			baseConfigurationReferenceRelativePath = NetNewsWire_iOSUITests_target.xcconfig;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		D1B2E3000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 84719F372DB9C60400EEF332 /* xcconfig */;
+			baseConfigurationReferenceRelativePath = NetNewsWire_iOSUITests_target.xcconfig;
 			buildSettings = {
 			};
 			name = Release;
@@ -1675,6 +1765,15 @@
 			buildConfigurations = (
 				518B2ED92351B3DD00400001 /* Debug */,
 				518B2EDB2351B3DD00400001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1B2E3000000000000000005 /* Build configuration list for PBXNativeTarget "NetNewsWire-iOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1B2E3000000000000000006 /* Debug */,
+				D1B2E3000000000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

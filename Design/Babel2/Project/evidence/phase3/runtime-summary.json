@@ -1,0 +1,74 @@
+{
+  "schema": "babel2.phase3.runtime-summary.v1",
+  "release_artifact_round": "r1",
+  "device": {
+    "name": "iPhone 17",
+    "os": "iOS 27.0",
+    "udid": "555E35FA-6BFE-45F0-BCFC-0819FFE48CD2"
+  },
+  "operations": {
+    "bootstatus": "already booted",
+    "install": "success",
+    "uninstall": false,
+    "erase": false,
+    "explicit_subscription_added": false,
+    "cold_launch_arguments": [],
+    "cold_launch": "success; Feeds root visible",
+    "final_state": "app terminated after evidence capture"
+  },
+  "original_temporary_sources": {
+    "bootstatus": "/private/tmp/babel2-phase3-runtime-r1/bootstatus.log",
+    "install": "/private/tmp/babel2-phase3-runtime-r1/install.log",
+    "cold_launch": "/private/tmp/babel2-phase3-runtime-r1/cold-launch.log",
+    "live_launch": "/private/tmp/babel2-phase3-runtime-r1/live-launch.log",
+    "live_terminate": "/private/tmp/babel2-phase3-runtime-r1/live-terminate.log",
+    "live_application": "/private/tmp/babel2-phase3-runtime-r1/live-application.log",
+    "screenshot": "/private/tmp/babel2-phase3-runtime-r1/cold-launch-final.png",
+    "feed_count": "/private/tmp/babel2-phase3-runtime-r1/feed-settings-count.log",
+    "db_row_counts": "/private/tmp/babel2-phase3-runtime-r1/db-row-counts.log",
+    "integrity": "/private/tmp/babel2-phase3-runtime-r1/db-integrity.log"
+  },
+  "artifact": {
+    "bundle_identifier": "com.wenbopan.NetNewsWire.iOS",
+    "version": "7.1.1",
+    "build": "7108",
+    "executable_sha256": "6be10d30fbfa7581c667557bf93456d0761801cd965c64a6beb48151954ee286",
+    "artifact_bundle_tree_sha256": "4d5ee0759d97de068ba7e3669a045185c15392fa97179e6a152fb921112986a2",
+    "installed_executable_sha256": "6be10d30fbfa7581c667557bf93456d0761801cd965c64a6beb48151954ee286",
+    "installed_bundle_tree_sha256": "ede06564c9eff67a0190d7adffa4c83eee0e9aa1b51d1c460388075eb40ae61c"
+  },
+  "visible_state": {
+    "screen": "Feeds",
+    "feed_rows_visible": 10,
+    "screenshot": "cold-launch-final.png",
+    "screenshot_sha256": "fcd8a92e4d4b79cb175857b07c1a5ed77a3bdf712ca00ff4d32a6915e0200ad2",
+    "screenshot_dimensions": {
+      "width": 1206,
+      "height": 2622
+    }
+  },
+  "data_probe": {
+    "active_account_label": "OnMyMac",
+    "feed_settings": 10,
+    "articles": 424,
+    "statuses": 424,
+    "search": 424,
+    "sqlite_integrity": "ok",
+    "raw_content_retained": false
+  },
+  "interaction": {
+    "status": "INTERACTION_BLOCKED",
+    "reason": "simulator has no usable tap/accessibility driver",
+    "single_source_selection": "not asserted",
+    "article_reader_body": "not asserted",
+    "open_original_runtime": "not asserted"
+  },
+  "trace": {
+    "event_count": 7,
+    "invalid_reason": "sceneConfigurationSelectionMissing",
+    "is_valid": false,
+    "is_complete": false,
+    "source_summary": "live-trace-summary.json"
+  },
+  "source_evidence_dir": "/private/tmp/babel2-phase3-runtime-r1/"
+}

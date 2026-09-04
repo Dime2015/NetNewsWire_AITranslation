@@ -281,7 +281,7 @@ extension MainFeedCollectionViewController {
 	}
 
 	@objc private func nnwGlobalSearchTapped() {
-		coordinator.nnwShowGlobalSearch()
+		coordinator?.nnwShowGlobalSearch()
 	}
 
 	/// [编辑] 铅笔的行为:**原地**进入编辑模式(2026-07-28 用户要求)。
@@ -306,7 +306,7 @@ extension MainFeedCollectionViewController {
 	/// 少了它,一进★档看到的是"还没数完"那一版(全都放行、数字全是 0),而且永远不会自己更新。
 	@objc private func nnwStarredIndexDidChange() {
 		guard NNWReadingModeStore.shared.mode == .starred else { return }
-		coordinator.nnwRebuildFeedList()
+		coordinator?.nnwRebuildFeedList()
 		nnwReloadVisibleRowCounts()
 	}
 
@@ -352,6 +352,7 @@ extension MainFeedCollectionViewController {
 		guard NNWReadingModeStore.shared.setMode(mode) else { return }
 
 		// 控件外观不用管 —— 它自己盯着通知(两个页面各一条,谁改了大家都跟上)
+		guard let coordinator else { return }
 		NNWReadingModeApply.modeDidChange(coordinator: coordinator)
 
 		// 三个档各一张头图(Phase 3):换档时把画也换掉,交叉淡入
@@ -371,6 +372,7 @@ extension MainFeedCollectionViewController {
 	/// 而且顺带白拿了它内部做的事:重建整棵树、存进 AppDefaults、刷新界面。
 	private func nnwSyncReadFeedsFilterToMode() {
 		let wanted = NNWReadingModeStore.shared.hidesFullyReadFeeds
+		guard let coordinator else { return }
 		if coordinator.isReadFeedsFiltered != wanted {
 			coordinator.toggleReadFeedsFilter()
 		}

@@ -42,7 +42,6 @@ final class WebViewController: UIViewController {
 	private var isFullScreenAvailable: Bool {
 		return AppDefaults.shared.articleFullscreenAvailable && traitCollection.userInterfaceIdiom == .phone
 	}
-	private lazy var articleIconSchemeHandler = ArticleIconSchemeHandler(coordinator: coordinator)
 	private lazy var transition = ImageTransition(controller: self)
 	private var clickedImageCompletion: (() -> Void)?
 
@@ -70,7 +69,7 @@ final class WebViewController: UIViewController {
 		}
 	}
 
-	weak var coordinator: SceneCoordinator!
+	weak var coordinator: SceneCoordinator?
 	weak var delegate: WebViewControllerDelegate?
 
 	private(set) var article: Article?
@@ -256,7 +255,7 @@ final class WebViewController: UIViewController {
 
 	func showBars(animated: Bool = true) {
 		AppDefaults.shared.articleFullscreenEnabled = false
-		coordinator.showStatusBar()
+		coordinator?.showStatusBar()
 		topShowBarsViewConstraint?.constant = 0
 		bottomShowBarsViewConstraint?.constant = 0
 		navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -269,7 +268,7 @@ final class WebViewController: UIViewController {
 	func hideBars() {
 		if isFullScreenAvailable {
 			AppDefaults.shared.articleFullscreenEnabled = true
-			coordinator.hideStatusBar()
+			coordinator?.hideStatusBar()
 			topShowBarsViewConstraint?.constant = -44.0
 			bottomShowBarsViewConstraint?.constant = 44.0
 			navigationController?.setNavigationBarHidden(true, animated: true)
@@ -434,7 +433,7 @@ extension WebViewController: UIContextMenuInteractionDelegate {
     }
 
 	func contextMenuInteraction(_ interaction: UIContextMenuInteraction, willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration, animator: UIContextMenuInteractionCommitAnimating) {
-		coordinator.showBrowserForCurrentArticle()
+		coordinator?.showBrowserForCurrentArticle()
 	}
 
 }
@@ -550,7 +549,7 @@ extension WebViewController: WKScriptMessageHandler {
 			imageWasClicked(body: message.body as? String)
 		case MessageName.showFeedInspector:
 			if let feed = article?.feed {
-				coordinator.showFeedInspector(for: feed)
+				coordinator?.showFeedInspector(for: feed)
 			}
 		default:
 			return
@@ -617,9 +616,12 @@ private extension WebViewController {
 			return
 		}
 
-		coordinator.webViewProvider.dequeueWebView { webView in
+		guard let coordinator else { return }
+		coordinator.webViewProvider.dequeueWebView { [weak self] webView in
+			guard let self, self.coordinator != nil else { return }
 
-			webView.ready {
+			webView.ready { [weak self] in
+				guard let self, self.coordinator != nil else { return }
 
 				// Add the webview
 				webView.translatesAutoresizingMaskIntoConstraints = false
@@ -789,7 +791,7 @@ private extension WebViewController {
 
 		transition.originImage = image
 
-		coordinator.showFullScreenImage(image: image, imageTitle: clickMessage.imageTitle, transitioningDelegate: self)
+		coordinator?.showFullScreenImage(image: image, imageTitle: clickMessage.imageTitle, transitioningDelegate: self)
 	}
 
 	func stopMediaPlayback(_ webView: WKWebView) {
@@ -878,18 +880,18 @@ private extension WebViewController {
 	}
 
 	func prevArticleAction() -> UIAction? {
-		guard coordinator.isPrevArticleAvailable else { return nil }
+		guard coordinator?.isPrevArticleAvailable == true else { return nil }
 		let title = NSLocalizedString("Previous Article", comment: "Previous Article")
 		return UIAction(title: title, image: Assets.Images.prevArticle) { [weak self] _ in
-			self?.coordinator.selectPrevArticle()
+			self?.coordinator?.selectPrevArticle()
 		}
 	}
 
 	func nextArticleAction() -> UIAction? {
-		guard coordinator.isNextArticleAvailable else { return nil }
+		guard coordinator?.isNextArticleAvailable == true else { return nil }
 		let title = NSLocalizedString("Next Article", comment: "Next Article")
 		return UIAction(title: title, image: Assets.Images.nextArticle) { [weak self] _ in
-			self?.coordinator.selectNextArticle()
+			self?.coordinator?.selectNextArticle()
 		}
 	}
 
@@ -899,7 +901,7 @@ private extension WebViewController {
 		let title = article.status.read ? NSLocalizedString("Mark as Unread", comment: "Command") : NSLocalizedString("Mark as Read", comment: "Command")
 		let readImage = article.status.read ? Assets.Images.circleClosed : Assets.Images.circleOpen
 		return UIAction(title: title, image: readImage) { [weak self] _ in
-			self?.coordinator.toggleReadForCurrentArticle()
+			self?.coordinator?.toggleReadForCurrentArticle()
 		}
 	}
 
@@ -908,15 +910,15 @@ private extension WebViewController {
 		let title = starred ? NSLocalizedString("Mark as Unstarred", comment: "Command") : NSLocalizedString("Mark as Starred", comment: "Command")
 		let starredImage = starred ? Assets.Images.starOpen : Assets.Images.starClosed
 		return UIAction(title: title, image: starredImage) { [weak self] _ in
-			self?.coordinator.toggleStarredForCurrentArticle()
+			self?.coordinator?.toggleStarredForCurrentArticle()
 		}
 	}
 
 	func nextUnreadArticleAction() -> UIAction? {
-		guard coordinator.isNextUnreadAvailable else { return nil }
+		guard coordinator?.isNextUnreadAvailable == true else { return nil }
 		let title = NSLocalizedString("Next Unread Article", comment: "Next Unread Article")
 		return UIAction(title: title, image: Assets.Images.nextUnread) { [weak self] _ in
-			self?.coordinator.selectNextUnread()
+			self?.coordinator?.selectNextUnread()
 		}
 	}
 

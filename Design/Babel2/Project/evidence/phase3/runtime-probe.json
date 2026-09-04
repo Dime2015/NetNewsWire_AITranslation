@@ -1,0 +1,40 @@
+{
+  "schema": "babel2.phase3.runtime-probe.v1",
+  "device": "iPhone 17 / iOS 27 Simulator / 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2",
+  "release_round": "r1",
+  "launch_arguments": [],
+  "cold_launch": {
+    "result": "success",
+    "root": "Feeds visible",
+    "first_pid": 94949,
+    "trace_pid": 95376,
+    "screenshot": "cold-launch-final.png"
+  },
+  "data": {
+    "active_account_count": 1,
+    "active_account_label": "OnMyMac",
+    "feed_settings_count": 10,
+    "db_rows": {
+      "articles": 424,
+      "statuses": 424,
+      "search": 424
+    },
+    "sqlite_integrity_check": "ok",
+    "content_captured": false
+  },
+  "interaction": {
+    "status": "INTERACTION_BLOCKED",
+    "reason": "No usable simulator tap/accessibility driver was available",
+    "feed_to_article_asserted": false,
+    "data_was_added": false,
+    "deep_link_used": false
+  },
+  "source_evidence_dir": "/private/tmp/babel2-phase3-runtime-r1/",
+  "privacy": {
+    "raw_logs_copied": false,
+    "tokens_copied": false,
+    "urls_copied": false,
+    "article_body_copied": false,
+    "account_credentials_copied": false
+  }
+}

@@ -119,6 +119,22 @@ final class ArticlesTable: DatabaseTable, Sendable {
 		}
 	}
 
+	func fetchFeedArticleCountsAsync(_ feedIDs: Set<String>, _ completion: @escaping @Sendable ([String: FeedArticleCounts]) -> Void) {
+		guard !feedIDs.isEmpty else {
+			DispatchQueue.main.async {
+				completion([:])
+			}
+			return
+		}
+
+		queue.runInDatabase { database in
+			let counts = self.feedArticleCounts(feedIDs: feedIDs, database: database)
+			DispatchQueue.main.async {
+				completion(counts)
+			}
+		}
+	}
+
 	// MARK: - Fetching Last Update Dates
 
 	func fetchLastUpdateDatesAsync(_ completion: @escaping @Sendable ([String: Date]) -> Void) {
@@ -890,6 +906,44 @@ nonisolated private extension ArticlesTable {
 			starredCount: starredCount,
 			statusesCount: Self.statusesCount(database)
 		)
+	}
+
+	func feedArticleCounts(feedIDs: Set<String>, database: FMDatabase) -> [String: FeedArticleCounts] {
+		guard !feedIDs.isEmpty else {
+			return [:]
+		}
+
+		let parameters = feedIDs.map { $0 as AnyObject }
+		let placeholders = NSString.rs_SQLValueList(withPlaceholders: UInt(feedIDs.count))!
+		let sql = """
+		select feedID,
+		       count(*) as totalCount,
+		       sum(case when read=0 then 1 else 0 end) as unreadCount,
+		       sum(case when starred=1 then 1 else 0 end) as starredCount
+		from articles natural join statuses
+		where feedID in \(placeholders)
+		group by feedID;
+		"""
+
+		guard let resultSet = database.executeQuery(sql, withArgumentsIn: parameters) else {
+			return [:]
+		}
+		defer {
+			resultSet.close()
+		}
+
+		var result = [String: FeedArticleCounts]()
+		while resultSet.next() {
+			guard let feedID = resultSet.swiftString(forColumn: "feedID") else {
+				continue
+			}
+			result[feedID] = FeedArticleCounts(
+				totalCount: Int(resultSet.long(forColumn: "totalCount")),
+				unreadCount: Int(resultSet.long(forColumn: "unreadCount")),
+				starredCount: Int(resultSet.long(forColumn: "starredCount"))
+			)
+		}
+		return result
 	}
 
 	func fetchArticlesMatching(_ searchString: String, _ feedIDs: Set<String>, _ database: FMDatabase) -> Set<Article> {

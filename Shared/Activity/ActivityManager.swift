@@ -16,12 +16,32 @@ import Intents
 import UniformTypeIdentifiers
 import Images
 
+struct ActivityManagerTeardownAudit: Equatable {
+	let activitiesInvalidated: Bool
+	let feedIconObserverRemoved: Bool
+}
+
+/// Notification is not Sendable because its userInfo is intentionally
+/// untyped. The observer is installed on the main queue, but Swift still
+/// checks the closure-to-main-actor hop; this small immutable box documents
+/// that the handoff is deliberate and remains confined to that queue.
+private final class ActivityNotificationBox: @unchecked Sendable {
+	let value: Notification
+
+	init(_ value: Notification) {
+		self.value = value
+	}
+}
+
 @MainActor final class ActivityManager {
 
 	private var nextUnreadActivity: NSUserActivity?
 	private var selectingActivity: NSUserActivity?
 	private var readingActivity: NSUserActivity?
 	private var readingArticle: Article?
+	private var feedIconObserver: NSObjectProtocol?
+	private(set) var isTornDown = false
+	private(set) var teardownAudit: ActivityManagerTeardownAudit?
 
 	#if os(macOS)
 	var stateRestorationActivity: NSUserActivity {
@@ -51,16 +71,48 @@ import Images
 	#endif
 
 	init() {
-		NotificationCenter.default.addObserver(self, selector: #selector(feedIconDidBecomeAvailable(_:)), name: .feedIconDidBecomeAvailable, object: nil)
+		feedIconObserver = NotificationCenter.default.addObserver(forName: .feedIconDidBecomeAvailable, object: nil, queue: .main) { [weak self] note in
+			let boxedNote = ActivityNotificationBox(note)
+			MainActor.assumeIsolated {
+				self?.feedIconDidBecomeAvailable(boxedNote.value)
+			}
+		}
+	}
+
+	@discardableResult
+	func tearDown() -> ActivityManagerTeardownAudit {
+		if let teardownAudit {
+			return teardownAudit
+		}
+		isTornDown = true
+		// Invalidate the existing activities even after the terminal bit is set;
+		// the guard on the public mutation path prevents new donations while this
+		// explicit teardown path still cleans up the old ones.
+		invalidateReading()
+		invalidateSelecting()
+		invalidateNextUnread()
+		readingArticle = nil
+		if let feedIconObserver {
+			NotificationCenter.default.removeObserver(feedIconObserver)
+			self.feedIconObserver = nil
+		}
+		let audit = ActivityManagerTeardownAudit(
+			activitiesInvalidated: nextUnreadActivity == nil && selectingActivity == nil && readingActivity == nil && readingArticle == nil,
+			feedIconObserverRemoved: feedIconObserver == nil
+		)
+		teardownAudit = audit
+		return audit
 	}
 
 	func invalidateCurrentActivities() {
+		guard !isTornDown else { return }
 		invalidateReading()
 		invalidateSelecting()
 		invalidateNextUnread()
 	}
 
 	func selecting(sidebarItem: SidebarItem) {
+		guard !isTornDown else { return }
 		invalidateCurrentActivities()
 
 		selectingActivity = makeSelectFeedActivity(sidebarItem: sidebarItem)
@@ -78,6 +130,7 @@ import Images
 	}
 
 	func selectingNextUnread() {
+		guard !isTornDown else { return }
 		guard nextUnreadActivity == nil else { return }
 
 		nextUnreadActivity = NSUserActivity(activityType: ActivityType.nextUnread.rawValue)
@@ -99,6 +152,7 @@ import Images
 	}
 
 	func reading(feed: SidebarItem?, article: Article?) {
+		guard !isTornDown else { return }
 		invalidateReading()
 		invalidateNextUnread()
 
@@ -152,6 +206,7 @@ import Images
 	#endif
 
 	@objc func feedIconDidBecomeAvailable(_ note: Notification) {
+		guard !isTornDown else { return }
 		guard let feed = note.userInfo?[UserInfoKey.feed] as? Feed, let activityFeedId = selectingActivity?.userInfo?[ArticlePathKey.feedID] as? String else {
 			return
 		}

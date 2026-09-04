@@ -1,0 +1,153 @@
+{
+  "schema": "babel2.phase3.evidence.v1",
+  "captured_at": "2026-09-01T03:18:37+09:00",
+  "owner": "phase3_slice_impl_r1",
+  "status": "phase3_persistent_evidence_gate_closed",
+  "worktree": "/Users/wenbopan/Downloads/AI Projects/Babel app",
+  "git": {
+    "branch": "codex/reeder-classic-rebuild",
+    "head": "5db240499806bc4cae9be0b82194c838a32229de",
+    "remote_tracking": "1269bb9087d896a7a9e29f174461d60b47134575",
+    "changes": "uncommitted worktree; unrelated pre-existing user assets preserved",
+    "commit": false,
+    "push": false
+  },
+  "environment": {
+    "device_name": "iPhone 17",
+    "platform": "iOS Simulator",
+    "os_version": "27.0",
+    "os_build": "24A5423a",
+    "simulator_udid": "555E35FA-6BFE-45F0-BCFC-0819FFE48CD2",
+    "sdk": "iPhoneSimulator 27.0",
+    "xcode": "Xcode 27.0 (27A5252f)",
+    "host_description": "macOS 27.0"
+  },
+  "scope": {
+    "implemented_slice": "account-qualified Feed to Article data path",
+    "implementation_p0_p1": "0 by implementation-code review; not a whole-product claim",
+    "changed_code_files": [
+      "Modules/Babel2UI/Sources/Babel2Core/Contracts.swift",
+      "Modules/Babel2UI/Sources/Babel2Core/Snapshots.swift",
+      "Modules/Babel2UI/Tests/Babel2UITests/Babel2UITests.swift",
+      "iOS/Babel2Integration/Babel2LiveDataAdapters.swift",
+      "iOS/Babel2/Babel2DataAdapters.swift",
+      "iOS/Babel2/Babel2RootViewController.swift",
+      "iOS/Babel2/Babel2LibraryViewControllers.swift",
+      "iOS/Babel2/Babel2SceneComposition.swift",
+      "Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift",
+      "NetNewsWire.xcodeproj/project.pbxproj"
+    ],
+    "project_membership_change": "Babel2FeedReaderTests.swift added to the existing NetNewsWire-iOSTests group and Sources only"
+  },
+  "commands": {
+    "env_policy": "MERCURY_CLIENT_ID, MERCURY_CLIENT_SECRET, FEEDLY_CLIENT_ID, FEEDLY_CLIENT_SECRET, INOREADER_APP_ID, INOREADER_APP_KEY explicitly unset for every build/test command",
+    "package": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY swift test --package-path Modules/Babel2UI",
+    "targeted": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-targeted-feed-r5-dd -resultBundlePath /private/tmp/babel2-phase3-targeted-feed-r5.xcresult \"-only-testing:NetNewsWire-iOSTests/Babel2FeedReaderTests\" test",
+    "full_debug_tests": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-full-debug-tests-dd -resultBundlePath /private/tmp/babel2-phase3-full-debug-tests.xcresult test",
+    "debug_build_r3": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-debug-build-r3-dd -resultBundlePath /private/tmp/babel2-phase3-debug-build-r3.xcresult build",
+    "release_build_r1": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Release -destination id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 -derivedDataPath /private/tmp/babel2-phase3-release-build-r1-dd -resultBundlePath /private/tmp/babel2-phase3-release-build-r1.xcresult build"
+  },
+  "results": {
+    "package": {
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "source": "package-summary.json"
+    },
+    "targeted": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "source": "test-results-targeted-summary.json"
+    },
+    "full_debug_tests": {
+      "logical_total": 56,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "dynamic_device_executions": 58,
+      "source": "test-results-full-summary.json"
+    },
+    "debug_build": "success (r3)",
+    "release_build": "success (r1)",
+    "iterations": "validation-iterations.json"
+  },
+  "release_r1": {
+    "bundle_identifier": "com.wenbopan.NetNewsWire.iOS",
+    "version": "7.1.1",
+    "build": "7108",
+    "artifact": "/private/tmp/babel2-phase3-release-build-r1-dd/Build/Products/Release-iphonesimulator/NetNewsWire-iOS.app",
+    "artifact_executable_sha256": "6be10d30fbfa7581c667557bf93456d0761801cd965c64a6beb48151954ee286",
+    "artifact_bundle_tree_sha256": "4d5ee0759d97de068ba7e3669a045185c15392fa97179e6a152fb921112986a2",
+    "installed_executable_sha256": "6be10d30fbfa7581c667557bf93456d0761801cd965c64a6beb48151954ee286",
+    "installed_bundle_tree_sha256": "ede06564c9eff67a0190d7adffa4c83eee0e9aa1b51d1c460388075eb40ae61c",
+    "tree_hash_method": "sorted absolute-path/file-SHA256 records",
+    "runtime_summary": "runtime-summary.json"
+  },
+  "runtime": {
+    "evidence": "runtime-summary.json",
+    "probe": "runtime-probe.json",
+    "live_trace": "live-trace-summary.json",
+    "screenshot": "cold-launch-final.png",
+    "original_temporary_sources": {
+      "bootstatus": "/private/tmp/babel2-phase3-runtime-r1/bootstatus.log",
+      "install": "/private/tmp/babel2-phase3-runtime-r1/install.log",
+      "cold_launch": "/private/tmp/babel2-phase3-runtime-r1/cold-launch.log",
+      "live_launch": "/private/tmp/babel2-phase3-runtime-r1/live-launch.log",
+      "live_terminate": "/private/tmp/babel2-phase3-runtime-r1/live-terminate.log",
+      "live_application": "/private/tmp/babel2-phase3-runtime-r1/live-application.log",
+      "screenshot": "/private/tmp/babel2-phase3-runtime-r1/cold-launch-final.png",
+      "feed_count": "/private/tmp/babel2-phase3-runtime-r1/feed-settings-count.log",
+      "db_row_counts": "/private/tmp/babel2-phase3-runtime-r1/db-row-counts.log",
+      "integrity": "/private/tmp/babel2-phase3-runtime-r1/db-integrity.log"
+    },
+    "launch_arguments": [],
+    "cold_launch": "success; Feeds root visible",
+    "data": {
+      "active_account_label": "OnMyMac",
+      "feed_settings_rows": 10,
+      "articles_rows": 424,
+      "statuses_rows": 424,
+      "search_rows": 424,
+      "sqlite_integrity": "ok"
+    },
+    "interaction_status": "INTERACTION_BLOCKED",
+    "interaction_limitation": "no usable simulator tap/accessibility driver; no deep-link or fabricated data used",
+    "trace_status": "7 events observed; invalid because sceneConfigurationSelectionMissing; isValid=false"
+  },
+  "security": {
+    "hashes": "secret-status.json",
+    "raw_secret_content_in_package": false,
+    "raw_tokens_urls_article_content_in_package": false
+  },
+  "open_items": [
+    "real Feeds to single-source to Article interaction and body/Open Original runtime",
+    "Phase 1A acceptance and complete scene recovery",
+    "old storyboard/nib and three appex bundle/resource allowlist",
+    "physical iPhone validation",
+    "cache first-hit/validation and unbounded cache P2",
+    "same-title stable tie-break P2",
+    "later product features and visual/performance acceptance"
+  ],
+  "limitations": [
+    "persistent package stores summaries and hashes, not raw logs or xcresult bundles",
+    "runtime screenshot is a Simulator root-state proof only",
+    "the live trace has a known invalid final result and is retained as a boundary, not a pass",
+    "the worktree contains unrelated pre-existing dirty user assets"
+  ],
+  "repository_evidence": [
+    "manifest.json",
+    "runtime-summary.json",
+    "runtime-probe.json",
+    "live-trace-summary.json",
+    "cold-launch-final.png",
+    "test-results-targeted-summary.json",
+    "test-results-full-summary.json",
+    "package-summary.json",
+    "build-results.json",
+    "validation-iterations.json",
+    "secret-status.json",
+    "README.md"
+  ],
+  "original_temporary_sources": "/private/tmp/babel2-phase3-*.log and *.xcresult; see build-results.json and validation-iterations.json"
+}

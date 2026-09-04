@@ -1,0 +1,15 @@
+{
+  "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY swift test --package-path Modules/Babel2UI",
+  "exit_code": 0,
+  "result": "Passed",
+  "total_tests": 31,
+  "passed_tests": 31,
+  "failed_tests": 0,
+  "source_log": "/private/tmp/babel2-phase3-package-tests-r2.log",
+  "source_log_sha256": "d76e003562181befb79c0de8040b73a4cd61797b4fd5456f8c20610219a890be",
+  "prior_escalated_pass": {
+    "total_tests": 31,
+    "passed_tests": 31,
+    "source_log": "/private/tmp/babel2-phase3-package-tests-r1-escalated.log"
+  }
+}

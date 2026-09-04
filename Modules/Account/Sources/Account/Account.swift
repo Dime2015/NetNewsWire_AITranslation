@@ -849,6 +849,11 @@ public enum FetchType {
 		await database.fetchArticleCountsAsync(feedIDs: flattenedFeedsIDs)
 	}
 
+	/// Returns counts grouped by each feed in this account.
+	public func fetchFeedArticleCountsAsync() async -> [String: FeedArticleCounts] {
+		await database.fetchFeedArticleCountsAsync(feedIDs: flattenedFeedsIDs)
+	}
+
 	/// Returns a dictionary of feedID → latest article date for all feeds with articles.
 	public func fetchLastUpdateDates() async -> [String: Date] {
 		await database.fetchLastUpdateDates()

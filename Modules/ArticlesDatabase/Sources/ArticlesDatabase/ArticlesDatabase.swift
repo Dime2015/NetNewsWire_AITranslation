@@ -44,6 +44,19 @@ public struct ArticleCounts: Sendable {
 	public let statusesCount: Int
 }
 
+/// Counts for each feed in an account's articles database.
+public struct FeedArticleCounts: Sendable {
+	public let totalCount: Int
+	public let unreadCount: Int
+	public let starredCount: Int
+
+	public init(totalCount: Int, unreadCount: Int, starredCount: Int) {
+		self.totalCount = totalCount
+		self.unreadCount = unreadCount
+		self.starredCount = starredCount
+	}
+}
+
 @MainActor public final class ArticlesDatabase {
 	public enum RetentionStyle: Sendable {
 		case feedBased // Local and iCloud: article retention is defined by contents of feed
@@ -149,6 +162,16 @@ public struct ArticleCounts: Sendable {
 		return await withCheckedContinuation { continuation in
 			articlesTable.fetchArticleCountsAsync(feedIDs) { articleCounts in
 				continuation.resume(returning: articleCounts)
+			}
+		}
+	}
+
+	/// Returns total, unread, and starred counts grouped by feed ID in one query.
+	public func fetchFeedArticleCountsAsync(feedIDs: Set<String>) async -> [String: FeedArticleCounts] {
+		Self.logger.debug("ArticlesDatabase: \(#function, privacy: .public) \(self.accountID, privacy: .public)")
+		return await withCheckedContinuation { continuation in
+			articlesTable.fetchFeedArticleCountsAsync(feedIDs) { feedCounts in
+				continuation.resume(returning: feedCounts)
 			}
 		}
 	}

@@ -1,0 +1,61 @@
+{
+  "schema": "babel2.phase3b.ui.screenshot-inventory.v1",
+  "source": "/private/tmp/babel2-phase3b-ui-test-r2.xcresult attachments",
+  "persisted": [
+    {
+      "path": "screenshots/root.png",
+      "source_attachment": "1566427A-3C4C-4AAE-B794-8856EDF8716A.png",
+      "sha256": "0d3d29af728d5f1e3929dc51126f2679056738ab32bfb79f68cdca554a8f088c",
+      "bytes": 127150,
+      "width": 1206,
+      "height": 2622,
+      "content_boundary": "Feeds root and row count only; no article body or URL"
+    },
+    {
+      "path": "screenshots/feed.png",
+      "source_attachment": "2F8FFFBE-9EE2-40A6-A153-E7D03EB2C5A9.png",
+      "sha256": "0c1cf971dcb643820532730cb83dc3e5696ec1c6a0a55e6ba39651d302fc17e6",
+      "bytes": 17669,
+      "width": 1206,
+      "height": 390,
+      "content_boundary": "top status/header/feed name/count only; no article title, date, body, or URL",
+      "crop": {
+        "command": "python3 -c 'from PIL import Image; src=\"/private/tmp/babel2-phase3b-ui-export-r2/2F8FFFBE-9EE2-40A6-A153-E7D03EB2C5A9.png\"; dst=\"Design/Babel2/Project/evidence/phase3b-ui/screenshots/feed.png\"; im=Image.open(src); assert im.size==(1206,2622); im.crop((0,0,1206,390)).save(dst, format=\"PNG\", optimize=False)'",
+        "source_path": "/private/tmp/babel2-phase3b-ui-export-r2/2F8FFFBE-9EE2-40A6-A153-E7D03EB2C5A9.png",
+        "source_sha256": "77447546af94445f9ee7514570f2424718c3fabe2c2c291f1682298eccdc6026",
+        "source_dimensions": [1206, 2622],
+        "box_top_left_xyxy": [0, 0, 1206, 390],
+        "output_dimensions": [1206, 390],
+        "boundary_reason": "y=390 ends after the header separator and before the first article date/title"
+      },
+      "superseded": {
+        "sha256": "77447546af94445f9ee7514570f2424718c3fabe2c2c291f1682298eccdc6026",
+        "bytes": 277802,
+        "dimensions": [1206, 2622],
+        "reason": "full feed attachment included article titles/dates; retained only in temporary xcresult/export"
+      }
+    },
+    {
+      "path": "screenshots/back.png",
+      "source_attachment": "1A5279D0-4500-4423-ABE6-7DC4013F6A73.png",
+      "sha256": "fe00d3311c55cdfae76b34eeddf4ea9b3219da8ba68f0571498258d3bc69afd8",
+      "bytes": 129282,
+      "width": 1206,
+      "height": 2622,
+      "content_boundary": "restored Feeds root; no article body or URL"
+    }
+  ],
+  "not_persisted": [
+    {
+      "state": "reader",
+      "source_attachment": "BB3655CE-2C3E-485F-8912-58EADFD8E553.png",
+      "reason": "may contain article body"
+    },
+    {
+      "state": "after-browser",
+      "source_attachment": "496CA1DF-9CC7-4A3B-BFE4-AA12A6567B7E.png",
+      "reason": "may contain article body or URL"
+    }
+  ],
+  "total_persisted_bytes": 274101
+}

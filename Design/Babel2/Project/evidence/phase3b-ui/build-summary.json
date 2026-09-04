@@ -1,0 +1,144 @@
+{
+  "schema": "babel2.phase3b.ui.build-summary.v1",
+  "hash_methods": {
+    "source_fingerprint": "sorted absolute-path/file-SHA256 records: SHA-256 first, two spaces, absolute path, newline-delimited",
+    "bundle_root_relative": "for each regular file under the bundle root, use a POSIX relative path with no ./ prefix; sort paths lexicographically; record SHA256 two spaces relative/path newline; SHA-256 the concatenated records",
+    "terminal_log": "SHA-256 of terminal log bytes",
+    "xcresult_tree": "sorted per-file SHA-256 list digest retained from the recorded run"
+  },
+  "static_checks": {
+    "xcodebuild_list": {
+      "result": "passed under escalated invocation",
+      "log": "/private/tmp/babel2-phase3b-ui-static-r1-escalated.log"
+    },
+    "sandbox_attempt": {
+      "result": "environment failure",
+      "log": "/private/tmp/babel2-phase3b-ui-static-r1.log"
+    },
+    "show_build_settings_target": {
+      "result": "passed",
+      "log": "/private/tmp/babel2-phase3b-ui-show-settings-target-r1.log",
+      "asserted": [
+        "GENERATE_INFOPLIST_FILE=YES",
+        "PRODUCT_BUNDLE_IDENTIFIER=com.wenbopan.NetNewsWire-iOSUITests",
+        "no TEST_HOST",
+        "no BUNDLE_LOADER"
+      ]
+    },
+    "scheme_xml": "NetNewsWire-iOS UI Driver.xcscheme parsed successfully"
+  },
+  "build_for_testing": [
+    {
+      "round": "r1",
+      "result": "success",
+      "log": "/private/tmp/babel2-phase3b-ui-release-bft-r1.log",
+      "log_sha256": "5a0945fb4885ae727db29c989b185aaca9f37767e216dd378f50a353cb77df87",
+      "xcresult": "/private/tmp/babel2-phase3b-ui-release-bft-r1.xcresult",
+      "xcresult_file_count": 7,
+      "xcresult_bytes": 327680,
+      "xcresult_tree_sha256": "2e7c9dfb760870c1a497d1bb9777f0eb3af7651e421c08b0cbf205a38452f256",
+      "app_executable_sha256": "40094ed9a0103dab365434619619d27691c4f086a48f649952bad597ca0f4679",
+      "ui_test_executable_sha256": "54710460bcae8a2cfa91bb452b85f1e99352d06c5a358fabf9d6654218abc840"
+    },
+    {
+      "round": "r2",
+      "result": "success",
+      "log": "/private/tmp/babel2-phase3b-ui-release-bft-r2.log",
+      "log_sha256": "4a84972c88f71025266169171f97e5b1ba270f543f0fdd8fb0ac65fc359787a9",
+      "xcresult": "/private/tmp/babel2-phase3b-ui-release-bft-r2.xcresult",
+      "xcresult_file_count": 7,
+      "xcresult_bytes": 331776,
+      "xcresult_tree_sha256": "ae3be3c5d6c3e03a5eb943ee6d7a847bf73224de2c04487fe97be7dfb3c88d5e",
+      "app_executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2",
+      "app_bundle_tree_sha256": "64ef2ec590542aef494327b4d9b1de08bb6c881f0df32167ef817ac0a73e4e60",
+      "app_bundle_tree_scope": "bundle root relative; no ./ prefix; paths sorted lexicographically; each record is SHA256 two spaces relative/path newline",
+      "previous_absolute_path_digest": "61389c425994302a48793788c789e6baa7351810775ea1d3ca92e7226e4eaab4",
+      "previous_absolute_path_digest_status": "historical/path-bound and not used as current completeness proof",
+      "ui_test_executable_sha256": "326c70e95a0a15896dec3819ac2983b3d0c9804ea4bea1c7436654e778c2d7c1"
+    }
+  ],
+  "bundle_verification": {
+    "bundle_root_relative_algorithm": "regular files only; POSIX paths relative to each bundle root; no ./ prefix; paths sorted lexicographically; each record is SHA256 two spaces relative/path newline; digest is SHA-256 of concatenated records",
+    "bft_r2": {
+      "root": "/private/tmp/babel2-phase3b-ui-release-bft-r2-dd/Build/Products/Release-iphonesimulator/NetNewsWire-iOS.app",
+      "file_count": 245,
+      "relative_tree_sha256": "64ef2ec590542aef494327b4d9b1de08bb6c881f0df32167ef817ac0a73e4e60",
+      "executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2"
+    },
+    "installed_r3": {
+      "root": "/Users/wenbopan/Library/Developer/CoreSimulator/Devices/555E35FA-6BFE-45F0-BCFC-0819FFE48CD2/data/Containers/Bundle/Application/31D0A6AE-5B75-4B1B-8DD4-FC0DE3169AA1/NetNewsWire-iOS.app",
+      "file_count": 245,
+      "relative_tree_sha256": "64ef2ec590542aef494327b4d9b1de08bb6c881f0df32167ef817ac0a73e4e60",
+      "executable_sha256": "cbca39035ffc54b3f12a0ff2c2f436253396af8ed0939200f09599e47a425cd2"
+    },
+    "content_identical": true,
+    "old_absolute_path_digests": [
+      {
+        "value": "61389c425994302a48793788c789e6baa7351810775ea1d3ca92e7226e4eaab4",
+        "scope": "BFT r2 artifact absolute paths",
+        "status": "historical/path-bound; not current completeness proof"
+      },
+      {
+        "value": "0723845ea0eb10e2e952da1ad523ea62cb87b116254b18e438ca0dc1aaac18d4",
+        "scope": "installed-after-r2 absolute paths",
+        "status": "historical/path-bound; app-container path rotated; not current completeness proof"
+      }
+    ]
+  },
+  "ui_tests": [
+    {
+      "round": "r1",
+      "result": "failed",
+      "classification": "UI_SELECTOR_TIMEOUT",
+      "console_actual_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "log": "/private/tmp/babel2-phase3b-ui-test-r1.log",
+      "log_sha256": "2d829a517c36549693ee6676bdca5e715271fbf630b14ee7fdf7bbdc13d792b5",
+      "summary": "ui-test-r1-summary.json",
+      "summary_sha256": "bbca99b5833848964d2a9e6e601fa5582a56b56560869d193e9925563e46badc",
+      "xcresult": "/private/tmp/babel2-phase3b-ui-test-r1.xcresult",
+      "xcresult_file_count": 1320,
+      "note": "generic table lookup failure before stable identifiers; the persisted summary omits Xcode's synthetic test identifier URL; raw large xcresult intentionally not copied"
+    },
+    {
+      "round": "r2",
+      "result": "passed",
+      "console_actual_count": 1,
+      "passed": 1,
+      "failed": 0,
+      "log": "/private/tmp/babel2-phase3b-ui-test-r2.log",
+      "log_sha256": "e70990702824deed7597ac6d4fce5dfa285d735f705263f0f3d48dfe493251d4",
+      "summary": "ui-test-r2-summary.json",
+      "summary_sha256": "d91133b9e05409206ceaf357b1eb230747342aab206bf99445136c2d4456fa9a",
+      "xcresult": "/private/tmp/babel2-phase3b-ui-test-r2.xcresult",
+      "xcresult_file_count": 58,
+      "xcresult_bytes": 1638400,
+      "xcresult_tree_sha256": "09224a5d2c7dbad037ff6b67fa7994e13cd678fb2d8c1d3b82cda1bf406b8681"
+    },
+    {
+      "round": "r3",
+      "result": "passed",
+      "console_actual_count": 1,
+      "passed": 1,
+      "failed": 0,
+      "log": "/private/tmp/babel2-phase3b-ui-test-r3.log",
+      "log_sha256": "62aab63fc982f49d7f4eb836005f99342267b7d10a18eb766e72dda09f4f484e",
+      "summary": "ui-test-r3-summary.json",
+      "summary_sha256": "b2da23b86d194e7defe67928a9a40da43e05d0ad8e3d00285ce8923abaa7b716",
+      "xcresult": "/private/tmp/babel2-phase3b-ui-test-r3.xcresult",
+      "xcresult_file_count": 58,
+      "xcresult_bytes": 2129920,
+      "xcresult_tree_sha256": "a88b7fd15875385f15d0b4316ad2c1b86b6b4d4dee40bb96622a331b4a7ed252",
+      "note": "same r2 build-for-testing artifact; installed executable remained equal to the artifact"
+    }
+  ],
+  "prior_phase3_matrix": {
+    "package": "31/31",
+    "targeted_unit": "4/4",
+    "full_debug": "56/56 logical",
+    "debug_build": "success r3",
+    "release_build": "success r1",
+    "source": "../phase3/{package-summary,test-results-targeted-summary,test-results-full-summary,build-results}.json"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "iterations": [
+    {
+      "name": "targeted-feed-r1",
+      "result": "invalid evidence",
+      "reason": "xcodebuild footer succeeded but console said Executed 0 tests and the new source was not compiled",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r1.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r1.xcresult"
+    },
+    {
+      "name": "targeted-feed-r2",
+      "result": "environment failure",
+      "reason": "sandbox/CoreSimulator and GitHub DNS dependency resolution failure",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r2.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r2.xcresult"
+    },
+    {
+      "name": "targeted-feed-r2-escalated",
+      "result": "compile failure",
+      "reason": "Swift 6 isolation errors in test doubles",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r2-escalated.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r2-escalated.xcresult"
+    },
+    {
+      "name": "targeted-feed-r3",
+      "result": "compile failure",
+      "reason": "optional ObjC delegate call errors",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r3.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r3.xcresult"
+    },
+    {
+      "name": "targeted-feed-r4",
+      "result": "compile failure",
+      "reason": "optional ObjC delegate call errors retained before the concrete delegate call fix",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r4.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r4.xcresult"
+    },
+    {
+      "name": "targeted-feed-r5",
+      "result": "success",
+      "reason": "4/4 tests executed and passed",
+      "log": "/private/tmp/babel2-phase3-targeted-feed-r5.log",
+      "xcresult": "/private/tmp/babel2-phase3-targeted-feed-r5.xcresult"
+    },
+    {
+      "name": "debug-build-r1",
+      "result": "compile failure",
+      "reason": "three unique defer guard-return errors in Library/Root async cleanup",
+      "log": "/private/tmp/babel2-phase3-debug-build-r1.log",
+      "xcresult": "/private/tmp/babel2-phase3-debug-build-r1.xcresult"
+    }
+  ],
+  "raw_sources_are_temporary_only": true
+}

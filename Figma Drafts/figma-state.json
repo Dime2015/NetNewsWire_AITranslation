@@ -1,0 +1,421 @@
+{
+  "runId": "babel-reeder-classic-batch-01",
+  "fileKey": "0kFsVs9DLbE7Um96yrlBKg",
+  "fileUrl": "https://www.figma.com/design/0kFsVs9DLbE7Um96yrlBKg",
+  "phase": "feed-source-hero-existing-pipeline-visualized",
+  "step": "awaiting-user-visual-review-and-code-sync",
+  "entities": {
+    "pages": {
+      "00 · Foundations": "0:1",
+      "01 · Components": "11:2",
+      "02 · Screens": "11:3",
+      "03 · Settings": "110:299",
+      "04 · Interaction & States": "138:2"
+    },
+    "collections": {
+      "Babel Primitives": "VariableCollectionId:5:2",
+      "Babel Color · Light": "VariableCollectionId:5:3",
+      "Babel Color · Dark": "VariableCollectionId:5:4",
+      "Babel Metrics": "VariableCollectionId:5:5"
+    },
+    "variables": {
+      "count": 51
+    },
+    "styles": {
+      "Babel/Popover/Thick Glass": "S:ce4b7cfe69f5322a207fa23c0d7c4f4a96444753,"
+    },
+    "components": {
+      "Status Bar / iPhone": "16:2",
+      "Metadata Label": "16:15",
+      "Navigation Bar / Home": "81:18",
+      "Navigation Bar / Library": "17:2",
+      "Navigation Bar / Feed": "18:2",
+      "Navigation Bar / Reader": "18:15",
+      "Home Mark": "82:18",
+      "Home Account Card": "83:18",
+      "Navigation Bar / Settings Root": "109:28",
+      "Navigation Bar / Settings Back": "109:33",
+      "Navigation Bar / Settings Editor": "115:28",
+      "Settings Row / Disclosure": "110:28",
+      "Settings Row / Value": "110:34",
+      "Settings Row / Toggle": "110:48",
+      "Settings Section Header": "110:281",
+      "Settings Row / Action": "110:283",
+      "Settings Choice Row": "110:291",
+      "Settings Text Field": "110:298",
+      "Settings Select Row": "221:41",
+      "Settings Popover Option": "221:57",
+      "Folder Row": "19:12",
+      "Feed Row": "19:23",
+      "Article Row": "20:32",
+      "Translation Toggle": "43:19",
+      "Translation Toggle / Translating": "117:28",
+      "Reading Mode Icon": "92:22",
+      "All Filter Icon": "99:39",
+      "Reader Toolbar": "21:5",
+      "Filter Pill": "28:44",
+      "Feed Toolbar": "22:35",
+      "Reader Compact Header": "143:73",
+      "Empty State": "25:8",
+      "Empty State / Confused Bear Icon": "241:41"
+    },
+    "screens": {
+      "01 · Home": "86:204",
+      "02 · Library": "22:36",
+      "03A · Feed / Hero / Expanded": "22:37",
+      "03B · Feed / Hero / Transition 50%": "244:541",
+      "03C · Feed / Hero / Compact": "244:552",
+      "03D · Feed / No Hero Fallback": "244:563",
+      "04A · Reader / Original": "22:38",
+      "04B · Reader / Translating": "117:263",
+      "04C · Reader / Translated": "117:317",
+      "04D1 · Reader / Short / No Sticky Header": "180:370",
+      "04D2 · Reader / Long / Shared Title Transition 50%": "180:424",
+      "04D3 · Reader / Long / Pinned / Scroll Down": "143:444",
+      "04D4 · Reader / Long / Pinned / Scroll Up": "180:520",
+      "04D5 · Reader / Long / Pinned / Scroll Down Again": "227:675",
+      "Settings / Home": "110:300",
+      "Settings / Accounts & Sync": "110:320",
+      "Settings / Subscriptions & Discovery": "110:340",
+      "Settings / Timeline": "110:360",
+      "Settings / Reader": "110:380",
+      "Settings / Translation": "110:400",
+      "Settings / Appearance & Language": "110:420",
+      "Settings / Notifications": "110:440",
+      "Settings / Support & Diagnostics": "110:460",
+      "Settings / Account Detail": "110:480",
+      "Settings / Add Account": "110:500",
+      "Settings / Discovery API Keys": "110:520",
+      "Settings / Article Theme": "110:540",
+      "Settings / Translation Model": "110:560",
+      "Settings / Translation API": "110:580",
+      "Settings / Color Palette": "110:600",
+      "Settings State / Timeline Sort Popover": "223:590",
+      "Settings State / Timeline Group Popover": "224:632",
+      "Settings State / Reader Open Links Popover": "224:1369",
+      "Settings State / Appearance Mode Popover": "224:1482",
+      "Settings State / Accent Color Popover": "224:1538",
+      "Settings State / Interface Language Popover": "224:1609"
+    },
+    "actionNodes": {
+      "Home Navigation / Account Toggle": "81:19",
+      "Home Navigation / Add": "81:22",
+      "Library Navigation / Loading Disc": "17:3",
+      "Library Navigation / Loading Arrow": "54:18",
+      "Feed Navigation / Loading Disc": "18:5",
+      "Feed Navigation / Loading Arrow": "55:18",
+      "Feed Navigation / Search": "41:16",
+      "Reader Navigation / Share Long Image": "18:25",
+      "Feed Toolbar / Translation Toggle": "43:213",
+      "Reader Toolbar / Translation Toggle": "21:17",
+      "Settings / Translation Model Disclosure": "231:915",
+      "Settings / Translation Model Refresh": "231:889"
+    },
+    "interactionSections": {
+      "Overview": "138:3",
+      "Reader / Scrolled Contract": "146:2",
+      "Feed Filters / In-place Contract": "161:35",
+      "Control Behavior Matrix": "166:112"
+    },
+    "layoutContracts": {
+      "Top Navigation": {
+        "frameY": 59,
+        "controlCenterY": 81,
+        "slotCentersX": [32, 201, 290, 330, 370],
+        "rule": "A semantic action keeps the same slot across screens; unused slots remain empty."
+      },
+      "Bottom Toolbar": {
+        "frame": [0, 802, 402, 72],
+        "controlCenterY": 826,
+        "slotCentersX": [32, 104, 201, 290.5, 362],
+        "rule": "Related actions and selected-state pills remain centered on their family slot; absent actions leave a blank slot.",
+        "visualScale": {
+          "controlFrame": [24, 24],
+          "circle": [16, 16],
+          "star": [16, 15.2],
+          "next": [18, 9],
+          "listMaxWidth": 18,
+          "lineThickness": 2.2,
+          "translationType": [13, 7],
+          "selectedPills": {
+            "Unread": [78, 26],
+            "Starred": [90, 26],
+            "All": [68, 26]
+          }
+        },
+        "implementationNote": "Visible glyph size is intentionally smaller than the interaction target. Production must preserve at least a 44 pt hit area without enlarging the artwork."
+      },
+      "Reader Article Header": {
+        "contentFrameY": 117,
+        "dateLocalY": 26,
+        "titleLocalY": 55,
+        "bylineLocalY": 180,
+        "topWhitespaceReduction": "78 pt to 26 pt (one third)"
+      },
+      "Reader Translation Motion": {
+        "timelineNode": "117:263",
+        "durationSeconds": 3,
+        "sequence": [
+          "Intro skeleton exits; intro text fades and rises 8 pt",
+          "Quote part 1 skeleton exits; text fades and rises 8 pt",
+          "Quote part 2 skeleton exits; text fades and rises 8 pt",
+          "Closing skeleton exits; text fades and rises 8 pt"
+        ],
+        "rule": "Skeleton and translated text crossfade by paragraph so the article geometry remains stable; no global spinner or full-screen replacement."
+      },
+      "Reader Scrolled Header": {
+        "screenNodes": {
+          "shortNoSticky": "180:370",
+          "sharedTitleTransition50": "180:424",
+          "pinnedControlsHidden": "143:444",
+          "pinnedControlsRevealed": "180:520",
+          "pinnedControlsHiddenAgain": "227:675"
+        },
+        "statusBarSurface": "Fully opaque BabelPalette.background at alpha 1 from the physical top edge through safeAreaInsets.top. No Liquid Glass, blur, translucency, scroll-edge effect, or article underlap in any Reader state.",
+        "componentSet": "143:73",
+        "sampleVariants": {
+          "0%": "150:43",
+          "25%": "143:43",
+          "60%": "140:28",
+          "100%": "143:58"
+        },
+        "rule": "After the large title and byline leave the viewport, pin a compact header below the status area. Circular-clip the runtime feed icon and draw one uninterrupted clockwise progress arc from 12 o'clock for every continuous p in [0,1]. Samples are QA checkpoints, not discrete runtime modes. After pinning, 12 pt of upward travel reveals the top controls and bottom toolbar together; 12 pt of downward travel hides both over 180 ms linearly. Ignore small reversals and boundary overscroll. Keep the compact identity fixed and preserve the reader route and scroll position."
+      },
+      "Feed Filter Interaction": {
+        "componentSet": "22:35",
+        "libraryVariants": ["22:7", "29:8", "29:23"],
+        "feedVariants": ["22:18", "146:1013", "146:1026"],
+        "rule": "Starred, Unread, and All are mutually exclusive in-place Change To states with fixed slots and 44 pt hit areas. Selecting a filter replaces the current collection and resets the list to top without push navigation, a card, menu, modal, or sheet."
+      },
+      "Feed Source Hero": {
+        "screenNodes": {
+          "expanded": "22:37",
+          "transition50": "244:541",
+          "compact": "244:552",
+          "noImageFallback": "244:563"
+        },
+        "statusBarSurface": "Fully opaque BabelPalette.background at alpha 1. The source image begins below screen y = 59 and never underlaps status items.",
+        "geometry": {
+          "expandedHero": [0, 59, 402, 169],
+          "transitionHero": [0, 59, 402, 132],
+          "compactHeader": [0, 59, 402, 99],
+          "toolbar": [0, 802, 402, 72]
+        },
+        "rule": "Migrate the existing TimelineFeedHeader implementation; do not create a second resolver or fallback system from Figma. Preserve FeedHeroIconLoader -> FeedIconDownloader -> FaviconDownloader, caching, suitability analysis, low-resolution softening, dominant-color fallback, paper wash, vertical fade, and scroll interpolation. The New York Times image in Figma is only a visual specimen of enlarge + aspectFill crop + moderate dimming while keeping the source identifiable. While the title overlaps artwork, keep title glyphs effect-free and render the two-layer Hero Title Readability Feather behind the full title area; its luminance change must decay continuously to transparent with no detectable component boundary. Move and fade it with the title, then remove it in the compact paper-only state. Keep navigation slots, filter state, article-row instances, and bottom toolbar stable."
+      },
+      "Translation Model Catalog": {
+        "screenNode": "110:560",
+        "scrollViewport": "231:887",
+        "refreshButton": "231:889",
+        "entryDisclosure": "231:915",
+        "rule": "Push the dedicated editor. Refresh is first, followed by a dynamic popularity Top 10 and vendor sections with repository logos and exactly three representative models each. Selection remains pending until the navigation checkmark saves it."
+      }
+    }
+  },
+  "knownLimitations": [
+    "Figma MCP advertises SF Pro but renders it blank; Batch 01 uses Inter as a visible Figma fallback. Production iOS remains SF Pro.",
+    "The geometric B on 01 · Home is an explicitly temporary brand placeholder, not an approved final Babel mark.",
+    "Feed thumbnails are neutral 70pt placeholders; reference-image extraction remains pending.",
+    "Full dark-mode master screens are scheduled for Batch 02.",
+    "Figma motion is the visual interaction contract only; the production Swift/SwiftUI translation stream is not implemented in this design batch.",
+    "The available Figma motion API exposes keyframes and timeline duration but not loop-mode writes. Figma's exported preview loops; production behavior must play once and remain in the Translated state."
+    ,"The Reader Compact Header currently uses the existing circular T source mark as a runtime-feed-icon placeholder. Production must load the article feed's real favicon, crop it to a circle, and keep the progress ring independent and concentric.",
+    "The Feed hero uses a New York Times feed-icon crop from the locked Reeder capture as a visual specimen. Production must use the runtime image already resolved by the existing TimelineFeedHeader pipeline, not this embedded sample."
+  ],
+  "pendingValidations": [
+    "User visual review in Figma",
+    "Same-device comparison against the locked Reeder Classic captures",
+    "Replace the temporary geometric B with the approved Babel brand mark without changing the Home layout contract",
+    "Replace thumbnail placeholders with extracted reference-safe assets",
+    "User review of the three-second translation pacing and paragraph-level handoff",
+    "User visual review of the circular feed icon scale and continuous reading-progress ring",
+    "Production sync for the new in-place Feed filter and Folder Change To contracts",
+    "Production UI migration that reuses the existing TimelineFeedHeader image pipeline and scroll-driven expanded-to-compact interpolation"
+  ],
+  "reviewCorrections": {
+    "2026-08-30-round-01": [
+      "Feed Toolbar now includes Unread, Starred, and All selected variants; all visible controls share an exact vertical centerline.",
+      "Superseded by round 02: this pass placed the Folder Row chevron after the label before the direct Reeder screenshot was rechecked.",
+      "Library and Feed navigation bars use a smaller counterclockwise refresh glyph with a lighter backing disc.",
+      "Article Row uses fixed-height truncating text regions: source 10 pt, time 11 pt, title 15.5 pt at 39 pt high, and preview 14.5 pt at 19 pt high. All four variants remain within the 99 pt row boundary."
+    ],
+    "2026-08-30-round-02": [
+      "Folder Row now follows the locked Reeder screenshot order: chevron, folder label, then the unread count in the stable right column.",
+      "The Feed toolbar trailing Search action was replaced with a Translate Titles action using a dedicated languages glyph.",
+      "Search moved to the Feed navigation bar immediately left of More; both controls share a 22 pt vertical centerline with a 16 pt visual gap.",
+      "The full Library and Feed masters were screenshot-validated after component propagation."
+    ],
+    "2026-08-30-round-03": [
+      "Translation Toggle is now the single translation-control source for the entire Figma app, with Display=Translation and Display=Original variants.",
+      "Display=Translation shows bold 译 with small 原文; Display=Original shows bold 原 with small 翻译.",
+      "Feed and Reader toolbars both use instances of the same Translation Toggle component set; the prior standalone languages glyph was removed.",
+      "Both master screens were screenshot-validated and the Screens page contains zero remaining Translate Titles glyph nodes."
+    ],
+    "2026-08-30-round-04": [
+      "The rejected Bezier approximation for the loading arrow was removed. Both navigation components now use an SVG circular arc with a fixed 5 pt radius, so the ring curvature is mathematically constant.",
+      "The loading backing disc is a true 24 × 24 pt ellipse at 47% opacity; the 16 × 16 pt arrow frame is centered inside it and uses a 2.2 pt round-capped arc plus a filled upper-left arrowhead.",
+      "Library and Feed use identical arc geometry and semantic primary-ink binding. Their complete 402 × 874 pt master screens were screenshot-validated after propagation."
+    ],
+    "2026-08-30-round-05": [
+      "Removed the duplicate trailing Folders section chevron from the Library master screen.",
+      "Folder expansion and collapse affordances now appear only to the left of each folder name, matching the locked Reeder hierarchy.",
+      "The full 402 × 874 pt Library master was screenshot-validated after removal; folder rows, unread counts, and the bottom toolbar did not move."
+    ],
+    "2026-08-30-round-06": [
+      "All Feed Toolbar variants and Reader Toolbar now share a 72 pt frame at screen y = 802, with every visible control centered at screen y = 826.",
+      "Bottom action-family slots are fixed at x = 32, 104, 201, 290.5, and 362. Selected Unread, Starred, and All pills remain centered on their semantic slot; unavailable actions leave the slot empty.",
+      "Library, Feed, and Reader navigation controls now share screen y-center = 81. Structural top slots are x = 32, 201, 290, 330, and 370, with unused slots intentionally blank.",
+      "The Library title and sync subtitle moved down 7 pt to preserve breathing room under the newly aligned top controls without moving the list.",
+      "A programmatic component audit passed 29 of 29 expected control centers; a screen-level audit passed 10 of 10 frame and article-header coordinates."
+    ],
+    "2026-08-30-round-07": [
+      "Reader article-header whitespace was reduced from 78 pt to 26 pt, exactly one third of the previous value.",
+      "Article date, title, byline, intro, blockquote, and closing paragraph moved upward together by 52 pt; fixed navigation and bottom toolbar frames did not move.",
+      "The updated 402 × 874 pt Reader screen was screenshot-checked: the title/byline no longer sit excessively low, and the following article content remains non-overlapping."
+    ],
+    "2026-08-30-round-08": [
+      "Reduced bottom-toolbar artwork without changing the 72 pt bar, fixed slot centers, or interaction-frame intent.",
+      "Canonical visible sizes are now 16 pt circles, approximately 16 pt stars, an 18 × 9 pt Next chevron, and list/reading controls capped at 18 pt wide with 2.2 pt lines.",
+      "Translation Toggle visible typography was reduced from 15/8 pt to 13/7 pt while its shared 58 × 44 pt component frame remains unchanged.",
+      "Selected pills were reduced to Unread 78 × 26 pt, Starred 90 × 26 pt, and All 68 × 26 pt; each remains centered on its prior semantic slot.",
+      "All four Feed/Library toolbar states, Reader Toolbar, and all three master screens were screenshot-checked. The final compact-geometry audit passed 34 of 34 checks."
+    ],
+    "2026-08-30-round-09": [
+      "Added 01 · Home from Reeder screenshots/4.PNG and renumbered the existing masters to 02 · Library, 03 · Feed, and 04 · Reader without changing their internal layouts.",
+      "Created reusable Navigation Bar / Home and Home Account Card components, and reused the existing Status Bar and compact Library/Unread Feed Toolbar.",
+      "The Reeder cube was deliberately not copied. Home Mark now contains a restrained geometric B monogram that is documented as a temporary placeholder for later brand exploration.",
+      "The Home composition uses a 68 pt mark region, a 182 pt hairline, a 382 × 93 pt account card at (10, 276), and the canonical 72 pt toolbar at y = 802.",
+      "The complete Home master was screenshot-checked. A final audit passed all 10 expected canvas and section coordinates with zero overflow nodes."
+    ],
+    "2026-08-30-round-10": [
+      "Reduced the Home Account Card cloud vector from 43 × 29 pt to 36 × 24.28 pt and centered it inside the unchanged 44 × 44 pt icon frame.",
+      "The scaled cloud stroke now has approximately 2.53 pt horizontal and 8.40 pt vertical render padding, eliminating the clipped left and right edges.",
+      "The account card, text positions, Home composition, and bottom toolbar did not move. Both the component and full Home master were screenshot-checked after propagation."
+    ],
+    "2026-08-30-round-11": [
+      "Separated two previously conflated semantics: All Filter Icon and Reading Mode Icon are now independent component sets.",
+      "Library and Feed All controls use the Reeder-style three left-aligned descending lines in 24 pt Toolbar and 15 pt Compact variants, including the compact All selected pill.",
+      "The rounded reading-page icon with three optically spaced manuscript lines appears only in the Reader Toolbar on the article-content screen.",
+      "All toolbar slot centers, selected-pill dimensions, and interaction-frame contracts remain unchanged."
+    ],
+    "2026-08-30-round-12": [
+      "Reader Navigation now exposes Share Long Image as the primary trailing action instead of the generic share action.",
+      "A normal tap generates and shares the current article as a long image; a long press opens the standard iOS share sheet.",
+      "The 24 pt glyph combines a simplified image frame with a circular upload arrow, following the supplied reference while reducing detail for toolbar-scale legibility.",
+      "The action remains centered at screen x = 370 and y = 81; the old generic share vector was removed and the Reader screen was screenshot-validated after component propagation."
+    ],
+    "2026-08-30-round-13": [
+      "Added a dedicated 03 · Settings page containing one Settings Home, eight first-level category pages, and nine necessary second-level editing pages.",
+      "The eight categories are Accounts & Sync, Subscriptions & Discovery, Timeline, Reader, Translation, Appearance & Language, Notifications, and Support & Diagnostics.",
+      "Settings content is mapped from the current iOS source rather than copied from Reeder: AppDefaults, account providers, OPML actions, discovery credentials, article themes, translation configuration, accent palette, interface language, logs, statistics, help, and About.",
+      "Five deferred-save editors use a dedicated Cancel / Save navigation component; instant actions and immediate-choice pages use the ordinary Back navigation.",
+      "A final structural audit passed 18 of 18 screen frames, 8 of 8 home category entrances, zero overflowing descendants, zero font-family mismatches, and zero editor-navigation assignment errors."
+    ],
+    "2026-08-30-round-14": [
+      "Split the Reader into three explicit 402 × 874 pt states: 04A Original, 04B Translating, and 04C Translated.",
+      "Original and Translated share the approved Reader geometry and toolbar slots. Their shared Translation Toggle renders 原 / 翻译 and 译 / 原文 respectively.",
+      "Added Display=Translating to the shared Translation Toggle. It renders 译 / 生成中 without introducing a second translation-control design.",
+      "The Translating screen uses paragraph-shaped monochrome skeletons and a three-second Figma motion timeline. Four content segments progressively crossfade from skeleton to translated text; entering text also rises 8 pt to avoid a hard replacement.",
+      "Exported the actual Figma timeline as a 3.2-second video and sampled five frames. The sampled sequence shows stable article geometry, intentional short crossfades, complete skeleton removal, and no full-page flicker or content jump.",
+      "Figma reports the preview timeline as looped and the current API cannot write loop mode. This is an authoring-tool limitation, not the intended product behavior: production plays the transition once and remains on 04C Translated."
+    ],
+    "2026-08-30-round-15": [
+      "Replaced the prior three-line descending All Filter Icon with four equal-length horizontal lines, following the supplied reference.",
+      "Both Size=Toolbar and Size=Compact variants use round caps and remain optically centered in their unchanged 24 × 24 pt and 15 × 15 pt frames.",
+      "Toolbar geometry is four 15 pt lines at 1.8 pt weight; Compact geometry is four 9.375 pt lines at 1.125 pt weight. Each variant passed an exact four-segment and equal-length audit.",
+      "The unselected All action and the selected All pill updated through shared instances. Home, Library, Feed, and all four Feed Toolbar states were screenshot-checked with no slot or baseline movement."
+    ],
+    "2026-08-30-round-16": [
+      "Reduced the visual prominence of API configuration fields on Discovery API Keys and Translation API without changing field geometry or typography.",
+      "Added color/background/input semantics to the Light and Dark color collections. Light aliases warm/100; Dark aliases neutral/900; both expose FRAME_FILL and SHAPE_FILL scopes with iOS syntax BabelPalette.inputBackground.",
+      "Settings Text Field Normal and Secure variants now bind to the dedicated Light input-background semantic while retaining the existing 0.5 pt hairline, 8 pt radius, 362 × 68 pt frame, and text-color bindings.",
+      "All five field instances across the two API configuration pages propagated from the shared component. Both full pages and the component set were screenshot-checked after the final color adjustment."
+    ],
+    "2026-08-30-round-17": [
+      "Added 04 · Interaction & States with a global behavior legend, explicit Reader scrolled-state contract, interactive Feed filter states, and a normative control behavior matrix.",
+      "Added 04D · Reader / Scrolled. The large article title/byline have left the viewport; a compact sticky header keeps the circular feed icon, source, and one-line article title visible while the bottom toolbar is hidden.",
+      "Added Reader Compact Header sample variants at 0%, 25%, 60%, and 100%. Production progress is explicitly continuous p in [0,1], rendered as one uninterrupted clockwise arc from 12 o'clock rather than discrete states or dashed segments.",
+      "The feed icon inside the compact header is enlarged to 42 pt, circular-clipped, and concentrically wrapped by the independent progress ring. The current T artwork is a runtime favicon placeholder.",
+      "Completed Feed Toolbar with Feed/Starred and Feed/All variants. All six Library/Feed states use fixed control slots, explicit labels, hidden duplicate selected icons, and 44 pt prototype hit targets wired only with CHANGE_TO.",
+      "Folder Row collapsed and expanded variants now prototype through in-place CHANGE_TO interactions with preserved route and scroll position.",
+      "Prototype inspection confirmed every filter and folder destination uses CHANGE_TO; no navigation or presentation actions were added. Component, screen, and interaction-section screenshots were visually checked after propagation."
+    ],
+    "2026-08-30-round-18": [
+      "Split Feed presentation into expanded hero, 50% transition, compact sticky header, and an exact no-image fallback while preserving one route and one article list.",
+      "The expanded hero begins below the opaque status region, retains the fixed navigation slots, centers the source mark, and anchors the feed title near the lower image edge.",
+      "The transition checkpoint linearly migrates source identity and list origin; the compact checkpoint removes the image and restores the warm semantic background.",
+      "Superseded by round 19: this pass incorrectly over-specified a new eligibility and fallback contract instead of deferring to the existing production pipeline.",
+      "All four frames were screenshot-checked at 402 × 874 pt with the same article-row instances and Feed Toolbar fixed at y = 802."
+    ],
+    "2026-08-30-round-19": [
+      "Replaced the nearly black hero prototype with an enlarged New York Times feed-icon crop from the locked Reeder capture, keeping its mark and light-gray source texture visible under moderate dimming and a bottom paper fade.",
+      "Added a Figma handoff note that directs coding to reuse TimelineFeedHeader, FeedHeroIconLoader, FeedIconDownloader, and FaviconDownloader rather than rebuilding image selection or fallback logic.",
+      "Expanded, 50 percent transition, and compact screenshots were visually checked; the existing article list and chrome geometry were preserved."
+    ],
+    "2026-08-30-round-20": [
+      "Superseded by round 21: this pass incorrectly attached shadows to individual title glyphs."
+    ],
+    "2026-08-30-round-21": [
+      "Superseded by round 22: the title-width rounded plate still exposed a UI-component boundary and looked like a label."
+    ],
+    "2026-08-30-round-22": [
+      "Removed the rounded title plate, backdrop surface, and box shadow, replacing them with two boundaryless Hero Title Readability Feather layers.",
+      "The low-opacity warm-paper core and larger layer-blurred field decay continuously into the hero image without a visible edge, corner silhouette, card fill, or per-glyph effect.",
+      "Expanded and transition screenshots were visually checked; compact remains feather-free and the existing list and chrome geometry remain unchanged."
+    ]
+  },
+  "completedSteps": [
+    "P0.a",
+    "P0.b",
+    "P0.c",
+    "P0.d",
+    "P0.e",
+    "P0.f",
+    "P1.tokens-and-text-styles",
+    "P2.local-components",
+    "P3.library-master",
+    "P3.feed-master",
+    "P3.reader-master",
+    "P4.figma-screenshot-validation",
+    "P4.feedback-round-01-toolbar-folder-loader-article-fixes",
+    "P4.feedback-round-02-folder-search-translate-fixes",
+    "P3.translation-toggle-two-state-component",
+    "P4.feedback-round-03-translation-control-unification",
+    "P4.feedback-round-04-true-circle-loading-indicator",
+    "P4.feedback-round-05-remove-duplicate-folders-chevron",
+    "P4.feedback-round-06-unified-top-and-bottom-control-slots",
+    "P4.feedback-round-07-compress-reader-article-header-whitespace",
+    "P4.feedback-round-08-reduce-bottom-toolbar-visual-scale",
+    "P3.home-navigation-mark-account-card-components",
+    "P4.feedback-round-09-reeder-4-root-home-screen",
+    "P4.feedback-round-10-home-cloud-icon-padding",
+    "P3.reading-mode-icon-toolbar-and-compact-component",
+    "P4.feedback-round-11-separate-all-filter-and-reader-mode-icons",
+    "P4.feedback-round-12-reader-long-image-share",
+    "P5.settings-reusable-components",
+    "P5.settings-home-eight-categories",
+    "P5.settings-eight-first-level-pages",
+    "P5.settings-nine-secondary-editors",
+    "P5.settings-structural-and-screenshot-validation",
+    "P6.reader-three-content-states",
+    "P6.reader-translating-toggle",
+    "P6.reader-skeleton-streaming-motion",
+    "P6.reader-motion-export-validation",
+    "P4.feedback-round-15-four-equal-line-all-filter-icon",
+    "P4.feedback-round-16-subdued-api-input-surfaces",
+    "P7.interaction-and-states-page",
+    "P7.reader-scrolled-compact-header",
+    "P7.reader-continuous-progress-contract",
+    "P7.feed-filter-six-state-component-prototype",
+    "P7.folder-expand-collapse-prototype",
+    "P7.control-behavior-matrix",
+    "P4.feedback-round-17-interaction-contract-and-reader-progress",
+    "P8.feed-source-hero-four-states",
+    "P8.feed-source-hero-structural-and-screenshot-validation",
+    "P4.feedback-round-18-feed-source-hero-collapse-and-fallback",
+    "P4.feedback-round-19-feed-hero-existing-pipeline-visualization",
+    "P4.feedback-round-20-feed-hero-title-readability-shadow",
+    "P4.feedback-round-21-feed-hero-title-readability-plate",
+    "P4.feedback-round-22-feed-hero-title-readability-feather"
+  ]
+}
