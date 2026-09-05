@@ -128,6 +128,6 @@ Phase 3B 本轮已应用截图隐私边界和 bundle tree digest 的 P1 evidence
 
 修复后 fresh 证据：Babel2UI package tests 32/32；全量 Debug iOS tests `xcresulttool` summary `failedTests:0`、`passedTests:62`（console XCTest 44 + Swift Testing 18）；Debug build 随 test 一并 `BUILD SUCCEEDED`。环境为 iPhone 17 / iOS 27 Simulator `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`，六个第三方 secret 环境变量本轮全程 unset。
 
-提交状态：<COMMIT_SHA_PLACEHOLDER>；未推送，`origin/codex/reeder-classic-rebuild` 仍为 `1269bb9087d896a7a9e29f174461d60b47134575`。
+提交状态：本地已提交 `3dfd7188289fe06e770dc1408b8eaf39706dcc98`（`git rev-parse HEAD` 核实；20 files changed, 902 insertions(+), 228 deletions(-)），父提交为 `3e4f5e7f8f20af2737d375102b6ec420ba84c206`；未推送，`origin/codex/reeder-classic-rebuild` 仍为 `1269bb9087d896a7a9e29f174461d60b47134575`。提交后 `git status --short --branch` 确认工作树干净（无残留改动）。
 
 仍未关闭：`evidence/stabilize/` 截图未经独立复核，不构成模拟器或真机验收证据；REQUIREMENTS 中 Feed/Timeline header 无空带、pFilter selection pill/列表/计数同 progress 两行要求的动效同步语义本次未触及，维持"未开始"；M1 推送授权与 Phase 1A 剩余 A0–A15 证据缺口独立于本节，状态仍以上方 Phase 2A 记录与 HANDOFF.md 为准。
