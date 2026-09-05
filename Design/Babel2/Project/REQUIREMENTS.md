@@ -36,7 +36,7 @@
 ## 当前合同状态
 
 - 产品/运动合同 amendment 已在 `1269bb9087d896a7a9e29f174461d60b47134575` 完成规范版本 QA、提交并获授权非 force 推送，状态为 `completed/committed`；产品页面实现仍未完成，Phase 2A 只处理启动单轨根因。
-- M1 motion 实现和测试已在本地 `5db240499806bc4cae9be0b82194c838a32229de` 提交；第 5 轮独立 QA PASS（30 项 package、8 项真实 iOS UIKit runtime、8 项 Boundary/Shell、Debug build，iPhone 17 / iOS 27 Simulator）。远端推送 pending，真机 120Hz 手感和 OSLogStore consumer integration 仍未验收。
+- M1 motion 实现和测试已在本地 `5db240499806bc4cae9be0b82194c838a32229de` 提交；第 5 轮独立 QA PASS（30 项 package、8 项真实 iOS UIKit runtime、8 项 Boundary/Shell、Debug build，iPhone 17 / iOS 27 Simulator）。2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此提交，真机 120Hz 手感和 OSLogStore consumer integration 仍未验收。
 - AppIcon 设计/静态资源、逐图检查、独立 QA 和 actool 已绑定 `9fda5c565`，状态为 `structural done; runtime pending`；runtime appearance、模拟器解析和 Home Screen 仍未验收，不声称用户逐像素口头确认最终 Light。
 
 ## Phase 2A 当前实现证据

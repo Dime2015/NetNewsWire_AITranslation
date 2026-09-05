@@ -6,8 +6,8 @@
 
 - 分支：`codex/reeder-classic-rebuild`
 - 当前本地 `HEAD`：`5db240499806bc4cae9be0b82194c838a32229de`（`Babel 2.0 M1: add interruptible motion foundation`）
-- 当前 `origin/codex/reeder-classic-rebuild` remote-tracking ref：`1269bb9087d896a7a9e29f174461d60b47134575`；M1 commit 尚未推送，不能写成远端已包含 `5db240499`。
-- 上次已核实的 hosted branch 也为 `1269bb9087d896a7a9e29f174461d60b47134575`；在任何重新提交或推送前必须重新 live verify，不能把这条记录替代实时远端查询。
+- 2026-09-05：用户明确授权推送 M1 commit `5db240499806bc4cae9be0b82194c838a32229de`；实际执行 `git push origin codex/reeder-classic-rebuild` 推送的是当时本地 HEAD `c4335576d55b46431cd58e5b26f84ca10407fd9f`（线性历史，`5db240499` 是其祖先，中间还含 `3e4f5e7f8`、`3dfd71882` 两个已测试提交），推送后立即 `git fetch origin codex/reeder-classic-rebuild` 核实，`origin/codex/reeder-classic-rebuild` 与本地 HEAD 一致，均为 `c4335576d55b46431cd58e5b26f84ca10407fd9f`。这是本次 live verify 的结果，不代表之后不需要再核实。
+- 当前 `origin/codex/reeder-classic-rebuild` remote-tracking ref：`c4335576d55b46431cd58e5b26f84ca10407fd9f`（2026-09-05 fetch 核实）。历史记录：此前 remote-tracking 长期停在 `1269bb9087d896a7a9e29f174461d60b47134575`，M1 commit 当时尚未推送；这一条只作历史参照，不代表当前远端状态。
 - 版本谱系：v0.5 与 v1.0 是历史稳定基线，v1.1 是 Babel 2.0 前 UIKit 基线；Babel 2.0 尚未发布，因此不创建 v2.0 标签。
 - 当前工作树不是干净树。以下记录以当前文件系统为准，不把 `HEAD` 误称为工作树完整状态。
 
@@ -28,7 +28,7 @@ Phase 1A 的 generation gate、启动顺序、Babel2 root composition、外部�
 - v0.5、v1.0、v1.1 的 Git 版本锚点已经建立；v2.0 保留给真正完成并验收的 Babel 2.0。
 - `Babel2Core` 与 `Babel2UI` 的 Phase 0 隔离基础已提交，Core 保持平台无关，UI 只依赖 Core。
 - Babel 2.0 产品合同和运动合同 amendment 已在 `1269bb9087d896a7a9e29f174461d60b47134575` 完成规范版本 QA、提交并获授权非 force 推送成功，状态为 `completed/committed`；产品实现仍未完成。
-- M1 运动基础已在本地 commit `5db240499806bc4cae9be0b82194c838a32229de`（message：`Babel 2.0 M1: add interruptible motion foundation`）中提交，精确范围为 14 files / 2618 insertions。此前绑定该 M1 commit 的第 5 轮独立 QA 曾 PASS：30 项 package tests、8 项真实 iOS UIKit runtime tests、8 项 Boundary/Shell tests 及 Debug build 在 iPhone 17 / iOS 27 Simulator 成功；这不是本次 Phase 1A final QA 的结果，不能覆盖 A0–A15 尚缺的 runtime/真机/视觉证据。真机 120Hz 手感与 OSLogStore consumer integration 仍 pending。该 commit 尚未推送，等待用户对具体 commit 授权。
+- M1 运动基础已在本地 commit `5db240499806bc4cae9be0b82194c838a32229de`（message：`Babel 2.0 M1: add interruptible motion foundation`）中提交，精确范围为 14 files / 2618 insertions。此前绑定该 M1 commit 的第 5 轮独立 QA 曾 PASS：30 项 package tests、8 项真实 iOS UIKit runtime tests、8 项 Boundary/Shell tests 及 Debug build 在 iPhone 17 / iOS 27 Simulator 成功；这不是本次 Phase 1A final QA 的结果，不能覆盖 A0–A15 尚缺的 runtime/真机/视觉证据。真机 120Hz 手感与 OSLogStore consumer integration 仍 pending。该 commit 已于 2026-09-05 获用户明确授权并推送，`git fetch` 核实 `origin/codex/reeder-classic-rebuild` 现含此 commit（见上方 Git 快照）；页面 consumer 接入、真机 120Hz 手感与 OSLogStore consumer integration 仍 pending，推送本身不代表这些验收关闭。
 - Babel 2.0 AppIcon 的 Light/Dark/Mono 静态设计、独立 asset catalog、逐图检查、独立 QA、actool 和小尺寸结构检查已完成，并已在 `9fda5c565` 提交。用户先选定 Dark，并明确授权“生成好直接作为 Babel 2.0 图标”；早期“烧焦/全局黑蒙版”Light 被否决，随后按“亮木桌+逐本独立暗色封面+干净页边”重生成的当前 Final 才是提交资产。Round 4 草稿不构成回退。该状态只证明设计/静态资产完成，不证明 runtime appearance、模拟器或真机 Home Screen 接入；也不声称用户已逐像素口头确认最终 Light。Dark 的可复现 master 是仓库内 `Design/Babel2/Icon Concepts/Final/Babel2AppIcon-Dark.png`，临时用户附件仅作 provenance。
 
 ## Phase 2A 单轨实现与 fresh correction 验证
@@ -47,7 +47,7 @@ Phase 1A 的 generation gate、启动顺序、Babel2 root composition、外部�
 
 ## 进行中
 
-- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；远端推送 pending，页面 consumer 接入、真机 120Hz 手感和 OSLogStore consumer integration 仍 pending。
+- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此 commit；页面 consumer 接入、真机 120Hz 手感和 OSLogStore consumer integration 仍 pending。
 - 合同：amendment `1269bb9087d896a7a9e29f174461d60b47134575` 已完成规范版本 QA、提交并非 force 推送；动态工作树/远端状态仍须实时检查。
 - 项目记录：本目录文档首次建立；这些新文件在本次记录完成前也属于未提交范围。
 - 图标：设计/静态资产已完成并提交；Light/Dark/Mono 的最终 runtime appearance、模拟器解析和设备 Home Screen 仍待接入和检查。
@@ -128,6 +128,6 @@ Phase 3B 本轮已应用截图隐私边界和 bundle tree digest 的 P1 evidence
 
 修复后 fresh 证据：Babel2UI package tests 32/32；全量 Debug iOS tests `xcresulttool` summary `failedTests:0`、`passedTests:62`（console XCTest 44 + Swift Testing 18）；Debug build 随 test 一并 `BUILD SUCCEEDED`。环境为 iPhone 17 / iOS 27 Simulator `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`，六个第三方 secret 环境变量本轮全程 unset。
 
-提交状态：本地已提交 `3dfd7188289fe06e770dc1408b8eaf39706dcc98`（`git rev-parse HEAD` 核实；20 files changed, 902 insertions(+), 228 deletions(-)），父提交为 `3e4f5e7f8f20af2737d375102b6ec420ba84c206`；未推送，`origin/codex/reeder-classic-rebuild` 仍为 `1269bb9087d896a7a9e29f174461d60b47134575`。提交后 `git status --short --branch` 确认工作树干净（无残留改动）。
+提交状态：本地提交 `3dfd7188289fe06e770dc1408b8eaf39706dcc98`（`git rev-parse HEAD` 核实；20 files changed, 902 insertions(+), 228 deletions(-)），父提交为 `3e4f5e7f8f20af2737d375102b6ec420ba84c206`。2026-09-05 随 M1 一起被推送（用户对 M1 的推送授权覆盖了这次线性推送里 M1 之后的全部本地提交，见上方 Git 快照）；`git fetch` 核实 `origin/codex/reeder-classic-rebuild` 现为 `c4335576d55b46431cd58e5b26f84ca10407fd9f`，即本次 checkpoint 之后再加一个 SHA 回填提交（下条）。提交后 `git status --short --branch` 确认工作树干净（无残留改动）。
 
 仍未关闭：`evidence/stabilize/` 截图未经独立复核，不构成模拟器或真机验收证据；REQUIREMENTS 中 Feed/Timeline header 无空带、pFilter selection pill/列表/计数同 progress 两行要求的动效同步语义本次未触及，维持"未开始"；M1 推送授权与 Phase 1A 剩余 A0–A15 证据缺口独立于本节，状态仍以上方 Phase 2A 记录与 HANDOFF.md 为准。
