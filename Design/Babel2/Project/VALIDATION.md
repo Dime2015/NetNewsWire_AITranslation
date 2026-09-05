@@ -255,3 +255,15 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 | A10（disconnect 尝试，未成功复现） | `xcrun simctl terminate <udid> <bundle>` → `log show --last 10s --info` | 只看到进程被硬杀的系统/网络日志，没有 `sceneDidDisconnect.babel2` teardown 行——确认 `simctl terminate` 不经过 UIKit scene 生命周期，不能替代真实 App 切换器划掉的场景 | 同上，"part_2" 字段 |
 
 限制：A8 的 shortcut item / notification response 两条、A10 的真实 scene disconnect 和真机 30-cycle，`xcrun simctl` 均无法脚本化触发，仍待你配合一次交互操作或改用真机。A13 标记"通过（需 root 复审）"；A8/A10 标记"实现进行中/证据待补"（已验证的子场景视为通过）。
+
+## Phase 1A：A4/A5/A9 fresh evidence（2026-09-05，Asia/Tokyo，同日第三批）
+
+在 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift` 新增两个测试方法（`testRestorationRejectsCorruptAndEmptyData`、`testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue`），补齐 A4/A5/A9 点名但原先没有独立测试的输入。
+
+| 检查 | 精确命令 | 结果 |
+|---|---|---|
+| 新增+已有 restoration 测试（targeted） | `xcodebuild ... -only-testing:.../testRestorationRejectsCorruptAndEmptyData -only-testing:.../testRestorationRejectsWrongGenerationSchemaAndRoute -only-testing:.../testPlaceholderRoutesRestoreAndNavigationOwnerPopsQuickly -only-testing:.../testBabel2NavigationHasOneGenerationAndRestorationWritesBabel2 test` | exit 0，4/4 passed（`/private/tmp/babel2-phase1a-a9test.xcresult`） |
+| 第二个新增测试（targeted） | `xcodebuild ... -only-testing:.../testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue test` | exit 0，1/1 passed（`/private/tmp/babel2-phase1a-a9test2.xcresult`） |
+| 全量 Debug iOS test suite（含以上两个新增测试） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-phase1a-a459-full-dd -resultBundlePath /private/tmp/babel2-phase1a-a459-full.xcresult test` | exit 0，`** TEST SUCCEEDED **`；`xcresulttool get test-results summary` 报 `result: Passed`、`failedTests: 0`（比上一批多了新增的测试用例） |
+
+九种输入的完整矩阵、每条输入对应哪个测试、以及"这一切都还没经过真实 `UISceneSession`"的诚实限制说明，见 [A4-release-accepted-persisted.json](evidence/phase1a/A4-release-accepted-persisted.json)、[A5-stale-generation-fail-closed.json](evidence/phase1a/A5-stale-generation-fail-closed.json)、[A9-restoration-validation.json](evidence/phase1a/A9-restoration-validation.json)。三行均标记"实现进行中/证据待补"，不是"通过"。

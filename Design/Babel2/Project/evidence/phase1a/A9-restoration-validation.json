@@ -1,0 +1,28 @@
+{
+  "id": "A9",
+  "scenario": "restoration generation/schema/route 校验：合法 Babel2 restoration（当前 schema，首 route 为 home）能恢复；错误 generation、未知 schema、空 routes、首 route 非 home、未知 route 和损坏数据均拒绝并采用安全值；恢复后只生成一套 Babel2 navigation",
+  "commit_or_worktree": "7f179077d4f648807a01526f3f191b49f01e8aa9 (加两个新增测试后待提交)",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "本行是 A4/A5 的整合视角：把 A4（generation 边界）、A5（fail-closed 矩阵）已经覆盖的输入，加上 A9 单独点名但前两行没覆盖的三种（空 routes、首 route 非 home、未知 route 值），合并成一张完整的输入表，并额外确认'合法输入真的会被应用'和'恢复后只有一套 navigation'这两条 A9 特有的正面要求。",
+  "full_input_coverage_table": [
+    { "input": "routes: [.home]（合法）", "expected": "isValid=true，validated 返回原值", "covered_by": "已有 testRestorationRejectsWrongGenerationSchemaAndRoute 的 accepted 分支" },
+    { "input": "routes: [.home, .settings]（合法，恢复后应实际推入 Settings 页）", "expected": "makeRoot(restoration:) 恢复出 2 个 view controller，可以 pop 回到只剩 1 个", "covered_by": "已有 testPlaceholderRoutesRestoreAndNavigationOwnerPopsQuickly" },
+    { "input": "generation: .legacy", "expected": "拒绝，安全默认值", "covered_by": "已有 testRestorationRejectsWrongGenerationSchemaAndRoute" },
+    { "input": "schemaVersion: 99", "expected": "拒绝，安全默认值", "covered_by": "已有 testRestorationRejectsWrongGenerationSchemaAndRoute" },
+    { "input": "routes: [.settings, .home]（顺序错）", "expected": "拒绝，安全默认值", "covered_by": "已有 testRestorationRejectsWrongGenerationSchemaAndRoute" },
+    { "input": "routes: [.home, .settings, .settings]（重复）", "expected": "拒绝，安全默认值", "covered_by": "已有 testRestorationRejectsWrongGenerationSchemaAndRoute" },
+    { "input": "空/随机/截断/顶层数组/缺字段 等 5 种损坏字节", "expected": "拒绝，安全默认值，不崩溃", "covered_by": "本轮新增 testRestorationRejectsCorruptAndEmptyData" },
+    { "input": "routes: []（空数组，本身是合法 JSON）", "expected": "拒绝，安全默认值——A9 明确点名但此前没有独立测试", "covered_by": "本轮新增 testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue" },
+    { "input": "routes: [.settings]（首 route 非 home，合法 JSON）", "expected": "拒绝，安全默认值——A9 明确点名但此前没有独立测试", "covered_by": "本轮新增 testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue" },
+    { "input": "routes: [\"bogus-route\"]（未知 route 字符串，Codable 解码即失败）", "expected": "拒绝，安全默认值——A9 明确点名但此前没有独立测试", "covered_by": "本轮新增 testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue" }
+  ],
+  "single_navigation_owner_check": "`Babel2SceneComposition.makeRoot(restoration:)` 每次调用都新建一个全新的 `Babel2NavigationController` 实例（iOS/Babel2/Babel2SceneComposition.swift 第 16-17 行）；`SceneDelegate.installBabel2Root(in:restoration:)`（iOS/SceneDelegate.swift 第 111-145 行）在 `guard babel2NavigationController == nil else { return }` 之后才会调用它一次——同一个 scene 生命周期内不会因为收到多次 restoration 尝试而叠加出第二个 navigation controller。这条边界已经是 A1/A10 静态引用过的同一段代码，本行不重复举证，只做交叉引用。",
+  "fresh_run": {
+    "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild ... -only-testing:.../testRestorationRejectsCorruptAndEmptyData -only-testing:.../testRestorationRejectsWrongGenerationSchemaAndRoute -only-testing:.../testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue -only-testing:.../testPlaceholderRoutesRestoreAndNavigationOwnerPopsQuickly -only-testing:.../testBabel2NavigationHasOneGenerationAndRestorationWritesBabel2 test",
+    "result": "全部 5 个测试 exit 0 通过，2026-09-05 13:08-13:11 JST",
+    "full_suite_cross_check": "同一改动已跑过全量 Debug iOS test suite，见 VALIDATION.md 本节的汇总数字，确认新增的两个测试方法没有引入任何冲突或回归。"
+  },
+  "not_covered_this_round": "和 A4/A5 一样，本行的全部证据都停在'直接调用生产的数据校验/root 组装函数'这一层，不经过真实 `UISceneSession.stateRestorationActivity` 触发的 `willConnectTo`。这是三行共同的、同一个原因导致的缺口，详见 A4 的完整说明；不在本轮重复展开。",
+  "owner": "Claude (this session)",
+  "status": "实现进行中/证据待补——完整输入矩阵在数据模型/root 组装层通过（需 root 复审）；真实 scene 层的端到端证据仍缺"
+}

@@ -1,0 +1,28 @@
+{
+  "id": "A4",
+  "scenario": "production persisted generation 边界：production 不再接受 persisted generation 作为 runtime selector；唯一 restoration payload 只接受 Babel2 generation",
+  "commit_or_worktree": "7f179077d4f648807a01526f3f191b49f01e8aa9 (加一个新增测试后待提交)",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "静态引用生产代码的两层实现 + 直接调用生产函数（不是重新实现）的单元测试证据，说明 persisted generation 的边界在哪一层被强制执行。",
+  "production_code_path": [
+    "iOS/Babel2/Babel2Restoration.swift: `Babel2NavigationRestoration.isValid` 第一行就是 `guard generation == .babel2, schemaVersion == Self.currentSchemaVersion else { return false }`——任何 `generation != .babel2`（目前枚举里唯一的另一个值是 `.legacy`，注释写明 'It is not a runnable generation and is never selected by the application'）直接判定不合法。",
+    "`Babel2NavigationRestoration.validated(_:)` 对不合法的值返回 `nil`，而不是返回一个降级但仍然可用的值；调用方 `SceneDelegate.restorationValue(from:)`（iOS/SceneDelegate.swift 第 147-150 行）把 `nil` 一路传给 `installBabel2Root(in:restoration:)`。",
+    "`Babel2SceneComposition.makeRoot(restoration:)`（iOS/Babel2/Babel2SceneComposition.swift 第 56-58 行）只在 `if let restoration` 为真时才调用 `applyRestoration`——`restoration` 为 `nil` 时什么都不做，root 保持默认的单一 `.home` 路由，不会去尝试'部分应用'一个 legacy 或损坏的 payload。"
+  ],
+  "unit_test_evidence": [
+    {
+      "test": "Babel2FeatureGateTests.testRestorationRejectsWrongGenerationSchemaAndRoute（已有）",
+      "assertion": "构造 `Babel2NavigationRestoration(generation: .legacy)`，编码后调用生产函数 `Babel2NavigationRestoration.validated(...)`，断言返回 `nil`；`decoded(...)` 断言返回默认值（单一 `.home`）而不是保留 legacy 标记的任何形式。",
+      "fresh_run": "2026-09-05 13:08 JST，`-only-testing:.../testRestorationRejectsWrongGenerationSchemaAndRoute`，exit 0，passed (0.002s)。"
+    },
+    {
+      "test": "Babel2FeatureGateTests.testPlaceholderRoutesRestoreAndNavigationOwnerPopsQuickly（已有）",
+      "assertion": "直接调用生产函数 `Babel2SceneComposition.makeRoot(restoration: Babel2NavigationRestoration(routes: [.home, .settings]))`（这正是 SceneDelegate 在真实冷启动里会调用的同一个函数），断言恢复出 2 个 view controller——证明*合法* Babel2 restoration 确实生效，不是只测'拒绝'这一半。",
+      "fresh_run": "2026-09-05 13:08 JST，exit 0，passed (0.007s)。"
+    }
+  ],
+  "observed": "generation 边界被强制在数据模型层（`isValid`/`validated`），而不是在某个更外围、可能被绕过的 UI 层；测试直接调用生产函数（不是重新实现一份校验逻辑再测那份），所以这些断言对生产代码有约束力。合法 restoration 会被正确应用，非法 generation 会被拒绝且不产生任何降级的'半 legacy'状态。",
+  "not_covered_this_round": "这一切都是在没有真实 `UISceneSession` 的情况下、直接调用 `Babel2NavigationRestoration`/`Babel2SceneComposition.makeRoot` 验证的。生产环境里真正触发这条路径的入口是 `SceneDelegate.scene(_:willConnectTo:options:)` 读取 `session.stateRestorationActivity`——`UISceneSession` 没有公开的初始化方法，测试代码构造不出一个'待恢复'的假 session，`xcrun simctl` 也没有能强制 iOS '记得 session、但从内存驱逐 scene 再冷启动恢复'这个场景的命令（正常状态恢复只在系统真正把 scene 从内存回收、但仍保留磁盘上的 session 记录时才会触发；`simctl terminate`/`uninstall` 都不是这个路径，前者是硬杀不经过状态保存，后者直接抹掉 session）。这条'OS 真实触发 willConnectTo 并携带 restoration activity'的证据仍然缺，需要真机或者给生产代码加一个可测试的 seam（那是一次代码改动，不在本轮'只取证'范围内，需要单独讨论）。",
+  "owner": "Claude (this session)",
+  "status": "实现进行中/证据待补——数据模型层的 generation 边界通过（需 root 复审）；真实 scene 层的端到端证据仍缺"
+}

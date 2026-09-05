@@ -1,0 +1,27 @@
+{
+  "id": "A5",
+  "scenario": "stale generation / corruption fail-closed：旧 generation、未知 schema、损坏 restoration 均拒绝并采用 Babel2 安全值；不能启动半套旧或 Babel2 root",
+  "commit_or_worktree": "7f179077d4f648807a01526f3f191b49f01e8aa9 (加一个新增测试后待提交)",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "直接调用生产函数 `Babel2NavigationRestoration.decoded(_:)`/`validated(_:)`，覆盖四类输入：语义错误但格式合法（旧 generation、错 schema、错路由顺序、重复路由）、以及本轮新增覆盖的真正损坏字节（空 Data、随机字节、截断 JSON、JSON 数组顶层、缺必填字段）。",
+  "test_matrix": [
+    { "input": "generation: .legacy（合法 JSON，语义错）", "decoded_result": "默认值（单一 .home）", "validated_result": "nil", "test": "testRestorationRejectsWrongGenerationSchemaAndRoute（已有）" },
+    { "input": "schemaVersion: 99（合法 JSON，语义错）", "decoded_result": "默认值", "validated_result": "隐含 nil（isValid 检查 schemaVersion）", "test": "testRestorationRejectsWrongGenerationSchemaAndRoute（已有）" },
+    { "input": "routes: [.settings, .home]（顺序错，合法 JSON）", "decoded_result": "默认值", "validated_result": "隐含 nil", "test": "testRestorationRejectsWrongGenerationSchemaAndRoute（已有）" },
+    { "input": "routes: [.home, .settings, .settings]（重复，合法 JSON）", "decoded_result": "默认值", "validated_result": "隐含 nil", "test": "testRestorationRejectsWrongGenerationSchemaAndRoute（已有）" },
+    { "input": "Data()（空字节）", "decoded_result": "默认值", "validated_result": "nil", "test": "testRestorationRejectsCorruptAndEmptyData（本轮新增）" },
+    { "input": "Data([0xDE,0xAD,0xBE,0xEF,0x00,0xFF,0x10,0x42])（随机字节，非 JSON）", "decoded_result": "默认值", "validated_result": "nil", "test": "testRestorationRejectsCorruptAndEmptyData（本轮新增）" },
+    { "input": "截断的 JSON 字符串（合法开头，缺右括号）", "decoded_result": "默认值", "validated_result": "nil", "test": "testRestorationRejectsCorruptAndEmptyData（本轮新增）" },
+    { "input": "顶层是 JSON 数组而不是对象", "decoded_result": "默认值", "validated_result": "nil", "test": "testRestorationRejectsCorruptAndEmptyData（本轮新增）" },
+    { "input": "顶层是对象但缺 schemaVersion/routes 字段", "decoded_result": "默认值", "validated_result": "nil", "test": "testRestorationRejectsCorruptAndEmptyData（本轮新增）" }
+  ],
+  "fresh_run": {
+    "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -only-testing:NetNewsWire-iOSTests/Babel2FeatureGateTests/testRestorationRejectsCorruptAndEmptyData -only-testing:NetNewsWire-iOSTests/Babel2FeatureGateTests/testRestorationRejectsWrongGenerationSchemaAndRoute test",
+    "result": "exit 0；两个测试都 passed（分别 0.007s、0.002s），2026-09-05 13:08 JST",
+    "full_suite_cross_check": "同一批改动也跑了全量 Debug iOS test suite（见 VALIDATION.md 本节），确认新增的这一个测试方法没有让其它任何测试变慢或冲突。"
+  },
+  "observed": "9 种输入（4 种语义错误 + 5 种真正的损坏字节）全部安全回退到默认的单一 Babel2 `.home` 状态，`validated(_:)` 全部返回 `nil`（不是返回一个部分正确的降级值），没有一次抛出未捕获异常或崩溃——`decoded`/`validated` 内部用 `try? JSONDecoder().decode(...)` 吞掉解码错误，这条路径不需要额外的 try/catch 就已经是 fail-closed 的。",
+  "not_covered_this_round": "和 A4 一样，这些都是直接调用数据模型层函数验证的，不经过真实的 `SceneDelegate.scene(_:willConnectTo:options:)` + 真实 `UISceneSession.stateRestorationActivity`。真正'系统在真实恢复流程里塞给 App 一段损坏字节'这个末端场景，命令行工具做不到，见 A4 的详细说明。",
+  "owner": "Claude (this session)",
+  "status": "实现进行中/证据待补——数据模型层的 fail-closed 行为通过（需 root 复审）；真实 scene 层的端到端证据仍缺"
+}

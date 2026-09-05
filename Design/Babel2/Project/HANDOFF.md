@@ -91,3 +91,9 @@ Phase 3B 已完成最小 UI driver 的真实运行，并已通过独立只读 ev
 在 M1 获授权推送（commit `7b8ff453e`）之后，按用户指定顺序补齐了 Phase 1A 矩阵里能靠命令行/模拟器自证的四行：A1（gate 与旧 bootstrap 隔离，静态引用）、A2（Debug/Release 各 5 组启动参数、共 10 次真实冷启动的 OSLog trace）、A3（Release 忽略参数，A2 的子集+源码级理由）、A7（未识别 URL no-op，含 route/anchor 状态下的前后截图字节级比对）。四行均已产出 `evidence/phase1a/A{1,2,3,7}-*.json` 并标记"通过（需 root 复审）"；过程中的三个流程性坑（warm terminate 复用 scene session、全新 install 后首次冷启动更慢、`simctl openurl` 需要已注册的 URL scheme）记在 [LESSONS.md](LESSONS.md) 第 22 条。完整命令与结果表见 [VALIDATION.md](VALIDATION.md)「Phase 1A：A1/A2/A3/A7 fresh evidence」一节。
 
 交接边界：本轮只新增证据文件（`Design/Babel2/Project/evidence/phase1a/A1-bootstrap-isolation.json`、`A2-build-channel-matrix.json`、`A3-release-ignore-args.json`、`A7-unknown-url-noop.json`、两张 A7 头部裁剪截图）和四份项目文档（本文件、STATUS.md、VALIDATION.md、LESSONS.md、PHASE1A-ACCEPTANCE.md）；没有修改任何生产代码。仍未关闭：A4/A5（persisted generation/restoration 真实 launch）、A6 的 A10 相关部分、A8/A9/A10/A11/A12/A13/A15、目标物理 iPhone 与全部视觉/性能验收。下一步按用户指示继续处理哪一部分（剩余 Phase 1A 证据、还是回到统一导航壳消费 M1）尚未确定，本记录不预设顺序。
+
+## Phase 1A：A4/A5/A9 restoration 证据接手记录（2026-09-05，Asia/Tokyo，尚未提交）
+
+延续同日前两批（A1/A2/A3/A7 已推送 `fb0a43f14`；A8/A10/A13 已推送 `7f179077d`），继续处理 restoration 相关的 A4/A5/A9。本轮**改了一行生产之外的代码**——在 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift` 新增两个测试方法（`testRestorationRejectsCorruptAndEmptyData`、`testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue`），没有改任何生产代码。全量 Debug iOS test suite 重新跑过，全绿。
+
+交接边界：这三行的证据全部停在"直接调用 `Babel2NavigationRestoration`/`Babel2SceneComposition.makeRoot(restoration:)` 这两个生产函数"，没有一条经过真实 `SceneDelegate.scene(_:willConnectTo:options:)` + 真实 `UISceneSession.stateRestorationActivity`——这是 `UISceneSession` 无法在测试里构造、且 `simctl` 无法脚本化复现"系统真的回收又恢复 scene"这个场景导致的结构性缺口，记在 [LESSONS.md](LESSONS.md) 第 24 条。要关闭这三行的最后一环，要么真机上真实发生一次（不可控），要么给生产代码加一个可测试的 restoration seam（这是代码改动，需要先问用户再做，本轮没做）。完整命令、九种输入矩阵和三份证据文件见 [VALIDATION.md](VALIDATION.md) 与 [PHASE1A-ACCEPTANCE.md](PHASE1A-ACCEPTANCE.md) 对应新增小节；本轮改动尚未 commit，等待用户对是否提交/推送的确认。

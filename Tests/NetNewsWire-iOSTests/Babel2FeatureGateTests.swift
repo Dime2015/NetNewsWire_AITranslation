@@ -412,6 +412,54 @@ final class Babel2FeatureGateTests: XCTestCase {
 		XCTAssertEqual(Babel2NavigationRestoration.decoded(try duplicateRoute.encoded()), Babel2NavigationRestoration())
 	}
 
+	/// The existing restoration test above only covers semantically-wrong but
+	/// syntactically well-formed payloads (produced by encoding a real
+	/// Babel2NavigationRestoration value). This covers genuinely corrupt
+	/// bytes -- the "损坏 restoration" half of Phase 1A's A5 requirement --
+	/// which decoded()/validated() must also fail closed on instead of
+	/// throwing or crashing.
+	func testRestorationRejectsCorruptAndEmptyData() {
+		let empty = Data()
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(empty), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(empty))
+
+		let randomBytes = Data([0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0xFF, 0x10, 0x42])
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(randomBytes), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(randomBytes))
+
+		let truncatedJSON = Data("{\"generation\":\"babel-2\",\"schemaVersion\":1,\"rou".utf8)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(truncatedJSON), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(truncatedJSON))
+
+		let wrongTopLevelShape = Data("[\"babel-2\", 1, [\"home\"]]".utf8)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(wrongTopLevelShape), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(wrongTopLevelShape))
+
+		let missingRequiredKeys = Data("{\"generation\":\"babel-2\"}".utf8)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(missingRequiredKeys), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(missingRequiredKeys))
+	}
+
+	/// A9 also names empty routes, a non-home first route, and an unknown
+	/// route value as inputs that must fail closed; none of those are
+	/// exercised by the two tests above (which use wrong generation/schema
+	/// or reorder/duplicate an otherwise-valid route list).
+	func testRestorationRejectsEmptyRoutesNonHomeFirstRouteAndUnknownRouteValue() throws {
+		let emptyRoutes = Babel2NavigationRestoration(routes: [])
+		XCTAssertFalse(emptyRoutes.isValid)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(try emptyRoutes.encoded()), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(try emptyRoutes.encoded()))
+
+		let nonHomeFirstRoute = Babel2NavigationRestoration(routes: [.settings])
+		XCTAssertFalse(nonHomeFirstRoute.isValid)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(try nonHomeFirstRoute.encoded()), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(try nonHomeFirstRoute.encoded()))
+
+		let unknownRouteValue = Data("{\"generation\":\"babel-2\",\"schemaVersion\":1,\"routes\":[\"bogus-route\"]}".utf8)
+		XCTAssertEqual(Babel2NavigationRestoration.decoded(unknownRouteValue), Babel2NavigationRestoration())
+		XCTAssertNil(Babel2NavigationRestoration.validated(unknownRouteValue))
+	}
+
 	func testCanonicalExternalParserAcceptsOnlyRegisteredTypedActions() throws {
 		let unreadURL = try XCTUnwrap(URL(string: "nnw://showunread?id=article-1"))
 		let feedURL = try XCTUnwrap(URL(string: "feed:https://example.com/feed.xml"))
