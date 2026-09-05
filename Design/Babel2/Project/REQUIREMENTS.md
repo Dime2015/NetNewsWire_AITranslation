@@ -15,7 +15,7 @@
 | 翻译标题/正文不重影、不闪退、速度可接受 | Slice 5；translation session/DOM update | generation/cancellation、incremental update、error recovery | 大源、多次切换、翻译失败 | 真实翻译源、峰值内存和性能 | 未开始 |
 | 横向正文图贴屏幕两端、直角；文字/caption 保持 inset | Slice 4/5；Reader HTML/media | media classification、viewport style checks | 横向/竖向/无图、caption | 真实图片、safe area、缩放和滚动 | 未开始 |
 | 文章正文左滑打开内置浏览器，浏览器右滑回到 Reader | Slice 5；Browser route/motion | direction/edge arbitration、cancel/finish | WebView/Reader 手势冲突 | 跟手性、网页加载、双向返回 | 未开始 |
-| 全局右滑返回稳定跟手，非边缘横向内容不误触发 | Slice 1/5；Babel2 navigation + M1 driver | edge 24–32pt、velocity、interruption | 深栈/根路由/旋转 | 目标 iPhone 真实手势矩阵 | contract layer completed；M1 local commit/final QA PASS，页面 consumer 与真机 120Hz 手感 pending |
+| 全局右滑返回稳定跟手，非边缘横向内容不误触发 | Slice 1/5；Babel2 navigation + M1 driver | edge 24–32pt、velocity、interruption | 深栈/根路由/旋转 | 目标 iPhone 真实手势矩阵 | 2026-09-05：页面 consumer 已接入——`Babel2NavigationPopMotion`（新文件）把 M1 引擎接到 `Babel2NavigationController` 左边缘滑动返回手势上，只接管这一条交互路径，点按返回按钮的程序化 pop 保持系统默认动画不变；12 个新增单元测试覆盖手势状态机（开始/更新/结束、finish/cancel 判定、强制取消、装卸干净）全部通过，全量 suite 77/77 通过。真机 120Hz 手感、真实 UIKit 转场生命周期（transitionContext 的建立/结束）和 OSLogStore consumer integration 仍 pending——测试环境没有真实窗口，UIKit 不会调用转场代理，这部分只能靠真机/模拟器交互验证 |
 | 底栏控件尺寸、视觉中心、颜色统一；Reader 操作重绘 | Slice 2/4/5；shared toolbar tokens | geometry/token snapshot、action routing | 各屏幕 Light/Dark/中英文 | 目标设备可达性和视觉接受 | 未开始 |
 | 顶部普通分享；底栏点击生成长图，不长按分享 | Slice 5；share/long-image actions | tap-only action、share presentation、failure/retry | 分享菜单和长图状态 | 系统分享菜单、长图生成和返回 | 未开始 |
 | Settings 使用新的 IA；开关尺寸合适，主题色只控制开关和进度环 | Slice 6；Settings/Theme tokens | theme mapping、switch geometry、route | 中英文、Light/Dark/Mono | 设备显示、可达性、真实主题切换 | 未开始 |
@@ -36,7 +36,7 @@
 ## 当前合同状态
 
 - 产品/运动合同 amendment 已在 `1269bb9087d896a7a9e29f174461d60b47134575` 完成规范版本 QA、提交并获授权非 force 推送，状态为 `completed/committed`；产品页面实现仍未完成，Phase 2A 只处理启动单轨根因。
-- M1 motion 实现和测试已在本地 `5db240499806bc4cae9be0b82194c838a32229de` 提交；第 5 轮独立 QA PASS（30 项 package、8 项真实 iOS UIKit runtime、8 项 Boundary/Shell、Debug build，iPhone 17 / iOS 27 Simulator）。2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此提交，真机 120Hz 手感和 OSLogStore consumer integration 仍未验收。
+- M1 motion 实现和测试已在本地 `5db240499806bc4cae9be0b82194c838a32229de` 提交；第 5 轮独立 QA PASS（30 项 package、8 项真实 iOS UIKit runtime、8 项 Boundary/Shell、Debug build，iPhone 17 / iOS 27 Simulator）。2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此提交。同日随后新增 `iOS/Babel2/Babel2NavigationPopMotion.swift` 把 M1 接到导航壳的左边缘返回手势上（页面 consumer 落地），12 项新测试 + 全量 suite 77/77 通过；真机 120Hz 手感和 OSLogStore consumer integration 仍未验收。
 - AppIcon 设计/静态资源、逐图检查、独立 QA 和 actool 已绑定 `9fda5c565`，状态为 `structural done; runtime pending`；runtime appearance、模拟器解析和 Home Screen 仍未验收，不声称用户逐像素口头确认最终 Light。
 
 ## Phase 2A 当前实现证据

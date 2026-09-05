@@ -120,3 +120,13 @@
 - 被否决方案：用硬编码零冒充 clean runtime、让 `Babel2FeatureGateTests` 构造旧 coordinator fixture、用 XCTest bundle/launch arguments/调用栈 suppression 排除测试事件、以 content first frame 后的 WebView activity 反推启动失败，或用 OSLog/dyld/bundle 静态 absence 单独替代动态事件。
 - 证据：fresh Debug iOS tests 45/45 通过，其中覆盖 legacy event injection、counter/source/session/JSON、order/uptime/config fail-closed、WebView frame cutoff、BabelShell isolated sink、single-generation API 与 parser uniqueness；r5 的 fixture-order/token-scan 失败保留为历史证据。Debug/Release build 成功，但目标 iPhone、A0/A1/A6/A8/A12/A13 runtime trace 与最终 bundle allowlist 仍 pending；当前 bundle 仍含 Main.storyboardc、HTML-JS、8 themes、3 extensions。
 - 重新评估触发：保存真实 AppDelegate/SceneDelegate launch JSONL、完成 scene reconnect/background/foreground/teardown 和目标设备证据，并将 bundle 逐项 allowlist 后，再决定是否关闭 A0/A1/A6/A8/A12/A13；`LegacyIdentityCompatibility` 仍按 ADR-003 留待 PRODUCT-CONTRACT/A15/Phase6。
+
+## ADR-014：M1 的第一个页面消费者只接管交互式边缘手势，程序化 pop 保持系统默认动画
+
+- 日期：2026-09-05
+- 状态：已选择；实现与自动化测试完成，真机手感与真实 UIKit 转场生命周期验收待补。
+- 选择：`Babel2NavigationPopMotion` 只在"手指从左边缘拖拽"这一条路径上接管 `UINavigationControllerDelegate` 的转场方法（`animationControllerFor`/`interactionControllerFor` 仅在 `isInteractivelyPopping == true` 时返回非 nil）；点击返回按钮触发的 `popBabel2(animated:)` 完全不经过这层，继续用系统默认的 push/pop 动画。系统自带的 `interactivePopGestureRecognizer` 被禁用（`isEnabled = false`），避免它和新装的 `UIScreenEdgePanGestureRecognizer` 同时响应同一个边缘手势。
+- 理由：这是 M1 的第一次真实页面接入，风险面要尽量小——把改动限制在"仅替换交互式边缘手势的转场"，能保证除了边缘滑动这一条路径之外，App 里所有其它导航行为（点按钮返回、push 新页面、Settings/AddSubscription 弹出）完全不变，不需要重新验证整个导航系统。等真机确认这条路径手感没问题、且以后要给"程序化 pop 也用同一套动效"时，可以再单独评估。
+- 被否决方案：直接整体替换 `UINavigationControllerDelegate`（让所有 pop，不管是不是手势触发，都走自定义转场）——这样风险面更大，一次改动同时影响手势和按钮两条路径，出问题时也更难定位是手势逻辑的问题还是转场逻辑的问题。
+- 证据：`iOS/Babel2/Babel2NavigationPopMotion.swift`（新文件）+ `Babel2NavigationController.swift` 的 3 行改动；12 个新单元测试（`Babel2FeatureGateTests.swift`）覆盖手势状态机、finish/cancel 投影判定、强制取消、装卸干净，12/12 通过；全量 Debug iOS suite 77/77 通过。已知边界：无窗口的测试环境下 UIKit 不调用转场代理（见 LESSONS.md 第 27 条），所以真实 `transitionContext` 生命周期和视觉观感没有被自动化覆盖，需要真机/模拟器交互确认。
+- 重新评估触发：真机测试发现边缘手势和系统预期冲突（例如与 App 切换器的边缘手势区域重叠），或者产品决定程序化 pop 也需要同一套连续动效；届时重新设计转场代理的接管范围。

@@ -109,3 +109,11 @@ Phase 3B 已完成最小 UI driver 的真实运行，并已通过独立只读 ev
 同日第五批。第一次拍摄假设"调用 `simctl launch` 的时刻"等于"进程真正开始跑"，结果三张截图全部拍在真实进程启动之前 0.5-1.7 秒，是无效证据，已如实丢弃（教训见 LESSONS.md 第 26 条：两者之间实测能差 2-2.5 秒）。改正后不设时间假设，冷启动后密集连拍 12 张，事后用同一轮真实 trace 的 processEntry 精确时间反推每张截图的真实偏移，选出最接近 +0.5s/+1.0s/+2.0s 的三张（实测 +0.307s/+1.108s/+2.272s）外加一张进程启动前的系统启动图作对照。四张截图都已保存到仓库并通过 SendUserFile 发给用户。
 
 交接边界：本轮只新增证据文件（`A12-0.5-1.0-2.0s-screenshots.json` 及四张 PNG）和文档同步，没有改任何代码。我能确认的是结构性事实（是不是同一个 root、有没有旧元素、有没有空白跳变）；图标裁切、加载观感这类主观视觉判断需要用户自己看过这四张截图确认，我没有替用户做这个判断。至此，Phase 1A 矩阵里我能靠命令行/模拟器自证的部分（A0/A1/A2/A3/A6/A7/A11/A12/A13/A14 完整或结构性通过；A4/A5/A8/A9/A10/A15 部分通过）已经全部做完；剩下的缺口分两类：需要用户看一眼确认视觉效果（A12 的最终判断），或需要真机/一次需要用户先点头的代码改动（A4/A5/A9 的 restoration 测试 seam、A8 的 shortcut/notification 交互、A10 的真实 scene disconnect、A11/A15 的物理设备验证）。下一步方向由用户决定：是继续处理这些真机/交互缺口，还是转去做统一导航壳消费 M1。
+
+## M1 页面消费者接入接手记录（2026-09-05，Asia/Tokyo，尚未提交）
+
+用户选择了"转去做统一导航壳消费 M1"这条路。按 MOTION-CONTRACT.md 第 6 节做了范围最窄的第一个消费者：新文件 `iOS/Babel2/Babel2NavigationPopMotion.swift` 把已经过独立 QA、内容未改动的 M1 引擎（`Babel2MotionDriver`/`GesturePolicy`/`MotionProjection`）接到 `Babel2NavigationController` 的左边缘滑动返回手势上；`Babel2NavigationController.swift` 只加了 3 行（持有/创建/释放实例）。设计选择记在 [DECISIONS.md](DECISIONS.md) ADR-014：只接管交互式边缘手势，点按返回按钮的程序化 pop 完全不变，风险面刻意收窄。
+
+交接边界：新增 `iOS/Babel2/Babel2NavigationPopMotion.swift`（生产代码）；修改 `iOS/Babel2/Babel2NavigationController.swift`（3 行）；新增 12 个测试方法于 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。M1 本身一行未改。全量 Debug iOS test suite 77/77 通过（见 [VALIDATION.md](VALIDATION.md)）。写测试过程中确认了一个 UIKit 本身的行为边界：没有真实 window 时，`UINavigationControllerDelegate` 的转场方法完全不会被调用，所以这批测试只覆盖了手势状态机和判定逻辑，**没有**覆盖真实的 `transitionContext` 生命周期或实际画面渲染（记在 [LESSONS.md](LESSONS.md) 第 27 条）。
+
+仍未关闭：真机/带真实 window 的模拟器上，边缘滑动是否跟手、松手动画顺不顺、取消时能不能正确弹回——这些需要用户亲自滑动确认，我这边验证不了；MOTION-CONTRACT.md 里其余的 motion owner（Reader→Browser、文章翻页、Reader 收缩标题、Feed hero、pFilter）完全没有触碰，仍是"未开始"；真机 120Hz 手感与 OSLogStore consumer integration 仍 pending。本轮改动已完成本地验证，尚未 commit，等待用户对是否提交/推送的确认。

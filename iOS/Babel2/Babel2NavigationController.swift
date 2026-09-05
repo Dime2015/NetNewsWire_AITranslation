@@ -7,6 +7,10 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 	private var didAppearAsContainer = false
 	var onContainerAppeared: (() -> Void)?
 	var routeFactory: ((Babel2RouteState) -> UIViewController?)?
+	// [动效] M1 页面消费者：只接管左边缘滑动返回，见 Babel2NavigationPopMotion.swift。
+	// internal (not private) so `@testable import` can drive it directly without
+	// a live gesture recognizer/window.
+	private(set) var popMotion: Babel2NavigationPopMotion?
 
 	override init(rootViewController: UIViewController) {
 		super.init(rootViewController: rootViewController)
@@ -25,6 +29,7 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 			interactivePopGestureRecognizer.delegate = self
 			ownsInteractivePopGesture = true
 		}
+		popMotion = Babel2NavigationPopMotion(navigationController: self)
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -55,6 +60,8 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 	/// alive until the next run-loop turn.
 	func tearDown() {
 		interactivePopGestureRecognizer?.delegate = nil
+		popMotion?.tearDown()
+		popMotion = nil
 		onContainerAppeared = nil
 		if let root = viewControllers.first as? Babel2RootViewController {
 			root.onSettingsRequested = nil

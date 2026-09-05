@@ -289,3 +289,19 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 | 事后精确定位 | 用同一轮 trace 的 processEntry 挂钟时间（`2026-09-05 13:45:31.992`）反推每张截图的真实偏移 | 选出最接近 +0.5s/+1.0s/+2.0s 的三张，实测偏移分别为 +0.307s、+1.108s、+2.272s；contentFirstFramePresented 实测只比 processEntry 晚 +0.117s |
 
 三张截图内容摘要：+0.307s 已是完整 Babel2 Feeds 结构（工具栏+底部三档+"Babel/No feeds"占位水印）；+1.108s 真实源名称已显示、图标仍是占位灰圆点；+2.272s 图标基本加载完成、源数量从 7 个增至 9 个（后台同步补上）。全部同一个 Babel2 root，无旧版着陆页、无空白跳变、无重复壳。完整方法论、逐张时间戳反推和截图路径见 [A12-0.5-1.0-2.0s-screenshots.json](evidence/phase1a/A12-0.5-1.0-2.0s-screenshots.json)；四张截图已通过 SendUserFile 发给用户。标记"结构性证据通过（需 root 复审）"；最终视觉验收（图标裁切、加载观感等主观判断）仍需用户自己看过确认，不由此文件替代。
+
+## M1 页面消费者：Babel2NavigationPopMotion（2026-09-05，Asia/Tokyo，尚未提交）
+
+环境：Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`。改动范围：新增 `iOS/Babel2/Babel2NavigationPopMotion.swift`；修改 `iOS/Babel2/Babel2NavigationController.swift`（持有/创建/释放 `popMotion` 实例，3 处）；新增 12 个测试方法于 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。M1 本身（`Modules/Babel2UI/Sources/Babel2Core/Motion/**`、`Modules/Babel2UI/Sources/Babel2UI/Motion/**`）未改动。
+
+| 检查 | 精确命令 | 结果 |
+|---|---|---|
+| Debug 编译（先于写测试，确认新文件能编译） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' build` | exit 0，`BUILD SUCCEEDED` |
+| 诊断：headless 环境下 `popViewController` 是否触发转场代理 | 临时诊断测试方法直接调用 `beginPop()` 并打印 `activeToken`/`motionState`/`viewControllers.count` | 确认 `viewControllers.count` 同步变化但转场代理方法未被调用，`transitionContext` 全程 nil——记入 LESSONS.md 第 27 条，随后据此设计测试范围 |
+| Babel2NavigationPopMotion 测试（首轮） | `-only-testing:NetNewsWire-iOSTests/Babel2FeatureGateTests` | exit 0；39 passed / 2 failed（`UIScreenEdgePanGestureRecognizer` 计数把系统自带的 `interactivePopGestureRecognizer` 也数进去了，导致数量断言不对——同样记入 LESSONS.md 第 27 条） |
+| 修复后重跑（Babel2FeatureGateTests） | 同上 | exit 0，41/41 passed |
+| 全量 Debug iOS test suite | `xcodebuild ... -derivedDataPath /private/tmp/babel2-m1-full-dd -resultBundlePath /private/tmp/babel2-m1-full.xcresult test` | exit 0，`** TEST SUCCEEDED **`；`xcresulttool` summary `result: Passed`、`failedTests: 0`、`passedTests: 77` |
+
+覆盖的具体场景（12 个新测试方法）：单页面时拒绝开始、开始后重复调用不换 token、位移→进度换算与两端 clamp（负值/超界）、无活跃 token 时 update/end 是安全 no-op、按投影正确判定 finish/cancel、手势级强制取消无视进度和速度、系统交互手势被禁用、自己的边缘手势正确安装并可用身份比对识别、转场代理只在边缘手势进行中对 `.pop` 返回非 nil（`.push` 永远不拦截）、`tearDown()` 正确移除手势并清空状态。
+
+限制：全部测试都在没有真实 `UIWindow` 的环境下运行，`transitionContext` 的真实生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际 view transform 渲染**没有**被这批测试覆盖——这是 UIKit 本身的行为边界（见 LESSONS.md 第 27 条），不是测试写得不够多。真机/带真实 window 的模拟器交互验证仍然是 open 项，需要用户亲自滑动确认。

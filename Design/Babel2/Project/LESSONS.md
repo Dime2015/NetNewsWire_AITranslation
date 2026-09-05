@@ -163,6 +163,14 @@
   根因：`xcrun simctl launch` 命令本身要经过"和 CoreSimulator 守护进程握手→请求启动→等待确认"这一整套往返，加上冷启动（尤其是刚 install 完）的动态链接、Swift 运行时初始化，从"我发出 launch 命令"到"App 的 `AppDelegate.init()` 真正开始执行"之间，实测差了 2~2.5 秒——这段时间完全花在"进程还没起来"上，不是应用代码的锅，但会让任何"从 launch 调用开始计时"的截图脚本全部对不上号。
   以后 gate：**任何要求"进程启动后 N 秒"的取证，不能以"我调用 launch 的时刻"为 t=0，必须以 trace 里真实的 `processEntry` 事件时间戳为 t=0**——而这个时间戳只有等这一轮启动跑完、日志抓下来之后才知道。正确做法是反过来做：先不设时间假设，冷启动后**立刻连续密集拍一批截图**（不用人为 sleep，让工具调用本身的开销自然形成采样间隔），每张都用 `date +%s.%N` 记纳秒级时间戳；事后从真实 trace 拿到 processEntry 的精确挂钟时间，反推每张截图相对它的真实偏移，再从这批里挑最接近目标秒数的几张。汇报时如实写"实测偏移 +0.307s"而不是假装踩中了"0.5s"，比伪造精度更可信。
 
+## 27. 没有真实 window 的测试环境里，UIKit 根本不会调用转场代理（2026-09-05，接 M1 到导航手势时确认）
+
+- 症状：给 `Babel2NavigationPopMotion` 写单元测试时，构造一个没有加到真实 `UIWindow` 里的 `Babel2NavigationController`，调用 `popViewController(animated: true)`，`viewControllers` 数组确实同步变了，但 `UINavigationControllerDelegate` 的 `animationControllerFor:`/`interactionControllerFor:` 从头到尾没被调用过一次——`startInteractiveTransition(_:)` 也没跑，`transitionContext` 全程是 nil。
+  根因：`UINavigationController` 的转场机制需要真的把动画画在屏幕上；没有 window 就没有可以渲染的地方，UIKit 直接跳过整套转场代理，只做"数组层面"的同步更新。这不是这个项目独有的怪现象，是 UIKit 一直以来的通用行为——只是这次是第一次真的踩到，因为之前的测试都只测数据模型/root 组装，没有牵扯到自定义 `UIViewControllerAnimatedTransitioning`/`UIViewControllerInteractiveTransitioning`。
+  以后 gate：**任何自定义 UIKit 转场（自定义 push/pop/present 动画，或者任何依赖 `UIViewControllerContextTransitioning` 的代码）都不能指望在无 window 的单元测试里验证转场本身**——能测的只有"喂给转场代理的输入/决策逻辑对不对"（比如这次测的手势状态机、finish/cancel 判定），测不到"转场代理被正确调用、`transitionContext` 生命周期被正确收尾、画面真的按预期动"。写这类测试前先设计好一个"纯逻辑核心 + UIKit 胶水外壳"的拆分（胶水部分只做转发，不含判断），这样至少纯逻辑那一半能测到，UIKit 那一半如实标注"需要真机/带 window 的模拟器验证"，不要试图硬测一个测不到的东西。
+- 症状二（顺带发现，写这段代码时确认）：`UINavigationController.interactivePopGestureRecognizer` 这个系统自带的返回值，它本身的真实类型就是 `UIScreenEdgePanGestureRecognizer`——不是什么内部私有类型。这意味着如果测试代码想"数一数某个 view 上有几个 `UIScreenEdgePanGestureRecognizer`"来确认"我自己装的那个手势装上了没有"，会连系统自己那个也数进去，数字对不上。
+  以后 gate：**验证"我自己装的某个手势识别器是否存在/被移除"，要保留一个指向那个具体实例的引用去比对身份（`===`），不要靠"数某个类型的手势有几个"这种方式**——尤其是在 `UINavigationController`/`UIScrollView` 这类系统控件上，系统自己就会装同类型的识别器。
+
 ## 21. 改默认值/去掉安全余量必须重跑全量测试，不能只跑受影响的单测（2026-09-05）
 
 - 症状：Feeds/Timeline 卡片打磨的工作树改动（文件夹层级、缩略图卡片、`filterDisplayOrder` 固定 Figma 像素坐标、默认 scope 从 `.all` 改为 `.unread`）在包测试 30/30 通过、Debug 编译成功的情况下被当作"已验证"，但从未跑过全量 iOS Debug 测试；补跑后暴露 2 个真实回归：①`layoutScopeControlsIfNeeded()` 把旧版 `max(44, …)` 的保底宽度换成纯 Figma 绝对坐标，且新增 `scopeStack.bounds.width > 0` 才布局的 guard——任何还没被真实 window 赋予宽度的宿主（测试 host、或极端情况下的过早布局回调）会让筛选按钮永远停在初始的零尺寸 frame 上，`XCTAssertGreaterThanOrEqual(scope.frame.width, 44)` 直接失败；②`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 被手改成 `after: 2`，但默认 scope 改为 `.unread` 后 `viewDidAppear` 已经预加载过 `.unread`，`scopeTapped` 对"已加载过的 scope"不会重新发请求（只是切换显示），导致测试里布下的 delayed 请求永远不会被消费，等到超时。

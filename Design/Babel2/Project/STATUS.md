@@ -57,7 +57,7 @@ Phase 1A 的 generation gate、启动顺序、Babel2 root composition、外部�
 
 ## 进行中
 
-- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此 commit；页面 consumer 接入、真机 120Hz 手感和 OSLogStore consumer integration 仍 pending。
+- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此 commit。同日随后完成页面 consumer 接入（`Babel2NavigationPopMotion`，见下方新增小节）；真机 120Hz 手感和 OSLogStore consumer integration 仍 pending。
 - 合同：amendment `1269bb9087d896a7a9e29f174461d60b47134575` 已完成规范版本 QA、提交并非 force 推送；动态工作树/远端状态仍须实时检查。
 - 项目记录：本目录文档首次建立；这些新文件在本次记录完成前也属于未提交范围。
 - 图标：设计/静态资产已完成并提交；Light/Dark/Mono 的最终 runtime appearance、模拟器解析和设备 Home Screen 仍待接入和检查。
@@ -86,7 +86,7 @@ Phase 1A 的 generation gate、启动顺序、Babel2 root composition、外部�
 1. 由 root 复审本批 diff、静态边界和 `PHASE1A-ACCEPTANCE.md` 中 A8/A14 的新单轨语义；不把 r5 失败日志或旧 fallback 文字当作当前行为。
 2. 补齐 A0–A15 尚缺的启动 trace 文件、A10 scene reconnect/disconnect、0.5/1/2 秒截图、模拟器状态矩阵和目标 iPhone 冷热启动/恢复/手势/性能/视觉证据；当前 52 项 iOS results、Release-r10 no-args/冷 Genesis startup trace、Debug/Release build 只能关闭对应自动化/编译/启动层，不能替代 production package resource allowlist、A13 WebKit/blank runtime、A15 exact allowlist 或目标 iPhone 验收。
 3. Phase 1A 通过 root 复审后，取得 `5db240499806bc4cae9be0b82194c838a32229de` 的明确推送授权，并核对本地 HEAD、remote-tracking 和 hosted remote。
-4. 由统一导航壳消费 M1，补做真机 120Hz 手感与 OSLogStore consumer integration，再按 REQUIREMENTS.md 的 Slice 顺序推进页面；最后才做真机稳定后的分阶段技术改名和旧代码删除。
+4. 统一导航壳已消费 M1（见下方新增小节）；下一步是补做真机 120Hz 手感与 OSLogStore consumer integration，再按 REQUIREMENTS.md 的 Slice 顺序推进页面；最后才做真机稳定后的分阶段技术改名和旧代码删除。
 
 ## Phase 3：账户限定 Feed→Article 垂直切片（2026-09-01，Asia/Tokyo）
 
@@ -141,3 +141,15 @@ Phase 3B 本轮已应用截图隐私边界和 bundle tree digest 的 P1 evidence
 提交状态：本地提交 `3dfd7188289fe06e770dc1408b8eaf39706dcc98`（`git rev-parse HEAD` 核实；20 files changed, 902 insertions(+), 228 deletions(-)），父提交为 `3e4f5e7f8f20af2737d375102b6ec420ba84c206`。2026-09-05 随 M1 一起被推送（用户对 M1 的推送授权覆盖了这次线性推送里 M1 之后的全部本地提交，见上方 Git 快照）；`git fetch` 核实 `origin/codex/reeder-classic-rebuild` 现为 `c4335576d55b46431cd58e5b26f84ca10407fd9f`，即本次 checkpoint 之后再加一个 SHA 回填提交（下条）。提交后 `git status --short --branch` 确认工作树干净（无残留改动）。
 
 仍未关闭：`evidence/stabilize/` 截图未经独立复核，不构成模拟器或真机验收证据；REQUIREMENTS 中 Feed/Timeline header 无空带、pFilter selection pill/列表/计数同 progress 两行要求的动效同步语义本次未触及，维持"未开始"；M1 推送授权与 Phase 1A 剩余 A0–A15 证据缺口独立于本节，状态仍以上方 Phase 2A 记录与 HANDOFF.md 为准。
+
+## M1 页面消费者接入：Babel2NavigationPopMotion（2026-09-05，Asia/Tokyo，尚未提交）
+
+按 MOTION-CONTRACT.md 第 6 节"Navigation pop"，把已经过独立 QA 的 M1 引擎（`Babel2MotionDriver`/`GesturePolicy`/`MotionProjection`，均未改动）接到 `Babel2NavigationController` 的左边缘滑动返回手势上。这是 M1 落地的第一个、也是范围最窄的消费者——合同里点名的其它 owner（Reader→Browser 右边缘手势、文章上下翻页、Reader 收缩标题、Feed hero、pFilter）都不在本次范围内，仍是"未开始"。
+
+**实现**：新文件 `iOS/Babel2/Babel2NavigationPopMotion.swift`。只接管"手指从左边缘拖拽返回"这一条交互路径——`UIScreenEdgePanGestureRecognizer(edges: .left)` 装在 `navigationController.view` 上，系统默认的 `interactivePopGestureRecognizer` 被禁用（`isEnabled = false`，避免两个手势同时抢同一个动作）；点击返回按钮触发的 `popBabel2(animated:)` 完全不受影响，继续走系统默认动画，因为这个类的 `UINavigationControllerDelegate` 方法只在"边缘手势正在进行"时才返回自定义的动画/交互控制器，其余时候返回 `nil`。进度映射、松手后 finish/cancel 的投影判定，全部复用 M1 已有的 `MotionProjection`/`Babel2MotionDriver`，这个新文件本身不重新实现任何数学，只做"手势事件 → driver 调用 → 真实 view transform"的翻译，对应合同公式 `p = clamp(x/W, 0,1)`、`currentX = W*p`、`previousX = -0.22*W*(1-p)`、`shadowOpacity = 0.18*(1-p)`。`Babel2NavigationController.swift` 只加了 3 处小改动：持有一个 `popMotion` 实例、在 `viewDidLoad` 创建、在 `tearDown` 释放。
+
+**验证**：`Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift` 新增 12 个测试方法，直接调用 `beginPop()`/`updatePop(translationX:)`/`endPop(velocityX:forceCancel:)`（而不是通过真实手势识别器——XCTest 无法合成真实触摸），覆盖：只有一页时拒绝开始、开始后重复调用不替换 token、位移到进度的换算与两端 clamp、没有活跃 token 时更新/结束是安全 no-op、根据末端投影正确判定 finish 或 cancel、手势级强制取消（`.cancelled`/`.failed`）无视进度和速度、系统交互手势被禁用、自己的边缘手势被正确装上/卸载、转场代理只在边缘手势进行中才返回非 nil（push 操作永远不拦截）。12/12 通过；全量 Debug iOS test suite 重新跑过，77/77 通过，0 失败。
+
+**诚实的证据边界（记入 LESSONS.md 第 27 条）**：这些测试全部是在没有真实 window 的测试环境里跑的。实测发现 `UINavigationController.popViewController(animated:)` 在没有 window 时**不会**调用 `UINavigationControllerDelegate` 的转场方法（`animationControllerFor:`/`interactionControllerFor:`/`startInteractiveTransition`）——`viewControllers` 数组本身会同步更新，但转场代理整条链路被跳过。这意味着本次测试只覆盖了 M1 driver 的状态机和这层胶水代码的调用是否正确，**没有**、也**不可能**在无窗口环境下覆盖真实的 `transitionContext` 生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际的 view transform 渲染。这部分——也就是"手指拖的时候画面到底跟不跟手、松手后动画顺不顺、取消时会不会真的弹回原页面"——只能靠真机或者至少有真实窗口的模拟器交互验证，属于用户负责的那一半，本节不冒充已验证。
+
+限制：本次只做了 Navigation pop 这一个 owner；`UIScreenEdgePanGestureRecognizer` 本身的边缘宽度用的是系统默认区域，没有额外用 `GesturePolicy.isInsideEdge` 强制卡在合同建议的 24–32pt（`to-tune`，边缘识别本身已经由系统识别器结构性保证，属于合理的实现简化）；没有触碰 Reader→Browser、文章翻页、Reader 收缩、Feed hero、pFilter 这些 MOTION-CONTRACT.md 里其余的 owner。

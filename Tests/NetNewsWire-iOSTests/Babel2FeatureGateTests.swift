@@ -721,6 +721,177 @@ final class Babel2FeatureGateTests: XCTestCase {
 		XCTAssertTrue(images.contains { ($0["appearances"] as? [[String: String]])?.first?["value"] == "dark" })
 		XCTAssertTrue(images.contains { ($0["appearances"] as? [[String: String]])?.first?["value"] == "tinted" })
 	}
+
+	// MARK: - Babel2NavigationPopMotion (M1 page consumer)
+	//
+	// `beginPop()`/`updatePop(translationX:)`/`endPop(velocityX:forceCancel:)` are
+	// called directly rather than through a live UIScreenEdgePanGestureRecognizer,
+	// because XCTest cannot synthesize real touches. This exercises the actual
+	// production glue code and the real Babel2MotionDriver/MotionProjection engine
+	// underneath it -- it does not reimplement or mock that logic.
+	//
+	// Known headless limitation (see LESSONS.md): without a window,
+	// `popViewController(animated:)` never invokes the UINavigationControllerDelegate
+	// transition methods, so `transitionContext` stays nil and the actual view
+	// transforms / interactive-transition lifecycle (finish/cancelInteractiveTransition,
+	// completeTransition) are never exercised here. That part needs a real device or
+	// simulator run with an attached window; these tests only cover the motion
+	// driver's state machine and the decision math feeding it.
+
+	private func makeNavigationWithTwoRoutes() -> Babel2NavigationController {
+		let navigation = Babel2SceneComposition.makeRoot()
+		navigation.loadViewIfNeeded()
+		navigation.view.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+		navigation.view.layoutIfNeeded()
+		navigation.pushBabel2(UIViewController(), animated: false)
+		return navigation
+	}
+
+	func testBeginPopIsRejectedWithOnlyOneRouteOnStack() throws {
+		let navigation = Babel2SceneComposition.makeRoot()
+		navigation.loadViewIfNeeded()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.beginPop()
+		XCTAssertNil(popMotion.activeToken)
+		XCTAssertEqual(popMotion.motionState, .idle)
+	}
+
+	func testBeginPopStartsTrackingWithTwoRoutesOnStack() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.beginPop()
+		let token = try XCTUnwrap(popMotion.activeToken)
+		XCTAssertEqual(token.interaction, .navigationPop)
+		XCTAssertEqual(popMotion.motionState, .tracking(progress: .zero))
+	}
+
+	func testBeginPopIsIdempotentWhileAlreadyTracking() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.beginPop()
+		let firstToken = popMotion.activeToken
+		popMotion.beginPop()
+		XCTAssertEqual(popMotion.activeToken, firstToken, "a second begin while already tracking must not replace the token")
+	}
+
+	func testUpdatePopMapsTranslationToClampedProgress() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.beginPop()
+		let width = Double(navigation.view.bounds.width)
+
+		popMotion.updatePop(translationX: width * 0.4)
+		XCTAssertEqual(popMotion.motionState.progress.value, 0.4, accuracy: 0.001)
+
+		popMotion.updatePop(translationX: -50)
+		XCTAssertEqual(popMotion.motionState.progress.value, 0, "negative translation (dragging the wrong way) clamps to zero, not negative")
+
+		popMotion.updatePop(translationX: width * 10)
+		XCTAssertEqual(popMotion.motionState.progress.value, 1, "translation far beyond the container width clamps to one")
+	}
+
+	func testUpdatePopIsIgnoredWithoutAnActiveToken() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.updatePop(translationX: 100)
+		XCTAssertEqual(popMotion.motionState, .idle, "no gesture began, so an update must not start tracking on its own")
+	}
+
+	func testEndPopFinishesOnHighProgressWithForwardVelocity() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let width = Double(navigation.view.bounds.width)
+		popMotion.beginPop()
+		popMotion.updatePop(translationX: width * 0.8)
+		popMotion.endPop(velocityX: 400, forceCancel: false)
+		XCTAssertNil(popMotion.activeToken)
+		let settleTimeout = Date(timeIntervalSinceNow: 0.4)
+		while popMotion.motionState.isSettling && Date() < settleTimeout {
+			RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+		}
+		XCTAssertEqual(popMotion.motionState, .settled(progress: .one, outcome: .finished))
+	}
+
+	func testEndPopCancelsOnLowProgressWithNoVelocity() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let width = Double(navigation.view.bounds.width)
+		popMotion.beginPop()
+		popMotion.updatePop(translationX: width * 0.1)
+		popMotion.endPop(velocityX: 0, forceCancel: false)
+		XCTAssertNil(popMotion.activeToken)
+		let settleTimeout = Date(timeIntervalSinceNow: 0.4)
+		while popMotion.motionState.isSettling && Date() < settleTimeout {
+			RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+		}
+		XCTAssertEqual(popMotion.motionState, .cancelled(progress: .zero))
+	}
+
+	func testEndPopForceCancelIgnoresHighProgressAndVelocity() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let width = Double(navigation.view.bounds.width)
+		popMotion.beginPop()
+		// High progress and strong forward velocity would normally finish; a
+		// gesture-level cancel (recognizer .cancelled/.failed) must override that.
+		popMotion.updatePop(translationX: width * 0.95)
+		popMotion.endPop(velocityX: 2000, forceCancel: true)
+		let settleTimeout = Date(timeIntervalSinceNow: 0.4)
+		while popMotion.motionState.isSettling && Date() < settleTimeout {
+			RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+		}
+		XCTAssertEqual(popMotion.motionState, .cancelled(progress: .zero))
+	}
+
+	func testEndPopWithoutActiveTokenIsIgnored() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.endPop(velocityX: 500, forceCancel: false)
+		XCTAssertEqual(popMotion.motionState, .idle)
+	}
+
+	func testNavigationControllerInstallsEdgeGestureAndDisablesSystemInteractivePop() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		XCTAssertFalse(navigation.interactivePopGestureRecognizer?.isEnabled ?? true, "the system interactive pop gesture must be disabled -- Babel2NavigationPopMotion is the single owner")
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let ownGesture = try XCTUnwrap(popMotion.edgeGestureForTesting, "Babel2NavigationPopMotion must install its own edge gesture")
+		XCTAssertEqual(ownGesture.edges, .left)
+		XCTAssertTrue(navigation.view.gestureRecognizers?.contains(where: { $0 === ownGesture }) ?? false, "the consumer's own edge gesture must be attached to the navigation controller's view")
+		XCTAssertTrue(navigation.delegate === navigation.popMotion, "Babel2NavigationPopMotion must be the sole UINavigationControllerDelegate")
+	}
+
+	func testAnimationControllerIsOnlySuppliedDuringAnInteractivePop() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let fromVC = UIViewController()
+		let toVC = UIViewController()
+
+		XCTAssertNil(
+			popMotion.navigationController(navigation, animationControllerFor: .pop, from: fromVC, to: toVC),
+			"no animator outside an active edge gesture -- programmatic pop keeps the system default animation"
+		)
+
+		popMotion.beginPop()
+		let animator = popMotion.navigationController(navigation, animationControllerFor: .pop, from: fromVC, to: toVC)
+		XCTAssertTrue(animator === popMotion, "during an active edge gesture, Babel2NavigationPopMotion supplies its own animator")
+
+		XCTAssertNil(
+			popMotion.navigationController(navigation, animationControllerFor: .push, from: fromVC, to: toVC),
+			"push is never intercepted -- this consumer only owns pop"
+		)
+	}
+
+	func testTearDownRemovesGestureAndClearsActiveToken() throws {
+		let navigation = makeNavigationWithTwoRoutes()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		popMotion.beginPop()
+		XCTAssertNotNil(popMotion.activeToken)
+		let ownGesture = try XCTUnwrap(popMotion.edgeGestureForTesting)
+		popMotion.tearDown()
+		XCTAssertNil(popMotion.activeToken)
+		XCTAssertNil(popMotion.edgeGestureForTesting, "tearDown must release its own gesture reference")
+		XCTAssertFalse(navigation.view.gestureRecognizers?.contains(where: { $0 === ownGesture }) ?? false, "tearDown must remove the consumer's own edge gesture recognizer from the view")
+	}
 }
 
 @MainActor
