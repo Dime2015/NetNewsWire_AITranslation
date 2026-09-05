@@ -267,3 +267,15 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 | 全量 Debug iOS test suite（含以上两个新增测试） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-phase1a-a459-full-dd -resultBundlePath /private/tmp/babel2-phase1a-a459-full.xcresult test` | exit 0，`** TEST SUCCEEDED **`；`xcresulttool get test-results summary` 报 `result: Passed`、`failedTests: 0`（比上一批多了新增的测试用例） |
 
 九种输入的完整矩阵、每条输入对应哪个测试、以及"这一切都还没经过真实 `UISceneSession`"的诚实限制说明，见 [A4-release-accepted-persisted.json](evidence/phase1a/A4-release-accepted-persisted.json)、[A5-stale-generation-fail-closed.json](evidence/phase1a/A5-stale-generation-fail-closed.json)、[A9-restoration-validation.json](evidence/phase1a/A9-restoration-validation.json)。三行均标记"实现进行中/证据待补"，不是"通过"。
+
+## Phase 1A：A11/A15 fresh evidence（2026-09-05，Asia/Tokyo，同日第四批）
+
+| 检查 | 精确命令 | 结果 | 证据路径 |
+|---|---|---|---|
+| A11 进程内（新增，含视图加载+路由） | `xcodebuild ... -only-testing:.../testRootCompositionWithLoadedViewsAndRestorationCanBeReenteredThirtyTimesWithoutRetainedControllers test` | exit 0，passed (0.607s)，30/30 轮 liveRootCount/liveNavigationCount 均为 0 | [A11-30-cycle-stress.json](evidence/phase1a/A11-30-cycle-stress.json) |
+| A11 真实生产级（30 次冷启动） | 30 次循环，每轮 `xcrun simctl terminate/uninstall/install/launch` + 立即 `log show --last 15s --info` 单独存盘（脚本 `a11_30_cycles_v2.sh`，临时产物在 `/private/tmp/babel2-phase1a-a11-30cycles-v2/`，未随 commit 保留） | 30 个不同 PID、30 个不同 session ID、30/30 次 trace 为 `isValid:true isComplete:true generation:babel-2` 且 4 项 legacy 计数全为 0，无一例外 | 同上 |
+| A15 Gate A 扫描范围审计 | 独立 grep 核对 `Babel2BoundaryTests.sourceBoundaryContainsNoLegacyUIOrWebViewDependencies` 的扫描目录是否覆盖全部新增 Babel2 内容 | 发现遗漏 `iOS/Babel2Integration/`、`iOS/Babel2ExternalActionParser.swift`；补扫后发现 `Babel2LiveDataAdapters.swift` 的 6 处 `AccountManager.shared`（合理但此前无自动化盯防）；已修复扫描范围并加精确文件级白名单 | [A15-owner-and-gate-audit.json](evidence/phase1a/A15-owner-and-gate-audit.json) |
+| A15 扩大范围后的 Gate A（targeted） | `xcodebuild ... -only-testing:NetNewsWire-iOSTests/Babel2BoundaryTests test` | exit 0，4/4 passed | 同上 |
+| 全量 Debug iOS test suite（含本批全部改动） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-phase1a-a1115-full-dd -resultBundlePath /private/tmp/babel2-phase1a-a1115-full.xcresult test` | exit 0；`xcresulttool` summary `result: Passed`、`failedTests: 0`、`passedTests: 65` | — |
+
+限制：A11 的 30 次真实冷启动测的是"反复彻底重装"，不是"同一进程内导航来回"（那半句已由两个进程内单元测试覆盖）；物理 iPhone 上的 30 次反复进出仍未做。A15 的 persisted identity 边界（`LegacyIdentityCompatibility`）和完整 target/resource allowlist 仍 open。A11 标记"通过（需 root 复审）"；A15 标记"实现进行中/证据待补"。批量真实启动取证时"每轮立即抓日志、不要攒到最后"的方法论记在 LESSONS.md 第 25 条。

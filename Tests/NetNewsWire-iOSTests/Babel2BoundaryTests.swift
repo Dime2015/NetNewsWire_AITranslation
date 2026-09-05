@@ -20,10 +20,20 @@ import Babel2UI
 		let coreRoot = projectRoot.appendingPathComponent("Modules/Babel2UI/Sources/Babel2Core")
 		let uiRoot = projectRoot.appendingPathComponent("Modules/Babel2UI/Sources/Babel2UI")
 		let appRoot = projectRoot.appendingPathComponent("iOS/Babel2")
+		// The two integration-layer files were previously outside this sweep's
+		// scan roots (only iOS/Babel2 itself was scanned) even though they are
+		// new Babel2 content -- Gate A's per-directory scope must not silently
+		// exclude new files just because they live one level up. Scanning them
+		// surfaced one legitimate hit (AccountManager.shared in
+		// Babel2LiveDataAdapters.swift, the single designated bridge into the
+		// real account singleton), allowlisted below the same way
+		// Babel2FeatureGate.swift's trace-only tokens are.
+		let integrationRoot = projectRoot.appendingPathComponent("iOS/Babel2Integration")
+		let parserFile = projectRoot.appendingPathComponent("iOS/Babel2ExternalActionParser.swift")
 		let packageManifest = projectRoot.appendingPathComponent("Modules/Babel2UI/Package.swift")
 		let fileManager = FileManager.default
 
-		for root in [coreRoot, uiRoot, appRoot] {
+		for root in [coreRoot, uiRoot, appRoot, integrationRoot] {
 			var isDirectory: ObjCBool = false
 			#expect(fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory))
 			#expect(isDirectory.boolValue)
@@ -35,6 +45,9 @@ import Babel2UI
 		#expect(isManifestDirectory.boolValue == false)
 		let manifestData = try Data(contentsOf: packageManifest)
 		#expect(manifestData.isEmpty == false, "Babel2UI Package.swift is empty")
+		var isParserFileDirectory: ObjCBool = false
+		#expect(fileManager.fileExists(atPath: parserFile.path, isDirectory: &isParserFileDirectory))
+		#expect(isParserFileDirectory.boolValue == false)
 
 		let coreProhibitedTokens = [
 			"UIKit",
@@ -110,9 +123,10 @@ import Babel2UI
 		let rootsAndTokens: [(URL, [String])] = [
 			(coreRoot, coreProhibitedTokens),
 			(uiRoot, uiAndAppProhibitedTokens),
-			(appRoot, uiAndAppProhibitedTokens)
+			(appRoot, uiAndAppProhibitedTokens),
+			(integrationRoot, uiAndAppProhibitedTokens)
 		]
-		var filesToScan = [packageManifest]
+		var filesToScan = [packageManifest, parserFile]
 		let sourceExtensions: Set<String> = ["swift", "xcstrings", "json"]
 
 		for (root, _) in rootsAndTokens {
@@ -143,9 +157,18 @@ import Babel2UI
 			// These are trace-only identity/diagnostic tokens in this model, not
 			// legacy UI dependencies. Keep the exception exact and file-scoped;
 			// all other legacy tokens remain prohibited.
-			let traceOnlyTokens: Set<String> = fileURL.lastPathComponent == "Babel2FeatureGate.swift"
-				? ["SceneCoordinator", "SceneDelegate"]
-				: []
+			let traceOnlyTokens: Set<String>
+			switch fileURL.lastPathComponent {
+			case "Babel2FeatureGate.swift":
+				traceOnlyTokens = ["SceneCoordinator", "SceneDelegate"]
+			case "Babel2LiveDataAdapters.swift":
+				// The single designated bridge into the real account singleton
+				// (ADR-001: reuse account/sync/article services, don't reimplement
+				// them). No other Babel2 file may reference this singleton.
+				traceOnlyTokens = ["AccountManager.shared"]
+			default:
+				traceOnlyTokens = []
+			}
 			for token in tokens {
 				#expect(traceOnlyTokens.contains(token) || !source.contains(token), "Babel 2.0 source contains prohibited token \(token): \(fileURL.path)")
 			}

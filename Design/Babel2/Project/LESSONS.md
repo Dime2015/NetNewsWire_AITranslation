@@ -151,6 +151,12 @@
   根因：`UISceneSession` 是系统托管对象，没有公开的初始化方法，测试代码没法自己造一个"待恢复"的假 session；而现实中触发真实恢复流程的条件是"系统已经把这个 scene 从内存里彻底回收、但磁盘上还留着这个 session 的记录"——`xcrun simctl terminate` 是直接在进程层面 kill（不走保存流程，见第 23 条），`uninstall`/重装会直接把 session 本身抹掉（不是"回收又恢复"，是"从来没有过"），两者都不是这个中间态，命令行也没有更细的旋钮能强制系统进入这个中间态。
   以后 gate：**"restoration/状态恢复"这类需求，能测到的证据天然分两层，要分开说清楚，不能含糊成一句"通过"**——① 数据校验层（`isValid`/`decoded`/`validated`）和 root 组装层（`makeRoot(restoration:)`）可以直接调用生产函数测，能覆盖到"输入什么、应该出什么结果"的完整矩阵；② 真正"系统触发"这一环，要么等真机上真实发生一次（背景很久、系统内存紧张时自然回收），要么给生产代码加一个可测试的 seam（比如把"从 session 读 restoration"抽成一个可注入的协议）——但这是一次产品代码改动，需要先问、不能在"只取证"的任务里顺手做了。写证据文件时，这两层要分开写清楚覆盖到哪一层，不要用①的通过掩盖②还没做。
 
+## 25. 高频真实启动会把 OSLog 自己的缓冲区挤爆，"最后统一抓日志"这套手法在大批量场景下会丢证据（2026-09-05，做 A11 30 次真实冷启动时确认）
+
+- 症状：先跑完 30 次真实 uninstall/install/launch，最后才用一条 `log show --last 5m`（后来加大到 `--last 30m`）去抓全部日志，结果只捞到最后 11-12 轮的 trace，前 18-19 轮"NO TRACE FOUND"——不是因为没发生，是日志已经没了。
+  根因：每次冷启动光是系统噪音（网络、UIKit lifecycle、XPC 各种连接日志）就有两千多行，30 次乘起来接近 10 万行；OSLog 的进程内缓冲区是按**体积**淘汰旧数据的，不是纯按查询窗口的时间保证一定能查到——查询窗口再放大，如果数据已经被挤出缓冲区，一样查不到。之前小批量（10 次左右）从没撞到这个上限，掩盖了这个问题。
+  以后 gate：**批量做真实启动取证（数量超过一二十次）时，日志必须"每轮做完立刻抓、立刻存盘"，不能攒到最后一次性抓**——哪怕这样脚本要多跑几次 `log show`、慢一点。这条本轮已经改过来了（`a11_30_cycles_v2.sh` 每轮 launch 后立刻 `--last 15s` 单独存一个文件），30/30 轮全部拿到完整证据。以后写类似脚本，默认就按"每轮抓"设计，不要图省事先攒后抓。
+
 ## 21. 改默认值/去掉安全余量必须重跑全量测试，不能只跑受影响的单测（2026-09-05）
 
 - 症状：Feeds/Timeline 卡片打磨的工作树改动（文件夹层级、缩略图卡片、`filterDisplayOrder` 固定 Figma 像素坐标、默认 scope 从 `.all` 改为 `.unread`）在包测试 30/30 通过、Debug 编译成功的情况下被当作"已验证"，但从未跑过全量 iOS Debug 测试；补跑后暴露 2 个真实回归：①`layoutScopeControlsIfNeeded()` 把旧版 `max(44, …)` 的保底宽度换成纯 Figma 绝对坐标，且新增 `scopeStack.bounds.width > 0` 才布局的 guard——任何还没被真实 window 赋予宽度的宿主（测试 host、或极端情况下的过早布局回调）会让筛选按钮永远停在初始的零尺寸 frame 上，`XCTAssertGreaterThanOrEqual(scope.frame.width, 44)` 直接失败；②`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 被手改成 `after: 2`，但默认 scope 改为 `.unread` 后 `viewDidAppear` 已经预加载过 `.unread`，`scopeTapped` 对"已加载过的 scope"不会重新发请求（只是切换显示），导致测试里布下的 delayed 请求永远不会被消费，等到超时。

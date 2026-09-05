@@ -609,6 +609,53 @@ final class Babel2FeatureGateTests: XCTestCase {
 		print("Babel2 lifecycle final rootDeinitCount=\(rootReferences.count) navigationDeinitCount=\(navigationReferences.count) liveRootObjects=0 liveNavigationObjects=0")
 	}
 
+	/// The test above never loads a view (it never touches `.view`), so it
+	/// never exercises `viewDidLoad` -- the gesture-recognizer-delegate
+	/// assignment, the `.babel2LibraryDidChange` NotificationCenter
+	/// registration, and the rest of `configureControls`/`configureScopeSurfaces`
+	/// never run. A11 asks for create -> visible -> teardown -> re-entry; this
+	/// adds the "visible" step (view loaded, laid out, with a restored
+	/// multi-route stack each cycle) on top of the same weak-reference
+	/// deinit proof, plus a route-correctness check per cycle.
+	func testRootCompositionWithLoadedViewsAndRestorationCanBeReenteredThirtyTimesWithoutRetainedControllers() {
+		var rootReferences = [Babel2WeakReference<Babel2RootViewController>]()
+		var navigationReferences = [Babel2WeakReference<Babel2NavigationController>]()
+
+		for cycle in 1...30 {
+			autoreleasepool {
+				let navigation = Babel2SceneComposition.makeRoot(
+					restoration: Babel2NavigationRestoration(routes: [.home, .settings])
+				)
+				let root = try! XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
+				root.loadViewIfNeeded()
+				root.view.layoutIfNeeded()
+				navigation.view.layoutIfNeeded()
+				rootReferences.append(Babel2WeakReference(root))
+				navigationReferences.append(Babel2WeakReference(navigation))
+
+				// Route correctness each cycle, not just on the first one.
+				XCTAssertEqual(navigation.viewControllers.count, 2, "cycle \(cycle)")
+				XCTAssertEqual(navigation.restorationValue().routes, [.home, .settings], "cycle \(cycle)")
+
+				navigation.tearDown()
+			}
+			RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+			let liveRootCount = rootReferences.filter { $0.value != nil }.count
+			let liveNavigationCount = navigationReferences.filter { $0.value != nil }.count
+			XCTAssertEqual(liveRootCount, 0, "cycle \(cycle)")
+			XCTAssertEqual(liveNavigationCount, 0, "cycle \(cycle)")
+		}
+
+		// Posting the notification the (now fully deallocated) roots were
+		// observing must not crash. NotificationCenter has not retained a
+		// stale target-action observer since iOS 9 (our deployment target is
+		// far newer), and the weak-reference checks above already proved
+		// every observer actually deallocated -- this only guards the
+		// combination of the two.
+		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		print("Babel2 lifecycle (loaded views) final rootDeinitCount=\(rootReferences.count) navigationDeinitCount=\(navigationReferences.count) liveRootObjects=0 liveNavigationObjects=0")
+	}
+
 	func testRootHasFeedsTitleAndTwoReachableActions() {
 		let navigation = Babel2SceneComposition.makeRoot()
 		let root = try! XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)

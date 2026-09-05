@@ -1,0 +1,32 @@
+{
+  "id": "A11",
+  "scenario": "30-cycle re-entry / leak：在相同测试数据上完成 30 次 create → visible → teardown → re-entry；每轮 route 正确、gesture/observer 不重复、controller 能释放，weak reference 和内存/日志无累计异常",
+  "commit_or_worktree": "733275b72 之后新增两个测试方法，待提交",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "两层证据：①已有的进程内 30 次 create/teardown 单元测试（只测对象图，不加载视图）；②本轮新增的进程内 30 次 create/loadView/teardown 单元测试（补上'visible'这一步和路由正确性）；③本轮新增的 30 次真实冷启动（每次真正 uninstall/install/launch，全新进程），这是三行里唯一一次做到'真实 App 级别'而不是'进程内对象级别'的 A11 证据。",
+  "part_1_existing_in_process_test": {
+    "test": "Babel2FeatureGateTests.testRootCompositionCanBeReenteredThirtyTimesWithoutRetainedControllers（已有）",
+    "what_it_covers": "30 次 `Babel2SceneComposition.makeRoot()` → 用 `Babel2WeakReference` 记住 root/navigation → `navigation.tearDown()`；每一轮都断言累计 dealloc 数等于当前轮次（不多不少）、当前存活数为 0。",
+    "what_it_does_not_cover": "从不访问 `.view`，所以 `viewDidLoad`（手势 delegate 赋值、NotificationCenter 注册、控件搭建）从未跑过；也没有验证 route 正确性。",
+    "fresh_run": "2026-09-05，全量 suite 里通过，见下方 full_suite_cross_check。"
+  },
+  "part_2_new_in_process_test_with_loaded_views": {
+    "test": "Babel2FeatureGateTests.testRootCompositionWithLoadedViewsAndRestorationCanBeReenteredThirtyTimesWithoutRetainedControllers（本轮新增）",
+    "what_it_adds": "每轮用 `Babel2NavigationRestoration(routes: [.home, .settings])` 恢复出 2 层路由，`root.loadViewIfNeeded()` + `layoutIfNeeded()` 真正触发 `viewDidLoad`（手势 delegate、`.babel2LibraryDidChange` 观察者注册、控件搭建全部跑一遍），每轮都断言 `navigation.viewControllers.count == 2` 和 `restorationValue().routes == [.home, .settings]`（路由正确性，不是只测第一轮），30 轮后再 `NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)` 确认不崩溃。",
+    "fresh_run": "2026-09-05 13:22 JST，targeted 运行 exit 0，passed (0.607s)；30/30 轮 liveRootCount/liveNavigationCount 均为 0。"
+  },
+  "part_3_real_production_launches": {
+    "method": "30 次真实冷启动循环：每轮 `xcrun simctl terminate` → `uninstall` → `install`（同一 Debug build）→ `launch` → 等 3.5 秒 → 立即 `log show --last 15s --info` 抓这一轮自己的 trace（吸取上一次'先跑完 30 轮再统一抓日志'导致 OSLog 缓冲区把最早若干轮证据挤掉的教训，见 LESSONS.md 第 25 条——本轮改成每轮抓完立刻存盘）。",
+    "environment": "Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2；Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a",
+    "result": "30/30 次循环：30 个互不相同的 PID（证明每次都是真正的全新进程，不是复用）、30 个互不相同的 launch session ID、**30/30 次 trace 均为 isValid=true、isComplete=true、generation=babel-2、legacyLifecycleStarted=false、legacyBootstrapStarted=false、legacyStoryboardInstantiations=0、legacyCoordinatorCreations=0、legacyWebViewBootstrapCalls=0**——完全没有一次例外、没有一次退化。",
+    "raw_data": "解析后的完整 30 行结果存于本次评估过程中的 /private/tmp/babel2-phase1a-a11-30cycles-v2/parsed_summary.json（临时文件，未随 commit 保留；此处摘要即为其汇总数字的完整转述，不是节选）。"
+  },
+  "full_suite_cross_check": {
+    "command": "env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-phase1a-a1115-full-dd -resultBundlePath /private/tmp/babel2-phase1a-a1115-full.xcresult test",
+    "result": "exit 0；`xcresulttool get test-results summary` 报 `result: Passed`、`failedTests: 0`、`passedTests: 65`"
+  },
+  "observed": "对象级（30 次进程内 create/teardown，含和不含真实视图加载两种）和进程级（30 次真实冷启动）两条证据线都是干净的 30/30，没有一次异常、没有累计泄漏的迹象。这是本轮 Phase 1A 证据里唯一做到'30 次全部是真实独立 App 进程'的一行，比其它行只能停在'调用生产函数'层面更接近生产真实场景。",
+  "not_covered_this_round": "30 次真实冷启动测的是'反复彻底重装+冷启动'，不是 A11 原文更强调的'同一进程内反复 create→visible→teardown→re-entry'（那半句已经被两个进程内单元测试覆盖）；也没有测'不 uninstall、只 terminate 再 launch'这种热重启 30 次的场景（那更接近 A10 的 warm-reuse 现象，见 LESSONS.md 第 22 条，混进来会让 A11 的证据目的变得不纯粹）。物理 iPhone 上的 30 次反复进出仍然没做。",
+  "owner": "Claude (this session)",
+  "status": "通过（需 root 复审）"
+}

@@ -1,0 +1,59 @@
+{
+  "id": "A15",
+  "scenario": "single owner + Gate A exact allowlist：generation 只由 gate 决策 owner 写入；Babel2 root/navigation、restoration/teardown、external fallback 各只有一个 owner；扫描相对基线的新增/修改内容，旧 token 命中要逐项列出文件/行/字面量/理由/owner，未登记命中失败",
+  "commit_or_worktree": "在既有 Babel2BoundaryTests.swift 基础上扩大扫描范围后，待提交",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "两部分：①用 A1/A7/A8/A9/A10/A13 已经查证过的代码位置汇总'单一 owner'结论，不重复取证，只做交叉引用；②独立重新审计现有的 Gate A 自动化测试（Babel2BoundaryTests.swift），核实它的扫描范围是否真的覆盖了全部新增 Babel2 内容——审计发现一个真实缺口（扫描范围漏了两个目录/文件）并已修复。",
+
+  "part_1_single_owner_audit": [
+    {
+      "owner": "generation 决策",
+      "single_owner": "Babel2FeatureGate.decision(buildChannel:)，只在 iOS/AppDelegate.swift 的 override init() 里被调用一次",
+      "evidence": "A1（iOS/AppDelegate.swift 第 63-87 行，第 75 行 `launchDecision = Babel2FeatureGate.decision(buildChannel: buildChannel)`）；全仓库搜索确认没有第二处调用点",
+      "verify_by": "grep -rn 'Babel2FeatureGate.decision(' --include=*.swift . ，预期只在 AppDelegate.swift 和测试文件里出现"
+    },
+    {
+      "owner": "Babel2 root/navigation",
+      "single_owner": "SceneDelegate.installBabel2Root(in:restoration:)，用 `guard babel2NavigationController == nil else { return }` 守住只建一次",
+      "evidence": "A9/A10（iOS/SceneDelegate.swift 第 111-145 行）",
+      "verify_by": "打开 iOS/SceneDelegate.swift，搜索 installBabel2Root，确认方法体第一行就是这个 guard"
+    },
+    {
+      "owner": "restoration/teardown",
+      "single_owner": "SceneDelegate 自己：`stateRestorationActivity(for:)` 读、`sceneDidDisconnect(_:)` 写 teardown，都在同一个类里，没有第二个类实现这两个方法",
+      "evidence": "A9/A10（iOS/SceneDelegate.swift 第 66-78 行）",
+      "verify_by": "grep -rn 'func sceneDidDisconnect\\|func stateRestorationActivity' --include=*.swift iOS ，预期只命中 SceneDelegate.swift"
+    },
+    {
+      "owner": "external action fallback",
+      "single_owner": "Babel2ExternalActionParser 是唯一的 parser 声明，SceneDelegate.handleExternalActionURL 是唯一的执行入口，两者都只有一份",
+      "evidence": "A7/A8；且这条本身已经有专门的自动化测试 `Babel2BoundaryTests.repositoryHasExactlyOneCanonicalExternalActionParser`（已有，本轮重新跑过，见下方 fresh_run）",
+      "verify_by": "见该测试本身：遍历 iOS/Modules/Tests 下所有 .swift 文件找 `enum Babel2ExternalActionParser` 声明，断言只有一处"
+    }
+  ],
+
+  "part_2_gate_a_scan_audit": {
+    "existing_automation": "Babel2BoundaryTests.sourceBoundaryContainsNoLegacyUIOrWebViewDependencies（已有）：对 Modules/Babel2UI/Sources/Babel2Core、Modules/Babel2UI/Sources/Babel2UI、iOS/Babel2 三个目录逐文件扫描一份禁止 token 清单（旧 UI 类型名、WebKit、几个 shared 单例访问），只允许 Babel2FeatureGate.swift 里出现 trace-only 的 'SceneCoordinator'/'SceneDelegate' 字面量（诊断枚举 case 名，不是真的引用类型）。另有 Babel2UI Package.swift 的依赖方向检查（Core 无依赖、UI 只依赖 Core、测试只依赖 Core+UI，且没有任何外部 package 依赖）。",
+    "gap_found": "这三个扫描目录漏了两处明显也是'新增 Babel2 内容'的位置：`iOS/Babel2Integration/`（`Babel2LiveDataAdapters.swift` 所在目录）和 `iOS/Babel2ExternalActionParser.swift`（单独一个文件，不在任何被扫描的目录下）。独立补扫这两处后，发现 `Babel2LiveDataAdapters.swift` 里有 6 处 `AccountManager.shared`——这是原有 token 清单里明确禁止的项，但因为扫描范围没覆盖到这个文件，从来没被检查过。",
+    "verdict_on_the_hit": "这个命中是合理的，不是违规：`Babel2LiveDataAdapters.swift`（'live' 前缀已经说明它就是唯一被设计出来去接真实数据的桥接层）是全仓库唯一直接访问 `AccountManager.shared` 的 Babel2 文件——这正是 ADR-001 允许的'复用账户/同步服务'，而且是集中在一个文件里，符合'单一 owner'的精神。危险的是'这条规则完全没有自动化在盯'，不是'代码本身有问题'。",
+    "fix_applied": "扩大 `sourceBoundaryContainsNoLegacyUIOrWebViewDependencies` 的扫描范围，加入 `iOS/Babel2Integration` 目录和 `iOS/Babel2ExternalActionParser.swift` 文件；给 `Babel2LiveDataAdapters.swift` 加一条和 `Babel2FeatureGate.swift` 同样写法的精确、文件级 allowlist（只允许 `AccountManager.shared` 这一个 token），其余全部 token 在这两处新增的扫描位置继续严格禁止。这样以后如果有第二个 Babel2 文件也开始直接碰 `AccountManager.shared`，测试会立刻报红。",
+    "fresh_run": "2026-09-05 13:32 JST，`-only-testing:.../Babel2BoundaryTests` 4/4 通过（含扩大范围后的 `sourceBoundaryContainsNoLegacyUIOrWebViewDependencies`）；同一改动已跑过全量 Debug iOS test suite，`result: Passed`、`failedTests: 0`、`passedTests: 65`。"
+  },
+
+  "part_3_independent_spot_checks": {
+    "method": "在扩大范围前，先用手写脚本独立扫过一遍更宽的 token 列表（Genesis、MainFeedCollectionViewController、RootSplit、SceneCoordinator、BabelShell、NNWMenu、genesis-v2、NetNewsWire、com.ranchero），确认除了已知的 Babel2FeatureGate.swift 那一处 trace-only 例外，Babel2 全部源码树（含刚发现漏扫的两处）不含任何其它旧 token。",
+    "accessibility_identifiers": "`grep -rhoE 'accessibilityIdentifier = \"[^\"]+\"' iOS/Babel2 Modules/Babel2UI/Sources` 全部以 `babel2.` 开头，零例外。",
+    "log_categories": "iOS/Babel2、iOS/Babel2Integration、iOS/Babel2ExternalActionParser.swift、AppDelegate.swift、SceneDelegate.swift 里唯一的 `Logger(... category:)` 调用用的是通用词 'Application'，不含任何旧品牌/旧模块名。",
+    "localization_strings": "`iOS/Babel2/Resources/Babel2Localizable.xcstrings` 不含 'NetNewsWire'/'Ranchero' 字样。"
+  },
+
+  "part_4_persisted_system_identity_boundary_still_open": {
+    "finding": "`LegacyIdentityCompatibility` 这个合同里点名要求的唯一边界，在全仓库 Swift 源码里搜索**零命中**——它目前完全不存在，不是'做了但藏起来'，是真的还没写。与此同时，bundle identifier（如 `com.wenbopan.NetNewsWire.iOS`、`com.wenbopan.NetNewsWire.iOS-DEBUG`）、测试 target 名（`NetNewsWireTests`、`NetNewsWire-iOSTests`）等持久化系统身份，原样写死在 `xcconfig/*.xcconfig` 里，完全没有经过任何一层包装或登记。",
+    "interpretation": "这不是本轮新发现的回归——项目自己的 HANDOFF.md/DECISIONS.md 早就写明这层边界'当前没有实现，不创建空 facade'，属于路线 A 里明确延后的部分。本条只是把'现在到底是什么状态'钉死成一个可复核的事实（零命中 + 具体列出目前裸露的持久化身份在哪些文件），不是要现在去动它——改这些标识符是会影响 App Store 身份和用户现有安装的真实风险操作，需要单独授权，不在'只取证'的本轮任务范围内。",
+    "verify_by": "grep -rln 'LegacyIdentityCompatibility' --include=*.swift . （预期零命中）；grep -n PRODUCT_BUNDLE_IDENTIFIER xcconfig/*.xcconfig"
+  },
+
+  "not_covered_this_round": "本行没有对整个仓库做'相对某个历史基线的完整 diff'扫描（A15 原文提到的'只扫描变更集'）——而是直接对当前被认定为'新增 Babel2 内容'的固定目录集合做穷举扫描，理由是这些目录本身就是全新的、不存在历史基线之前版本，扫目录等价于扫这些目录的全部历史 diff。如果以后要求真的按 git diff 逐 commit 复核（比如为了捕捉'在 Babel2 目录之外新增的 Babel2 相关文件'），需要额外的脚本，本轮没有做。target-membership/resource allowlist（bundle 里还留着 Main.storyboardc、8 套主题、3 个 extension）仍是 open，不受本轮影响。",
+  "owner": "Claude (this session)",
+  "status": "实现进行中/证据待补——命名/文件层面的 single-owner 与 Gate A 扫描（含本轮扩大范围后重新验证）通过（需 root 复审）；persisted identity 边界与完整 target/resource allowlist 仍缺"
+}
