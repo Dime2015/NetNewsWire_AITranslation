@@ -1,0 +1,42 @@
+{
+  "id": "A12",
+  "scenario": "0.5 / 1 / 2 秒启动截图：Babel2 cold launch 固定设备/scheme/数据/参数，进程启动后 0.5s/1.0s/2.0s 各捕获一张并记录时间戳；0.5s 至少只能出现 Babel2 root 或有 trace 支持的 Babel2 准备状态；1.0s 与 2.0s 必须显示同一 Babel2 root；任何时点不得出现 legacy landing page、空白跳变、重复壳；截图只能辅助，必须与 A6 trace 配对",
+  "commit_or_worktree": "7b8ff453e（生产代码未变，见 STATUS.md）",
+  "captured_at": "2026-09-05 13:45 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2；Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a；无参数冷启动（uninstall→install→launch，同一 Debug build）",
+  "timing_method_and_honesty_note": "第一次尝试假设'调用 xcrun simctl launch 那一刻'约等于'进程真正开始跑 AppDelegate.init()'，结果发现两者之间有 2-2.5 秒的差距（simctl launch 本身的往返开销 + 冷启动前的动态链接/Swift 运行时初始化），导致第一次拍的三张截图全部拍在进程真正启动**之前**，是无效证据（已丢弃，不冒充通过）。改正做法：冷启动后不设时间假设，连续密集拍摄 12 张（无人为等待，纯粹让工具本身的调用开销决定间隔，实测约 0.35-0.4 秒一张），每张都用 `date +%s.%N` 记录纳秒级前后时间戳；启动完成后从当轮真实 OSLog trace 里取 processEntry 的精确挂钟时间，用它反推每一张截图相对'真实进程启动那一刻'的精确偏移量，再从这一组里选最接近 +0.5s/+1.0s/+2.0s 的那几张。这样报出来的是真实测得的偏移，不是假装刚好踩中整数秒。",
+  "process_entry_wall_clock": "2026-09-05 13:45:31.992 JST（本轮 trace 的 processEntry 事件时间戳）",
+  "content_first_frame_wall_clock": "2026-09-05 13:45:32.109 JST（距 processEntry 仅 +0.117s——整个'创建 root→显示→首帧'的流程在这次实测里不到 0.12 秒就跑完了，明显快于 0.5 秒）",
+  "selected_frames": [
+    {
+      "label": "process-entry 前一瞬间（附带证据，非 A12 必需项）",
+      "file": "A12-launchscreen-before-process-entry.png",
+      "measured_offset_from_process_entry": "-0.097s",
+      "observed": "纯黑背景，居中显示白色 'Babel' 字样——这是 iOS 系统自己在应用进程真正跑起来之前显示的启动图（LaunchScreen），不是任何应用代码在跑。没有系统默认的空白页、没有任何旧品牌痕迹。"
+    },
+    {
+      "label": "最接近 +0.5s",
+      "file": "A12-t+0.3s.png",
+      "measured_offset_from_process_entry": "+0.307s",
+      "observed": "已经是完整的 Babel2 Feeds 页面结构：顶部齿轮（设置）/刷新/加号，标题'Feeds'，底部星标/未读-全部切换胶囊/汉堡菜单；正文区域是暗淡的'Babel / No feeds'占位水印（真实源列表数据这一刻还没渲染进来）。没有任何旧界面元素、没有白屏、没有重复壳。由于本轮 contentFirstFramePresented 只比 processEntry 晚 0.117 秒，到 +0.307s 时首帧其实早已呈现完毕，看到的就是 A12 原文允许的'Babel2 root 或有 trace 支持的准备状态'里更靠后的那一种（结构已就绪，数据尚未画出）。"
+    },
+    {
+      "label": "最接近 +1.0s",
+      "file": "A12-t+1.1s.png",
+      "measured_offset_from_process_entry": "+1.108s",
+      "observed": "同一个 Babel2 Feeds 页面（同一个 root），列表已经填入真实源名称（Daring Fireball、inessential、Julia Evans、kottke.org、Manton Reece、NetNewsWire、Scripting News）和各自未读数，但图标位置大多还是占位灰圆点（图标还在下载/解码）。"
+    },
+    {
+      "label": "最接近 +2.0s",
+      "file": "A12-t+2.3s.png",
+      "measured_offset_from_process_entry": "+2.272s",
+      "observed": "同一个 Babel2 Feeds 页面（同一个 root），此时列表增加到 9 个源（furbo.org、Michael Tsai 也出现了，应是后台加载/同步补上的），且大部分源的真实 favicon 已经加载出来。仍是同一张页面结构，没有任何跳转、没有第二个壳。"
+    }
+  ],
+  "cross_reference_with_trace": "四张截图对应的时间窗口内，同一 session（本轮 trace 的 sessionID）产生的事件顺序为 processEntry→decision→sceneConfigurationSelected→sceneConfigurationObserved→rootInstalled→rootVisible→containerAppeared→contentFirstFramePresented，全部 generation=babel-2，且 legacyLifecycleStarted/legacyBootstrapStarted 均为 false、三个 legacy 计数均为 0（与本轮同一次启动的完整 trace 一致，未单独重跑）。截图内容和 trace 描述的状态吻合：截图里看到的'一个 Babel2 Feeds 页面从空壳到填充数据'的过程，正对应 trace 里 rootVisible→containerAppeared→contentFirstFramePresented 这几个真实事件。",
+  "observed_summary": "0.5s、1.0s、2.0s 三个采样点（用真实测得的最接近偏移代替假设的整数秒）看到的都是同一个 Babel2 Feeds 页面结构，没有任何一帧出现旧版着陆页、空白跳变或重复壳；随时间推移只有'数据/图标从无到有'这种正常的渐进加载，不是结构性的跳变。",
+  "acceptance_boundary": "这里的'没有异常'是我从截图内容和 trace 数据比对后得出的结构性描述（有没有旧元素、有没有空白、是不是同一个 root），**不构成视觉验收**——图标裁切是否整齐、加载动画顺不顺眼、暗色配色是否符合预期这些主观判断仍然需要用户自己看一眼四张截图确认。文件已通过 SendUserFile 发送。",
+  "limitations": "只在 Simulator 上验证；不替代目标物理 iPhone 的启动截图（trace/性能都可能不同）。采样点是'测得最接近整数秒的真实帧'，不是精确卡在 0.500s/1.000s/2.000s——精确到毫秒级卡点需要比 `xcrun simctl io screenshot`（单次调用本身有约 0.35-0.4 秒开销）更快的截屏机制，本轮没有再往这个方向投入。",
+  "owner": "Claude (this session)",
+  "status": "结构性证据通过（需 root 复审）；最终视觉验收需要用户确认"
+}

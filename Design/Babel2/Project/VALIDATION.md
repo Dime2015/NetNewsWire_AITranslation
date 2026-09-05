@@ -279,3 +279,13 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 | 全量 Debug iOS test suite（含本批全部改动） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-phase1a-a1115-full-dd -resultBundlePath /private/tmp/babel2-phase1a-a1115-full.xcresult test` | exit 0；`xcresulttool` summary `result: Passed`、`failedTests: 0`、`passedTests: 65` | — |
 
 限制：A11 的 30 次真实冷启动测的是"反复彻底重装"，不是"同一进程内导航来回"（那半句已由两个进程内单元测试覆盖）；物理 iPhone 上的 30 次反复进出仍未做。A15 的 persisted identity 边界（`LegacyIdentityCompatibility`）和完整 target/resource allowlist 仍 open。A11 标记"通过（需 root 复审）"；A15 标记"实现进行中/证据待补"。批量真实启动取证时"每轮立即抓日志、不要攒到最后"的方法论记在 LESSONS.md 第 25 条。
+
+## Phase 1A：A12 fresh evidence（2026-09-05，Asia/Tokyo，同日第五批）
+
+| 检查 | 精确命令 | 结果 |
+|---|---|---|
+| 第一次尝试（作废） | 以 `xcrun simctl launch` 调用时刻为 t=0，按 0.5/1.0/2.0s 睡眠后拍照 | 三张截图全部拍在真实 `processEntry` 之前 0.5-1.7 秒，无效，已丢弃不冒充通过（见 LESSONS.md 第 26 条） |
+| 改正后：密集采样 | 冷启动（uninstall/install/launch）后连续拍 12 张（无人为 sleep，工具调用开销自然形成约 0.35-0.4s 间隔），每张 `date +%s.%N` 记纳秒时间戳 | 12 张截图覆盖真实 processEntry 前后共约 4.4 秒的窗口 |
+| 事后精确定位 | 用同一轮 trace 的 processEntry 挂钟时间（`2026-09-05 13:45:31.992`）反推每张截图的真实偏移 | 选出最接近 +0.5s/+1.0s/+2.0s 的三张，实测偏移分别为 +0.307s、+1.108s、+2.272s；contentFirstFramePresented 实测只比 processEntry 晚 +0.117s |
+
+三张截图内容摘要：+0.307s 已是完整 Babel2 Feeds 结构（工具栏+底部三档+"Babel/No feeds"占位水印）；+1.108s 真实源名称已显示、图标仍是占位灰圆点；+2.272s 图标基本加载完成、源数量从 7 个增至 9 个（后台同步补上）。全部同一个 Babel2 root，无旧版着陆页、无空白跳变、无重复壳。完整方法论、逐张时间戳反推和截图路径见 [A12-0.5-1.0-2.0s-screenshots.json](evidence/phase1a/A12-0.5-1.0-2.0s-screenshots.json)；四张截图已通过 SendUserFile 发给用户。标记"结构性证据通过（需 root 复审）"；最终视觉验收（图标裁切、加载观感等主观判断）仍需用户自己看过确认，不由此文件替代。
