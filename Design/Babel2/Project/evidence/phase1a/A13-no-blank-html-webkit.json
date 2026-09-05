@@ -1,0 +1,27 @@
+{
+  "id": "A13",
+  "scenario": "Phase 1A 启动路径无 blank.html / WebKit",
+  "commit_or_worktree": "fb0a43f14f3b35f16660de40664826a796d863ae",
+  "captured_at": "2026-09-05 Asia/Tokyo",
+  "method": "静态引用 + 复用同一批 A2 runtime trace 的 legacyWebViewBootstrapCalls 字段，不新增启动。",
+  "static_findings": [
+    {
+      "claim": "iOS/AppDelegate.swift 与 iOS/SceneDelegate.swift（Babel2 生产生命周期唯一入口）不引用 WKWebView、ArticleRenderer、WebViewProvider 或 PreloadedWebView",
+      "verify_by": "grep -n 'WKWebView\\|WebViewProvider\\|PreloadedWebView' iOS/AppDelegate.swift iOS/SceneDelegate.swift  (预期零匹配)"
+    },
+    {
+      "claim": "blank.html 只在 iOS/Resources/blank.html（资源文件）和 Shared/Article Rendering/ArticleRenderer.swift（旧共享渲染层）出现；Babel2 当前的文章展示路径（Babel2DataAdapters.swift 的 Babel2PassthroughArticleRenderer、Babel2LiveDataAdapters.swift 的 Babel2LiveArticleRenderer）只是同名 ArticleRendering 协议的另一套实现，不引用 WKWebView 或旧 ArticleRenderer 类型本身",
+      "verify_by": "grep -rn 'blank\\.html' --include=*.swift iOS Shared Modules  (预期只命中 ArticleRenderer.swift)；grep -n 'WKWebView' iOS/Babel2/Babel2DataAdapters.swift iOS/Babel2Integration/Babel2LiveDataAdapters.swift  (预期零匹配——当前 Babel2 展示的是缓存正文快照，不经过 WebKit 渲染)"
+    },
+    {
+      "claim": "recordLegacyBlankWebViewBootstrap/recordLegacyWebViewBootstrap 探针只埋在旧类里，Babel2 生产路径不会调用",
+      "evidence": "调用点分别在 iOS/RootSplitViewController.swift、iOS/SceneCoordinator.swift、iOS/BabelUI/BabelShellViewController.swift、iOS/Article/PreloadedWebView.swift、iOS/Article/WebViewProvider.swift ——这五个类没有一个被 AppDelegate/SceneDelegate 实例化（见 A1 的静态引用）。",
+      "verify_by": "grep -rln 'recordLegacyWebViewBootstrap\\|recordLegacyBlankWebViewBootstrap' iOS  然后确认命中文件都不在 AppDelegate/SceneDelegate 的调用链上"
+    }
+  ],
+  "runtime_cross_reference": "复用 A2-build-channel-matrix.json 的 10 次真实冷启动（Debug/Release 各 5 种参数组合）：全部 10 次 legacyWebViewBootstrapCalls=0；2026-09-01 r8 的 no-args/cold -GenesisV2 两次也是 0。没有为本行单独发起新启动。",
+  "observed": "静态引用和 18 次（本轮 10 + r8 的 8：no-args/cold-genesis 各含 debug/release 场景，具体见 VALIDATION.md）真实启动的 runtime 证据一致：Babel2 启动路径不加载/生成 blank.html，不初始化 WebKit 作为 root 预热或占位。",
+  "limitations": "这只覆盖当前 Babel2 的启动与文章列表展示路径；不覆盖后续 Reader/Browser 的专用 WebKit 路径（那是 Slice 4/5 的范围，A13 明确说明不放宽那部分）。也不构成 Gate A 的完整 target-membership/resource allowlist（A15 的范围）——blank.html 作为资源文件目前仍打进 bundle，只是运行时不可达。",
+  "owner": "Claude (this session)",
+  "status": "通过（需 root 复审）"
+}

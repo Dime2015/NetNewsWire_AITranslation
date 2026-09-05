@@ -242,3 +242,16 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 | A1 静态引用 | 对 `iOS/AppDelegate.swift`、`iOS/Babel2/Babel2FeatureGate.swift` 做逐行引用核对（非自动化命令，人工/grep 核对文件行号与内容） | 未发现任何读取 `CommandLine`/`ProcessInfo.processInfo.arguments`/`UserDefaults` 来决定 generation 的代码路径；未发现旧生命周期/storyboard/coordinator/WebView 类型出现在 `startBabel2LifecycleIfNeeded`/`bootstrapBabel2RuntimeIfNeeded`/`configurationForConnecting` 里 | [A1-bootstrap-isolation.json](evidence/phase1a/A1-bootstrap-isolation.json) |
 
 限制：以上全部在 Simulator 完成，不替代目标物理 iPhone；A4/A5（persisted generation/restoration）、A6 剩余子项、A8–A15 与视觉/性能验收均不在本轮范围内。SIMCTL_CHILD_BABEL2_OPEN_FIRST_FEED 与 BABEL2_FEEDS_SCOPE 是仅供取证使用的环境变量开关，不是 production selector，与 A1–A3 检查的 launch-argument 边界无关，已在证据文件里注明。四行证据均标记"通过（需 root 复审）"，尚未经过独立 root 复审终审。
+
+## Phase 1A：A8/A10/A13 fresh evidence（2026-09-05，Asia/Tokyo，同日第二批）
+
+同一 commit `fb0a43f14`（已推送）、同一 Simulator 环境，延续上一批的方法继续跑。
+
+| 检查 | 精确命令 | 结果 | 证据路径 |
+|---|---|---|---|
+| A13 | 静态 grep（`blank\.html`、`WKWebView`、`recordLegacyWebViewBootstrap` 等）+ 复用 A2 的 10 次 trace 的 `legacyWebViewBootstrapCalls` 字段 | 静态：blank.html 只在旧 `ArticleRenderer.swift` 出现；Babel2 当前展示路径零 WKWebView 引用。Runtime：10/10 次 `legacyWebViewBootstrapCalls=0` | [A13-no-blank-html-webkit.json](evidence/phase1a/A13-no-blank-html-webkit.json) |
+| A8（URL 子集） | 冷启动 + `SIMCTL_CHILD_BABEL2_OPEN_FIRST_FEED=1` 建立 route → 截图 → 依次 `xcrun simctl openurl` 四个已注册 URL（`nnw://showunread`/`showtoday`/`showstarred`、`feed:https://daringfireball.net/feeds/main`）→ 再截图 → `log show --last 30s --info` | 4/4 被正确识别（日志打出对应 action 名）；期间零新增 launch trace 事件；前后截图 SHA-256 完全一致（`6155638f…`） | [A8-babel2-external-action-no-legacy.json](evidence/phase1a/A8-babel2-external-action-no-legacy.json) |
+| A10（后台/前台子场景） | 同一 PID 上：`xcrun simctl launch <udid> com.apple.Preferences` 挤到后台 → 截图 → `xcrun simctl launch <udid> <bundle>` 再拉回前台 → 截图 → 两段各 `log show --last 15s --info` | 全程 PID 60005 不变；`Application processing resumed.` 真实触发；零新增 root/legacy 事件；前后截图内容除系统临时"◄ Settings"提示条外完全一致 | [A10-restoration-teardown.json](evidence/phase1a/A10-restoration-teardown.json) |
+| A10（disconnect 尝试，未成功复现） | `xcrun simctl terminate <udid> <bundle>` → `log show --last 10s --info` | 只看到进程被硬杀的系统/网络日志，没有 `sceneDidDisconnect.babel2` teardown 行——确认 `simctl terminate` 不经过 UIKit scene 生命周期，不能替代真实 App 切换器划掉的场景 | 同上，"part_2" 字段 |
+
+限制：A8 的 shortcut item / notification response 两条、A10 的真实 scene disconnect 和真机 30-cycle，`xcrun simctl` 均无法脚本化触发，仍待你配合一次交互操作或改用真机。A13 标记"通过（需 root 复审）"；A8/A10 标记"实现进行中/证据待补"（已验证的子场景视为通过）。

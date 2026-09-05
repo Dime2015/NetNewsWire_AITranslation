@@ -134,6 +134,17 @@
   根因：`simctl openurl` 走的是系统的 URL 路由（`LSApplicationWorkspace`），跟 App 内部"识别/不识别"的判断是两层——不注册 scheme 连路由这一层都过不去，测的是 iOS 的行为，不是 `Babel2ExternalActionParser` 的行为。
   以后 gate：**测"App 内部把某个 URL 判定为未识别"，必须用一个真实注册过的 scheme（`grep CFBundleURLSchemes` 或 `PlistBuddy -c 'Print :CFBundleURLTypes' Info.plist` 查)，配一个解析器一定会拒绝的 host/path**，而不是随手编一个新 scheme；系统层拒绝要如实记成"废弃尝试"，不能悄悄换个 URL 就当没发生过。
 
+## 23. `simctl` 能测到"后台/前台"，但测不到"真正的 scene disconnect"和"shortcut/通知被点击"（2026-09-05，做 A8/A10 时确认）
+
+- 症状一：`xcrun simctl terminate` 之后抓日志，只看到进程被硬杀时的系统/网络清理日志，完全没有 `SceneDelegate.sceneDidDisconnect(_:)` 应该打的 teardown 行。
+  根因：`simctl terminate` 是在进程层面发 kill，不经过 UIKit 正常的 scene 生命周期——真正触发 `sceneDidDisconnect` 的是用户在 App 切换器里把 App 划掉，或者系统在后台回收 scene，这两种都不是"进程退出"，命令行没有等价物。
+  以后 gate：**验收 A10 这类"scene disconnect/teardown"要求时，`simctl terminate` 只能证明"进程被杀不会遗留问题"，不能当成"scene disconnect 路径被测过"**；这部分证据只能来自现有直接调用 `sceneDidDisconnect()`/`tearDown()` 的单元测试，或者真机/交互操作，两者要分开记录，不能互相顶替。
+- 症状二：想验证"App 被切到后台又切回来"，一开始想不到该发什么 `simctl` 命令。
+  做法（记下来供下次直接用）：**`xcrun simctl launch <udid> <另一个已装 App 的 bundle id>`（比如 `com.apple.Preferences`）能把目标 App 挤到后台而不杀死它**；之后再 `xcrun simctl launch <udid> <目标 bundle id>` 一次，就能把它拉回前台——全程不需要任何点击，PID 不变，能验证 `sceneDidEnterBackground`/`sceneWillEnterForeground` 这一对真实回调有没有被触发（看日志里有没有 `applicationWillResignActive`、`Application processing resumed.` 这类真实字符串，不能只看"没报错"）。
+- 症状三：想给 A8 补 shortcut item 和 notification response 两条，找不到对应的 `simctl` 子命令。
+  结论：**`xcrun simctl` 没有"模拟长按图标选 shortcut"或"模拟点击一条通知"的命令**；`simctl push` 只能把通知投递到通知中心，测的是"通知能不能弹出来"，不是"用户点了它之后 App 怎么反应"（那要经过 `UNUserNotificationCenter` 的 `didReceive response:` 回调，只有真实点击或全套 XCUITest 手势才能触发）。
+  以后 gate：**这两条外部动作路径的运行时证据，要么等一次真机/交互操作配合截图和抓日志，要么用 XCUITest 走 UI 手势去点**，不要在 `simctl` 里硬找一个不存在的等价命令浪费时间；静态引用（读代码确认处理函数是不是无副作用的 no-op）可以先写，但不能当成运行时通过。
+
 ## 21. 改默认值/去掉安全余量必须重跑全量测试，不能只跑受影响的单测（2026-09-05）
 
 - 症状：Feeds/Timeline 卡片打磨的工作树改动（文件夹层级、缩略图卡片、`filterDisplayOrder` 固定 Figma 像素坐标、默认 scope 从 `.all` 改为 `.unread`）在包测试 30/30 通过、Debug 编译成功的情况下被当作"已验证"，但从未跑过全量 iOS Debug 测试；补跑后暴露 2 个真实回归：①`layoutScopeControlsIfNeeded()` 把旧版 `max(44, …)` 的保底宽度换成纯 Figma 绝对坐标，且新增 `scopeStack.bounds.width > 0` 才布局的 guard——任何还没被真实 window 赋予宽度的宿主（测试 host、或极端情况下的过早布局回调）会让筛选按钮永远停在初始的零尺寸 frame 上，`XCTAssertGreaterThanOrEqual(scope.frame.width, 44)` 直接失败；②`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 被手改成 `after: 2`，但默认 scope 改为 `.unread` 后 `viewDidAppear` 已经预加载过 `.unread`，`scopeTapped` 对"已加载过的 scope"不会重新发请求（只是切换显示），导致测试里布下的 delayed 请求永远不会被消费，等到超时。

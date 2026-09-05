@@ -1,0 +1,39 @@
+{
+  "id": "A8",
+  "scenario": "识别外部动作保持 Babel2：合同登记的 URL/shortcut/notification 解析为 typed action 后交给最小 handler 或安全 no-op，不切旧 root",
+  "commit_or_worktree": "fb0a43f14f3b35f16660de40664826a796d863ae",
+  "captured_at": "2026-09-05 12:41-12:42 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK; iPhone 17 Simulator, UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2; Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a; PID 60005",
+  "build_channel": "debug",
+  "environment_overrides": "SIMCTL_CHILD_BABEL2_OPEN_FIRST_FEED=1 用于建立真实 route/anchor 基线（feed 内文章列表），与 A7 手法一致；不是 production selector。",
+  "command_or_steps": [
+    "冷启动（uninstall/install/launch）后等待完整 8/8 事件 isValid=true trace（session 28542900-7A0B-47F5-8467-F6E30B412785）。",
+    "`xcrun simctl io ... screenshot before.png`。",
+    "依次 `xcrun simctl openurl ... \"nnw://showunread\"`、`\"nnw://showtoday\"`、`\"nnw://showstarred\"`、`\"feed:https://daringfireball.net/feeds/main\"`，每次间隔 1 秒。",
+    "`xcrun simctl io ... screenshot after.png`。",
+    "`log show --last 30s --info` 抓取这段时间内的全部 Babel2 相关日志行。"
+  ],
+  "urls_tested": [
+    { "url": "nnw://showunread", "parsed_action": "showUnread", "logged": "Babel2 external action ignored showUnread while Babel2 root remains active" },
+    { "url": "nnw://showtoday", "parsed_action": "showToday", "logged": "Babel2 external action ignored showToday while Babel2 root remains active" },
+    { "url": "nnw://showstarred", "parsed_action": "showStarred", "logged": "Babel2 external action ignored showStarred while Babel2 root remains active" },
+    { "url": "feed:https://daringfireball.net/feeds/main", "parsed_action": "addFeed", "logged": "Babel2 external action ignored addFeed while Babel2 root remains active" }
+  ],
+  "observed": {
+    "action_recognition": "全部 4 个 URL 都被 Babel2ExternalActionParser 正确解析成对应的 typed action（showUnread/showToday/showStarred/addFeed），日志里的动作名和 traceName 一一对应，证明 parser 确实识别了它们（不是走 A7 的 unknown 分支）。",
+    "no_legacy_side_effect": "4 次 openurl 期间没有出现任何新的 'Babel2 launch trace event/result' 行——同一个 session ID、同一个 PID，没有新 sceneConfigurationSelected（说明没有重建 scene）、没有 rootInstalled（说明没有换 root）、没有任何 legacy* 事件。",
+    "screenshot_comparison": "before.png 与 after.png 字节级完全一致（SHA-256 均为 6155638fe20674087169c7bc5998d5d02199ba32d16411918eb90ab7719f21a2）：route（Daring Fireball 文章列表）、滚动位置、界面状态在 4 次识别动作前后没有任何变化。"
+  },
+  "evidence_files": [
+    "Design/Babel2/Project/evidence/phase1a/A8-before-after-identical-header-crop.png"
+  ],
+  "evidence_privacy_note": "持久化的是同一张（前后一致）截图的头部裁剪版（[0,0,1206,390]，只含状态栏、返回箭头、feed 名称与计数），不含文章标题/日期/正文/URL，边界与 A7、Phase 3B 的 feed.png 一致。",
+  "conclusion": "URL 类识别动作满足 A8：解析正确、保持 Babel2、零 legacy 副作用、route 不变。",
+  "not_covered_this_round": "shortcut item（长按主屏图标触发）和 notification response（点通知触发）目前只能通过真实交互（长按图标 / 点通知横幅）触发，`xcrun simctl` 没有对应的脚本化命令；`xcrun simctl push` 只能投递一条通知，不能模拟“用户点了它”这个动作，所以不能替代 UNNotificationResponse 走查。SceneDelegate.swift 里 handleShortcutItem/handle(_:UNNotificationResponse) 的实现（同样只是 logExternalAction 记录一行、不做任何状态改变）已作为静态引用记在下面，但这两条路径的**运行时**证据仍然缺，需要你在真机/模拟器上手动触发一次（长按 App 图标选一个 shortcut，或点一条本地通知），我可以在你操作前后各截一张图、并在你操作期间抓日志核对同样的 no-op 模式。",
+  "static_reference_for_shortcut_and_notification": {
+    "shortcut": "iOS/SceneDelegate.swift: `windowScene(_:performActionFor:completionHandler:)` 和私有 `handleShortcutItem(_:)` 只调用 `appDelegate.logExternalAction(\"ignored shortcut while Babel2 root remains active\")`，不创建任何 controller 或 root。",
+    "notification": "iOS/SceneDelegate.swift: `handle(_:UNNotificationResponse)` 只调用 `appDelegate.logExternalAction(\"ignored notification while Babel2 root remains active\")`；iOS/AppDelegate.swift 的 `userNotificationCenter(_:didReceive:withCompletionHandler:)` 只在拿到 `response.targetScene?.delegate as? SceneDelegate` 时转发给上面这个方法，否则记一行 'ignored notification without a Babel2 scene'——两条路径都不引用任何旧 controller。"
+  },
+  "owner": "Claude (this session)",
+  "status": "实现进行中/证据待补——URL 子集通过（需 root 复审）；shortcut/notification 的运行时证据仍缺，需要一次真实交互配合"
+}

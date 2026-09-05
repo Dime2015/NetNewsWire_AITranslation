@@ -1,0 +1,42 @@
+{
+  "id": "A10",
+  "scenario": "restoration \u4e0e teardown\uff1a\u51b7\u542f\u52a8\u3001\u540e\u53f0/\u524d\u53f0\u3001scene \u91cd\u8fde\u548c disconnect \u59cb\u7ec8\u7559\u5728 Babel2\uff1b\u6bcf\u6b21 teardown \u90fd\u53d6\u6d88 Babel2 root \u7684 observer/task/callback",
+  "commit_or_worktree": "fb0a43f14f3b35f16660de40664826a796d863ae",
+  "captured_at": "2026-09-05 12:43-12:45 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK; iPhone 17 Simulator, UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2; Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a; PID 60005 throughout",
+  "build_channel": "debug",
+  "part_1_background_foreground_pass": {
+    "command_or_steps": [
+      "App already foregrounded from A8 run, in Daring Fireball article list (session 28542900-7A0B-47F5-8467-F6E30B412785, PID 60005). Screenshot 1-foreground.png.",
+      "`xcrun simctl launch <udid> com.apple.Preferences` \u2014 brings Settings to foreground, which pushes Babel2 to background without terminating it. Screenshot 2-backgrounded-settings-visible.png confirms Settings is now the visible app.",
+      "`log show --last 15s --info` during the transition shows real UIKit lifecycle events for the Babel2 process (Deactivation reason added, applicationWillResignActive) \u2014 the transition genuinely happened, not a no-op capture.",
+      "`xcrun simctl launch <udid> com.wenbopan.NetNewsWire.iOS-DEBUG` again \u2014 this brings Babel2 back to foreground. `simctl launch` on an already-running app activates it rather than relaunching the process.",
+      "Screenshot 3-foreground-again.png; `log show --last 15s --info` for the return transition."
+    ],
+    "observed": {
+      "same_process": "PID stayed 60005 across the entire background\u2192foreground round trip \u2014 this was never a process relaunch, confirming the exact same AppDelegate/Babel2LaunchTraceRecorder instance survived.",
+      "real_lifecycle_callbacks_fired": "`Application processing resumed.` (from AppDelegate.resumeIfNecessary, called by SceneDelegate.sceneWillEnterForeground) appears in the log at 12:44:19.393, immediately after the relaunch \u2014 this is a real callback firing, not an assumption.",
+      "no_second_root_or_owner": "Zero new 'Babel2 launch trace event/result' lines appear anywhere in this sequence. `installBabel2Root` is guarded by `babel2NavigationController == nil` (iOS/SceneDelegate.swift), so a scene that never disconnected cannot get a second root installed; the trace confirms no rootInstalled/sceneConfigurationSelected event fired again.",
+      "route_preserved": "Screenshot 3 (after returning to foreground) still shows the Daring Fireball article list, same articles, same scroll position as screenshot 1. The only pixel difference between the two full screenshots is the transient system status-bar affordance '\u25c4 Settings' that iOS itself draws for a moment after an app switch; the content below the status bar is unchanged."
+    },
+    "conclusion": "Backgrounding via a real app switch (not just a screenshot no-op) and returning to foreground stays on the exact same Babel2 root/session/route with zero legacy involvement. This covers the 'reconnect' half of A10 for the case where the scene is merely backgrounded, not disconnected."
+  },
+  "part_2_termination_does_not_exercise_scene_teardown": {
+    "command_or_steps": [
+      "`xcrun simctl terminate <udid> com.wenbopan.NetNewsWire.iOS-DEBUG` on the still-running PID 60005.",
+      "`log show --last 10s --info` immediately after."
+    ],
+    "observed": "The captured log shows only OS/network teardown noise (connections being cancelled/deallocated as the process dies) \u2014 no 'Babel2 external action'/'Babel2 launch trace' line, and specifically no 'sceneDidDisconnect.babel2' teardown log that `SceneDelegate.sceneDidDisconnect(_:)` would emit via `appDelegate.recordTeardown(...)`.",
+    "interpretation": "`xcrun simctl terminate` sends a hard kill signal at the process level; it does not go through UIKit's normal scene-disconnect lifecycle the way swiping an app away in the App Switcher does. This is a limitation of the test tool, not evidence that `sceneDidDisconnect` is broken \u2014 the existing Babel2FeedReaderTests/Babel2BoundaryTests unit-test suite already exercises `sceneDidDisconnect`/`tearDown()` directly (30-cycle assertions referenced in STATUS.md A11 notes) and that remains the applicable evidence for the teardown code path itself.",
+    "conclusion": "This scenario does NOT close the 'scene disconnect' half of A10. A genuine scene disconnect (user swipes the app away in the App Switcher, or the OS reclaims the scene) has not been reproduced from the command line in this round."
+  },
+  "limitations": "\u53ea\u8986\u76d6 Simulator\uff0c\u4e14\u53ea\u8986\u76d6'\u540e\u53f0/\u524d\u53f0\u5207\u6362'\u8fd9\u4e00\u79cd reconnect \u573a\u666f\uff1b\u771f\u6b63\u7684 scene disconnect\uff08\u7528\u6237\u5728\u591a\u4efb\u52a1\u754c\u9762\u628a App \u5212\u6389\uff0c\u6216\u7cfb\u7edf\u56de\u6536 scene \u540e\u518d\u6b21\u8fdb\u5165\uff09\u9700\u8981\u771f\u5b9e\u4ea4\u4e92\u6216\u771f\u673a\uff0c\u672c\u8f6e\u547d\u4ee4\u884c\u624b\u6bb5\u505a\u4e0d\u5230\uff0c\u4ecd\u662f open\u3002\u4e5f\u4e0d\u8986\u76d6 30-cycle \u7684\u5b8c\u6574 production \u7ea7\u522b\u91cd\u590d\uff08\u90a3\u90e8\u5206\u73b0\u6709\u5355\u5143\u6d4b\u8bd5\u5df2\u8986\u76d6\uff0c\u89c1 STATUS.md\uff09\uff0c\u672c\u8f6e\u53ea\u505a\u4e86 1 \u6b21 background\u2192foreground \u5faa\u73af\uff0c\u4e0d\u662f 30 \u6b21\u3002",
+  "owner": "Claude (this session)",
+  "status": "\u5b9e\u73b0\u8fdb\u884c\u4e2d/\u8bc1\u636e\u5f85\u8865\u2014\u2014\u540e\u53f0/\u524d\u53f0\u5207\u6362\u5b50\u573a\u666f\u901a\u8fc7\uff08\u9700 root \u590d\u5ba1\uff09\uff1bscene disconnect/\u771f\u673a 30-cycle \u4ecd\u7f3a",
+  "evidence_files": [
+    "Design/Babel2/Project/evidence/phase1a/A10-1-foreground-header-crop.png",
+    "Design/Babel2/Project/evidence/phase1a/A10-2-backgrounded-settings-header-crop.png",
+    "Design/Babel2/Project/evidence/phase1a/A10-3-foreground-again-header-crop.png"
+  ],
+  "evidence_privacy_note": "\u4e09\u5f20\u5747\u4e3a\u5934\u90e8\u88c1\u526a\uff08[0,0,1206,390]\uff09\uff0c\u4e0d\u542b\u6587\u7ae0\u6807\u9898/\u65e5\u671f/\u6b63\u6587/URL\uff1b2 \u53f7\u622a\u56fe\u5185\u5bb9\u662f\u7cfb\u7edf\u8bbe\u7f6e App\uff0c\u65e0\u9700\u88c1\u526a\u4f46\u4e3a\u4fdd\u6301\u4e09\u5f20\u4e00\u81f4\u4ecd\u7edf\u4e00\u88c1\u5230\u540c\u4e00\u5c3a\u5bf8\u3002"
+}
