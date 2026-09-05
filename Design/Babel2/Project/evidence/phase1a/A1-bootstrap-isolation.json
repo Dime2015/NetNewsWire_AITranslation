@@ -1,0 +1,42 @@
+{
+  "id": "A1",
+  "scenario": "gate 与旧 bootstrap 的隔离",
+  "commit_or_worktree": "7b8ff453ec811c59aad857e5884d4cad14946080",
+  "captured_at": "2026-09-05 12:20:00 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK; iPhone 17 Simulator, UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2; Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a; Release executable SHA-256 69600fa7f493020ab902aae8bb594496318e5f458a723a07bd408d6c10a1aed8",
+  "build_channel": "debug and release (both inspected)",
+  "launch_arguments": "not applicable to this row's static evidence; runtime confirmation is cross-referenced from A2/A3 (same commit, same binaries)",
+  "method": "static source citation, not runtime capture. Every claim below names an exact file/line in the current commit; no inference from memory.",
+  "findings": [
+    {
+      "claim": "buildChannel is a compile-time constant (#if DEBUG / #else), never read from CommandLine.arguments, ProcessInfo.processInfo.arguments, or UserDefaults",
+      "evidence": "iOS/AppDelegate.swift lines 70-74: `#if DEBUG\\nlet buildChannel: Babel2BuildChannel = .debug\\n#else\\nlet buildChannel: Babel2BuildChannel = .release\\n#endif`. No other assignment to a local named buildChannel exists in this file.",
+      "verify_by": "grep -n 'buildChannel' iOS/AppDelegate.swift"
+    },
+    {
+      "claim": "Babel2FeatureGate.decision(buildChannel:) ignores its own buildChannel parameter and all process/launch/persisted state; it is a pure constant function",
+      "evidence": "iOS/Babel2/Babel2FeatureGate.swift lines 827-835: the entire body is `Babel2FeatureGateDecision(generation: .babel2, reason: .babel2OnlyRuntime, diagnostics: [\"single Babel2 runtime; launch arguments ignored\"])` — the buildChannel parameter is never referenced inside the function body, and no CommandLine/ProcessInfo/UserDefaults symbol appears anywhere in this file.",
+      "verify_by": "grep -n 'CommandLine\\|ProcessInfo.processInfo.arguments\\|UserDefaults' iOS/Babel2/Babel2FeatureGate.swift  (expect no matches tied to the decision function)"
+    },
+    {
+      "claim": "the gate decision runs before any other side effect in the process, at AppDelegate.init()",
+      "evidence": "iOS/AppDelegate.swift lines 63-87: `override init()` computes processEntryUptime/gateUptime/launchDecision/recorder as the first statements, then calls `super.init()`, then `startBabel2LifecycleIfNeeded()`. No code runs before this init.",
+      "verify_by": "打开 iOS/AppDelegate.swift，搜索 override init()，确认 launchDecision 的赋值是这个方法里最早的语句之一"
+    },
+    {
+      "claim": "startBabel2LifecycleIfNeeded()/bootstrapBabel2RuntimeIfNeeded() (the only lifecycle/bootstrap methods called from init/didFinishLaunching) reference zero legacy types",
+      "evidence": "iOS/AppDelegate.swift lines 96-116: the two methods call only AppDefaults.registerDefaults(), AccountManager.shared.start(), NotificationCenter observer registration, FaviconGenerator, ArticleThemesManager.shared.start(), NetworkMonitor.shared.start(), registerBackgroundTasks(), DefaultFeedsImporter, UNUserNotificationCenter — none of these are legacy UI/storyboard/coordinator/WebView types.",
+      "verify_by": "grep -n 'RootSplit\\|SceneCoordinator\\|BabelShell\\|WebViewProvider\\|PreloadedWebView\\|Main.storyboard' iOS/AppDelegate.swift  (expect zero matches)"
+    },
+    {
+      "claim": "configurationForConnecting always returns the Babel2 scene configuration; there is no branch on scene session name, launch options, or any other input",
+      "evidence": "iOS/AppDelegate.swift lines 118-126: `application(_:configurationForConnecting:options:)` unconditionally returns `Babel2SceneConfiguration.makeBabel2(for: connectingSceneSession.role)` and records the selection; no conditional statement precedes the return.",
+      "verify_by": "打开 iOS/AppDelegate.swift，搜索 configurationForConnecting，确认方法体里只有一次 return，没有 if/switch 分支"
+    }
+  ],
+  "runtime_cross_reference": "A2/A3 (this same commit) launched both the Debug and Release binaries above 5 times each with different launch argument combinations (no-args, -GenesisV2, -Babel2, an unknown flag, and a -Babel2/-GenesisV2 conflict) and captured the real Babel2LaunchTraceRecorder output via OSLog for every run. All 10 runs report generation=babel-2, legacyLifecycleStarted=false, legacyBootstrapStarted=false, legacyStoryboardInstantiations=0, legacyCoordinatorCreations=0, legacyWebViewBootstrapCalls=0. See A2-build-channel-matrix.json for the full per-run data. This is runtime confirmation of the static claims above, not a substitute for them.",
+  "observed": "所有静态引用均在当前 commit 中核实过；没有发现任何分支能让 buildChannel、launch arguments 或 persisted 状态改变 generation，也没有发现旧生命周期/bootstrap/storyboard/coordinator/WebView 类型出现在生产初始化路径里。",
+  "limitations": "本行只覆盖 AppDelegate.swift/SceneDelegate.swift/Babel2FeatureGate.swift 三个文件的静态引用与已有 A2/A3 runtime 交叉证据；不覆盖 target membership、resource bundle allowlist（A15 范围）或目标物理 iPhone。",
+  "owner": "Claude (this session)",
+  "status": "通过（需 root 复审）"
+}

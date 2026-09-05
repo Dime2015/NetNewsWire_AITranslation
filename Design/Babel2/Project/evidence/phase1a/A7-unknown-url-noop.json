@@ -1,0 +1,35 @@
+{
+  "id": "A7",
+  "scenario": "未识别 URL（unknown URL no-op）：在 Babel2 已可见且带 route/anchor 的状态下发送未识别 URL",
+  "commit_or_worktree": "7b8ff453ec811c59aad857e5884d4cad14946080",
+  "captured_at": "2026-09-05 12:29-12:31 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK; iPhone 17 Simulator, UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2; Debug executable SHA-256 f937ceb39b8579565a7efa17e0044099046ce29e36ab640e34a89c6a7f4f642a",
+  "build_channel": "debug",
+  "launch_arguments": [],
+  "environment_overrides": "SIMCTL_CHILD_BABEL2_OPEN_FIRST_FEED=1 set for the launched process only, to reach a real feed/article-list route (an anchor state) without any interactive tapping. This uses the evidence-only override documented in iOS/Babel2/Babel2RootViewController.swift (`applyLaunchScopeOverrideIfNeeded`/`openFirstFeedIfRequested`, BABEL2_OPEN_FIRST_FEED env var); it is not a production selector and is unrelated to the Babel2FeatureGate decision covered by A1/A2/A3.",
+  "command_or_steps": [
+    "1. uninstall/install the current Debug build fresh (PID 58748 after launch), confirm full 8-event isValid=true launch trace at 2026-09-05 12:29:50.041 JST (session 93A50D5B-97A8-4062-8D9C-1741FF2EC475) — this is the route/anchor baseline: BABEL2_OPEN_FIRST_FEED auto-opened the first feed row (Daring Fireball), so the app is inside a feed's article list, not on the root Feeds page.",
+    "2. `xcrun simctl io 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 screenshot before.png` — captured the Daring Fireball article list as the pre-action baseline (SHA-256 8682e48456cb11c29009b16314f59025e628826a3fb4c8a1cbf2278b89545b5e for the full uncropped PNG; the persisted evidence file here is a header-only crop [0,0,1206,390] excluding article titles/dates, matching the same privacy boundary already used for Phase 3B's feed.png).",
+    "3. `xcrun simctl openurl 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2 \"nnw://unrecognized-action-xyz\"` — nnw:// is a scheme actually registered in the app's Info.plist CFBundleURLTypes (confirmed via PlistBuddy), so this reaches SceneDelegate.scene(_:openURLContexts:) for real, unlike a made-up unregistered scheme (a first attempt with `babel2test://...` failed at the OS level with LSApplicationWorkspaceErrorDomain code 115 before ever reaching the app — kept below as a discarded attempt, not silently dropped). The host `unrecognized-action-xyz` matches none of Babel2ExternalActionParser's recognized nnw:// hosts (showunread/showtoday/showstarred), so `Babel2ExternalActionParser.parse(_:)` returns nil (see iOS/Babel2ExternalActionParser.swift).",
+    "4. Waited 2s, then `xcrun simctl io ... screenshot after.png`.",
+    "5. `xcrun simctl spawn ... log show --last 30s --info --style compact --predicate 'process == \"NetNewsWire-iOS\"'` to capture every log line the process emitted between steps 3 and 4."
+  ],
+  "discarded_attempt": {
+    "url": "babel2test://totally-unrecognized-action-xyz",
+    "result": "OS-level failure before reaching the app: 'Simulator device failed to open babel2test://totally-unrecognized-action-xyz. (LSApplicationWorkspaceErrorDomain error 115)' — this scheme is not registered in CFBundleURLTypes, so it is not a valid test of the app's own unrecognized-URL handling and was replaced with an nnw:// URL that the OS actually routes to the app."
+  },
+  "observed": {
+    "log_output_between_steps_3_and_4": "Exactly one line: 'Babel2 external action ignored unknown external action' (source: iOS/SceneDelegate.swift handleExternalActionURL -> Babel2ExternalActionParser.parse returns nil -> appDelegate.logExternalAction(\"ignored unknown external action\")).",
+    "launch_trace_events": "Zero new 'Babel2 launch trace event' or 'Babel2 launch trace result' lines appeared after the openurl call — same session ID (93A50D5B-97A8-4062-8D9C-1741FF2EC475), same PID (58748), no new sceneConfigurationSelected/rootInstalled/teardown/legacy* events of any kind.",
+    "screenshot_comparison": "before.png and after.png are byte-identical: SHA-256 8682e48456cb11c29009b16314f59025e628826a3fb4c8a1cbf2278b89545b5e for both full 1206x2622 captures. The visible route (Daring Fireball article list), scroll position, and every pixel on screen are unchanged."
+  },
+  "evidence_files": [
+    "Design/Babel2/Project/evidence/phase1a/A7-before-daring-fireball-header-crop.png",
+    "Design/Babel2/Project/evidence/phase1a/A7-after-unknown-url-header-crop.png"
+  ],
+  "evidence_privacy_note": "Persisted crops are header-only (status bar + feed name + count + back chevron, [0,0,1206,390]) and contain no article titles, dates, body text, or URLs, matching the privacy boundary already established for Phase 3B's feed.png. The full uncropped screenshots exist only as ephemeral files under /private/tmp/babel2-phase1a-a123a7/a7/ and are not committed; their SHA-256 equality is the evidence that nothing changed, not the pixel content itself.",
+  "conclusion": "路由（feed 内的文章列表）、root、滚动位置和 generation 在收到未识别 URL 前后完全没变；没有创建旧 root，没有调用任何 fallback，没有清空 restoration（session/PID 未变，说明 scene 没有被拆掉重建）。这满足 A7 的通过条件。",
+  "limitations": "只在 Simulator 上验证；不替代目标物理 iPhone。只测试了一种未识别输入（一个已注册 scheme 下的未知 host）；A8（已识别外部动作保持 Babel2）是独立的一行，本文件不覆盖。",
+  "owner": "Claude (this session)",
+  "status": "通过（需 root 复审）"
+}

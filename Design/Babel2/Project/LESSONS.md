@@ -122,6 +122,18 @@
 - 根因：生成文件不在 Git diff 中，常规检查无法发现随机改写。
 - 以后 gate：每轮 package/build/test 显式 unset 六个 secret env，记录 before/after hash，退出前恢复精确基线；`.gyb` 自身 hash 也必须保持不变，恢复失败时不报告通过。
 
+## 22. `simctl` 取证的三个流程性坑（2026-09-05，做 A2/A3/A7 时踩到）
+
+- 症状一：用 `xcrun simctl terminate` 结束进程后直接用同一 bundle id 再 `launch`（不 uninstall/install），有一半左右的启动只拿到 7 个事件、缺 `sceneConfigurationSelected`，`isValid=false`、`invalidReasons=["sceneConfigurationSelectionMissing"]`。
+  根因：UIKit 复用了上一次启动留下的 `UISceneSession`，这次不会再调用 `configurationForConnecting`，AppDelegate 也就没机会记录这一事件——这是 2026-09-01 记录过的"warm Genesis"现象，但当时只当成一次性观察，没有写成通用 gate。
+  以后 gate：**做启动参数矩阵时，每个场景之间都要 `uninstall` 再 `install`，不能只 `terminate`**；判断一次启动是不是"冷启动"看 PID 变没变不够，还要看 trace 是不是 8/8 事件、`isValid=true`。
+- 症状二：全新 `install` 后的**第一次**冷启动，等 3 秒抓 log 只拿到 6/8 事件（缺 `containerAppeared`/`contentFirstFramePresented`）；同一个 build 后续的冷启动等 3 秒都是 8/8。
+  根因：`bootstrapBabel2RuntimeIfNeeded()` 在真正意义上的首次运行会同步做 `AppDefaults.registerDefaults()` + `DefaultFeedsImporter.importDefaultFeeds(...)`（导入默认订阅源），比后续启动多一截同步工作，把 content-first-frame 推迟到 3 秒窗口之外。
+  以后 gate：**"全新 install 后的第一次启动"要单独多等几秒**（本轮用了 8 秒），不能和同一 build 后续的冷启动用同一个等待时间；6/8 的中间结果要保留在证据里，不能直接删掉重跑当作没发生过。
+- 症状三：`xcrun simctl openurl` 传一个应用没有在 `CFBundleURLTypes` 里注册的自造 scheme（如 `babel2test://…`），系统直接报 `LSApplicationWorkspaceErrorDomain` 115，URL 根本没送到 App，`SceneDelegate` 完全没被调用。
+  根因：`simctl openurl` 走的是系统的 URL 路由（`LSApplicationWorkspace`），跟 App 内部"识别/不识别"的判断是两层——不注册 scheme 连路由这一层都过不去，测的是 iOS 的行为，不是 `Babel2ExternalActionParser` 的行为。
+  以后 gate：**测"App 内部把某个 URL 判定为未识别"，必须用一个真实注册过的 scheme（`grep CFBundleURLSchemes` 或 `PlistBuddy -c 'Print :CFBundleURLTypes' Info.plist` 查)，配一个解析器一定会拒绝的 host/path**，而不是随手编一个新 scheme；系统层拒绝要如实记成"废弃尝试"，不能悄悄换个 URL 就当没发生过。
+
 ## 21. 改默认值/去掉安全余量必须重跑全量测试，不能只跑受影响的单测（2026-09-05）
 
 - 症状：Feeds/Timeline 卡片打磨的工作树改动（文件夹层级、缩略图卡片、`filterDisplayOrder` 固定 Figma 像素坐标、默认 scope 从 `.all` 改为 `.unread`）在包测试 30/30 通过、Debug 编译成功的情况下被当作"已验证"，但从未跑过全量 iOS Debug 测试；补跑后暴露 2 个真实回归：①`layoutScopeControlsIfNeeded()` 把旧版 `max(44, …)` 的保底宽度换成纯 Figma 绝对坐标，且新增 `scopeStack.bounds.width > 0` 才布局的 guard——任何还没被真实 window 赋予宽度的宿主（测试 host、或极端情况下的过早布局回调）会让筛选按钮永远停在初始的零尺寸 frame 上，`XCTAssertGreaterThanOrEqual(scope.frame.width, 44)` 直接失败；②`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 被手改成 `after: 2`，但默认 scope 改为 `.unread` 后 `viewDidAppear` 已经预加载过 `.unread`，`scopeTapped` 对"已加载过的 scope"不会重新发请求（只是切换显示），导致测试里布下的 delayed 请求永远不会被消费，等到超时。

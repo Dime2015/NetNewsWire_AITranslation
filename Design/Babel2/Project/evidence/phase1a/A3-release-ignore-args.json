@@ -1,0 +1,36 @@
+{
+  "id": "A3",
+  "scenario": "Release 不读取 launch arguments：-Babel2、-GenesisV2、冲突组合和未知值均不能改变 Babel2 production decision",
+  "commit_or_worktree": "7b8ff453ec811c59aad857e5884d4cad14946080",
+  "captured_at": "2026-09-05 12:27-12:30 Asia/Tokyo",
+  "environment": "Xcode 27.0 / iOS 27.0 SDK; iPhone 17 Simulator, UDID 555E35FA-6BFE-45F0-BCFC-0819FFE48CD2; Release executable SHA-256 69600fa7f493020ab902aae8bb594496318e5f458a723a07bd408d6c10a1aed8",
+  "build_channel": "release",
+  "method": "This row is the Release-specific subset of A2-build-channel-matrix.json (same commit, same rebuilt Release binary): five fresh uninstall/install/launch cycles on the Release app, each with a different launch-argument combination, with the real OSLog launch trace parsed for every run. See A2-build-channel-matrix.json for the full methodology and raw per-run data; this file only restates the release rows plus the source-level reason they must behave this way.",
+  "static_basis": "iOS/AppDelegate.swift line 73 fixes `let buildChannel: Babel2BuildChannel = .release` for any non-DEBUG build via #if/#else, and iOS/Babel2/Babel2FeatureGate.swift's decision(buildChannel:) (lines 827-835) never reads CommandLine.arguments/ProcessInfo.processInfo.arguments/UserDefaults inside its body — so no launch argument can reach the decision regardless of what SceneDelegate or AppDelegate might otherwise do with them. There is no separate 'production argument selector' code path anywhere in these two files (grep for CommandLine/ProcessInfo(...arguments)/UserDefaults in both files: zero matches tied to generation selection).",
+  "runs": {
+    "release-noargs": {
+      "launch_arguments": [],
+      "result": { "generation": "babel-2", "buildChannel": "release", "isValid": true, "isComplete": true, "invalidReasons": [], "legacyLifecycleStarted": false, "legacyBootstrapStarted": false, "legacyStoryboardInstantiations": 0, "legacyCoordinatorCreations": 0, "legacyWebViewBootstrapCalls": 0, "pid": "58291", "sessionID": "CCAAE2DA-4D28-45FF-8AA4-0113CBE00B2E" }
+    },
+    "release-genesisv2": {
+      "launch_arguments": ["-GenesisV2"],
+      "result": { "generation": "babel-2", "buildChannel": "release", "isValid": true, "isComplete": true, "invalidReasons": [], "legacyLifecycleStarted": false, "legacyBootstrapStarted": false, "legacyStoryboardInstantiations": 0, "legacyCoordinatorCreations": 0, "legacyWebViewBootstrapCalls": 0, "pid": "58344", "sessionID": "A79D03D1-4762-4955-85D2-92DA5BBA03D9" }
+    },
+    "release-babel2flag": {
+      "launch_arguments": ["-Babel2"],
+      "result": { "generation": "babel-2", "buildChannel": "release", "isValid": true, "isComplete": true, "invalidReasons": [], "legacyLifecycleStarted": false, "legacyBootstrapStarted": false, "legacyStoryboardInstantiations": 0, "legacyCoordinatorCreations": 0, "legacyWebViewBootstrapCalls": 0, "pid": "58397", "sessionID": "3245C8B2-3541-4083-91FF-94174363F142" }
+    },
+    "release-unknownflag": {
+      "launch_arguments": ["-UnknownFlagXYZ"],
+      "result": { "generation": "babel-2", "buildChannel": "release", "isValid": true, "isComplete": true, "invalidReasons": [], "legacyLifecycleStarted": false, "legacyBootstrapStarted": false, "legacyStoryboardInstantiations": 0, "legacyCoordinatorCreations": 0, "legacyWebViewBootstrapCalls": 0, "pid": "58451", "sessionID": "EDACCE78-3977-4E2C-ABBE-5DD95ABCF9AE" }
+    },
+    "release-conflict": {
+      "launch_arguments": ["-Babel2", "-GenesisV2"],
+      "result": { "generation": "babel-2", "buildChannel": "release", "isValid": true, "isComplete": true, "invalidReasons": [], "legacyLifecycleStarted": false, "legacyBootstrapStarted": false, "legacyStoryboardInstantiations": 0, "legacyCoordinatorCreations": 0, "legacyWebViewBootstrapCalls": 0, "pid": "58502", "sessionID": "267A3E57-00F6-4D0D-8918-91F3B984648D" }
+    }
+  },
+  "observed": "5 次 Release 冷启动（无参数、-GenesisV2、-Babel2、未知 flag、-Babel2+-GenesisV2 冲突组合）全部得到 8/8 事件、isValid=true 的真实 trace，generation 始终是 babel-2，legacy 计数始终为 0。这次扩展了 2026-09-01 r8 证据（当时只测了 no-args 与 -GenesisV2 两种），新增了 -Babel2、未知 flag 和冲突组合三种，并且是在当前 commit 重新编译的 Release 二进制上做的，不是复用旧 SHA。",
+  "limitations": "只在 Simulator 上验证；不替代目标物理 iPhone。也不覆盖 persisted generation（A4/A5 的范围，需要单独构造 restoration payload）。",
+  "owner": "Claude (this session)",
+  "status": "通过（需 root 复审）"
+}
