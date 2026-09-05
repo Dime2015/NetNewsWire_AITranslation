@@ -178,21 +178,21 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		let tableView = try XCTUnwrap(rootTable(for: root, scope: .all))
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
-		XCTAssertEqual(root.selectedScope, .all)
-		let allCell = root.tableView(tableView, cellForRowAt: IndexPath(row: 0, section: 0))
-		XCTAssertEqual(allCell.accessibilityValue, "2")
-
-		let unreadButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
-		unreadButton.sendActions(for: .touchUpInside)
+		let unreadTableView = try XCTUnwrap(rootTable(for: root, scope: .unread))
 		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 		XCTAssertEqual(root.selectedScope, .unread)
-		let unreadTableView = try XCTUnwrap(rootTable(for: root, scope: .unread))
 		let unreadCell = root.tableView(unreadTableView, cellForRowAt: IndexPath(row: 0, section: 0))
 		XCTAssertEqual(unreadCell.accessibilityValue, "1")
 
 		let allButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.all" })
+		allButton.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		XCTAssertEqual(root.selectedScope, .all)
+		let tableView = try XCTUnwrap(rootTable(for: root, scope: .all))
+		let allCell = root.tableView(tableView, cellForRowAt: IndexPath(row: 0, section: 0))
+		XCTAssertEqual(allCell.accessibilityValue, "2")
+
+		let unreadButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
 		let starredButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
 		allButton.sendActions(for: .touchUpInside)
 		unreadButton.sendActions(for: .touchUpInside)
@@ -209,20 +209,20 @@ final class Babel2FeedReaderTests: XCTestCase {
 	func testPendingReloadKeepsSettledRowsUntilReplacementArrives() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 		let feed = makeFeed(id: feedID, title: "Feed", count: 2)
-		let provider = FakeDataProvider(librarySnapshots: [.all: LibrarySnapshot(feeds: [feed])])
+		let provider = FakeDataProvider(librarySnapshots: [.unread: LibrarySnapshot(feeds: [feed])])
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 
-		await provider.delayNextLibraryRequest(.all)
+		await provider.delayNextLibraryRequest(.unread)
 		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
-		await waitForLibraryStart(provider, .all, after: 1)
-		let tableView = try XCTUnwrap(rootTable(for: root, scope: .all))
+		await waitForLibraryStart(provider, .unread, after: 1)
+		let tableView = try XCTUnwrap(rootTable(for: root, scope: .unread))
 		XCTAssertEqual(tableView.numberOfRows(inSection: 0), 1)
 		XCTAssertEqual(tableView.accessibilityValue, "loaded")
-		await provider.releaseLibraryRequest(.all, snapshot: LibrarySnapshot(feeds: [feed]))
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await provider.releaseLibraryRequest(.unread, snapshot: LibrarySnapshot(feeds: [feed]))
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 	}
 
 	func testStaleScopeResultCannotPublishAfterLatestIntentChanges() async throws {
@@ -234,26 +234,32 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let starredFeed = makeFeed(id: starredID, title: "Starred", count: 1)
 		let provider = FakeDataProvider(librarySnapshots: [
 			.all: LibrarySnapshot(feeds: [allFeed]),
+			.unread: LibrarySnapshot(feeds: [unreadFeed]),
 			.starred: LibrarySnapshot(feeds: [starredFeed])
 		])
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		// `.unread` is the eager default surface: `viewDidAppear` already loads it,
+		// so it cannot be used as the "not yet loaded" scope below (re-selecting an
+		// already-loaded scope reuses its cached rows instead of issuing a new
+		// request). Use `.all` for the delayed/never-loaded leg instead, mirroring
+		// the original race exactly with the roles swapped.
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 
-		await provider.delayNextLibraryRequest(.unread)
-		let unreadButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
+		await provider.delayNextLibraryRequest(.all)
+		let allButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.all" })
 		let starredButton = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
-		unreadButton.sendActions(for: .touchUpInside)
-		await waitForLibraryStart(provider, .unread, after: 1)
+		allButton.sendActions(for: .touchUpInside)
+		await waitForLibraryStart(provider, .all, after: 1)
 		starredButton.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
-		await provider.releaseLibraryRequest(.unread, snapshot: LibrarySnapshot(feeds: [unreadFeed]))
+		await provider.releaseLibraryRequest(.all, snapshot: LibrarySnapshot(feeds: [allFeed]))
 		for _ in 0..<100 { await Task.yield() }
 
-		let unreadTable = try XCTUnwrap(rootTable(for: root, scope: .unread))
-		XCTAssertEqual(unreadTable.numberOfRows(inSection: 0), 0)
-		XCTAssertEqual(unreadTable.accessibilityValue, "loading")
+		let allTable = try XCTUnwrap(rootTable(for: root, scope: .all))
+		XCTAssertEqual(allTable.numberOfRows(inSection: 0), 0)
+		XCTAssertEqual(allTable.accessibilityValue, "loading")
 		XCTAssertEqual(root.selectedScope, .starred)
 	}
 
@@ -266,46 +272,46 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
-		let unread = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+		let all = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.all" })
 		let starred = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
-		unread.sendActions(for: .touchUpInside)
+		all.sendActions(for: .touchUpInside)
 		starred.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(starred)
 		XCTAssertEqual(root.selectedScope, .starred)
-		XCTAssertEqual(unread.accessibilityValue, "Not selected")
+		XCTAssertEqual(all.accessibilityValue, "Not selected")
 		XCTAssertEqual(starred.accessibilityValue, "Selected")
 	}
 
 	func testErrorIsDistinctFromEmptyAndRetryReloads() async throws {
 		let provider = FakeDataProvider()
-		await provider.failNextLibraryRequest(.all)
+		await provider.failNextLibraryRequest(.unread)
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		await waitForRootState(root, scope: .all, state: "error", rows: 0)
-		let retry = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feeds.retry.all" })
+		await waitForRootState(root, scope: .unread, state: "error", rows: 0)
+		let retry = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feeds.retry.unread" })
 		XCTAssertFalse(retry.isHidden)
-		await provider.setLibrarySnapshot(.all, snapshot: LibrarySnapshot())
+		await provider.setLibrarySnapshot(.unread, snapshot: LibrarySnapshot())
 		retry.sendActions(for: .touchUpInside)
-		await waitForRootState(root, scope: .all, state: "empty", rows: 0)
+		await waitForRootState(root, scope: .unread, state: "empty", rows: 0)
 	}
 
 	func testSyncArrowTracksActiveScopeSnapshot() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 		let feed = makeFeed(id: feedID, title: "Feed", count: 1)
-		let provider = FakeDataProvider(librarySnapshots: [.all: LibrarySnapshot(feeds: [feed], isSyncing: true)])
+		let provider = FakeDataProvider(librarySnapshots: [.unread: LibrarySnapshot(feeds: [feed], isSyncing: true)])
 		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.viewDidAppear(false)
-		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 		let arrow = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.sync.arrow" })
 		XCTAssertFalse(arrow.isHidden)
 
-		await provider.setLibrarySnapshot(.all, snapshot: LibrarySnapshot(feeds: [feed], isSyncing: false))
+		await provider.setLibrarySnapshot(.unread, snapshot: LibrarySnapshot(feeds: [feed], isSyncing: false))
 		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
-		await waitForLibraryStart(provider, .all, after: 2)
+		await waitForLibraryStart(provider, .unread, after: 2)
 		for _ in 0..<200 {
 			if arrow.isHidden { break }
 			await Task.yield()

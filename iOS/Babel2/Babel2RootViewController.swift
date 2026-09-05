@@ -16,13 +16,21 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		case error
 	}
 
+	private enum LibraryRow {
+		case folder(FolderSnapshot, expanded: Bool)
+		case feed(FeedSnapshot, nested: Bool)
+	}
+
+	private static let filterDisplayOrder: [Babel2FeedScope] = [.starred, .unread, .all]
+
 	@MainActor
 	private final class ScopeSurface: UIView {
 		let scope: Babel2FeedScope
-		let tableView = UITableView(frame: .zero, style: .insetGrouped)
+		let tableView = UITableView(frame: .zero, style: .plain)
 		let stateLabel = UILabel()
 		let retryButton = UIButton(type: .system)
-		var rows = [FeedSnapshot]()
+		var rows = [LibraryRow]()
+		var snapshot: LibrarySnapshot?
 		var state: SurfaceState = .loading
 		var hasLoaded = false
 		var isSyncing = false
@@ -33,14 +41,16 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		init(scope: Babel2FeedScope, localizationBundle: Bundle) {
 			self.scope = scope
 			super.init(frame: .zero)
-			backgroundColor = .systemBackground
+			backgroundColor = BabelPalette.background
 			isOpaque = true
 			accessibilityIdentifier = "babel2.feeds.surface.\(scope.rawValue)"
 
-			tableView.backgroundColor = .systemBackground
+			tableView.backgroundColor = BabelPalette.background
 			tableView.backgroundView = nil
-			tableView.separatorStyle = .singleLine
-			tableView.rowHeight = 56
+			tableView.separatorStyle = .none
+			tableView.rowHeight = 44
+			tableView.estimatedRowHeight = 44
+			tableView.contentInsetAdjustmentBehavior = .never
 			tableView.accessibilityIdentifier = "babel2.feeds.table.\(scope.rawValue)"
 			tableView.accessibilityValue = SurfaceState.loading.rawValue
 			tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -51,7 +61,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			stateLabel.accessibilityValue = SurfaceState.loading.rawValue
 			stateLabel.font = .preferredFont(forTextStyle: .body)
 			stateLabel.adjustsFontForContentSizeCategory = true
-			stateLabel.textColor = .secondaryLabel
+			stateLabel.textColor = BabelPalette.mutedInk
 			stateLabel.textAlignment = .center
 			stateLabel.isHidden = false
 			stateLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -59,6 +69,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 			retryButton.configuration = .plain()
 			retryButton.setTitle(Babel2Localization.text(.retry, bundle: localizationBundle), for: .normal)
+			retryButton.tintColor = BabelPalette.ink
 			retryButton.accessibilityIdentifier = "babel2.feeds.retry.\(scope.rawValue)"
 			retryButton.isHidden = true
 			retryButton.translatesAutoresizingMaskIntoConstraints = false
@@ -101,6 +112,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private let settingsButton = UIButton(type: .system)
 	private let addButton = UIButton(type: .system)
 	private let syncArrow = UIButton(type: .system)
+	private let bottomBar = UIView()
 	private let scopeStack = UIView()
 	private let selectionPill = UIView()
 	private var scopeButtons = [Babel2FeedScope: UIButton]()
@@ -109,9 +121,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private var scopeTransitionAnimator: UIViewPropertyAnimator?
 	private var scopeTransitionToken = UUID()
 	private var presentationNeedsSettlement = false
-	private(set) var selectedScope: Babel2FeedScope = .all
-	private var displayedScope: Babel2FeedScope = .all
+	private var collapsedFolders = Set<FolderSnapshot.ID>()
+	private(set) var selectedScope: Babel2FeedScope = .unread
+	private var displayedScope: Babel2FeedScope = .unread
 	private var hasAppeared = false
+	private var didAutoOpenFirstFeed = false
 	private var didPresentContentFirstFrame = false
 	private var contentFirstFrameDisplayLink: CADisplayLink?
 	private var contentFirstFrameDisplayLinkTarget: DisplayLinkTarget?
@@ -155,7 +169,36 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		super.viewDidAppear(animated)
 		hasAppeared = true
 		scheduleContentFirstFrameOnNextDisplayTickIfReady()
+		applyLaunchScopeOverrideIfNeeded()
 		loadLibraryIfNeeded()
+	}
+
+	/// Evidence/simctl-only override via `SIMCTL_CHILD_BABEL2_FEEDS_SCOPE=unread|starred|all`.
+	private func applyLaunchScopeOverrideIfNeeded() {
+		guard let raw = ProcessInfo.processInfo.environment["BABEL2_FEEDS_SCOPE"],
+			let scope = Babel2FeedScope(rawValue: raw),
+			scope != selectedScope else { return }
+		selectedScope = scope
+		displayedScope = scope
+		for surface in scopeSurfaces.values {
+			surface.alpha = surface.scope == scope ? 1 : 0
+			surface.accessibilityElementsHidden = surface.scope != scope
+		}
+		updateScopeButtons()
+		requestLibrary(for: scope, showLoading: true)
+	}
+
+	/// Evidence/simctl-only: `SIMCTL_CHILD_BABEL2_OPEN_FIRST_FEED=1` opens the first feed after load.
+	private func openFirstFeedIfRequested(from surface: ScopeSurface) {
+		guard !didAutoOpenFirstFeed else { return }
+		guard ProcessInfo.processInfo.environment["BABEL2_OPEN_FIRST_FEED"] == "1" else { return }
+		guard surface.scope == displayedScope else { return }
+		guard let firstFeed = surface.rows.compactMap({ row -> FeedSnapshot? in
+			if case .feed(let feed, _) = row { return feed }
+			return nil
+		}).first else { return }
+		didAutoOpenFirstFeed = true
+		onFeedRequested?(firstFeed, displayedScope)
 	}
 
 	override func viewDidDisappear(_ animated: Bool) {
@@ -189,20 +232,34 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func layoutScopeControlsIfNeeded() {
 		guard scopeTransitionAnimator == nil else { return }
-		let count = CGFloat(scopeButtons.count)
+		let order = Self.filterDisplayOrder
+		let count = CGFloat(order.count)
 		guard count > 0 else { return }
-		let spacing: CGFloat = 8
-		let width = max(44, (scopeStack.bounds.width - spacing * (count - 1)) / count)
 		let height = max(44, scopeStack.bounds.height)
-		for (index, scope) in Babel2FeedScope.allCases.enumerated() {
-			guard let button = scopeButtons[scope] else { continue }
-			button.frame = CGRect(x: CGFloat(index) * (width + spacing), y: 0, width: width, height: height)
+		if scopeStack.bounds.width > 0 {
+			// Figma-calibrated absolute centers for the real design width.
+			let centers: [CGFloat] = [104, 201, 290.5]
+			let width: CGFloat = 90
+			for (index, scope) in order.enumerated() {
+				guard let button = scopeButtons[scope] else { continue }
+				let centerX = centers[index]
+				button.frame = CGRect(x: centerX - width / 2, y: (height - 44) / 2, width: width, height: 44)
+			}
+		} else {
+			// No measured width yet (e.g. a host that never attaches the view to a
+			// window). Guarantee a valid >=44pt tappable rect instead of leaving
+			// buttons at their zero-size initial frame; a later layout pass with a
+			// real width replaces this with the calibrated centers above.
+			let spacing: CGFloat = 8
+			let width = max(44, (scopeStack.bounds.width - spacing * (count - 1)) / count)
+			for (index, scope) in order.enumerated() {
+				guard let button = scopeButtons[scope] else { continue }
+				button.frame = CGRect(x: CGFloat(index) * (width + spacing), y: 0, width: width, height: height)
+			}
 		}
 		updateScopeButtons()
 	}
 
-	/// Cancels the one-shot display tick when the owning scene tears down. The
-	/// generation token in the owning scene additionally rejects a stale callback.
 	func cancelContentFirstFramePresentation() {
 		contentFirstFrameDisplayLink?.invalidate()
 		contentFirstFrameDisplayLink = nil
@@ -264,14 +321,14 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	override func loadView() {
 		let rootView = UIView()
-		rootView.backgroundColor = .systemBackground
+		rootView.backgroundColor = BabelPalette.background
 		rootView.isOpaque = true
 		view = rootView
 	}
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
-		view.backgroundColor = .systemBackground
+		view.backgroundColor = BabelPalette.background
 		view.isOpaque = true
 		configureControls()
 		configureScopeSurfaces()
@@ -280,9 +337,9 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func configureControls() {
 		titleLabel.text = Babel2Localization.text(.feeds, bundle: localizationBundle)
-		titleLabel.font = .preferredFont(forTextStyle: .largeTitle)
-		titleLabel.adjustsFontForContentSizeCategory = true
-		titleLabel.textColor = .label
+		titleLabel.font = .systemFont(ofSize: 36, weight: .semibold)
+		titleLabel.adjustsFontForContentSizeCategory = false
+		titleLabel.textColor = BabelPalette.ink
 		titleLabel.textAlignment = .center
 		titleLabel.accessibilityIdentifier = Babel2LocalizationKey.feeds.accessibilityIdentifier
 
@@ -290,31 +347,48 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		configureSymbolButton(addButton, symbolName: "plus", key: .add, action: #selector(addTapped))
 		configureScopeControls()
 		syncArrow.setImage(UIImage(systemName: "arrow.triangle.2.circlepath"), for: .normal)
-		syncArrow.tintColor = .label
+		syncArrow.tintColor = BabelPalette.mutedInk
 		syncArrow.accessibilityLabel = "Syncing"
 		syncArrow.accessibilityIdentifier = "babel2.sync.arrow"
 		syncArrow.configuration = .plain()
 		syncArrow.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)
 		syncArrow.isHidden = true
+
+		bottomBar.backgroundColor = BabelPalette.background
+		bottomBar.isOpaque = true
+		bottomBar.accessibilityIdentifier = "babel2.feeds.bottom-bar"
+		let hairline = UIView()
+		hairline.backgroundColor = BabelPalette.hairline
+		hairline.translatesAutoresizingMaskIntoConstraints = false
+		hairline.tag = 8_021
+		bottomBar.addSubview(hairline)
+
 		view.addSubview(titleLabel)
 		view.addSubview(settingsButton)
 		view.addSubview(addButton)
-		view.addSubview(scopeStack)
 		view.addSubview(syncArrow)
+		view.addSubview(bottomBar)
+		bottomBar.addSubview(scopeStack)
+		NSLayoutConstraint.activate([
+			hairline.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
+			hairline.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor),
+			hairline.topAnchor.constraint(equalTo: bottomBar.topAnchor),
+			hairline.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+		])
 	}
 
 	private func configureScopeControls() {
 		scopeStack.accessibilityIdentifier = "babel2.scope.controls"
-		selectionPill.backgroundColor = .secondarySystemBackground
-		selectionPill.layer.cornerRadius = 12
+		selectionPill.backgroundColor = BabelPalette.raisedBackground.withAlphaComponent(0.62)
+		selectionPill.layer.cornerRadius = 13
 		selectionPill.isUserInteractionEnabled = false
 		selectionPill.accessibilityElementsHidden = true
 		scopeStack.addSubview(selectionPill)
-		for scope in Babel2FeedScope.allCases {
+		for scope in Self.filterDisplayOrder {
 			let button = UIButton(type: .system)
 			button.configuration = .plain()
 			button.setImage(Self.image(for: scope), for: .normal)
-			button.tintColor = .label
+			button.tintColor = BabelPalette.ink
 			button.accessibilityIdentifier = "babel2.scope.\(scope.rawValue)"
 			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
 			button.accessibilityTraits.insert(.button)
@@ -328,29 +402,43 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private static func image(for scope: Babel2FeedScope) -> UIImage? {
-		if scope == .all {
+		let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+		switch scope {
+		case .starred:
+			return UIImage(systemName: "star", withConfiguration: config)
+		case .unread:
+			return UIImage(systemName: "circle.fill", withConfiguration: config)
+		case .all:
 			let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
-			return renderer.image { context in
-				UIColor.label.setFill()
-				for index in 0..<4 {
-					let y = 2 + CGFloat(index) * 5.5
-					UIBezierPath(roundedRect: CGRect(x: 3, y: y, width: 18, height: 2), cornerRadius: 1).fill()
+			return renderer.image { _ in
+				UIColor.black.setFill()
+				for index in 0..<3 {
+					let y = 5 + CGFloat(index) * 5
+					let width = 18 - CGFloat(index) * 3
+					UIBezierPath(roundedRect: CGRect(x: 3, y: y, width: width, height: 2), cornerRadius: 1).fill()
 				}
 			}.withRenderingMode(.alwaysTemplate)
 		}
-		return UIImage(systemName: scope == .unread ? "circle.fill" : "star")
 	}
 
 	private func updateScopeButtons() {
+		let symbol = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
 		for (scope, button) in scopeButtons {
 			let isSelected = scope == displayedScope
 			button.accessibilityValue = isSelected ? "Selected" : "Not selected"
 			button.accessibilityTraits = isSelected ? [.button, .selected] : [.button]
 			button.backgroundColor = .clear
+			button.tintColor = BabelPalette.ink
+			switch scope {
+			case .starred:
+				button.setImage(UIImage(systemName: isSelected ? "star.fill" : "star", withConfiguration: symbol), for: .normal)
+			case .unread, .all:
+				button.setImage(Self.image(for: scope), for: .normal)
+			}
 		}
 		if let button = scopeButtons[displayedScope] {
-			selectionPill.frame = button.frame.insetBy(dx: 2, dy: 2)
-			selectionPill.layer.cornerRadius = min(selectionPill.bounds.height, 24) / 2
+			selectionPill.frame = button.frame.insetBy(dx: 6, dy: 9)
+			selectionPill.layer.cornerRadius = min(selectionPill.bounds.height, 26) / 2
 		}
 	}
 
@@ -361,7 +449,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		action: Selector
 	) {
 		button.setImage(UIImage(systemName: symbolName), for: .normal)
-		button.tintColor = .label
+		button.tintColor = BabelPalette.mutedInk
 		button.accessibilityLabel = Babel2Localization.text(key, bundle: localizationBundle)
 		button.accessibilityIdentifier = key.accessibilityIdentifier
 		button.configuration = .plain()
@@ -371,7 +459,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func installLayout() {
-		for item in [titleLabel, settingsButton, addButton, syncArrow, scopeStack] {
+		for item in [titleLabel, settingsButton, addButton, syncArrow, bottomBar, scopeStack] {
 			item.translatesAutoresizingMaskIntoConstraints = false
 		}
 		for surface in scopeSurfaces.values {
@@ -380,31 +468,37 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		let safeArea = view.safeAreaLayoutGuide
 		var constraints = [NSLayoutConstraint]()
 		constraints += [
-			titleLabel.centerXAnchor.constraint(equalTo: safeArea.centerXAnchor),
-			titleLabel.topAnchor.constraint(equalTo: safeArea.topAnchor, constant: 28),
-			settingsButton.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor, constant: 16),
-			settingsButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+			settingsButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+			settingsButton.topAnchor.constraint(equalTo: safeArea.topAnchor, constant: 0),
 			settingsButton.widthAnchor.constraint(equalToConstant: 44),
 			settingsButton.heightAnchor.constraint(equalToConstant: 44),
-			addButton.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor, constant: -16),
-			addButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+			addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+			addButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
 			addButton.widthAnchor.constraint(equalToConstant: 44),
 			addButton.heightAnchor.constraint(equalToConstant: 44),
-			scopeStack.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor, constant: 16),
-			scopeStack.trailingAnchor.constraint(lessThanOrEqualTo: syncArrow.leadingAnchor, constant: -8),
-			scopeStack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-			scopeStack.heightAnchor.constraint(equalToConstant: 44),
-			syncArrow.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor, constant: -16),
-			syncArrow.centerYAnchor.constraint(equalTo: scopeStack.centerYAnchor),
+			syncArrow.centerXAnchor.constraint(equalTo: view.leadingAnchor, constant: 201),
+			syncArrow.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
 			syncArrow.widthAnchor.constraint(equalToConstant: 44),
-			syncArrow.heightAnchor.constraint(equalToConstant: 44)
+			syncArrow.heightAnchor.constraint(equalToConstant: 44),
+			titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+			titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+			titleLabel.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 8),
+			titleLabel.heightAnchor.constraint(equalToConstant: 43),
+			bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+			bottomBar.heightAnchor.constraint(equalToConstant: 72),
+			scopeStack.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
+			scopeStack.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor),
+			scopeStack.topAnchor.constraint(equalTo: bottomBar.topAnchor),
+			scopeStack.heightAnchor.constraint(equalToConstant: 48)
 		]
 		for surface in scopeSurfaces.values {
 			constraints += [
-				surface.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
-				surface.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
-				surface.topAnchor.constraint(equalTo: scopeStack.bottomAnchor, constant: 8),
-				surface.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor)
+				surface.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+				surface.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+				surface.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+				surface.bottomAnchor.constraint(equalTo: bottomBar.topAnchor)
 			]
 		}
 		NSLayoutConstraint.activate(constraints)
@@ -415,20 +509,20 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			let surface = ScopeSurface(scope: scope, localizationBundle: localizationBundle)
 			surface.tableView.dataSource = self
 			surface.tableView.delegate = self
-			surface.tableView.register(UITableViewCell.self, forCellReuseIdentifier: Self.feedCellReuseIdentifier)
+			surface.tableView.register(Babel2LibraryRowCell.self, forCellReuseIdentifier: Babel2LibraryRowCell.reuseIdentifier)
 			surface.onRetry = { [weak self] in
 				self?.retry(scope: scope)
 			}
-			surface.alpha = scope == .all ? 1 : 0
-			surface.accessibilityElementsHidden = scope != .all
-			view.addSubview(surface)
+			surface.alpha = scope == .unread ? 1 : 0
+			surface.accessibilityElementsHidden = scope != .unread
+			view.insertSubview(surface, belowSubview: bottomBar)
 			scopeSurfaces[scope] = surface
 		}
 	}
 
 	private func loadLibraryIfNeeded() {
-		guard let surface = scopeSurfaces[.all], !surface.hasLoaded, libraryTasks[.all] == nil else { return }
-		requestLibrary(for: .all, showLoading: true)
+		guard let surface = scopeSurfaces[.unread], !surface.hasLoaded, libraryTasks[.unread] == nil else { return }
+		requestLibrary(for: .unread, showLoading: true)
 	}
 
 	private func reloadLibraryIfVisible() {
@@ -487,9 +581,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		surface.pendingUpdate = nil
 		switch update {
 		case .snapshot(let snapshot):
-			surface.rows = snapshot.feeds
-				.filter { !$0.isMuted && ($0.articleCount ?? 0) > 0 }
-				.sorted(by: Self.feedComesFirst)
+			surface.snapshot = snapshot
+			surface.rows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
 			surface.hasLoaded = true
 			surface.isSyncing = snapshot.isSyncing
 			surface.tableView.reloadData()
@@ -498,8 +591,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.setState(state, text: Babel2Localization.text(textKey, bundle: localizationBundle))
 			if surface.scope == displayedScope {
 				updateSyncState(snapshot.isSyncing)
+				openFirstFeedIfRequested(from: surface)
 			}
 		case .error:
+			surface.snapshot = nil
 			surface.rows.removeAll(keepingCapacity: true)
 			surface.hasLoaded = true
 			surface.isSyncing = false
@@ -509,6 +604,42 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				updateSyncState(false)
 			}
 		}
+	}
+
+	private static func makeRows(
+		from snapshot: LibrarySnapshot,
+		scope: Babel2FeedScope,
+		collapsedFolders: Set<FolderSnapshot.ID>
+	) -> [LibraryRow] {
+		func isVisible(_ feed: FeedSnapshot) -> Bool {
+			guard !feed.isMuted else { return false }
+			switch scope {
+			case .all:
+				return true
+			case .unread, .starred:
+				return (feed.articleCount ?? 0) > 0
+			}
+		}
+
+		let feedsByID = Dictionary(uniqueKeysWithValues: snapshot.feeds.map { ($0.id, $0) })
+		let nestedIDs = Set(snapshot.folders.flatMap(\.feedIDs))
+		var rows = [LibraryRow]()
+		for folder in snapshot.folders.sorted(by: { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) {
+			let childFeeds = folder.feedIDs.compactMap { feedsByID[$0] }.filter(isVisible)
+			guard !childFeeds.isEmpty else { continue }
+			let expanded = !collapsedFolders.contains(folder.id)
+			rows.append(.folder(folder, expanded: expanded))
+			if expanded {
+				for feed in childFeeds.sorted(by: feedComesFirst) {
+					rows.append(.feed(feed, nested: true))
+				}
+			}
+		}
+		let topLevel = snapshot.feeds
+			.filter { isVisible($0) && !nestedIDs.contains($0.id) }
+			.sorted(by: feedComesFirst)
+		rows.append(contentsOf: topLevel.map { LibraryRow.feed($0, nested: false) })
+		return rows
 	}
 
 	private static func feedComesFirst(_ lhs: FeedSnapshot, _ rhs: FeedSnapshot) -> Bool {
@@ -598,10 +729,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		let destinationButton = scopeButtons[target]
 		if let sourceButton, let destinationButton {
 			if !presentationNeedsSettlement {
-				selectionPill.frame = sourceButton.frame.insetBy(dx: 2, dy: 2)
+				selectionPill.frame = sourceButton.frame.insetBy(dx: 6, dy: 9)
 				selectionPill.transform = .identity
 			}
-			let targetPillFrame = destinationButton.frame.insetBy(dx: 2, dy: 2)
+			let targetPillFrame = destinationButton.frame.insetBy(dx: 6, dy: 9)
 			let direction: CGFloat = scopeIndex(target) >= scopeIndex(displayedScope) ? 1 : -1
 			let offset: CGFloat = 12 * direction
 			if !presentationNeedsSettlement {
@@ -644,6 +775,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				self.applyActiveSurface(target)
 				self.updateScopeButtons()
 				self.updateSyncState(destinationSurface.isSyncing)
+				destinationSurface.tableView.setContentOffset(.zero, animated: false)
 				self.applyPendingSurfaceUpdates()
 				if self.selectedScope != self.displayedScope,
 					let next = self.scopeSurfaces[self.selectedScope], next.hasLoaded {
@@ -671,7 +803,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func scopeIndex(_ scope: Babel2FeedScope) -> Int {
-		Babel2FeedScope.allCases.firstIndex(of: scope) ?? 0
+		Self.filterDisplayOrder.firstIndex(of: scope) ?? 0
 	}
 
 	@objc private func settingsTapped() {
@@ -692,28 +824,45 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		present(alert, animated: true)
 	}
 
+	private func toggleFolder(_ folderID: FolderSnapshot.ID) {
+		if collapsedFolders.contains(folderID) {
+			collapsedFolders.remove(folderID)
+		} else {
+			collapsedFolders.insert(folderID)
+		}
+		for surface in scopeSurfaces.values {
+			guard let snapshot = surface.snapshot else { continue }
+			surface.rows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
+			surface.tableView.reloadData()
+		}
+	}
+
 	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
 		guard let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }) else { return 0 }
 		return surface.rows.count
 	}
 
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-		let cell = tableView.dequeueReusableCell(withIdentifier: Self.feedCellReuseIdentifier, for: indexPath)
+		let cell = tableView.dequeueReusableCell(withIdentifier: Babel2LibraryRowCell.reuseIdentifier, for: indexPath) as! Babel2LibraryRowCell
 		guard let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }),
 			indexPath.row < surface.rows.count else { return cell }
-		let feed = surface.rows[indexPath.row]
-		var content = cell.defaultContentConfiguration()
-		content.text = feed.title
-		content.secondaryText = feed.articleCount.map { $0.formatted() }
-		content.image = feed.iconData.flatMap(UIImage.init(data:)) ?? UIImage(systemName: "circle")
-		content.imageProperties.maximumSize = CGSize(width: 28, height: 28)
-		content.textProperties.font = .preferredFont(forTextStyle: .body)
-		content.secondaryTextProperties.font = .preferredFont(forTextStyle: .footnote)
-		content.secondaryTextProperties.color = .secondaryLabel
-		cell.contentConfiguration = content
-		cell.accessibilityIdentifier = "babel2.feed.\(surface.scope.rawValue).\(feed.id.accountID).\(feed.id.feedID)"
-		cell.accessibilityLabel = feed.title
-		cell.accessibilityValue = feed.articleCount.map { String($0) }
+		switch surface.rows[indexPath.row] {
+		case .folder(let folder, let expanded):
+			let count = folder.articleCount.flatMap { $0 > 0 ? $0 : nil }
+			cell.configureFolder(title: folder.title, count: count, expanded: expanded) { [weak self] in
+				self?.toggleFolder(folder.id)
+			}
+			cell.accessibilityIdentifier = "babel2.folder.\(surface.scope.rawValue).\(folder.id)"
+			cell.accessibilityLabel = folder.title
+			cell.accessibilityValue = count.map(String.init)
+		case .feed(let feed, let nested):
+			let count = feed.articleCount.flatMap { $0 > 0 ? $0 : nil }
+			let icon = feed.iconData.flatMap(UIImage.init(data:))
+			cell.configureFeed(title: feed.title, count: count, icon: icon, nested: nested)
+			cell.accessibilityIdentifier = "babel2.feed.\(surface.scope.rawValue).\(feed.id.accountID).\(feed.id.feedID)"
+			cell.accessibilityLabel = feed.title
+			cell.accessibilityValue = count.map(String.init)
+		}
 		return cell
 	}
 
@@ -723,8 +872,111 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }),
 			surface.scope == displayedScope,
 			indexPath.row < surface.rows.count else { return }
-		onFeedRequested?(surface.rows[indexPath.row], displayedScope)
+		switch surface.rows[indexPath.row] {
+		case .folder(let folder, _):
+			toggleFolder(folder.id)
+		case .feed(let feed, _):
+			onFeedRequested?(feed, displayedScope)
+		}
+	}
+}
+
+private final class Babel2LibraryRowCell: UITableViewCell {
+	static let reuseIdentifier = "Babel2LibraryRowCell"
+	private let iconView = UIImageView()
+	private let chevronView = UIImageView()
+	private let titleLabel = UILabel()
+	private let countLabel = UILabel()
+	private var toggleFolder: (() -> Void)?
+
+	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+		super.init(style: style, reuseIdentifier: reuseIdentifier)
+		backgroundColor = .clear
+		contentView.backgroundColor = .clear
+		selectionStyle = .default
+		let selection = UIView()
+		selection.backgroundColor = BabelPalette.raisedBackground
+		selection.layer.cornerRadius = 10
+		selectedBackgroundView = selection
+
+		iconView.contentMode = .scaleAspectFit
+		iconView.layer.cornerRadius = 3
+		iconView.clipsToBounds = true
+		iconView.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(iconView)
+
+		chevronView.contentMode = .scaleAspectFit
+		chevronView.tintColor = BabelPalette.mutedInk
+		chevronView.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(chevronView)
+
+		titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+		titleLabel.textColor = BabelPalette.ink
+		titleLabel.lineBreakMode = .byTruncatingTail
+		titleLabel.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(titleLabel)
+
+		countLabel.font = .systemFont(ofSize: 17, weight: .regular)
+		countLabel.textColor = BabelPalette.tertiaryInk
+		countLabel.textAlignment = .right
+		countLabel.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(countLabel)
+
+		NSLayoutConstraint.activate([
+			chevronView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 17),
+			chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			chevronView.widthAnchor.constraint(equalToConstant: 14),
+			chevronView.heightAnchor.constraint(equalToConstant: 14),
+			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			iconView.widthAnchor.constraint(equalToConstant: 19),
+			iconView.heightAnchor.constraint(equalToConstant: 19),
+			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -10),
+			countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36),
+			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28)
+		])
 	}
 
-	private static let feedCellReuseIdentifier = "Babel2FeedCell"
+	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+	func configureFolder(title: String, count: Int?, expanded: Bool, toggle: @escaping () -> Void) {
+		toggleFolder = toggle
+		titleLabel.text = title
+		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+		countLabel.text = count?.formatted()
+		countLabel.isHidden = count == nil
+		iconView.isHidden = true
+		chevronView.isHidden = false
+		chevronView.image = UIImage(
+			systemName: expanded ? "chevron.down" : "chevron.right",
+			withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+		)
+		titleLabelLeading(to: 56)
+	}
+
+	func configureFeed(title: String, count: Int?, icon: UIImage?, nested: Bool) {
+		toggleFolder = nil
+		titleLabel.text = title
+		titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+		countLabel.text = count?.formatted()
+		countLabel.isHidden = count == nil
+		chevronView.isHidden = true
+		iconView.isHidden = false
+		iconView.image = icon ?? UIImage(systemName: "circle.fill")
+		iconView.tintColor = BabelPalette.mutedInk
+		let leading: CGFloat = nested ? 54 : 32
+		iconView.constraints.filter { $0.firstAttribute == .leading }.forEach { $0.isActive = false }
+		iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading).isActive = true
+		titleLabelLeading(to: leading + 27)
+	}
+
+	private func titleLabelLeading(to constant: CGFloat) {
+		titleLabel.constraints.filter { $0.firstAttribute == .leading }.forEach { $0.isActive = false }
+		contentView.constraints.filter {
+			($0.firstItem as? UIView) === titleLabel && $0.firstAttribute == .leading
+		}.forEach { $0.isActive = false }
+		titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: constant).isActive = true
+	}
 }

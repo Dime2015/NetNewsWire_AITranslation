@@ -15,6 +15,7 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 
 	public let id: ID
 	public let title: String
+	public let translatedTitle: String?
 	public let summary: String
 	public let content: String
 	public let url: URL?
@@ -27,6 +28,7 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 	public init(
 		id: ID,
 		title: String,
+		translatedTitle: String? = nil,
 		summary: String = "",
 		content: String = "",
 		url: URL?,
@@ -38,6 +40,7 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 	) {
 		self.id = id
 		self.title = title
+		self.translatedTitle = translatedTitle
 		self.summary = summary
 		self.content = content
 		self.url = url
@@ -93,11 +96,13 @@ public struct FolderSnapshot: Identifiable, Hashable, Sendable {
 	public let id: ID
 	public let title: String
 	public let feedIDs: [FeedSnapshot.ID]
+	public let articleCount: Int?
 
-	public init(id: ID, title: String, feedIDs: [FeedSnapshot.ID] = []) {
+	public init(id: ID, title: String, feedIDs: [FeedSnapshot.ID] = [], articleCount: Int? = nil) {
 		self.id = id
 		self.title = title
 		self.feedIDs = feedIDs
+		self.articleCount = articleCount
 	}
 }
 

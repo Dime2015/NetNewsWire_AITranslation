@@ -9,12 +9,13 @@ final class Babel2FeedReaderUITests: XCTestCase {
 		let app = XCUIApplication(bundleIdentifier: appBundleIdentifier)
 		app.launch()
 
-		let feedsTable = app.tables[tableIdentifier(for: "babel2.scope.all")]
-		guard waitForExistence(feedsTable, timeout: 20) else {
+		let defaultFeedsTable = app.tables[tableIdentifier(for: "babel2.scope.unread")]
+		guard waitForExistence(defaultFeedsTable, timeout: 20) else {
 			attachState(app, name: "root")
 			fail("SIMULATOR_HARNESS_TIMEOUT", "feeds table did not appear")
 			return
 		}
+		let feedsTable = app.tables[tableIdentifier(for: "babel2.scope.all")]
 		attachState(app, name: "root")
 
 		var rowsByScope = [String: Int]()

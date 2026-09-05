@@ -40,6 +40,7 @@ final class Babel2LiveDataProvider: DataProviding {
 	private func makeLibrarySnapshot(for scope: Babel2FeedScope) async throws -> LibrarySnapshot {
 		let accounts = AccountManager.shared.sortedActiveAccounts
 		var feedSnapshots = [FeedSnapshot]()
+		var countsByFeedID = [FeedSnapshot.ID: Int]()
 		for account in accounts {
 			try Task.checkCancellation()
 			let countMap = await account.fetchFeedArticleCountsAsync()
@@ -53,15 +54,26 @@ final class Babel2LiveDataProvider: DataProviding {
 					case .starred: return counts.starredCount
 					}
 				} ?? 0
-				guard count > 0,
+				// Starred only surfaces sources that currently have starred articles.
+				// Unread/All keep every subscribed source so folder hierarchy stays stable;
+				// the root hides zero counts visually while still listing the feed.
+				let include: Bool
+				switch scope {
+				case .starred:
+					include = count > 0
+				case .unread, .all:
+					include = true
+				}
+				guard include,
 					let snapshot = makeFeedSnapshot(accountID: account.accountID, feed: feed, articleCount: count) else {
 					continue
 				}
+				countsByFeedID[snapshot.id] = count
 				feedSnapshots.append(snapshot)
 			}
 		}
 		feedSnapshots.sort(by: feedComesFirst)
-		let folderSnapshots = makeFolderSnapshots(from: accounts)
+		let folderSnapshots = makeFolderSnapshots(from: accounts, countsByFeedID: countsByFeedID, scope: scope)
 
 		return LibrarySnapshot(
 			feeds: feedSnapshots,
@@ -71,19 +83,45 @@ final class Babel2LiveDataProvider: DataProviding {
 		)
 	}
 
-	private func makeFolderSnapshots(from accounts: [Account]) -> [FolderSnapshot] {
+	private func makeFolderSnapshots(
+		from accounts: [Account],
+		countsByFeedID: [FeedSnapshot.ID: Int],
+		scope: Babel2FeedScope
+	) -> [FolderSnapshot] {
 		let folders = accounts.flatMap { $0.folders ?? [] }.sorted(by: folderComesFirst)
-		return folders.map { folder in
-			FolderSnapshot(
-				id: folderID(for: folder),
-				title: folder.nameForDisplay,
-				feedIDs: folder.flattenedFeeds()
-					.map { FeedSnapshot.ID(accountID: folder.accountID, feedID: $0.feedID) }
-					.sorted { lhs, rhs in
-						lhs.accountID == rhs.accountID ? lhs.feedID < rhs.feedID : lhs.accountID < rhs.accountID
-					}
+		var snapshots = [FolderSnapshot]()
+		snapshots.reserveCapacity(folders.count)
+		for folder in folders {
+			var feedIDs = [FeedSnapshot.ID]()
+			feedIDs.reserveCapacity(folder.topLevelFeeds.count)
+			for feed in folder.topLevelFeeds {
+				feedIDs.append(FeedSnapshot.ID(accountID: folder.accountID, feedID: feed.feedID))
+			}
+			feedIDs.sort { lhs, rhs in
+				if lhs.accountID == rhs.accountID {
+					return lhs.feedID < rhs.feedID
+				}
+				return lhs.accountID < rhs.accountID
+			}
+			var visibleFeedIDs = [FeedSnapshot.ID]()
+			var total = 0
+			for feedID in feedIDs {
+				guard let count = countsByFeedID[feedID] else { continue }
+				visibleFeedIDs.append(feedID)
+				total += count
+			}
+			guard !visibleFeedIDs.isEmpty else { continue }
+			if scope == .starred, total <= 0 { continue }
+			snapshots.append(
+				FolderSnapshot(
+					id: folderID(for: folder),
+					title: folder.nameForDisplay,
+					feedIDs: visibleFeedIDs,
+					articleCount: total
+				)
 			)
 		}
+		return snapshots
 	}
 
 	private func feedComesFirst(_ lhs: FeedSnapshot, _ rhs: FeedSnapshot) -> Bool {
@@ -192,9 +230,24 @@ final class Babel2LiveDataProvider: DataProviding {
 		let body = article.contentHTML ?? article.contentText ?? article.summary ?? ""
 		let title = article.title?.trimmingCharacters(in: .whitespacesAndNewlines)
 		let summary = article.summary ?? article.contentText ?? ""
+		let originalTitle = title?.isEmpty == false ? title! : "Untitled"
+		// Cache-only title translation for Timeline. Never enqueue AI work here.
+		var translatedTitle: String? = nil
+		if NNWTitleTranslationStore.shared.isEnabled(accountID: article.accountID, feedID: article.feedID),
+			let raw = article.title, !raw.isEmpty {
+			let model = TranslationConfigStore.selectedModel
+			if let hit = NNWTitleTranslationCache.shared.translation(
+				articleID: article.articleID,
+				title: raw,
+				model: model
+			), hit != raw {
+				translatedTitle = hit
+			}
+		}
 		return ArticleSnapshot(
 			id: ArticleSnapshot.ID(accountID: article.accountID, feedID: article.feedID, articleID: article.articleID),
-			title: title?.isEmpty == false ? title! : "Untitled",
+			title: originalTitle,
+			translatedTitle: translatedTitle,
 			summary: summary,
 			content: body,
 			url: article.preferredURL,

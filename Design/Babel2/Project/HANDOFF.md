@@ -79,3 +79,9 @@ Phase 3B 已完成最小 UI driver 的真实运行，并已通过独立只读 ev
 必须保留的数据边界：UI 序列观察到 `articles/statuses/search` `424→425→426` 与 data-container UUID 轮换；同一 r2 artifact 的 r3 前后均为 426，FeedSettings=10，integrity=`ok`。分类为 `UNEXPECTED_DATA_MUTATION`，原因未证明，不可写成 read-only 或 background sync。旧 Phase 3 Release r1 的 `6be10d…` 只是 provenance；Phase 3B 新产物的 artifact/installed hash 以 manifest 为准。
 
 主控复审只可把“实现代码 P0/P1=0”和 Phase3B evidence gate closed after independent recheck 用于本切片；这不改变未完成范围。Phase 1A、物理 iPhone、完整 scene reconnect/restore、视觉/性能人工验收、旧 storyboard/nib 与三个 `.appex` allowlist、cache 两个 P2、同名 tie-break P2、Open Original 无 URL 语义缺口 P2 及数据变化原因仍 OPEN；enabled URL 路径的 SafariViewService 通过仍保留。最终 SecretKey/.gyb hash 与六个 env 状态见 [evidence/phase3/secret-status.json](evidence/phase3/secret-status.json)；恢复后不要再 build/test/install/launch；无 commit、无 push。
+
+## Feeds/Timeline 卡片打磨 checkpoint 接手记录（2026-09-05，Asia/Tokyo）
+
+这是与上方 Phase 2A/M1「当前下一任务」并行、范围独立的一次工作树打磨收口，不改变 M1 推送授权待定或 Phase 1A A0–A15 证据缺口的状态。接手时已存在 7 个已跟踪文件的未提交改动（Feeds 文件夹层级、`BabelPalette` 统一配色、默认档 `.all→.unread`、筛选按钮 Figma 校准坐标、Timeline 卡片缩略图与翻译标题副标题）与 9 张 `evidence/stabilize/` 截图；本轮工作是：用全量 `xcodebuild … test`（而非只跑 package tests 或 `build`）验证这批改动，发现并修复 2 个真实回归（筛选按钮零尺寸 frame；`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 因默认档变化而永久超时），随后把这批改动与本次文档同步一并提交（未推送）。完整根因、命令与前后测试数字见 [VALIDATION.md](VALIDATION.md)「Feeds/Timeline 卡片打磨 checkpoint」一节；教训见 [LESSONS.md](LESSONS.md) 第 21 条；提交 SHA 见 [STATUS.md](STATUS.md) 对应章节。
+
+交接边界：本次修复只改了 `iOS/Babel2/Babel2RootViewController.swift` 的按钮布局保底分支与 `Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift` 的一个测试的竞态角色分配，没有触碰接手时已存在的其余 6 个文件的实现内容。`evidence/stabilize/` 截图未经独立复核，不能当作模拟器或真机验收证据；REQUIREMENTS 中依赖 motion/进度同步语义的两行（Feed/Timeline header 无空带、pFilter 的 pill/列表/计数同 progress）本次未触及，仍是"未开始"。下一步优先级（是否先处理 M1 推送授权，还是继续本条 Feeds/Timeline 线）由用户决定，本记录不预设顺序。

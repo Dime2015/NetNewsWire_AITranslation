@@ -201,3 +201,30 @@ Release build-for-testing r1/r2 均成功。UI r1 实际执行 1 test、失败�
 数据验收不能写成只读：安装/测试序列观察到 `articles/statuses/search` `424→425→426` 与 data-container UUID rotation；r3 使用相同 r2 artifact，前后保持 426。FeedSettings=10、SQLite integrity=`ok`。分类为 `UNEXPECTED_DATA_MUTATION`，原因未证实；不归因 background sync，也不把它标作测试代码必然造成的写入。该切片仍不关闭 Phase 1A、物理 iPhone、旧 storyboard/nib/3 appex allowlist、scene 完整恢复、视觉/性能人工验收，以及 cache 和同名 tie-break P2。
 
 P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通过独立复核并关闭 Phase3B evidence gate，完整 Phase 1A 仍需按本文件既有 A0–A15 证据协议复核。Open Original enabled URL → SafariViewService 的通过仍保留；无 URL 行为的语义缺口是后续 P2。旧 storyboard/nib、3 个 `.appex` allowlist、物理 iPhone、scene/perf/visual acceptance、data mutation 原因、cache first-hit/validation/unbounded 和 same-title tie-break 仍 OPEN。SecretKey/.gyb 目标 hash 与六 env unset 见 [evidence/phase3/secret-status.json](evidence/phase3/secret-status.json)。原始 `/private/tmp/babel2-phase3b-ui-*` 路径只作来源索引；无 commit、无 push。
+
+## Feeds/Timeline 卡片打磨 checkpoint（2026-09-05，Asia/Tokyo）
+
+本节记录一次独立于 Phase 2A/M1 主线的工作树打磨：接手时 7 个已跟踪文件（`Modules/Babel2UI/Sources/Babel2Core/Snapshots.swift`、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift`、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderUITests.swift`、`iOS/Babel2/Babel2LibraryViewControllers.swift`、`iOS/Babel2/Babel2RootViewController.swift`、`iOS/Babel2/Resources/Babel2Localizable.xcstrings`、`iOS/Babel2Integration/Babel2LiveDataAdapters.swift`）已处于未提交状态，另有 9 张 `Design/Babel2/Project/evidence/stabilize/feeds-v1*.png`/`timeline-v1*.png` 未跟踪截图；本节只对这批已存在的改动做验证、修复回归并提交，不代表新的产品需求或 Slice。
+
+实现内容（供 STATUS 引用）：Feeds 根页支持文件夹层级（`LibraryRow` 区分 folder/feed，可展开折叠）；Unread/All 两档改为列出全部已订阅源（不再按 `count > 0` 过滤，只在视觉上隐藏零计数），Starred 档维持只列有星标的源；Feeds/Feed 页统一切到 `BabelPalette`；默认档从 `.all` 改为 `.unread`；Starred/Unread/All 三个按钮改为 Figma 校准的固定像素坐标（centers `[104, 201, 290.5]`，宽 90pt）；Timeline 卡片新增缩略图异步加载、"英文 → 简体中文"翻译标题副标题行（仅在缓存命中时显示，不触发 AI 请求）、HTML 标签剥离后的摘要、今天用时间/更早用日期的日期格式化、已读/未读标题字重；`ArticleSnapshot` 新增 `translatedTitle`、`FolderSnapshot` 新增 `articleCount`；新增两个仅供 `simctl` 取证使用的环境变量开关 `BABEL2_FEEDS_SCOPE`、`BABEL2_OPEN_FIRST_FEED`。
+
+发现并修复的 2 个真实回归（详见 [LESSONS.md](LESSONS.md) 第 21 条）：
+
+| 回归 | 修复 |
+|---|---|
+| `layoutScopeControlsIfNeeded()` 在 `scopeStack.bounds.width <= 0` 时整体跳过布局，筛选按钮永远停在初始零尺寸 frame（`testRootHasFeedsTitleAndTwoReachableActions` 断言 `frame.width >= 44` 失败） | 保留 Figma 绝对坐标作为有真实宽度时的分支；新增 `bounds.width <= 0` 的保底分支，用 `max(44, …)` 均分宽度，保证任何宿主下按钮都至少是 44×44 的可点区域 |
+| 默认档改为 `.unread` 后，`viewDidAppear` 已预加载 `.unread`；`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 沿用旧写法把 `.unread` 当"尚未加载"的一方来布置竞态，但已加载过的 scope 被再次点击时不会重新发请求，测试永远等不到第二次 `librarySnapshot(for: .unread)`，`waitForLibraryStart(..., after: 2)` 超时 | 把测试里"尚未加载、用来布置延迟竞态"的角色从 `.unread` 换成 `.all`（现在真正未被预加载的一方），其余断言结构保持与改动前一致，只是围绕新默认值把两个角色对调 |
+
+修复前后均用同一组命令重新验证，环境与既有 Phase 2A/3 记录一致：Xcode 27.0 / iOS 27.0 SDK，目标 Simulator 为 iPhone 17，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`；`swift test`/`xcodebuild` 均在显式 unset `MERCURY_CLIENT_ID`、`MERCURY_CLIENT_SECRET`、`FEEDLY_CLIENT_ID`、`FEEDLY_CLIENT_SECRET`、`INOREADER_APP_ID`、`INOREADER_APP_KEY`（逐一用 `printenv` 确认本轮 shell 里六项均为 unset）的前提下执行。
+
+| 检查 | 精确命令 | 修复前 | 修复后 |
+|---|---|---|---|
+| Babel2UI package tests | `env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY swift test --package-path Modules/Babel2UI` | exit 0，32/32（未受这两个回归影响） | exit 0，32/32 |
+| 全量 Debug iOS tests | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath <dd> -resultBundlePath <xcresult> test` | `** TEST FAILED **`；`xcresulttool get test-results summary` 报 `failedTests:2`、`passedTests:60`、`totalTestCount:62`，失败为 `Babel2FeatureGateTests.testRootHasFeedsTitleAndTwoReachableActions` 与 `Babel2FeedReaderTests.testStaleScopeResultCannotPublishAfterLatestIntentChanges` | `** TEST SUCCEEDED **`；summary 报 `failedTests:0`、`passedTests:62`（console XCTest 44 + Swift Testing 18）|
+| Debug build | 同上 test 调用内含编译步骤 | 编译本身成功（回归是运行期断言失败，非编译失败） | 同左，`BUILD SUCCEEDED` |
+
+日志与 result bundle：修复前 `/private/tmp/babel2-feeds-polish-checkpoint.log`、`/private/tmp/babel2-feeds-polish-checkpoint.xcresult`（DerivedData `/private/tmp/babel2-feeds-polish-checkpoint-dd`）；修复后 `/private/tmp/babel2-feeds-polish-checkpoint-r2.log`、`/private/tmp/babel2-feeds-polish-checkpoint-r2.xcresult`（DerivedData `/private/tmp/babel2-feeds-polish-checkpoint-r2-dd`）。这些临时路径不随 commit 保留，仅作本节数字的原始来源索引。
+
+范围与限制：本节证据只覆盖自动化测试与 Debug 编译；`evidence/stabilize/` 下的截图是此前会话在同一 Simulator 上取的静态画面，未附带独立复核，不构成模拟器验收或真机验收证据；REQUIREMENTS 中 "Feed/Timeline header 无空带"、"pFilter 的 selection pill/列表/计数同 progress" 两行要求的是动效同步语义，本次改动只涉及静态几何与数据，**不得据此把这两行标记为完成**。M1（`5db240499806bc4cae9be0b82194c838a32229de`）与 Phase 1A 剩余证据缺口与本节无关，状态维持 HANDOFF.md 既有记录。SecretKey.swift 在本轮 build/test 后 hash 为 `3e2ee2886f5f2f923c93d36116e33b18dd118c0e0adc8c7bd6a8bfc0bffa6e09`（与 2026-09-01 记录的可信快照 `6bd845d7…` 不同，属预期的 scheme pre-action 重写，本轮六个 secret env 全程 unset，未验证是否与可信快照恢复一致，因为该文件被 `.gitignore` 排除、不进入本次 commit）。
+
+提交后回填：本节改动连同上述文档更新一并提交，commit SHA、提交前后 `git status`、以及是否推送见 STATUS.md 对应章节。

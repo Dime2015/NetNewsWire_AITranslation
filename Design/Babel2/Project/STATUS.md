@@ -117,3 +117,17 @@ Phase 3B 在 Phase 3 的账户限定数据切片之上增加一个最小 XCUITes
 数据不能标成只读：基线与 UI 序列中观察到 `articles/statuses/search` `424→425→426`，同时出现 data-container UUID 轮换；同一 r2 产物的 r3 重复为 `426→426`，FeedSettings 始终 10，SQLite integrity 始终 `ok`。状态明确记为 `UNEXPECTED_DATA_MUTATION`；增量原因未证实，不归因为后台同步，也不把它解释成测试必然写入。旧 Phase 3 Release r1 hash 只作为 provenance，新 Phase 3B r2 artifact/installed executable hash 以 evidence manifest 为准。
 
 Phase 3B 本轮已应用截图隐私边界和 bundle tree digest 的 P1 evidence correction，并通过独立只读复核；manifest 状态为 `phase3b_evidence_gate_closed_after_independent_recheck`，范围仅是 Phase3B implementation + automation + persistent evidence，未暗示 Phase1A 或全产品完成。复核仅验证 7 个 JSON、裁剪截图/inventory、245 文件 bundle/hash/content-identical、logs/xcresults/counts、docs/security/refs，未重跑 build/test/install/launch。当前 bundle 校验使用 bundle-root-relative、无 `./` 前缀、按路径排序、每条 `SHA256  relative/path\n` 的拼接摘要，BFT r2 与 installed r3 均为 245 文件、tree SHA `64ef2ec5…`，旧绝对路径 digest 仅作 historical/path-bound provenance。Phase 1A、真实物理 iPhone、完整 scene 恢复、视觉/性能人工验收、旧 storyboard/nib 与 3 个 `.appex` allowlist、数据增量原因、cache first-hit/验证与无界问题、同名 tie-break P2，以及 Open Original 无 URL 的语义缺口 P2 仍 OPEN；enabled URL 路径到 SafariViewService 的真实通过仍保留。SecretKey 和 `.gyb` 目标 hash、六个环境变量 unset 状态仍见 [evidence/phase3/secret-status.json](evidence/phase3/secret-status.json)；无 commit、无 push。
+
+## Feeds/Timeline 卡片打磨 checkpoint（2026-09-05，Asia/Tokyo）
+
+本节是与 Phase 2A/M1 主线并行、独立于 HANDOFF.md「当前下一任务」的一次打磨收口；不改写上方 Phase 2A/3/3B 结论，也不代表 Phase 1A、M1 或 REQUIREMENTS 中任何 motion/同步语义行的完成。
+
+接手时工作树已存在 7 个已跟踪文件的未提交改动（Feeds 文件夹层级、`BabelPalette` 统一配色、默认档 `.all→.unread`、筛选按钮改 Figma 校准像素坐标、Timeline 卡片加缩略图与翻译标题副标题行）与 9 张 `evidence/stabilize/feeds-v1*`/`timeline-v1*` 截图；本轮只做验证、修复、文档同步与提交，未新增产品范围。
+
+验证过程中用全量 `xcodebuild … test`（此前只跑过 package tests 和 `xcodebuild … build`，未覆盖真实 UIKit 交互）发现 2 个真实回归并已修复：筛选按钮在容器宽度未知时永久停留在零尺寸 frame（`Babel2RootViewController.swift` 的 `layoutScopeControlsIfNeeded()`）；`testStaleScopeResultCannotPublishAfterLatestIntentChanges` 因默认档改为 `.unread` 后沿用旧的竞态角色分配而永久超时。完整根因、修复方式与前后测试数字见 [VALIDATION.md](VALIDATION.md) 「Feeds/Timeline 卡片打磨 checkpoint」一节；教训记录见 [LESSONS.md](LESSONS.md) 第 21 条。
+
+修复后 fresh 证据：Babel2UI package tests 32/32；全量 Debug iOS tests `xcresulttool` summary `failedTests:0`、`passedTests:62`（console XCTest 44 + Swift Testing 18）；Debug build 随 test 一并 `BUILD SUCCEEDED`。环境为 iPhone 17 / iOS 27 Simulator `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`，六个第三方 secret 环境变量本轮全程 unset。
+
+提交状态：<COMMIT_SHA_PLACEHOLDER>；未推送，`origin/codex/reeder-classic-rebuild` 仍为 `1269bb9087d896a7a9e29f174461d60b47134575`。
+
+仍未关闭：`evidence/stabilize/` 截图未经独立复核，不构成模拟器或真机验收证据；REQUIREMENTS 中 Feed/Timeline header 无空带、pFilter selection pill/列表/计数同 progress 两行要求的动效同步语义本次未触及，维持"未开始"；M1 推送授权与 Phase 1A 剩余 A0–A15 证据缺口独立于本节，状态仍以上方 Phase 2A 记录与 HANDOFF.md 为准。

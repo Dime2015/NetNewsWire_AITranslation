@@ -36,7 +36,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
-		view.backgroundColor = .systemBackground
+		view.backgroundColor = BabelPalette.background
 		configureHeader()
 		configureTable()
 		startLoading()
@@ -128,13 +128,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	private func configureHeader() {
 		let header = UIView()
-		header.backgroundColor = .systemBackground
+		header.backgroundColor = BabelPalette.background
 		header.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(header)
 
 		let back = UIButton(type: .system)
 		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-		back.tintColor = .label
+		back.tintColor = BabelPalette.ink
 		back.accessibilityLabel = "Back"
 		back.accessibilityIdentifier = "babel2.feed.back"
 		back.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
@@ -146,7 +146,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		titleLabel.accessibilityValue = scope.rawValue
 		titleLabel.accessibilityIdentifier = "babel2.feed.title"
 		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-		titleLabel.textColor = .label
+		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
 		titleLabel.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(titleLabel)
@@ -156,12 +156,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		countLabel.isHidden = feed.articleCount == nil
 		countLabel.accessibilityIdentifier = "babel2.feed.count"
 		countLabel.font = .systemFont(ofSize: 13, weight: .regular)
-		countLabel.textColor = .secondaryLabel
+		countLabel.textColor = BabelPalette.tertiaryInk
 		countLabel.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(countLabel)
 
 		let line = UIView()
-		line.backgroundColor = .separator
+		line.backgroundColor = BabelPalette.hairline
 		line.translatesAutoresizingMaskIntoConstraints = false
 		header.addSubview(line)
 
@@ -187,10 +187,10 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func configureTable() {
-		tableView.backgroundColor = .systemBackground
-		tableView.separatorStyle = .singleLine
+		tableView.backgroundColor = BabelPalette.background
+		tableView.separatorStyle = .none
 		tableView.rowHeight = UITableView.automaticDimension
-		tableView.estimatedRowHeight = 84
+		tableView.estimatedRowHeight = 118
 		tableView.dataSource = self
 		tableView.delegate = self
 		tableView.register(Babel2ArticleCell.self, forCellReuseIdentifier: Babel2ArticleCell.reuseIdentifier)
@@ -202,7 +202,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		emptyLabel.accessibilityIdentifier = "babel2.feed.articles.state"
 		emptyLabel.accessibilityValue = LoadState.loading.rawValue
 		emptyLabel.font = .systemFont(ofSize: 17, weight: .regular)
-		emptyLabel.textColor = .secondaryLabel
+		emptyLabel.textColor = BabelPalette.mutedInk
 		emptyLabel.textAlignment = .center
 		emptyLabel.isHidden = true
 		emptyLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -239,7 +239,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: Babel2ArticleCell.reuseIdentifier, for: indexPath) as! Babel2ArticleCell
 		let article = articles[indexPath.row]
-		cell.configure(article: article)
+		cell.configure(article: article, imageProvider: environment.imageProvider)
 		cell.accessibilityIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 		return cell
 	}
@@ -396,52 +396,216 @@ final class Babel2ArticleViewController: UIViewController {
 
 private final class Babel2ArticleCell: UITableViewCell {
 	static let reuseIdentifier = "Babel2ArticleCell"
-	private let titleLabel = UILabel()
-	private let summaryLabel = UILabel()
+	private static let thumbSide: CGFloat = 70
+
 	private let dateLabel = UILabel()
+	private let titleLabel = UILabel()
+	private let translationLabel = UILabel()
+	private let summaryLabel = UILabel()
+	private let thumbnailView = UIImageView()
+	private var imageLoadTask: Task<Void, Never>?
+	private var configuredArticleID: ArticleSnapshot.ID?
+
+	private var titleToThumb: NSLayoutConstraint!
+	private var dateToThumb: NSLayoutConstraint!
+	private var titleToTrailing: NSLayoutConstraint!
+	private var dateToTrailing: NSLayoutConstraint!
+	private var translationTopFromTitle: NSLayoutConstraint!
+	private var translationTopFromTitleCollapsed: NSLayoutConstraint!
+	private var summaryTopFromTranslation: NSLayoutConstraint!
+	private var summaryTopFromTitle: NSLayoutConstraint!
+	private var translationHeight: NSLayoutConstraint!
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
 		backgroundColor = .clear
+		contentView.backgroundColor = .clear
 		selectionStyle = .default
-		for label in [dateLabel, titleLabel, summaryLabel] {
+
+		thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+		thumbnailView.contentMode = .scaleAspectFill
+		thumbnailView.clipsToBounds = true
+		thumbnailView.layer.cornerRadius = 10
+		thumbnailView.layer.cornerCurve = .continuous
+		thumbnailView.backgroundColor = BabelPalette.raisedBackground
+		thumbnailView.isHidden = true
+		contentView.addSubview(thumbnailView)
+
+		for label in [dateLabel, titleLabel, translationLabel, summaryLabel] {
 			label.translatesAutoresizingMaskIntoConstraints = false
 			contentView.addSubview(label)
 		}
-		dateLabel.font = .systemFont(ofSize: 11, weight: .medium)
-		dateLabel.textColor = .secondaryLabel
+
+		dateLabel.font = .systemFont(ofSize: 12, weight: .regular)
+		dateLabel.textColor = BabelPalette.tertiaryInk
+		dateLabel.textAlignment = .right
+		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+		dateLabel.setContentHuggingPriority(.required, for: .vertical)
+
 		titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-		titleLabel.textColor = .label
+		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 2
+
+		translationLabel.font = .systemFont(ofSize: 12, weight: .regular)
+		translationLabel.textColor = BabelPalette.mutedInk
+		translationLabel.numberOfLines = 1
+		translationLabel.isHidden = true
+
 		summaryLabel.font = .systemFont(ofSize: 14, weight: .regular)
-		summaryLabel.textColor = .secondaryLabel
+		summaryLabel.textColor = BabelPalette.mutedInk
 		summaryLabel.numberOfLines = 2
+
+		titleToThumb = titleLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
+		dateToThumb = dateLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
+		titleToTrailing = titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+		dateToTrailing = dateLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+
+		translationTopFromTitle = translationLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4)
+		translationTopFromTitleCollapsed = translationLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 0)
+		summaryTopFromTranslation = summaryLabel.topAnchor.constraint(equalTo: translationLabel.bottomAnchor, constant: 4)
+		summaryTopFromTitle = summaryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4)
+		translationHeight = translationLabel.heightAnchor.constraint(equalToConstant: 0)
+
 		NSLayoutConstraint.activate([
-			dateLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-			dateLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+			thumbnailView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+			thumbnailView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -12),
+			thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbSide),
+			thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbSide),
+
 			dateLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-			titleLabel.leadingAnchor.constraint(equalTo: dateLabel.leadingAnchor),
-			titleLabel.trailingAnchor.constraint(equalTo: dateLabel.trailingAnchor),
-			titleLabel.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 5),
-			summaryLabel.leadingAnchor.constraint(equalTo: dateLabel.leadingAnchor),
-			summaryLabel.trailingAnchor.constraint(equalTo: dateLabel.trailingAnchor),
-			summaryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
-			summaryLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
+			dateLabel.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 20),
+			dateToTrailing,
+
+			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+			titleToTrailing,
+			titleLabel.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 6),
+
+			translationLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+			translationLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+			translationHeight,
+			translationTopFromTitleCollapsed,
+
+			summaryLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+			summaryLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+			summaryTopFromTitle,
+			summaryLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
 		])
 	}
 
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-	func configure(article: ArticleSnapshot) {
-		titleLabel.text = article.title
-		summaryLabel.text = article.summary.isEmpty ? "" : article.summary
-		dateLabel.text = article.publishedAt.map(Self.dateFormatter.string) ?? ""
-		accessibilityLabel = [article.title, article.summary].filter { !$0.isEmpty }.joined(separator: ". ")
+	override func prepareForReuse() {
+		super.prepareForReuse()
+		imageLoadTask?.cancel()
+		imageLoadTask = nil
+		configuredArticleID = nil
+		thumbnailView.image = nil
+		setThumbVisible(false)
+		setTranslationVisible(false)
+		summaryLabel.text = nil
+		titleLabel.text = nil
+		dateLabel.text = nil
+	}
+
+	func configure(article: ArticleSnapshot, imageProvider: any ImageProviding) {
+		configuredArticleID = article.id
+		let displayTitle = article.translatedTitle ?? article.title
+		titleLabel.text = displayTitle
+		titleLabel.font = .systemFont(ofSize: 17, weight: article.isRead ? .regular : .semibold)
+		titleLabel.textColor = BabelPalette.ink
+		contentView.alpha = 1
+
+		let hasTranslation = !(article.translatedTitle ?? "").isEmpty
+		setTranslationVisible(hasTranslation)
+
+		let plainSummary = Self.plainSummary(article.summary)
+		summaryLabel.text = plainSummary
+		summaryLabel.isHidden = plainSummary.isEmpty
+
+		dateLabel.text = article.publishedAt.map(Self.formatDate) ?? ""
+		accessibilityLabel = [displayTitle, plainSummary].filter { !$0.isEmpty }.joined(separator: ". ")
+
+		imageLoadTask?.cancel()
+		imageLoadTask = nil
+		thumbnailView.image = nil
+
+		guard let imageURL = article.imageURL else {
+			setThumbVisible(false)
+			return
+		}
+		setThumbVisible(true)
+		let articleID = article.id
+		imageLoadTask = Task { @MainActor [weak self] in
+			guard let self else { return }
+			do {
+				let data = try await imageProvider.imageData(for: imageURL)
+				guard !Task.isCancelled, self.configuredArticleID == articleID else { return }
+				if let data, let image = UIImage(data: data) {
+					self.thumbnailView.image = image
+					self.thumbnailView.backgroundColor = .clear
+				} else {
+					self.thumbnailView.image = nil
+					self.thumbnailView.backgroundColor = BabelPalette.raisedBackground
+				}
+			} catch {
+				guard !Task.isCancelled, self.configuredArticleID == articleID else { return }
+				self.thumbnailView.image = nil
+				self.thumbnailView.backgroundColor = BabelPalette.raisedBackground
+			}
+		}
+	}
+
+	private func setThumbVisible(_ visible: Bool) {
+		thumbnailView.isHidden = !visible
+		titleToThumb.isActive = visible
+		dateToThumb.isActive = visible
+		titleToTrailing.isActive = !visible
+		dateToTrailing.isActive = !visible
+	}
+
+	private func setTranslationVisible(_ visible: Bool) {
+		translationLabel.text = visible ? "英文 → 简体中文" : nil
+		translationLabel.isHidden = !visible
+		translationTopFromTitle.isActive = visible
+		translationTopFromTitleCollapsed.isActive = !visible
+		summaryTopFromTranslation.isActive = visible
+		summaryTopFromTitle.isActive = !visible
+		translationHeight.constant = visible ? 16 : 0
+	}
+
+	private static func plainSummary(_ raw: String) -> String {
+		guard !raw.isEmpty else { return "" }
+		var s = raw.replacingOccurrences(of: #"(?is)<(script|style)[^>]*>.*?</\1>"#, with: " ", options: .regularExpression)
+		s = s.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+		s = s
+			.replacingOccurrences(of: "&nbsp;", with: " ")
+			.replacingOccurrences(of: "&amp;", with: "&")
+			.replacingOccurrences(of: "&lt;", with: "<")
+			.replacingOccurrences(of: "&gt;", with: ">")
+			.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		if s == "Comments" { return "" }
+		return s
+	}
+
+	private static func formatDate(_ date: Date) -> String {
+		if Calendar.current.isDateInToday(date) {
+			return timeFormatter.string(from: date)
+		}
+		return dateFormatter.string(from: date)
 	}
 
 	private static let dateFormatter: DateFormatter = {
 		let formatter = DateFormatter()
 		formatter.dateStyle = .medium
+		formatter.timeStyle = .none
+		return formatter
+	}()
+
+	private static let timeFormatter: DateFormatter = {
+		let formatter = DateFormatter()
+		formatter.dateStyle = .none
 		formatter.timeStyle = .short
 		return formatter
 	}()
