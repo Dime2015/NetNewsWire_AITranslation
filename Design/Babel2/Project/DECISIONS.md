@@ -124,7 +124,7 @@
 ## ADR-014：M1 的第一个页面消费者只接管交互式边缘手势，程序化 pop 保持系统默认动画
 
 - 日期：2026-09-05
-- 状态：已选择；实现与自动化测试完成，真机手感与真实 UIKit 转场生命周期验收待补。
+- 状态：已选择；实现与自动化测试完成；2026-09-08 用户真机确认核心手感（跟手、中途取消可正确弹回）；深栈/根路由/旋转/非边缘误触发/120Hz 帧率与 OSLogStore consumer integration 验收待补。
 - 选择：`Babel2NavigationPopMotion` 只在"手指从左边缘拖拽"这一条路径上接管 `UINavigationControllerDelegate` 的转场方法（`animationControllerFor`/`interactionControllerFor` 仅在 `isInteractivelyPopping == true` 时返回非 nil）；点击返回按钮触发的 `popBabel2(animated:)` 完全不经过这层，继续用系统默认的 push/pop 动画。系统自带的 `interactivePopGestureRecognizer` 被禁用（`isEnabled = false`），避免它和新装的 `UIScreenEdgePanGestureRecognizer` 同时响应同一个边缘手势。
 - 理由：这是 M1 的第一次真实页面接入，风险面要尽量小——把改动限制在"仅替换交互式边缘手势的转场"，能保证除了边缘滑动这一条路径之外，App 里所有其它导航行为（点按钮返回、push 新页面、Settings/AddSubscription 弹出）完全不变，不需要重新验证整个导航系统。等真机确认这条路径手感没问题、且以后要给"程序化 pop 也用同一套动效"时，可以再单独评估。
 - 被否决方案：直接整体替换 `UINavigationControllerDelegate`（让所有 pop，不管是不是手势触发，都走自定义转场）——这样风险面更大，一次改动同时影响手势和按钮两条路径，出问题时也更难定位是手势逻辑的问题还是转场逻辑的问题。

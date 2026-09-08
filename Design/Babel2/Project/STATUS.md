@@ -17,7 +17,7 @@
 | Feeds | 真实源/文件夹、计数、展开、三档筛选及转场已部分实现 | 数据库错误传播、同步后刷新及快速切换的一致性、设备验收 |
 | Timeline | 真实缓存文章、缩略图、已有标题译文缓存展示 | 完整 hero/日期分组/搜索与翻译流程 |
 | Reader | 缓存正文转纯文本展示；原文链接交给系统打开 | 正式图文阅读器、标题收缩、阅读进度、正文翻译、内置浏览器、分享/长图 |
-| 导航 | M1 已接入左边缘返回 | 真实窗口中的完成/取消/中断，以及设备手感 |
+| 导航 | M1 已接入左边缘返回；2026-09-08 用户真机确认跟手+可取消 | 深栈/根路由/旋转/非边缘误触发/120Hz 帧率数据、OSLogStore consumer integration |
 | Settings/添加订阅 | 仍为占位路由 | 真实编辑、保存、搜索与管理功能 |
 | 图标 | 三态静态资产已提交 | runtime appearance 与设备外观验收 |
 
@@ -75,7 +75,7 @@ Phase 1A 的 generation gate、启动顺序、Babel2 root composition、外部�
 
 ## 进行中
 
-- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此 commit。同日随后完成页面 consumer 接入（`Babel2NavigationPopMotion`，见下方新增小节）；真机 120Hz 手感和 OSLogStore consumer integration 仍 pending。
+- M1：contract layer 已完成，本地 commit 已通过第 5 轮独立 QA；2026-09-05 已获授权推送并经 `git fetch` 核实远端已含此 commit。同日随后完成页面 consumer 接入（`Babel2NavigationPopMotion`，见下方新增小节）；2026-09-08 用户在真机上确认左边缘滑动返回跟手、中途松手可正确取消弹回（用户口头确认，非 Instruments/自动化证据，见 VALIDATION.md「M1 页面消费者：真机手感验收」）。深栈/根路由/旋转/非边缘误触发/120Hz 具体帧率数据和 OSLogStore consumer integration 仍 pending。
 - 合同：amendment `1269bb9087d896a7a9e29f174461d60b47134575` 已完成规范版本 QA、提交并非 force 推送；动态工作树/远端状态仍须实时检查。
 - 项目记录：本目录文档首次建立；这些新文件在本次记录完成前也属于未提交范围。
 - 图标：设计/静态资产已完成并提交；Light/Dark/Mono 的最终 runtime appearance、模拟器解析和设备 Home Screen 仍待接入和检查。

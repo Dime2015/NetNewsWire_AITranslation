@@ -329,3 +329,17 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 覆盖的具体场景（12 个新测试方法）：单页面时拒绝开始、开始后重复调用不换 token、位移→进度换算与两端 clamp（负值/超界）、无活跃 token 时 update/end 是安全 no-op、按投影正确判定 finish/cancel、手势级强制取消无视进度和速度、系统交互手势被禁用、自己的边缘手势正确安装并可用身份比对识别、转场代理只在边缘手势进行中对 `.pop` 返回非 nil（`.push` 永远不拦截）、`tearDown()` 正确移除手势并清空状态。
 
 限制：全部测试都在没有真实 `UIWindow` 的环境下运行，`transitionContext` 的真实生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际 view transform 渲染**没有**被这批测试覆盖——这是 UIKit 本身的行为边界（见 LESSONS.md 第 27 条），不是测试写得不够多。真机/带真实 window 的模拟器交互验证仍然是 open 项，需要用户亲自滑动确认。
+
+## M1 页面消费者：真机手感验收（2026-09-08，用户确认）
+
+用户在真实物理 iPhone（具体型号/iOS 版本未采集，用户未提供，本条不假设为特定设备）上安装了 commit `d97c6c0db` 构建的 App，亲自测试 `Babel2NavigationPopMotion` 的左边缘滑动返回手势，反馈：
+
+- 跟手："还可以，挺跟手的"。
+- 中途取消：手指滑到一半松手（不拉到底）"试过了，能正常弹回"，即取消路径正确返回原页面。
+
+这是用户口头视觉/触感验收，不是自动化或 Instruments 证据，按本文件"证据规则"如实标注为用户真机验收通过，不代为伪造具体设备型号、帧率或 Instruments 数据。本条只关闭 MOTION-CONTRACT.md 第 6 节"Navigation pop"矩阵里"慢速边缘拖拽、松手完成"与"边缘拖拽、中途反向取消"两行的真机验收；矩阵里其余场景——深层导航栈、根路由（只有一页时应拒绝开始）、设备旋转、非边缘横向内容误触发、快速连续开合、120Hz 具体帧率数据、`Babel2.Motion.*` 系列 signpost 的 Instruments 采集——均未在本轮测试范围内，仍保持 open。OSLogStore consumer integration 仍 pending。
+
+真机编译过程本身也排查并修复了两个与本次动效验收无关、但阻塞了"能不能装到真机上"这一步的本机签名问题（均为本机 Xcode 账号/证书配置，不改变仓库任何被追踪文件）：
+- 工程签名 xcconfig 里写死的 `DEVELOPMENT_TEAM` 指向一个用户当前账号无权限使用的 Team ID；已在仓库外的本地覆盖文件 `../SharedXcodeSettings/DeveloperSettings.xcconfig`（工程自带机制，见 `xcconfig/common/NetNewsWire_codesigning_common.xcconfig` 注释）写入用户本机账号 664274627@qq.com 对应的 Team ID `9ZU592WC8T`。
+- 主 App 默认权限文件要求 iCloud/CloudKit 与生产环境推送，免费个人开发者账号无法签发；同一本地覆盖文件里加了 `DEVELOPER_ENTITLEMENTS = -dev`，切到项目自带的、免费账号可用的 `NetNewsWire-dev.entitlements`。
+- 用户随后在 Xcode 里手动为全部 target 的 Signing & Capabilities 选择了自己的账号，构建成功；这一步在 `NetNewsWire.xcodeproj/project.pbxproj` 留下了未提交的改动（主要是与本次修复相关的 Team 归属信息，另有少量与 macOS/测试 target 相关、来源不明的次要噪音），当前仍是**本机未提交状态**，不属于本次文档同步的提交范围，是否连同产品改动一起提交需另行确认。

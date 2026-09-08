@@ -1,11 +1,13 @@
 # Babel 2.0 接手说明
 
-## 当前接手点（2026-09-08）
+## 当前接手点（2026-09-08，同日晚间更新）
 
-1. 先读 [STATUS.md](STATUS.md) 顶部：当前实现基线为 `d97c6c0db`，接手时工作树干净；本轮只有文档校准，未提交、未推送。
-2. 以产品/运动合同和 [REQUIREMENTS.md](REQUIREMENTS.md) 为实现依据；旧设计入口已标为历史。三档筛选和导航消费者已有代码，不要按旧“未开始”记录重复开发。
-3. 本轮只固定可信基线。下一批范围为稳定现有阅读闭环：数据库错误不能伪装空结果、筛选/同步后计数与列表一致、导航完成/取消/中断正确。先复现具体缺口再做最小修复，不同时扩展 Reader、Settings 或清理旧代码。
-4. 验证使用现有检查；同一实现基线的 package 32/32 已在同日通过，不重复跑。应用编译方式及生成文件边界见 [VALIDATION.md](VALIDATION.md) 顶部；历史 77/77 不等于当前真实窗口或设备验收。
+1. 先读 [STATUS.md](STATUS.md) 顶部：实现基线仍是 `d97c6c0db`；文档校准已提交为 `353b7f0ea`（未提交时的说法已过时）。本地 remote-tracking 落后 2 个 commit（`d97c6c0db`、`353b7f0ea`），当轮结束前会推送，推送后请重新核对远端 SHA。
+2. 本次会话补上了 M1 导航边缘返回消费者最后一块空白：用户在真实物理 iPhone 上确认左边缘滑动返回"跟手"，中途松手能"正常弹回"（取消路径正确）。这是用户口头确认，不是 Instruments/自动化证据；深层导航栈、根路由拒绝开始、设备旋转、非边缘误触发、120Hz 具体帧率数据、OSLogStore consumer integration 仍是缺口，不要当作已关闭。完整记录见 VALIDATION.md「M1 页面消费者：真机手感验收」、REQUIREMENTS.md 对应行、DECISIONS.md ADR-014。
+3. 真机编译过程中排查并修复了两个本机 Xcode 签名配置问题（写死的旧 Team ID、免费账号无法签发 iCloud/推送权限），修复方式是仓库外的本地覆盖文件 `../SharedXcodeSettings/DeveloperSettings.xcconfig`（工程自带机制），**没有改动仓库内任何被追踪文件**。用户随后自己在 Xcode 里为全部 target 手动选了签名账号，构建成功；这一步在 `NetNewsWire.xcodeproj/project.pbxproj` 留下一处未提交改动（真正需要的 Team 归属信息，加上少量与 macOS/测试 target 相关、来源不明的次要噪音）。接手者需先用 `git status`/`git diff` 核对这处改动是否还在、要不要连同后续改动一起提交，不要假设它已经被处理。
+4. 以产品/运动合同和 [REQUIREMENTS.md](REQUIREMENTS.md) 为实现依据；旧设计入口已标为历史。三档筛选和导航消费者已有代码，不要按旧"未开始"记录重复开发。
+5. 下一批范围为稳定现有阅读闭环：数据库错误不能伪装空结果、筛选/同步后计数与列表一致、导航完成/取消/中断正确。先复现具体缺口再做最小修复，不同时扩展 Reader、Settings 或清理旧代码；MOTION-CONTRACT 里其余 motion owner（Reader→Browser 边缘手势、文章翻页、Reader 收缩标题、Feed hero、pFilter）用户已选择"继续接入其它 motion owner"这条方向，尚未开始，需要在动手前先确定接入顺序和范围。
+6. 验证使用现有检查；同一实现基线的 package 32/32 已在同日通过，不重复跑。应用编译方式及生成文件边界见 [VALIDATION.md](VALIDATION.md) 顶部；历史 77/77 不等于当前真实窗口或设备验收。
 
 ## 历史交接记录（audit-only historical reference）
 
