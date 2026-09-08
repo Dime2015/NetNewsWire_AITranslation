@@ -330,6 +330,18 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 
 限制：全部测试都在没有真实 `UIWindow` 的环境下运行，`transitionContext` 的真实生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际 view transform 渲染**没有**被这批测试覆盖——这是 UIKit 本身的行为边界（见 LESSONS.md 第 27 条），不是测试写得不够多。真机/带真实 window 的模拟器交互验证仍然是 open 项，需要用户亲自滑动确认。
 
+## 筛选按钮真机冷启动居左 bug：分析性修复，无法自动化验证（2026-09-08，尚未提交）
+
+用户真机反馈：冷启动时底部三个筛选按钮挤在屏幕最左边，切到后台再切回来就恢复正常。排查过程见 LESSONS.md 第 28 条（含两次失败的自动化复现尝试）。结论：这是 `layoutScopeControlsIfNeeded()` 的零宽度保底分支（第 21 条加的）在真机冷启动最早一两次布局时被命中，且此后 `viewDidLayoutSubviews()` 不会自己再触发，错误的 frame 就一直卡住，直到切后台/切回来这类事件意外强制系统重新走一遍布局。
+
+修复：`Babel2RootViewController.viewDidAppear(_:)` 新增 `(view.window ?? view).layoutIfNeeded()`（[Babel2RootViewController.swift](../../../iOS/Babel2/Babel2RootViewController.swift)），在页面确定已经真实上屏之后，强制从 window 这一级往下重新走一遍布局，不依赖"bounds 恰好又变了"这个前提。同时把筛选按钮的居中计算从写死的 402pt 画布绝对像素改成按真实宽度等比例计算（该改动本身是无害的——排查中确认目标"iPhone 17"的真实逻辑宽度就是 402pt，与 Figma 参考画布一致，所以这一步不是本次 bug 的根因，但仍是更健壮的写法，保留）。
+
+**诚实的证据边界**：这个修复**没有自动化测试验证**。尝试写回归测试时发现：① 直接把 `Babel2RootViewController` 当裸的 `window.rootViewController`，能复现出"卡左边"的症状，但这跳过了生产环境实际使用的 `Babel2NavigationController` 包装层，不是忠实复现；② 换成和生产一致的 `Babel2NavigationController` 包装后，同样的步骤在窗口出现之前宽度就已经自动解析正确（`UINavigationController` 没有父容器时会自行按 `UIScreen.main.bounds` 布局，这个默认行为本身掩盖了要测的那个"宽度还没解析出来"的窗口期）；③ 即使固定用②这种更贴近生产的写法、断言不变，**同一个测试方法单独跑通过、混进全量套件跑就失败**——证明失败与否取决于同一进程里其它测试留下的 window/布局全局状态，不是这个测试自己能控制的确定性行为。据此认定这类"真实 Auto Layout 布局时序"的 bug 不适合塞进这个单元测试环境，参照 LESSONS.md 第 23/24 条"某些真机时序天生测不出来"的先例，选择不硬测、如实标注缺口，而不是加 retry 或放宽容差去掩盖抖动。
+
+全量 Debug iOS test suite（含移除这个不稳定测试后的最终状态）：`env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' test`，exit 0，`xcresulttool get test-results summary` 报 `result: Passed`、`failedTests: 0`、`totalTestCount: 80`（跟 pFilter 那批提交时的数字一致，因为这次一增一减：新增了这段调查过程但最终没有留下新测试）。
+
+**这个修复需要用户在真机上重新验证**：完整重装 App 后做一次**真正冷启动**（不是从后台切回来，是完全强制退出后重新打开）直接看底部三个按钮是不是一开始就居中，不经过切后台这个步骤。
+
 ## pFilter：typed signpost 接入 + 中断/第三目标行为测试（2026-09-08，尚未提交）
 
 环境：Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`。改动范围：`Modules/Babel2UI/Sources/Babel2Core/Motion/MotionTypes.swift`（`MotionInteractionID` 新增 `.libraryFilter` case）、`Modules/Babel2UI/Tests/Babel2UITests/MotionStateTests.swift`（`allCases.count` 6→7，新增 rawValue 断言）、`iOS/Babel2/Babel2RootViewController.swift`（新增 `motionRecorder` 注入点与三处 typed signpost 记录调用；修复筛选按钮绝对像素坐标居中 bug）、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift`（新增 3 个测试方法 + `RecordingMotionRecorder` fake）。决策见 DECISIONS.md ADR-015：保留既有 `UIViewPropertyAnimator` 机制，不迁移到 `Babel2MotionDriver` 类。

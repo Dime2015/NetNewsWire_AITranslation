@@ -447,6 +447,17 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(finalEnd.pFilter, .one)
 	}
 
+	// A regression test for the real-device "scope buttons stuck at the left
+	// edge on cold launch" bug (found 2026-09-08) was attempted here and
+	// removed: it passed in isolation but failed when run as part of the full
+	// suite, with the exact same code and assertions -- proving the failure
+	// depends on ambient Auto Layout/window timing left over from whichever
+	// tests happened to run first in the same process, not on anything this
+	// test itself controls. A flaky, order-dependent test is worse than no
+	// automated coverage here. See LESSONS.md for the full writeup and
+	// VALIDATION.md for what was actually verified (production fix applied,
+	// real-device confirmation still required from the user).
+
 	func testErrorIsDistinctFromEmptyAndRetryReloads() async throws {
 		let provider = FakeDataProvider()
 		await provider.failNextLibraryRequest(.unread)

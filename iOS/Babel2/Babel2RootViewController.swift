@@ -179,6 +179,24 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		hasAppeared = true
+		// [界面] `viewDidLayoutSubviews()` only re-fires when the view's bounds
+		// actually change; on a real device's first cold-launch layout pass(es)
+		// `scopeStack` can still measure a zero/placeholder width before Auto
+		// Layout resolves the real screen size, so `layoutScopeControlsIfNeeded()`
+		// falls back to its zero-width guard (packing buttons flush against the
+		// left edge). Reaching `viewDidAppear` does not by itself guarantee a
+		// fresh layout pass already ran with the final geometry. Calling
+		// `view.layoutIfNeeded()` is not enough either: it only re-resolves this
+		// view's own subtree using whatever frame this view already has -- if
+		// that frame itself is still wrong because a parent (the navigation
+		// controller, the window) has not yet re-sized it, nothing changes.
+		// Walking up to `view.window` and laying out from there forces the
+		// whole chain (window -> navigation controller -> this view ->
+		// `scopeStack`) to re-resolve against the real, final geometry, which
+		// in turn re-invokes `viewDidLayoutSubviews()` ->
+		// `layoutScopeControlsIfNeeded()` with the corrected width -- without
+		// depending on the user happening to background/foreground the app.
+		(view.window ?? view).layoutIfNeeded()
 		scheduleContentFirstFrameOnNextDisplayTickIfReady()
 		applyLaunchScopeOverrideIfNeeded()
 		loadLibraryIfNeeded()
