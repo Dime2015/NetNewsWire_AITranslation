@@ -1,5 +1,6 @@
 import UIKit
 import Babel2Core
+import Babel2UI
 import QuartzCore
 
 @MainActor
@@ -121,6 +122,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private var scopeTransitionAnimator: UIViewPropertyAnimator?
 	private var scopeTransitionToken = UUID()
 	private var presentationNeedsSettlement = false
+	private let motionRecorder: any Babel2MotionRecording
+	private var filterMotionSequence: UInt64 = 0
+	private var activeFilterMotionToken: MotionInteractionToken?
+	private var filterMotionFromScope: Babel2FeedScope?
+	private var filterMotionToScope: Babel2FeedScope?
 	private var collapsedFolders = Set<FolderSnapshot.ID>()
 	private(set) var selectedScope: Babel2FeedScope = .unread
 	private var displayedScope: Babel2FeedScope = .unread
@@ -148,9 +154,14 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
-	init(environment: AppEnvironment, localizationBundle: Bundle = .main) {
+	init(
+		environment: AppEnvironment,
+		localizationBundle: Bundle = .main,
+		motionRecorder: any Babel2MotionRecording = Babel2OSLogMotionRecorder()
+	) {
 		self.environment = environment
 		self.localizationBundle = localizationBundle
+		self.motionRecorder = motionRecorder
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.home"
 		NotificationCenter.default.addObserver(
@@ -237,12 +248,19 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		guard count > 0 else { return }
 		let height = max(44, scopeStack.bounds.height)
 		if scopeStack.bounds.width > 0 {
-			// Figma-calibrated absolute centers for the real design width.
-			let centers: [CGFloat] = [104, 201, 290.5]
+			// [界面] Figma 参考画布是 402pt 宽，三个按钮的中心分别在
+			// 104/201/290.5。真实设备宽度通常不等于 402pt，写死这三个绝对像素
+			// 会让整组按钮在真实屏幕上偏离居中（越宽的屏幕偏得越明显）。这里改成
+			// 按同样的比例（相对 402pt 画布的位置占比）乘以真实宽度，中间那个按钮
+			// 正好落在 201/402 = 0.5，即真实屏幕的正中央，两侧对称保留 Figma 校准
+			// 的相对间距。
+			let referenceCanvasWidth: CGFloat = 402
+			let referenceCenters: [CGFloat] = [104, 201, 290.5]
 			let width: CGFloat = 90
+			let realWidth = scopeStack.bounds.width
 			for (index, scope) in order.enumerated() {
 				guard let button = scopeButtons[scope] else { continue }
-				let centerX = centers[index]
+				let centerX = (referenceCenters[index] / referenceCanvasWidth) * realWidth
 				button.frame = CGRect(x: centerX - width / 2, y: (height - 44) / 2, width: width, height: 44)
 			}
 		} else {
@@ -693,6 +711,15 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func interruptScopeTransition() {
 		guard let animator = scopeTransitionAnimator else { return }
+		if let token = activeFilterMotionToken, let from = filterMotionFromScope, let to = filterMotionToScope {
+			recordFilterMotionEvent(
+				token: token,
+				from: from,
+				to: to,
+				progress: MotionProgress(Double(animator.fractionComplete)),
+				phase: .event
+			)
+		}
 		let surfaces = Array(scopeSurfaces.values)
 		for surface in surfaces {
 			if let presentation = surface.layer.presentation() {
@@ -728,6 +755,13 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		let sourceButton = scopeButtons[displayedScope]
 		let destinationButton = scopeButtons[target]
 		if let sourceButton, let destinationButton {
+			let fromScope = displayedScope
+			filterMotionSequence &+= 1
+			let motionToken = MotionInteractionToken(interaction: .libraryFilter, sequence: filterMotionSequence)
+			activeFilterMotionToken = motionToken
+			filterMotionFromScope = fromScope
+			filterMotionToScope = target
+			recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .zero, phase: .begin)
 			if !presentationNeedsSettlement {
 				selectionPill.frame = sourceButton.frame.insetBy(dx: 6, dy: 9)
 				selectionPill.transform = .identity
@@ -777,6 +811,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				self.updateSyncState(destinationSurface.isSyncing)
 				destinationSurface.tableView.setContentOffset(.zero, animated: false)
 				self.applyPendingSurfaceUpdates()
+				if self.activeFilterMotionToken == motionToken {
+					self.recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .one, phase: .end)
+					self.activeFilterMotionToken = nil
+					self.filterMotionFromScope = nil
+					self.filterMotionToScope = nil
+				}
 				if self.selectedScope != self.displayedScope,
 					let next = self.scopeSurfaces[self.selectedScope], next.hasLoaded {
 					self.startScopeTransition(to: self.selectedScope)
@@ -804,6 +844,37 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func scopeIndex(_ scope: Babel2FeedScope) -> Int {
 		Self.filterDisplayOrder.firstIndex(of: scope) ?? 0
+	}
+
+	/// [动效] pFilter 仪表化：`Babel2FeedScope` → `MotionLibraryFilter`，供
+	/// `Babel2.Library.Filter` signpost 使用；两个枚举的原始值一一对应。
+	private static func motionFilter(for scope: Babel2FeedScope) -> MotionLibraryFilter {
+		switch scope {
+		case .starred: return .starred
+		case .unread: return .unread
+		case .all: return .all
+		}
+	}
+
+	/// [动效] 记录一次 `Babel2.Library.Filter` typed signpost。`phase` 语义：
+	/// `.begin` = 全新过渡开始（pFilter=0）；`.event` = 被中途打断时的采样进度；
+	/// `.end` = 真正结算完成（pFilter=1）。
+	private func recordFilterMotionEvent(
+		token: MotionInteractionToken,
+		from: Babel2FeedScope,
+		to: Babel2FeedScope,
+		progress: MotionProgress,
+		phase: MotionSignpostPhase
+	) {
+		motionRecorder.record(MotionSignpostEvent(
+			payload: .libraryFilter(MotionLibraryFilterPayload(
+				fromFilter: Self.motionFilter(for: from),
+				toFilter: Self.motionFilter(for: to),
+				pFilter: progress,
+				token: token
+			)),
+			phase: phase
+		))
 	}
 
 	@objc private func settingsTapped() {

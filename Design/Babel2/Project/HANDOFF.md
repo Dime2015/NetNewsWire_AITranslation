@@ -8,6 +8,7 @@
 4. 以产品/运动合同和 [REQUIREMENTS.md](REQUIREMENTS.md) 为实现依据；旧设计入口已标为历史。三档筛选和导航消费者已有代码，不要按旧"未开始"记录重复开发。
 5. 下一批范围为稳定现有阅读闭环：数据库错误不能伪装空结果、筛选/同步后计数与列表一致、导航完成/取消/中断正确。先复现具体缺口再做最小修复，不同时扩展 Reader、Settings 或清理旧代码；MOTION-CONTRACT 里其余 motion owner（Reader→Browser 边缘手势、文章翻页、Reader 收缩标题、Feed hero、pFilter）用户已选择"继续接入其它 motion owner"这条方向，尚未开始，需要在动手前先确定接入顺序和范围。
 6. 验证使用现有检查；同一实现基线的 package 32/32 已在同日通过，不重复跑。应用编译方式及生成文件边界见 [VALIDATION.md](VALIDATION.md) 顶部；历史 77/77 不等于当前真实窗口或设备验收。
+7. 同日随后完成 pFilter 工作（尚未提交）：给 Starred/Unread/All 切换补齐了此前完全没有的"中断/第三目标"行为测试，并接上了 `Babel2.Library.Filter` typed signpost；决策是保留既有 `UIViewPropertyAnimator` 机制、不迁移到 `Babel2MotionDriver` 类（见 DECISIONS.md ADR-015）。顺带修复了筛选按钮此前写死 402pt 绝对像素坐标导致真实设备上偏左的 bug。全量 Debug iOS test suite 80/80 通过。跟手性/视觉居中效果仍需真机确认，未验收。
 
 ## 历史交接记录（audit-only historical reference）
 

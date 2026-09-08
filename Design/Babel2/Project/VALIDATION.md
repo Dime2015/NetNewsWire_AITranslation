@@ -330,6 +330,24 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 
 限制：全部测试都在没有真实 `UIWindow` 的环境下运行，`transitionContext` 的真实生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际 view transform 渲染**没有**被这批测试覆盖——这是 UIKit 本身的行为边界（见 LESSONS.md 第 27 条），不是测试写得不够多。真机/带真实 window 的模拟器交互验证仍然是 open 项，需要用户亲自滑动确认。
 
+## pFilter：typed signpost 接入 + 中断/第三目标行为测试（2026-09-08，尚未提交）
+
+环境：Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`。改动范围：`Modules/Babel2UI/Sources/Babel2Core/Motion/MotionTypes.swift`（`MotionInteractionID` 新增 `.libraryFilter` case）、`Modules/Babel2UI/Tests/Babel2UITests/MotionStateTests.swift`（`allCases.count` 6→7，新增 rawValue 断言）、`iOS/Babel2/Babel2RootViewController.swift`（新增 `motionRecorder` 注入点与三处 typed signpost 记录调用；修复筛选按钮绝对像素坐标居中 bug）、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift`（新增 3 个测试方法 + `RecordingMotionRecorder` fake）。决策见 DECISIONS.md ADR-015：保留既有 `UIViewPropertyAnimator` 机制，不迁移到 `Babel2MotionDriver` 类。
+
+| 检查 | 精确命令 | 结果 |
+|---|---|---|
+| Babel2UI package tests | `env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY swift test --package-path Modules/Babel2UI` | exit 0，32/32 passed（`interactionIDsAreStableAndDistinct` 已随新 case 更新为 7） |
+| 全量 Debug iOS tests（首轮，暴露编译错误） | `xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-pfilter-r1-dd -resultBundlePath /private/tmp/babel2-pfilter-r1.xcresult test` | exit 65，`Cannot use mutating member on immutable value: 'events' setter is inaccessible`——`RecordingMotionRecorder.events` 用了 `private(set)`，测试代码是另一个类型（`Babel2FeedReaderTests`），即使同文件也拿不到 setter；改成加一个 `clear()` 方法后修复，未混入通过结果 |
+| 全量 Debug iOS tests（修复后） | 同上命令，`-derivedDataPath /private/tmp/babel2-pfilter-r2-dd -resultBundlePath /private/tmp/babel2-pfilter-r2.xcresult` | exit 0，`** TEST SUCCEEDED **`；`xcresulttool get test-results summary` 报 `result: Passed`、`failedTests: 0`、`totalTestCount: 80`（console XCTest 62 + Swift Testing 18，其中 `Babel2FeedReaderTests` 从 10 个增至 13 个方法） |
+
+新增的 3 个测试方法覆盖：
+
+- `testRapidScopeTapsThroughThirdTargetDuringActiveAnimationSettleOnLastSelection`：确认此前 `testRapidScopeTapsSetOnlyLastScopeActive` 并未真正触发 `interruptScopeTransition()`（两个从未加载过的 scope 连续点击，第二次点击实际只是取消了第一次还未完成的网络请求，见 `invalidateLibraryRequest`——真正的动画中断必须先让目标 scope 完成过一次加载，再在其真实处于动画中时再次点击）；先把三个档全部预热加载一遍，再连续点击 starred→all→starred（不等待、不 yield），验证最终真实落在 `.starred`，选中态和计数与该 scope 语义一致。
+- `testScopeTransitionEmitsLibraryFilterBeginAndEndMotionSignposts`：单次、未被打断的切换应恰好产生 2 条 `Babel2.Library.Filter` typed 事件（begin pFilter=0、end pFilter=1），fromFilter/toFilter/token 三者在两条事件里一致。
+- `testInterruptedScopeTransitionEmitsEventPhaseSignpostThenFreshBeginWithNewToken`：预热后回到 unread，连续点击 starred→all（不 yield），验证事件序列恰好是 begin(token1,unread→starred,p=0) → event(token1,unread→starred,p∈[0,1]，采样自真实 `animator.fractionComplete`) → begin(token2,unread→all,p=0) → end(token2,unread→all,p=1)；`token2 != token1`（重新改道是全新交互，不是延续），且第二段的 fromFilter 仍是 unread（因为 displayedScope 从未真正到达过 starred 就被打断了）。
+
+范围与限制：这只关闭了 REQUIREMENTS.md 里"中断/反向/第三目标和计数同步"这句话点名的自动化缺口；`Babel2.Library.Filter` signpost 从未被真实 Instruments 采集验证过（只验证了记录调用本身携带的字段正确），真机/模拟器视觉上"跟不跟手、有没有闪烁"仍未验收。筛选按钮居中 bug 的修复只验证了数学逻辑（比例计算），没有配截图确认；这一条建议用户下次真机测试时顺便看一眼三个按钮是不是真的居中了。
+
 ## M1 页面消费者：真机手感验收（2026-09-08，用户确认）
 
 用户在真实物理 iPhone（具体型号/iOS 版本未采集，用户未提供，本条不假设为特定设备）上安装了 commit `d97c6c0db` 构建的 App，亲自测试 `Babel2NavigationPopMotion` 的左边缘滑动返回手势，反馈：

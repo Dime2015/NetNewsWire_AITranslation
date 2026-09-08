@@ -48,9 +48,10 @@ import Testing
 
 	@Test func interactionIDsAreStableAndDistinct() {
 		let ids = MotionInteractionID.allCases
-		#expect(ids.count == 6)
+		#expect(ids.count == 7)
 		#expect(Set(ids).count == ids.count)
 		#expect(MotionInteractionID.navigationPop.rawValue == "navigation.pop")
 		#expect(MotionInteractionID.feedHero.rawValue == "feed.hero")
+		#expect(MotionInteractionID.libraryFilter.rawValue == "library.filter")
 	}
 }

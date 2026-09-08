@@ -284,6 +284,169 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(starred.accessibilityValue, "Selected")
 	}
 
+	/// The existing rapid-tap test above never actually reaches
+	/// `interruptScopeTransition()`: tapping two never-loaded scopes
+	/// back-to-back only cancels a still-pending network request (see
+	/// `invalidateLibraryRequest`), because `startScopeTransition` cannot run
+	/// -- and so no `UIViewPropertyAnimator` exists to interrupt -- until a
+	/// scope's data has actually arrived. This test pre-warms every scope
+	/// first so the follow-up rapid taps land while a real cross-fade
+	/// animator is still running, exercising the genuine "interrupt mid
+	/// flight and redirect through a third target" path required by
+	/// MOTION-CONTRACT.md §4A.
+	func testRapidScopeTapsThroughThirdTargetDuringActiveAnimationSettleOnLastSelection() async throws {
+		let feeds = Babel2FeedScope.allCases.reduce(into: [Babel2FeedScope: LibrarySnapshot]()) { result, scope in
+			let id = FeedSnapshot.ID(accountID: "account", feedID: scope.rawValue)
+			result[scope] = LibrarySnapshot(feeds: [makeFeed(id: id, title: scope.rawValue, count: 1)])
+		}
+		let provider = FakeDataProvider(librarySnapshots: feeds)
+		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
+		root.loadViewIfNeeded()
+		root.viewDidAppear(false)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+
+		let all = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.all" })
+		let starred = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
+		let unread = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
+
+		// Pre-warm both destination scopes (each settles fully before the
+		// next tap) so their surfaces are already loaded going into the
+		// real rapid-tap sequence below.
+		all.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(all)
+		starred.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(starred)
+		unread.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(unread)
+
+		// All three scopes are now loaded. Fire three taps back-to-back
+		// with no `await` in between, so each lands while the previous
+		// transition's animator is still actively running.
+		starred.sendActions(for: .touchUpInside)
+		all.sendActions(for: .touchUpInside)
+		starred.sendActions(for: .touchUpInside)
+
+		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(starred)
+		XCTAssertEqual(root.selectedScope, .starred)
+		XCTAssertEqual(starred.accessibilityValue, "Selected")
+		XCTAssertEqual(all.accessibilityValue, "Not selected")
+		XCTAssertEqual(unread.accessibilityValue, "Not selected")
+		let starredTable = try XCTUnwrap(rootTable(for: root, scope: .starred))
+		XCTAssertEqual(starredTable.numberOfRows(inSection: 0), 1)
+		let cell = root.tableView(starredTable, cellForRowAt: IndexPath(row: 0, section: 0))
+		XCTAssertEqual(cell.accessibilityValue, "1")
+	}
+
+	func testScopeTransitionEmitsLibraryFilterBeginAndEndMotionSignposts() async throws {
+		let feed = makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: "starred"), title: "Starred", count: 1)
+		let provider = FakeDataProvider(librarySnapshots: [.starred: LibrarySnapshot(feeds: [feed])])
+		let recorder = RecordingMotionRecorder()
+		let root = Babel2RootViewController(environment: makeEnvironment(provider: provider), motionRecorder: recorder)
+		root.loadViewIfNeeded()
+		root.viewDidAppear(false)
+		await waitForRootState(root, scope: .unread, state: "empty", rows: 0)
+
+		let starred = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
+		starred.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(starred)
+
+		let libraryEvents = recorder.events.filter { $0.name == .libraryFilter }
+		XCTAssertEqual(libraryEvents.count, 2, "expected exactly one begin and one end for a single uninterrupted transition")
+		guard libraryEvents.count == 2,
+			case let .libraryFilter(beginPayload)? = libraryEvents[0].typedPayload,
+			case let .libraryFilter(endPayload)? = libraryEvents[1].typedPayload else {
+			XCTFail("expected typed libraryFilter payloads")
+			return
+		}
+		XCTAssertEqual(libraryEvents[0].phase, .begin)
+		XCTAssertEqual(libraryEvents[1].phase, .end)
+		XCTAssertEqual(beginPayload.fromFilter, .unread)
+		XCTAssertEqual(beginPayload.toFilter, .starred)
+		XCTAssertEqual(beginPayload.pFilter, .zero)
+		XCTAssertEqual(endPayload.fromFilter, .unread)
+		XCTAssertEqual(endPayload.toFilter, .starred)
+		XCTAssertEqual(endPayload.pFilter, .one)
+		XCTAssertEqual(beginPayload.token, endPayload.token)
+	}
+
+	func testInterruptedScopeTransitionEmitsEventPhaseSignpostThenFreshBeginWithNewToken() async throws {
+		let feeds = Babel2FeedScope.allCases.reduce(into: [Babel2FeedScope: LibrarySnapshot]()) { result, scope in
+			let id = FeedSnapshot.ID(accountID: "account", feedID: scope.rawValue)
+			result[scope] = LibrarySnapshot(feeds: [makeFeed(id: id, title: scope.rawValue, count: 1)])
+		}
+		let provider = FakeDataProvider(librarySnapshots: feeds)
+		let recorder = RecordingMotionRecorder()
+		let root = Babel2RootViewController(environment: makeEnvironment(provider: provider), motionRecorder: recorder)
+		root.loadViewIfNeeded()
+		root.viewDidAppear(false)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+
+		let starred = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.starred" })
+		let all = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.all" })
+		let unread = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.scope.unread" })
+
+		// Pre-warm both destinations, returning to `.unread` before the real
+		// interrupt sequence so the begin/interrupt/begin/end trace below is
+		// unambiguous.
+		starred.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(starred)
+		all.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(all)
+		unread.sendActions(for: .touchUpInside)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(unread)
+		recorder.clear()
+
+		// unread -> starred (begins, animator running) -> all (interrupts
+		// the in-flight starred transition mid-way and redirects to all),
+		// with no `await` between the two taps.
+		starred.sendActions(for: .touchUpInside)
+		all.sendActions(for: .touchUpInside)
+
+		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
+		await waitForSelectedScopeButton(all)
+
+		let libraryEvents = recorder.events.filter { $0.name == .libraryFilter }
+		XCTAssertEqual(libraryEvents.count, 4)
+		guard libraryEvents.count == 4,
+			case let .libraryFilter(firstBegin)? = libraryEvents[0].typedPayload,
+			case let .libraryFilter(interruptSample)? = libraryEvents[1].typedPayload,
+			case let .libraryFilter(secondBegin)? = libraryEvents[2].typedPayload,
+			case let .libraryFilter(finalEnd)? = libraryEvents[3].typedPayload else {
+			XCTFail("expected typed libraryFilter payloads")
+			return
+		}
+		XCTAssertEqual(libraryEvents[0].phase, .begin)
+		XCTAssertEqual(libraryEvents[1].phase, .event)
+		XCTAssertEqual(libraryEvents[2].phase, .begin)
+		XCTAssertEqual(libraryEvents[3].phase, .end)
+
+		XCTAssertEqual(firstBegin.fromFilter, .unread)
+		XCTAssertEqual(firstBegin.toFilter, .starred)
+		XCTAssertEqual(firstBegin.pFilter, .zero)
+
+		XCTAssertEqual(interruptSample.token, firstBegin.token, "the interrupt sample must report the interrupted transition's own token")
+		XCTAssertEqual(interruptSample.toFilter, .starred)
+		XCTAssertGreaterThanOrEqual(interruptSample.pFilter.value, 0)
+		XCTAssertLessThanOrEqual(interruptSample.pFilter.value, 1)
+
+		XCTAssertEqual(secondBegin.fromFilter, .unread, "displayed scope never actually reached starred before the interrupt")
+		XCTAssertEqual(secondBegin.toFilter, .all)
+		XCTAssertEqual(secondBegin.pFilter, .zero)
+		XCTAssertNotEqual(secondBegin.token, firstBegin.token, "a redirected transition is a fresh interaction, not a continuation")
+
+		XCTAssertEqual(finalEnd.token, secondBegin.token)
+		XCTAssertEqual(finalEnd.toFilter, .all)
+		XCTAssertEqual(finalEnd.pFilter, .one)
+	}
+
 	func testErrorIsDistinctFromEmptyAndRetryReloads() async throws {
 		let provider = FakeDataProvider()
 		await provider.failNextLibraryRequest(.unread)
@@ -423,6 +586,19 @@ private actor SuspendedRenderer: ArticleRendering {
 		guard let articleID else { return }
 		continuation?.resume(returning: ArticleRenderSnapshot(articleID: articleID, body: "<p>Late body</p>"))
 		continuation = nil
+	}
+}
+
+@MainActor
+private final class RecordingMotionRecorder: Babel2MotionRecording {
+	private(set) var events = [MotionSignpostEvent]()
+
+	func record(_ event: MotionSignpostEvent) {
+		events.append(event)
+	}
+
+	func clear() {
+		events.removeAll()
 	}
 }
 

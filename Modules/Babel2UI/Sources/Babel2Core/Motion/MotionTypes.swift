@@ -93,6 +93,7 @@ public enum MotionInteractionID: String, CaseIterable, Hashable, Sendable {
 	case readerTitleCollapse = "reader.titleCollapse"
 	case readerToolbar = "reader.toolbar"
 	case feedHero = "feed.hero"
+	case libraryFilter = "library.filter"
 }
 
 public struct MotionInteractionToken: Equatable, Hashable, Sendable {

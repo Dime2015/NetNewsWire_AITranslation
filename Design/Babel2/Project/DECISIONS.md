@@ -121,6 +121,15 @@
 - 证据：fresh Debug iOS tests 45/45 通过，其中覆盖 legacy event injection、counter/source/session/JSON、order/uptime/config fail-closed、WebView frame cutoff、BabelShell isolated sink、single-generation API 与 parser uniqueness；r5 的 fixture-order/token-scan 失败保留为历史证据。Debug/Release build 成功，但目标 iPhone、A0/A1/A6/A8/A12/A13 runtime trace 与最终 bundle allowlist 仍 pending；当前 bundle 仍含 Main.storyboardc、HTML-JS、8 themes、3 extensions。
 - 重新评估触发：保存真实 AppDelegate/SceneDelegate launch JSONL、完成 scene reconnect/background/foreground/teardown 和目标设备证据，并将 bundle 逐项 allowlist 后，再决定是否关闭 A0/A1/A6/A8/A12/A13；`LegacyIdentityCompatibility` 仍按 ADR-003 留待 PRODUCT-CONTRACT/A15/Phase6。
 
+## ADR-015：pFilter 保留现有 `UIViewPropertyAnimator` 方案，只补测试与 typed signpost，不迁移到 `Babel2MotionDriver` 类
+
+- 日期：2026-09-08
+- 状态：已选择；实现与自动化测试完成，真机/模拟器视觉验收待补。
+- 选择：`Babel2RootViewController` 的 Starred/Unread/All 切换继续使用既有的 `UIViewPropertyAnimator` + 手工中断采样（`interruptScopeTransition()` 读取 `layer.presentation()`）机制，不改写成调用 `Babel2UI` 的 `Babel2MotionDriver` 类。新增的是：① 补齐此前完全没有的行为测试（单次切换、途中被打断并二次改道到第三个目标、计数与选中态在这些场景下的正确性）；② 直接调用 `Babel2Core` 已有但从未被使用过的 `Babel2.Library.Filter` typed signpost（`MotionLibraryFilterPayload`），在过渡开始（`.begin`，pFilter=0）、真正打断时（`.event`，采样 `animator.fractionComplete`）、真正结算完成（`.end`，pFilter=1）三个时机各记一次；③ 给 `MotionInteractionID` 补了一个此前遗漏的 `.libraryFilter` case（这个类型早就有 `MotionLibraryFilterPayload.token` 字段要用它，但枚举里从没有对应 case）；④ 顺带修了一个独立发现的真实 bug——底部三档按钮此前用的是写死的 402pt 参考画布绝对像素坐标，真实设备宽度不等于 402pt 时会整体偏左，改成按比例乘真实宽度。
+- 理由：现有 `UIViewPropertyAnimator` 机制在结构上已经满足 MOTION-CONTRACT.md §4A 和 §5 的要求（"one interruptible property animator or equivalent time-based driver whose start value is read from the actual presentation state"——这句话本身就没有强制要求用某个特定类）；`Babel2MotionDriver`+`GesturePolicy` 这套引擎主要是为"手指连续拖拽"类手势（导航返回、Reader→Browser、翻页）设计的，pFilter 是"点击触发、时长固定"的过渡，语义上更贴近现成机制而不是拖拽状态机；MOTION-CONTRACT.md 第 3 节的 unified ownership 列表本身也没有给 Library filter 指定一个专门的 owner 类型。把一段已经正确、且从未被测试覆盖过的过渡逻辑推倒重写去套用一个不是为它设计的引擎，风险（可能引入真实回归）明显大于收益（只是"用了同一个类"这一点一致性）。
+- 被否决方案：把 `startScopeTransition`/`interruptScopeTransition` 整个改写成调用 `Babel2MotionDriver.begin/interrupt/finish`，让驱动器接管 `UIViewPropertyAnimator` 的创建与中断。这样能自动获得驱动器自带的通用 signpost（begin/track/settle/interrupt），但需要把渲染逻辑从"一次性动画块直接读取闭包捕获的 target/displayedScope"重构成"纯粹从 0-1 进度值反推所有视觉状态"，改动面明显大于当前这批（新增测试 + 补 typed signpost + 修一个独立 bug）。
+- 重新评估触发：如果之后决定"pFilter 也需要连续跟手（比如允许横向拖拽预览下一个 filter 而不是纯点击）"，或者产品明确要求所有 motion surface 统一走同一个引擎类以便复用 Instruments 关联，届时重新评估是否迁移到 `Babel2MotionDriver`。
+
 ## ADR-014：M1 的第一个页面消费者只接管交互式边缘手势，程序化 pop 保持系统默认动画
 
 - 日期：2026-09-05
