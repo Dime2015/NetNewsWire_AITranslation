@@ -1,3 +1,5 @@
+> **Babel 2.0 接手入口（2026-09-08）**：先看 [当前状态](Design/Babel2/Project/STATUS.md) 和 [接手说明](Design/Babel2/Project/HANDOFF.md)。下方为上游项目说明（audit-only historical reference），不代表本分支的产品进度。
+
 <img src=Technotes/Images/icon_1024.png height=128 width=128 style="display: block; margin: auto;"> 
 
 # NetNewsWire

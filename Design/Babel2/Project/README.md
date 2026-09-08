@@ -33,13 +33,11 @@
 
 新的产品表面、代码、资源、测试、日志、路由和本文档统一使用 Babel/Babel2 命名。历史版本、存量工程路径和兼容 identity 只可在明确标记为 `audit-only historical reference` 的审计记录中出现；它们不是新代码命名模板。路线 A 的技术改名被延后到 Babel 2.0 真机稳定后分阶段执行，具体见 [DECISIONS.md](DECISIONS.md) 和合同中的命名 gate。
 
-## 当前结论
+## 当前入口（2026-09-08）
 
-当前未提交工作树已经把 AppDelegate、SceneDelegate 和 Babel2 scene lifecycle 收紧为单一 Babel2 root：URL、shortcut、notification、NSUserActivity、restoration 和旧启动选择不会切换到 legacy generation；旧 controller/storyboard/WebKit 实现仍在 target、bundle 或磁盘上保留，不能把 startup trace 当作 production package/resource allowlist 通过。
+当前实现、Git 和验证边界统一看 [STATUS.md](STATUS.md)，下一批任务看 [HANDOFF.md](HANDOFF.md) 顶部。已存在真实 Feeds→文章列表→纯文本正文链路、三档筛选和 M1 边缘返回接线；Settings/添加订阅仍占位，完整阅读器和设备验收未完成。
 
-r8 fresh evidence（目标 iPhone 17 / iOS 27 Simulator，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`）为：Babel2UI package 30/30；全量 iOS Debug console XCTest 34/34 + Swift Testing 18，xcresult 52/52 passed、0 failed；Debug/Release build 均成功。Release-r10 app 可执行文件 SHA 为 `aff2619cde1051078bbe58a6727b17138b2f114f18945cd5ea141ee113cda1c2`；fresh uninstall/install 后 no-args 与 cold `-GenesisV2` 各自以 exact metadata/command 启动并通过独立 structured validation（8 events seq0–7、单 session、严格 order/uptime、真实 lookup/observed/delegate/surface、legacy=0、final valid/complete）。test-host 的 26/26 gate tests 是结构化约束证据，不替代 production standalone authenticity；warm Genesis 复用 scene session 的 7-event failure 仍保留为中间失败证据。
-
-Phase 1A 仍为 **修复中 / 证据待补**：A0/A6 部分 startup trace 可供 root 复审，但 A10 scene reconnect/disconnect、A12 0.5/1/2 秒截图、A13 blank.html/WebKit runtime、完整 A2–A5 参数/恢复矩阵、目标 iPhone、真实性能/视觉和最终 Gate A target-membership/resource allowlist 尚未关闭。r10 bundle inventory 仍含 `Main.storyboardc`、`blank.html`、themes、HTML templates 和 3 个 `.appex`，target 仍编译旧 `PreloadedWebView`/`WebViewProvider`/`RootSplit`/`SceneCoordinator`/`BabelShell`；本轮不做 Feeds/UI、真机或 allowlist 清理。M1 仍只在本地提交，远端推送等待用户对具体 commit 授权；页面 consumer、120Hz 真机手感、运行时图标接入、完整屏幕和真实数据路径仍需按 Slice 推进。
+以下 Phase 3/3B 内容为历史阶段记录（audit-only historical reference）。其中“未提交”、旧测试数量和当时的下一任务不能覆盖 STATUS 当前快照；保留它们是为了追溯证据。
 
 ## Phase 3 当前结论（2026-09-01，Asia/Tokyo）
 

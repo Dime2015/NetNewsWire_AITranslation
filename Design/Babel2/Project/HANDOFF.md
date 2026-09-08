@@ -1,6 +1,15 @@
 # Babel 2.0 接手说明
 
-这不是完成声明。当前未提交工作树已经可以在目标 iPhone 17 / iOS 27 Simulator 启动 Babel2 root，并通过 r8 fresh matrix：Babel2UI package 30/30、全量 iOS Debug console XCTest 34/34 + Swift Testing 18（xcresult 52/52）、Debug/Release build；Release-r10 的 no-args 与卸载重装后的 cold `-GenesisV2` 均通过真实结构化 8-event startup trace。仍没有可真机验收的完整 Babel 2.0 App。
+## 当前接手点（2026-09-08）
+
+1. 先读 [STATUS.md](STATUS.md) 顶部：当前实现基线为 `d97c6c0db`，接手时工作树干净；本轮只有文档校准，未提交、未推送。
+2. 以产品/运动合同和 [REQUIREMENTS.md](REQUIREMENTS.md) 为实现依据；旧设计入口已标为历史。三档筛选和导航消费者已有代码，不要按旧“未开始”记录重复开发。
+3. 本轮只固定可信基线。下一批范围为稳定现有阅读闭环：数据库错误不能伪装空结果、筛选/同步后计数与列表一致、导航完成/取消/中断正确。先复现具体缺口再做最小修复，不同时扩展 Reader、Settings 或清理旧代码。
+4. 验证使用现有检查；同一实现基线的 package 32/32 已在同日通过，不重复跑。应用编译方式及生成文件边界见 [VALIDATION.md](VALIDATION.md) 顶部；历史 77/77 不等于当前真实窗口或设备验收。
+
+## 历史交接记录（audit-only historical reference）
+
+下方保留旧批次上下文。其中“当前下一任务”“未提交”“等待推送”“恢复后不要再 build”等只适用于当时批次，不是本轮待执行指令；当前任务和验证方式以上方与 STATUS/VALIDATION 为准。Phase 1A 的已有证据与未覆盖场景继续保留，不能因文档校准而关闭。
 
 ## 接手者十分钟启动顺序
 

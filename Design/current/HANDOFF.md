@@ -1,3 +1,5 @@
+> **历史设计（audit-only historical reference）**：下方“唯一当前方向”等表述仅适用于当时的 Soft Shell 方案；已由 [Babel 2.0 产品合同](../Babel2/PRODUCT-CONTRACT.md) 覆盖，不能作为当前实现指令。最新进度见 [STATUS](../Babel2/Project/STATUS.md)。
+
 # Babel Soft Shell 设计交接
 
 ## 当前结论

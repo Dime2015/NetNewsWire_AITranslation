@@ -1,5 +1,29 @@
 # Babel 2.0 验证记录
 
+## 2026-09-08 可信基线校准
+
+- 实现基线：`d97c6c0db6af2f59f24cec746fd35e5c5a8df197`；接手时工作树干净，本轮只改 9 份既有 Markdown 文档，未提交、未推送。历史记录中的“未提交/当前下一任务”已明确限定为当时快照。
+- 环境：Xcode 27.0（27A5252f）；本轮目标为 generic iOS Simulator Debug，不安装、不启动、不运行 UI 自动化。
+- 同日上一轮已在相同实现基线执行 Babel2UI package tests，32/32 passed，退出码 0；日志 `/private/tmp/babel2-takeover-20260908-package.log`。本轮复用该证据，不重复跑。macOS package 测试不覆盖 UIKit 条件编译代码。
+- 应用编译：**依赖解析失败，未进入源码编译**，退出码 74。缺少本地依赖，下载时 `Could not resolve host: github.com`；不记为应用代码编译失败，也不记为 build passed。日志 `/private/tmp/babel2-baseline-20260908-build.log`。本轮不扩展环境修复或全量测试。
+- 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
+- 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
+
+本轮唯一应用编译命令（audit-only historical reference：既有工程/scheme identity）：
+
+```sh
+xcodebuild -project NetNewsWire.xcodeproj -scheme 'NetNewsWire-iOS UI Driver' -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/babel2-baseline-20260908-dd -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO build
+```
+
+模板与输出的本轮 SHA-256（只记录哈希）：
+
+- `Modules/Secrets/Sources/Secrets/SecretKey.swift`：`aa6e912d37f69c95d82cc4b74c98920198c6d36f4236081dacea8d77b5518c71`。
+- `Modules/Secrets/Sources/Secrets/SecretKey.swift.gyb`：`46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292`。
+
+## 历史验证记录（audit-only historical reference）
+
+以下结果只适用于原记录的提交、构建和环境，不覆盖上方本轮结果。
+
 本文件只记录可追溯证据。每一行必须绑定提交或明确标记为未提交工作树，注明日期、环境、范围和限制。旧代理报告可以作为线索，但没有在当前环境重新运行时，不能写成当前验证。
 
 ## 证据规则

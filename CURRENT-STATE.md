@@ -1,3 +1,5 @@
+> **历史快照（audit-only historical reference）**：本文只记录 2026-08-28 基线，不能用于判断当前分支或新前端功能。最新入口为 [Babel 2.0 当前状态](Design/Babel2/Project/STATUS.md)。
+
 # Babel 当前状态
 
 > 基准日期：2026-08-28

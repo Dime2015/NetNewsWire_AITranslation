@@ -1,3 +1,5 @@
+> **当前设计入口（2026-09-08）**：Babel 2.0 以 [产品合同](Babel2/PRODUCT-CONTRACT.md)、[运动合同](Babel2/MOTION-CONTRACT.md) 及其中锁定的参考为准；进度见 [STATUS](Babel2/Project/STATUS.md)。下方 Soft Shell 整理说明是历史记录（audit-only historical reference），其中 `current/` 仅为历史目录名，不再代表当前设计。
+
 # Babel Design Workspace
 
 这个文件夹已经整理为一个明确的当前方案、一个历史归档区和一套研究资料。其他 AI 应以 `current/` 为唯一设计源，不要从 `archive/` 中混合旧视觉语言，除非用户明确要求回看上一轮。

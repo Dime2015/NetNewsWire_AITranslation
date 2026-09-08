@@ -1,19 +1,37 @@
 # Babel 2.0 当前状态
 
-更新时间：2026-09-01（Asia/Tokyo）
+更新时间：2026-09-08（Asia/Tokyo）。以下为本次源码/Git 核实结果；应用行为未在本轮重新验收。
 
-## Git 快照
+## 当前 Git 基线
 
-- 分支：`codex/reeder-classic-rebuild`
-- 当前本地 `HEAD`：`5db240499806bc4cae9be0b82194c838a32229de`（`Babel 2.0 M1: add interruptible motion foundation`）
-- 2026-09-05：用户明确授权推送 M1 commit `5db240499806bc4cae9be0b82194c838a32229de`；实际执行 `git push origin codex/reeder-classic-rebuild` 推送的是当时本地 HEAD `c4335576d55b46431cd58e5b26f84ca10407fd9f`（线性历史，`5db240499` 是其祖先，中间还含 `3e4f5e7f8`、`3dfd71882` 两个已测试提交），推送后立即 `git fetch origin codex/reeder-classic-rebuild` 核实，`origin/codex/reeder-classic-rebuild` 与本地 HEAD 一致，均为 `c4335576d55b46431cd58e5b26f84ca10407fd9f`。这是本次 live verify 的结果，不代表之后不需要再核实。
-- 当前 `origin/codex/reeder-classic-rebuild` remote-tracking ref：`c4335576d55b46431cd58e5b26f84ca10407fd9f`（2026-09-05 fetch 核实）。历史记录：此前 remote-tracking 长期停在 `1269bb9087d896a7a9e29f174461d60b47134575`，M1 commit 当时尚未推送；这一条只作历史参照，不代表当前远端状态。
-- 版本谱系：v0.5 与 v1.0 是历史稳定基线，v1.1 是 Babel 2.0 前 UIKit 基线；Babel 2.0 尚未发布，因此不创建 v2.0 标签。
-- 当前工作树不是干净树。以下记录以当前文件系统为准，不把 `HEAD` 误称为工作树完整状态。
+- 分支：`codex/reeder-classic-rebuild`。
+- 实现基线 `HEAD`：`d97c6c0db6af2f59f24cec746fd35e5c5a8df197`；最新提交已包含 M1 导航边缘返回消费者，不再是“尚未提交”。
+- 本地 remote-tracking：`aa51965361bd52356653ad3658f4db6a8c31cc46`；相对该记录 ahead 1 / behind 0。本轮没有 fetch/远端实时核验，不能据此断言 hosted remote 状态。
+- 接手检查时工作树干净；本轮仅修改状态、需求与旧入口等 Markdown 文档，未提交、未推送。未改应用代码、工程、资源或生成文件。
 
-## 结论先行
+## 当前实现与缺口
 
-Babel 2.0 的 Phase 2A 单轨启动接线已落在当前未提交工作树：AppDelegate、SceneDelegate 和 Babel2 scene lifecycle 只建立 Babel2 root，外部动作保持 Babel2 并安全 no-op，旧 storyboard/controller/WebKit 路径不再由生产 lifecycle 实例化。r8 fresh matrix 的 Babel2UI package tests 为 30/30；全量 iOS Debug tests 为 XCTest console 34/34 加 Swift Testing 18 项（共 52），xcresult summary 为 52/52 passed、0 failed；Debug 与 Release build 也通过。Release-r10 在目标 iPhone 17 / iOS 27 Simulator 的 no-args 和卸载重装后的 cold `-GenesisV2` 均产生同一结构化 8-event trace，final `isComplete=true`、`isValid=true`。完整 Phase 1A A0–A15 矩阵、0.5/1/2 秒截图、目标 iPhone、性能和视觉验收仍未完成。
+| 范围 | 源码核实结果 | 尚未关闭 |
+|---|---|---|
+| 启动 | 单一 Babel2 root；外部动作解析后安全 no-op | Phase 1A 完整恢复/回调、资源与 target allowlist、设备验收 |
+| Feeds | 真实源/文件夹、计数、展开、三档筛选及转场已部分实现 | 数据库错误传播、同步后刷新及快速切换的一致性、设备验收 |
+| Timeline | 真实缓存文章、缩略图、已有标题译文缓存展示 | 完整 hero/日期分组/搜索与翻译流程 |
+| Reader | 缓存正文转纯文本展示；原文链接交给系统打开 | 正式图文阅读器、标题收缩、阅读进度、正文翻译、内置浏览器、分享/长图 |
+| 导航 | M1 已接入左边缘返回 | 真实窗口中的完成/取消/中断，以及设备手感 |
+| Settings/添加订阅 | 仍为占位路由 | 真实编辑、保存、搜索与管理功能 |
+| 图标 | 三态静态资产已提交 | runtime appearance 与设备外观验收 |
+
+整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
+
+## 本轮验证与下一步
+
+- 同日接手检查已跑 Babel2UI package：32/32 passed，源码基线同上；不重复运行。该检查在 macOS 上运行，不覆盖 UIKit 条件编译路径。
+- 本轮应用级编译及生成文件哈希结果见 [VALIDATION](VALIDATION.md) 顶部。历史 77/77 应用测试保留为历史证据，不记为本轮通过。
+- 本轮只完成“固定可信基线”；下一批再处理现有阅读闭环的数据错误与筛选一致性、导航完成/取消/中断。没有提前修复这些问题。
+
+## 历史阶段记录（截至 2026-09-05；audit-only historical reference）
+
+以下保留当时的实现和证据记录。各段“当前”“未提交”“未开始”、临时日志及停止条件均仅描述对应批次；实时状态由上方快照覆盖。A12 截图已在 `aa5196536` 提交，M1 页面消费者已在 `d97c6c0db` 提交；这些提交不等于设备或产品验收完成。
 
 ## Phase 1A 当前状态
 

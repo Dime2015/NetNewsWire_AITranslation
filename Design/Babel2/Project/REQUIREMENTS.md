@@ -1,32 +1,38 @@
 # Babel 2.0 需求到验收映射
 
+2026-09-08：按当前源码校准实现状态；“部分实现”不代表对应运行时或设备验收通过。
+
 状态含义：`未开始` 表示尚未有实现/证据；`in-progress` 表示实现或测试正在进行；`structural done; runtime pending` 表示静态结构准备好但运行时未验收；`in-review` 表示合同/方案正在复审；`延后` 表示用户已授权按路线 A 后置，不是遗忘。
 
 | 用户需求 | Slice / 模块 | 自动测试 | 模拟器验收 | 真机验收 | 当前状态 |
 |---|---|---|---|---|---|
 | 冷启动直接进入 Babel 2.0 Feeds/Library，不再出现无用 landing page | Slice 0 / Phase 1A；Babel2 feature gate/root composition | A0–A6、A9–A11：gate precedence、root count、generation/state restoration、launch trace | A12：0.5/1/2s 启动截图、冷启动、后台恢复、重复进入/退出 | A10–A12：冷热启动和 re-entry 30 次 | 实现进行中/证据待补 |
-| Starred 只显示有 starred 文章的源/文件夹，计数按当前过滤语义 | Slice 2；Feeds filter/count adapters | filter query、source visibility、folder/source counts | Starred/Unread/All 原地切换、空结果 | 真实数据源、同步后计数和返回位置 | 未开始 |
+| Starred 只显示有 starred 文章的源/文件夹，计数按当前过滤语义 | Slice 2；Feeds filter/count adapters | filter query、source visibility、folder/source counts | Starred/Unread/All 原地切换、空结果 | 真实数据源、同步后计数和返回位置 | 部分实现：真实 source/folder 过滤及分组计数已有；数据库错误传播、同步后更新和设备验收待补 |
 | Feed/Timeline 标题、hero 和日期 header 之间不得存在独立透明/空白 spacer；expanded、compact、中间滚动状态均只保留标准 section inset，surface 持续不透明 | Slice 3；Timeline no-spacer/header geometry + hero motion | geometry/snapshot、section-inset、surface-opacity assertions | expanded/compact/中间滚动位置截图和连续滚动 | safe area、透明空带、滚动连续性人工验收 | 未开始 |
-| pFilter（Starred/Unread/All）的 selection pill、内容列表和计数使用同一 progress 同步滑动/淡入出；rapid tap 可中断并反向，计数始终按当前 filter 语义 | Slice 2；pFilter motion/count state | motion progress、interrupt/reverse、filter count assertions | 快速连续点击、空结果、返回位置 | 真实数据、跟手性、计数与列表同步 | 未开始 |
+| pFilter（Starred/Unread/All）的 selection pill、内容列表和计数使用同一 progress 同步滑动/淡入出；rapid tap 可中断并反向，计数始终按当前 filter 语义 | Slice 2；pFilter motion/count state | motion progress、interrupt/reverse、filter count assertions | 快速连续点击、空结果、返回位置 | 真实数据、跟手性、计数与列表同步 | 部分实现：三套持久 ScopeSurface、共享 animator 与 pill 转场已有；中断/反向/第三目标和计数同步待复核 |
 | Feed hero 延伸到状态栏/动态岛，展开收缩连续 | Slice 3；hero motion/icon cache | progress clamp、hero state、icon cache contract | Light/Dark、无图/坏图、滚动截图 | safe area、opaque chrome、连续跟手收缩 | 未开始 |
-| 同步箭头只在真实 syncing 出现并自动隐藏 | Slice 0/3；loading owner/sync state | sync state machine、visibility transitions | 刷新、完成、失败、取消 | 网络切换、后台/前台、无重复控件 | 未开始 |
-| 文章打开快，避免中间空白加载页；必要时预加载 | Slice 4/5；Reader preparation/cache | cancellation、prepared route、cache hit/miss | 冷/热进入、短文/长文、返回 | 首屏时间、峰值内存、滚动帧率、真实源 | 未开始 |
+| 同步箭头只在真实 syncing 出现并自动隐藏 | Slice 0/3；loading owner/sync state | sync state machine、visibility transitions | 刷新、完成、失败、取消 | 网络切换、后台/前台、无重复控件 | 部分实现：Feeds 已按 isSyncing 显隐和旋转；完整同步/失败/后台恢复验收待补 |
+| 文章打开快，避免中间空白加载页；必要时预加载 | Slice 4/5；Reader preparation/cache | cancellation、prepared route、cache hit/miss | 冷/热进入、短文/长文、返回 | 首屏时间、峰值内存、滚动帧率、真实源 | 部分实现：列表 snapshot 直接传正文页并有取消保护；正式 Reader、预加载和性能未验收 |
 | Reader 初始 title/byline 在正文上方，滚动后连续移入 compact header，icon 渐出 | Slice 4；Reader chrome motion | collapse progress、reverse/interruption、content height | 首屏、滚动、旋转、后台恢复 | 多 safe area/文章高度、用户跟手验收 | 未开始 |
-| 翻译标题/正文不重影、不闪退、速度可接受 | Slice 5；translation session/DOM update | generation/cancellation、incremental update、error recovery | 大源、多次切换、翻译失败 | 真实翻译源、峰值内存和性能 | 未开始 |
+| 翻译标题/正文不重影、不闪退、速度可接受 | Slice 5；translation session/DOM update | generation/cancellation、incremental update、error recovery | 大源、多次切换、翻译失败 | 真实翻译源、峰值内存和性能 | 部分实现：Timeline 仅展示已有标题译文缓存；正文翻译及完整状态流尚未接入 |
 | 横向正文图贴屏幕两端、直角；文字/caption 保持 inset | Slice 4/5；Reader HTML/media | media classification、viewport style checks | 横向/竖向/无图、caption | 真实图片、safe area、缩放和滚动 | 未开始 |
 | 文章正文左滑打开内置浏览器，浏览器右滑回到 Reader | Slice 5；Browser route/motion | direction/edge arbitration、cancel/finish | WebView/Reader 手势冲突 | 跟手性、网页加载、双向返回 | 未开始 |
 | 全局右滑返回稳定跟手，非边缘横向内容不误触发 | Slice 1/5；Babel2 navigation + M1 driver | edge 24–32pt、velocity、interruption | 深栈/根路由/旋转 | 目标 iPhone 真实手势矩阵 | 2026-09-05：页面 consumer 已接入——`Babel2NavigationPopMotion`（新文件）把 M1 引擎接到 `Babel2NavigationController` 左边缘滑动返回手势上，只接管这一条交互路径，点按返回按钮的程序化 pop 保持系统默认动画不变；12 个新增单元测试覆盖手势状态机（开始/更新/结束、finish/cancel 判定、强制取消、装卸干净）全部通过，全量 suite 77/77 通过。真机 120Hz 手感、真实 UIKit 转场生命周期（transitionContext 的建立/结束）和 OSLogStore consumer integration 仍 pending——测试环境没有真实窗口，UIKit 不会调用转场代理，这部分只能靠真机/模拟器交互验证 |
-| 底栏控件尺寸、视觉中心、颜色统一；Reader 操作重绘 | Slice 2/4/5；shared toolbar tokens | geometry/token snapshot、action routing | 各屏幕 Light/Dark/中英文 | 目标设备可达性和视觉接受 | 未开始 |
+| 底栏控件尺寸、视觉中心、颜色统一；Reader 操作重绘 | Slice 2/4/5；shared toolbar tokens | geometry/token snapshot、action routing | 各屏幕 Light/Dark/中英文 | 目标设备可达性和视觉接受 | 部分实现：Feeds 控件与配色已接入；Reader 操作及跨屏一致性未完成 |
 | 顶部普通分享；底栏点击生成长图，不长按分享 | Slice 5；share/long-image actions | tap-only action、share presentation、failure/retry | 分享菜单和长图状态 | 系统分享菜单、长图生成和返回 | 未开始 |
 | Settings 使用新的 IA；开关尺寸合适，主题色只控制开关和进度环 | Slice 6；Settings/Theme tokens | theme mapping、switch geometry、route | 中英文、Light/Dark/Mono | 设备显示、可达性、真实主题切换 | 未开始 |
-| 普通 icon/star/selection/read mode/link 不再出现旧绿色；链接加粗+中性下划线 | Slice 2–6；BabelPalette/HTML style gate | source/token scan、HTML style checks | 全屏颜色回归 | 深浅色和主题色人工检查 | 未开始 |
+| 普通 icon/star/selection/read mode/link 不再出现旧绿色；链接加粗+中性下划线 | Slice 2–6；BabelPalette/HTML style gate | source/token scan、HTML style checks | 全屏颜色回归 | 深浅色和主题色人工检查 | 部分实现：Feeds/Timeline 已使用 BabelPalette；正文链接与全屏颜色验收未完成 |
 | 订阅源管理页、添加订阅源搜索/发现页 | Slice 6；Feeds management/search | query/debounce/cancel、empty/error | 键盘、空结果、错误、返回 | 真实源搜索和添加流程 | 未开始 |
-| 中文/英文全界面 i18n，布局不因翻译跳变 | Slice 6；Babel2 strings/resources | key completeness、locale/overflow checks | 中英文切换和状态恢复 | 系统语言、动态字体、键盘 | 未开始 |
-| loading/empty/error/offline/sync/translation 统一且不重复 | Slice 0–7；state surfaces | state transition/owner assertions | 每种状态、retry、恢复 | 网络和后台恢复 | 未开始 |
+| 中文/英文全界面 i18n，布局不因翻译跳变 | Slice 6；Babel2 strings/resources | key completeness、locale/overflow checks | 中英文切换和状态恢复 | 系统语言、动态字体、键盘 | 部分实现：Babel2 本地化资源与首页接线已有；Feed/Reader 仍有硬编码文案，全界面未完成 |
+| loading/empty/error/offline/sync/translation 统一且不重复 | Slice 0–7；state surfaces | state transition/owner assertions | 每种状态、retry、恢复 | 网络和后台恢复 | 部分实现：首页/列表已有 loading/empty/error/retry；数据库错误仍可能被转为空结果，完整状态未完成 |
 | Light/Dark/Mono AppIcon；Light 为亮桌面+独立暗色封面，非黑蒙版 | Slice 1/7；asset catalog/runtime appearance | asset catalog/actool/name checks | 外观资源解析 | home screen 外观和用户视觉接受 | structural done; runtime pending；静态资产已在 `9fda5c565` 提交；早期烧焦/全局蒙版 Light 已否决，当前 Final 已重生成并通过静态 QA；Dark master 为 `Design/Babel2/Icon Concepts/Final/Babel2AppIcon-Dark.png` |
 | 新代码/资源/测试/文案统一 Babel；历史技术命名和死代码分批清理 | Slice 7；no-new-name、compatibility boundary、cleanup | diff-based name gate、dependency/migration checks | 用户可见零历史名、回滚场景 | 稳定后数据/状态恢复和迁移 | 当前执行 Gate A/B；技术清理延后 |
 
-## Phase 1A 验收状态
+## 历史验收与合同记录（audit-only historical reference）
+
+下列数字和“仍未关闭”清单是各批次记录，不是本次重跑结果；当前汇总见 [STATUS.md](STATUS.md)。
+
+### Phase 1A 验收状态
 
 - A0–A15 的执行矩阵和证据路径已登记在 [PHASE1A-ACCEPTANCE.md](PHASE1A-ACCEPTANCE.md)。Phase 2A correction 已完成单轨 production lifecycle、Babel2 root、external-action no-op、restoration 校验、AppDelegate-owned launch trace 和边界测试；当前仍为 **实现进行中 / 证据待补**，因为完整矩阵还需要逐项 runtime launch trace、截图、模拟器状态、最终 bundle allowlist 和目标 iPhone/视觉证据。
 - Phase 1A 的 P0 根因是 generation gate 晚于 `AppDelegate` legacy lifecycle/bootstrap，而不只是 storyboard 配置问题。本批把 gate 固定在 AppDelegate 初始化边界，并让 SceneDelegate 只创建 Babel2 root；必须继续以 launch trace 证明 gate 早于所有旧副作用。
