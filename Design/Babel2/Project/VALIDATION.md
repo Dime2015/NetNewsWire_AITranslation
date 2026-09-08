@@ -342,6 +342,8 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 
 **这个修复需要用户在真机上重新验证**：完整重装 App 后做一次**真正冷启动**（不是从后台切回来，是完全强制退出后重新打开）直接看底部三个按钮是不是一开始就居中，不经过切后台这个步骤。
 
+**2026-09-08 用户真机复测结果：问题仍未解决**。说明"`viewDidAppear` 里补一次 `(view.window ?? view).layoutIfNeeded()`"这个修复不足以解决真机上的实际情况——诊断出的机制（零宽度保底分支被早期布局命中且不会自己纠正）本身未必错，但补的这一刀显然没扎中真正让宽度持续错误的那个点，或者还有别的因素在起作用（比如强制的这次布局本身发生得也不够晚/不够可靠、或者宽度错误的根源比"只发生一次"更持续）。用户已决定交给另一个 AI 继续，本节保留到此为止，不冒充已解决；下一步需要新的诊断角度，比如：真机上用 Xcode 直接挂 debugger 或加临时 print 在真实设备（不是模拟器）上看 `scopeStack.bounds` 在冷启动全过程的每次取值、或者改用一个不依赖"布局时序恰好正确"的实现方式（比如订阅 `traitCollectionDidChange`/`viewSafeAreaInsetsDidChange` 之类的信号做更保守的多重触发，或者干脆把这三个按钮改成用真正的 Auto Layout 约束定位而不是手工计算 frame，从根子上避免"读到过期宽度"这类问题）。已提交的代码改动（`a707e4bae`）予以保留，不回退——它没有造成任何已知负面影响，只是不够。
+
 ## pFilter：typed signpost 接入 + 中断/第三目标行为测试（2026-09-08，尚未提交）
 
 环境：Xcode 27.0 / iOS 27.0 SDK；iPhone 17 Simulator，UDID `555E35FA-6BFE-45F0-BCFC-0819FFE48CD2`。改动范围：`Modules/Babel2UI/Sources/Babel2Core/Motion/MotionTypes.swift`（`MotionInteractionID` 新增 `.libraryFilter` case）、`Modules/Babel2UI/Tests/Babel2UITests/MotionStateTests.swift`（`allCases.count` 6→7，新增 rawValue 断言）、`iOS/Babel2/Babel2RootViewController.swift`（新增 `motionRecorder` 注入点与三处 typed signpost 记录调用；修复筛选按钮绝对像素坐标居中 bug）、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift`（新增 3 个测试方法 + `RecordingMotionRecorder` fake）。决策见 DECISIONS.md ADR-015：保留既有 `UIViewPropertyAnimator` 机制，不迁移到 `Babel2MotionDriver` 类。
