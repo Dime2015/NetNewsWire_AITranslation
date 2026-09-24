@@ -9,6 +9,24 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-08 筛选按钮 Auto Layout 与 Feeds/Library 首页 Figma 对齐（r1，未提交）
+
+- 旧 `a707e4bae` 的 `viewDidAppear`/window layout workaround 已被用户真机证伪。当前在现有 `Babel2RootViewController` 内删除手工 frame 与零宽 fallback，改为一次性 Auto Layout 约束；用户随后在本对话明确回复“好的，成功了”，据此确认目标物理设备冷启动时筛选按钮布局通过。该结论不外推到旋转、其他尺寸或其他设备。
+- 当前排期优先为 Figma file `0kFsVs9DLbE7Um96yrlBKg`、node `22:36`（02 · Library，402×874）。本批实现文件限定为 `iOS/Babel2/Babel2RootViewController.swift`、`iOS/Babel2/Babel2Localization.swift`、`iOS/Babel2/Resources/Babel2Localizable.xcstrings` 和现有 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。覆盖 header/title、真实 syncing 时的 subtitle+glyph、Add、150pt tableHeader 摘要与 Folders、44pt folder/feed 行、24pt favicon/initials、inset selection background 和 bottom filter assets/labels/pill widths；删除 Figma 未使用的左上 settings 可见槽位，保留 Add。没有改 DataProviding/Core/adapter/旧 controller，没有新文件、依赖或测试体系。
+- summary count 由当前 `LibrarySnapshot` 的实际 feed `articleCount` 按当前 scope 求和，不硬编码、不新增 collection total 字段。
+
+全量 Debug iOS test 精确命令：
+
+```sh
+env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-library-figma-r1-dd -resultBundlePath /private/tmp/babel2-library-figma-r1.xcresult test
+```
+
+结果：exit 0、`TEST SUCCEEDED`。`xcrun xcresulttool get test-results summary --path /private/tmp/babel2-library-figma-r1.xcresult` 顶层 `result=Passed`、`total=80`、`passed=80`、`failed=0`、`skipped=0`；设备配置为 iPhone 17 / iOS 27 Simulator，动态参数展开后的 `passedTests=82`。
+
+安全与 dirty 边界：`Modules/Secrets/Sources/Secrets/SecretKey.swift` 测试后已恢复并与测试前 byte-identical，hash 为 `1b1f630f9a56cc47424a0b05288701cb8647a3c6badc0ccf32ed5a28dc2c9fef`；`SecretKey.swift.gyb` 测试前后 hash 均为 `46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292`。用户-owned `NetNewsWire.xcodeproj/project.pbxproj` 保留，diff hash 为 `c5f5a8cfbf73750210af0fdd15cea22fcedb7cb09fd5c5a786353f646028dc35`；`Shared/Localizable.xcstrings` 有独立 dirty，未纳入本批；Babel2 string catalog 测试前已有格式化/stale dirty，本批仅增加 `Folders`/`Syncing…` 键。
+
+边界（2026-09-24 更新）：2026-09-24 用户在目标物理 iPhone 冷启动完成首页整页视觉验收（标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态），回复“首页验收通过了”；为口头确认，非截图/自动化证据。Dark、不同语言、旋转和其他设备不在已验证范围。 同日在 Xcode 27.0 对同一工作树重跑 Debug build（iPhone 17 Simulator，DerivedData 位于会话 scratchpad）`BUILD SUCCEEDED`，未重跑 test；该 build 的 pre-action 重新生成了 gitignored `SecretKey.swift`（hash `d6337cc03dd3cc9a785f79b3efeaf39b7ec33f3a21a180b186bce9675a58d8dd`），不在 git diff 内。
+
 本轮唯一应用编译命令（audit-only historical reference：既有工程/scheme identity）：
 
 ```sh
@@ -330,7 +348,7 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 
 限制：全部测试都在没有真实 `UIWindow` 的环境下运行，`transitionContext` 的真实生命周期（`finishInteractiveTransition`/`cancelInteractiveTransition`/`completeTransition`）和实际 view transform 渲染**没有**被这批测试覆盖——这是 UIKit 本身的行为边界（见 LESSONS.md 第 27 条），不是测试写得不够多。真机/带真实 window 的模拟器交互验证仍然是 open 项，需要用户亲自滑动确认。
 
-## 筛选按钮真机冷启动居左 bug：分析性修复，无法自动化验证（2026-09-08，尚未提交）
+## 筛选按钮真机冷启动居左 bug：旧 workaround 失败记录（2026-09-08，历史）
 
 用户真机反馈：冷启动时底部三个筛选按钮挤在屏幕最左边，切到后台再切回来就恢复正常。排查过程见 LESSONS.md 第 28 条（含两次失败的自动化复现尝试）。结论：这是 `layoutScopeControlsIfNeeded()` 的零宽度保底分支（第 21 条加的）在真机冷启动最早一两次布局时被命中，且此后 `viewDidLayoutSubviews()` 不会自己再触发，错误的 frame 就一直卡住，直到切后台/切回来这类事件意外强制系统重新走一遍布局。
 
@@ -343,6 +361,8 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 **这个修复需要用户在真机上重新验证**：完整重装 App 后做一次**真正冷启动**（不是从后台切回来，是完全强制退出后重新打开）直接看底部三个按钮是不是一开始就居中，不经过切后台这个步骤。
 
 **2026-09-08 用户真机复测结果：问题仍未解决**。说明"`viewDidAppear` 里补一次 `(view.window ?? view).layoutIfNeeded()`"这个修复不足以解决真机上的实际情况——诊断出的机制（零宽度保底分支被早期布局命中且不会自己纠正）本身未必错，但补的这一刀显然没扎中真正让宽度持续错误的那个点，或者还有别的因素在起作用（比如强制的这次布局本身发生得也不够晚/不够可靠、或者宽度错误的根源比"只发生一次"更持续）。用户已决定交给另一个 AI 继续，本节保留到此为止，不冒充已解决；下一步需要新的诊断角度，比如：真机上用 Xcode 直接挂 debugger 或加临时 print 在真实设备（不是模拟器）上看 `scopeStack.bounds` 在冷启动全过程的每次取值、或者改用一个不依赖"布局时序恰好正确"的实现方式（比如订阅 `traitCollectionDidChange`/`viewSafeAreaInsetsDidChange` 之类的信号做更保守的多重触发，或者干脆把这三个按钮改成用真正的 Auto Layout 约束定位而不是手工计算 frame，从根子上避免"读到过期宽度"这类问题）。已提交的代码改动（`a707e4bae`）予以保留，不回退——它没有造成任何已知负面影响，只是不够。
+
+本节是旧 workaround 的历史记录；后续一次性 Auto Layout 改写已由用户确认目标物理设备冷启动通过，当前首页整页 Figma 视觉仍待用户验收，详见本文件上方 r1 小节。
 
 ## pFilter：typed signpost 接入 + 中断/第三目标行为测试（2026-09-08，尚未提交）
 
@@ -375,3 +395,32 @@ P0/P1 表述仅限“实现代码 P0/P1=0”；本轮 evidence correction 已通
 - 工程签名 xcconfig 里写死的 `DEVELOPMENT_TEAM` 指向一个用户当前账号无权限使用的 Team ID；已在仓库外的本地覆盖文件 `../SharedXcodeSettings/DeveloperSettings.xcconfig`（工程自带机制，见 `xcconfig/common/NetNewsWire_codesigning_common.xcconfig` 注释）写入用户本机账号 664274627@qq.com 对应的 Team ID `9ZU592WC8T`。
 - 主 App 默认权限文件要求 iCloud/CloudKit 与生产环境推送，免费个人开发者账号无法签发；同一本地覆盖文件里加了 `DEVELOPER_ENTITLEMENTS = -dev`，切到项目自带的、免费账号可用的 `NetNewsWire-dev.entitlements`。
 - 用户随后在 Xcode 里手动为全部 target 的 Signing & Capabilities 选择了自己的账号，构建成功；这一步在 `NetNewsWire.xcodeproj/project.pbxproj` 留下了未提交的改动（主要是与本次修复相关的 Team 归属信息，另有少量与 macOS/测试 target 相关、来源不明的次要噪音），当前仍是**本机未提交状态**，不属于本次文档同步的提交范围，是否连同产品改动一起提交需另行确认。
+
+## 筛选按钮 Auto Layout 改写（待真机确认）（2026-09-08，uncommitted worktree）
+
+### 实现范围
+
+- 旧修复 `a707e4bae` 在 `viewDidAppear` 中调用 `window.layoutIfNeeded()` 已被用户真机复测证伪；本轮删除该 workaround，不再叠加窗口布局时序分支。
+- 仅修改 `iOS/Babel2/Babel2RootViewController.swift`：现有 controller 在 `configureScopeControls()` 一次性安装三个按钮的 `90×44`、垂直居中和水平中心约束。水平中心以 402pt 参考画布的 `104/201/290.5` 为比例，不读取冷启动阶段的 `scopeStack.bounds`。删除 `layoutScopeControlsIfNeeded()`、手工按钮 frame 和零宽度 fallback。
+- `selectionPill` 继续由同一 controller 以 frame 驱动；`viewDidLayoutSubviews()` 只有在没有活动 animator、也没有 presentation settlement 时才让 pill 对齐当前按钮，未改 `UIViewPropertyAnimator`、pFilter 数据/动画语义或 signpost。
+- 不新增文件、依赖或第二 layout owner；没有修改 `NetNewsWire.xcodeproj/project.pbxproj`。
+
+### 全量测试
+
+精确命令：
+
+```sh
+env -u MERCURY_CLIENT_ID -u MERCURY_CLIENT_SECRET -u FEEDLY_CLIENT_ID -u FEEDLY_CLIENT_SECRET -u INOREADER_APP_ID -u INOREADER_APP_KEY xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'id=555E35FA-6BFE-45F0-BCFC-0819FFE48CD2' -derivedDataPath /private/tmp/babel2-scope-autolayout-dd -resultBundlePath /private/tmp/babel2-scope-autolayout.xcresult test
+```
+
+首次在默认沙箱执行时因 CoreSimulator/DNS 权限与 `github.com` 解析失败退出 74，未进入源码失败结论；随后使用同一命令在授权环境重跑，退出 0，`** TEST SUCCEEDED **`。`xcrun xcresulttool get test-results summary --path /private/tmp/babel2-scope-autolayout.xcresult` 顶层精确结果为：`totalTestCount=80`、`passedTests=80`、`failedTests=0`、`skippedTests=0`、`result=Passed`。xcresult 将目标标识为 iPhone 17 / iOS 27 Simulator，不是物理 iPhone。
+
+### 生成文件与工作树边界
+
+- `SecretKey.swift` 测试前 SHA-256：`84e86c281c7fe156a897fb55e0fab6f53c3b8eab56f1dfad6c09507abdf9b929`；测试后恢复并核对为同一值。
+- `SecretKey.swift.gyb` 测试前/后 SHA-256：`46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292`。
+- `NetNewsWire.xcodeproj/project.pbxproj` diff SHA-256 测试前/后均为 `c5f5a8cfbf73750210af0fdd15cea22fcedb7cb09fd5c5a786353f646028dc35`；用户原有 dirty diff 保留，未修改、未格式化、未提交。
+
+### 未验证边界
+
+本轮未添加或运行单独的 UIWindow/Auto Layout 时序复现测试；全量结果只证明当前测试 host/Simulator 的结构与行为回归通过。真实物理 iPhone 冷启动、后台恢复后的按钮位置和视觉验收仍 pending，不能据此称旧 bug 已解决；需用户在目标设备上重新冷启动确认。

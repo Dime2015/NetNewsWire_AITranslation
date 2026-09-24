@@ -1,15 +1,15 @@
 # Babel 2.0 接手说明
 
-## 当前接手点（2026-09-08，同日晚间更新）
+## 当前接手点（2026-09-08，最新）
 
-1. 先读 [STATUS.md](STATUS.md) 顶部：实现基线仍是 `d97c6c0db`；文档校准已提交为 `353b7f0ea`（未提交时的说法已过时）。本地 remote-tracking 落后 2 个 commit（`d97c6c0db`、`353b7f0ea`），当轮结束前会推送，推送后请重新核对远端 SHA。
-2. 本次会话补上了 M1 导航边缘返回消费者最后一块空白：用户在真实物理 iPhone 上确认左边缘滑动返回"跟手"，中途松手能"正常弹回"（取消路径正确）。这是用户口头确认，不是 Instruments/自动化证据；深层导航栈、根路由拒绝开始、设备旋转、非边缘误触发、120Hz 具体帧率数据、OSLogStore consumer integration 仍是缺口，不要当作已关闭。完整记录见 VALIDATION.md「M1 页面消费者：真机手感验收」、REQUIREMENTS.md 对应行、DECISIONS.md ADR-014。
-3. 真机编译过程中排查并修复了两个本机 Xcode 签名配置问题（写死的旧 Team ID、免费账号无法签发 iCloud/推送权限），修复方式是仓库外的本地覆盖文件 `../SharedXcodeSettings/DeveloperSettings.xcconfig`（工程自带机制），**没有改动仓库内任何被追踪文件**。用户随后自己在 Xcode 里为全部 target 手动选了签名账号，构建成功；这一步在 `NetNewsWire.xcodeproj/project.pbxproj` 留下一处未提交改动（真正需要的 Team 归属信息，加上少量与 macOS/测试 target 相关、来源不明的次要噪音）。接手者需先用 `git status`/`git diff` 核对这处改动是否还在、要不要连同后续改动一起提交，不要假设它已经被处理。
-4. 以产品/运动合同和 [REQUIREMENTS.md](REQUIREMENTS.md) 为实现依据；旧设计入口已标为历史。三档筛选和导航消费者已有代码，不要按旧"未开始"记录重复开发。
-5. 下一批范围为稳定现有阅读闭环：数据库错误不能伪装空结果、筛选/同步后计数与列表一致、导航完成/取消/中断正确。先复现具体缺口再做最小修复，不同时扩展 Reader、Settings 或清理旧代码；MOTION-CONTRACT 里其余 motion owner（Reader→Browser 边缘手势、文章翻页、Reader 收缩标题、Feed hero、pFilter）用户已选择"继续接入其它 motion owner"这条方向，尚未开始，需要在动手前先确定接入顺序和范围。
-6. 验证使用现有检查；同一实现基线的 package 32/32 已在同日通过，不重复跑。应用编译方式及生成文件边界见 [VALIDATION.md](VALIDATION.md) 顶部；历史 77/77 不等于当前真实窗口或设备验收。
-7. 同日随后完成 pFilter 工作（尚未提交）：给 Starred/Unread/All 切换补齐了此前完全没有的"中断/第三目标"行为测试，并接上了 `Babel2.Library.Filter` typed signpost；决策是保留既有 `UIViewPropertyAnimator` 机制、不迁移到 `Babel2MotionDriver` 类（见 DECISIONS.md ADR-015）。全量 Debug iOS test suite 80/80 通过。跟手性视觉验收仍需真机确认，未验收。
-8. 用户随后真机反馈筛选按钮冷启动时挤在左边（切后台再切回来会恢复）；排查后确认是零宽度布局保底分支被真机冷启动早期布局命中且此后不会自己纠正，已在 `viewDidAppear` 补一次强制布局（commit `a707e4bae`），但这类真实布局时序问题无法在单元测试里可靠复现（两次尝试均失败，其中一次表现为"单独跑过、混进全量套件跑就抖动"），如实标注为未经自动化验证，详见 VALIDATION.md 与 LESSONS.md 第 28 条。**2026-09-08 用户真机复测：这个修复没有解决问题**，说明诊断出的机制不完整或不是全部原因。用户决定就此结束本轮、交给下一个 AI 继续；`a707e4bae` 予以保留（无负面影响，只是不够），不回退。下一步建议见 VALIDATION.md 对应小节末尾——大方向是需要更细粒度的真机在线诊断（真实 print/debugger 观察冷启动全过程的宽度取值），或者干脆换成不依赖手工 frame 计算时序的实现（真正用 Auto Layout 约束定位这三个按钮）。
+1. 先读 [STATUS.md](STATUS.md) 顶部：本地 `HEAD` 为 `ca1fa1ae46932f04569ffdd0e0bda318de467e0d`；root 已执行 `git fetch origin codex/reeder-classic-rebuild`，fetch 后 `origin` 与 `FETCH_HEAD` 均为 `7567f685cd85012c7774c658959f3a66386940d6`，ahead 2 / behind 0。
+2. 旧 `a707e4bae` 的 `viewDidAppear`/window layout workaround 已被证伪；删除手工 frame 与零宽 fallback、改为一次性 Auto Layout 后，用户明确回复“好的，成功了”。这只确认目标物理设备的 scope 按钮冷启动布局，不外推到旋转、其他尺寸或其他设备。
+3. 当前排期优先对齐 Figma file `0kFsVs9DLbE7Um96yrlBKg`、node `22:36`（02 · Library，402×874）。实现文件限定为 `iOS/Babel2/Babel2RootViewController.swift`、`iOS/Babel2/Babel2Localization.swift`、`iOS/Babel2/Resources/Babel2Localizable.xcstrings` 和现有 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。
+4. 本批首页范围包括 header/title、真实 syncing 时的 subtitle+glyph、Add 路由、150pt tableHeader 摘要与 Folders、44pt folder/feed 行、24pt favicon/initials、inset selection background、bottom filter assets/labels/pill widths；删除 Figma 未使用的左上 settings 可见槽位，保留 Add。没有改 DataProviding/Core/adapter/旧 controller，没有新文件、依赖或测试体系。
+5. summary count 由当前 `LibrarySnapshot` 的实际 feed `articleCount` 按当前 scope 求和，不硬编码、不新增 collection total 字段。
+6. 全量命令见 [VALIDATION.md](VALIDATION.md)「筛选按钮 Auto Layout 与 Feeds/Library 首页 Figma 对齐」：exit 0、`TEST SUCCEEDED`，xcresult 顶层 total 80、passed 80、failed 0、skipped 0；iPhone 17 / iOS 27 Simulator 动态参数展开后的 `passedTests=82`。
+7. dirty 边界必须保留：用户-owned `NetNewsWire.xcodeproj/project.pbxproj` diff hash 为 `c5f5a8cfbf73750210af0fdd15cea22fcedb7cb09fd5c5a786353f646028dc35`；`Shared/Localizable.xcstrings` 有独立 dirty，未纳入本批；Babel2 string catalog 测试前已有格式化/stale dirty，本批仅增加 `Folders`/`Syncing…` 键。SecretKey 测试后已恢复并与测试前 byte-identical，hash 为 `1b1f630f9a56cc47424a0b05288701cb8647a3c6badc0ccf32ed5a28dc2c9fef`；`.gyb` 测试前后 hash 均为 `46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292`。
+8. 2026-09-24 用户在目标物理 iPhone 冷启动完成首页整页视觉验收（标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态），回复“首页验收通过了”；为口头确认，非截图/自动化证据。Dark、不同语言、旋转和其他设备不在已验证范围。 本批已本地提交（`ca1fa1ae4` 之后一个提交），pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行仍留工作树；未推送，推送需用户逐次授权。下一任务待用户在正式图文 Reader（Slice 4，推荐）与 Timeline hero（Slice 3）之间选择。
 
 ## 历史交接记录（audit-only historical reference）
 

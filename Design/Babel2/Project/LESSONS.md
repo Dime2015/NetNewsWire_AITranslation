@@ -182,3 +182,11 @@
 - 症状：用户真机反馈——冷启动时底部三个筛选按钮（Starred/Unread/All）挤在屏幕最左边一小块，切到后台再切回来就恢复正常。第 21 条当时加的 `scopeStack.bounds.width > 0` 判断只是给"宽度还没测出来"这个场景一个不崩溃、按钮至少可点的保底（从左边起一个挨一个排），但没有解决"之后宽度测出来了，谁去把按钮挪回正确位置"这件事——`viewDidLayoutSubviews()` 只在 view 的 bounds 真的发生变化时才会再次被调用，如果冷启动最早一两次布局恰好用旧/零宽度把按钮定住了，而这之后 view 的 bounds 没有再变化，这个错误的 frame 就会一直留着，直到某个不相关的事件（切后台/切回来，会强制系统整体重新走一遍布局）意外碰巧修正了它。
 - 根因排查中的教训（这条比 bug 本身更重要）：想写一个自动化回归测试复现这个"过早布局→按钮卡死"的时序，试了两种搭法：① 直接把裸的 `Babel2RootViewController` 当 `window.rootViewController`——复现出了看起来正确的"卡在左边"症状；② 换成和生产代码一样、用 `Babel2NavigationController` 包一层再当 `window.rootViewController`——同样几行代码，宽度在**挂窗口之前**就已经自动解析成真实值了（`UINavigationController` 自己在没有父级容器时会默认按 `UIScreen.main.bounds` 布局，这个默认行为本身就会掩盖我想测的那个"宽度还没解析出来"的窗口期）。更糟的是，就算固定用②这种"更贴近生产"的搭法、断言写法完全不变，**单独跑这一个测试方法通过，混在全量测试套件里跑就失败**——同一份代码，仅仅因为同一进程里前面跑过的其它测试残留的 window/布局状态不同，结果就不一样。
 - 以后 gate：**依赖真实 `UIWindow` + Auto Layout 布局时机（不是"这个视图长什么样"，而是"这一次布局发生的具体时序/次序"）的 bug，不要强行在同进程单元测试里复现**——这和第 23/24 条讲的"某些真机时序天生测不出来"是同一类问题，只是这次连"跑一次单元测试"这个最低门槛都做不到确定性，因为 XCTest 同进程里多个测试方法之间会通过 window/Auto Layout 的隐式全局状态互相影响，不同执行顺序（单独跑 vs. 全量跑）能算出不同的答案。发现这种"单独跑过、全量跑挂"的抖动时，**不要加 retry、不要调大 accuracy 容差去掩盖它**——这是执行顺序污染的信号，说明这类断言从设计上就不该放进这个单元测试环境，应该老实承认测不出来，把验证交给真机，同时保留生产代码里"讲得通道理"的修复（这次是在 `viewDidAppear` 里补一次 `view.window?.layoutIfNeeded()`，强制在保证已经真实上屏之后再走一遍布局）。写这类修复的 commit message/文档里要如实写清楚"这个修复没有自动化验证，需要真机冷启动确认"，不能因为测试暂时通过就默认它一定生效。
+
+- 结论（后续真机确认）：用户明确回复“好的，成功了”，说明真正有效的是删除手工 frame/零宽 fallback、改为一次性 Auto Layout 约束；失败的 `viewDidAppear`/window layout workaround 已被证伪。该结论只覆盖目标物理设备的冷启动按钮布局，不外推到旋转、其他尺寸或其他设备。自动化仍可能受 UIKit 时序影响，最终以真机确认，不再新增同进程 UIWindow/Auto Layout 时序复现测试。
+
+## 29. 手工 frame 时序修复失败后，改为一次性 Auto Layout 约束（2026-09-08）
+
+- 症状：旧 `a707e4bae` 在 `viewDidAppear` 中强制 window layout 后，用户再次真机冷启动仍看到 Starred/Unread/All 挤在左边，后台回来才正常；因此“补一次布局就能得到最终 frame”的假设已被现实否定。
+- 根因边界：原实现由 `viewDidLayoutSubviews()` 读取 `scopeStack.bounds`，再手工写三个按钮 frame，并以零宽度 fallback 处理早期布局。这个 owner 依赖某一轮布局回调是否拿到最终容器宽度；`view.window.layoutIfNeeded()` 不能保证该时序假设成立。新实现把按钮的尺寸、垂直中心和按 402pt 参考画布比例的水平中心约束一次性安装在现有 controller 内，布局不再从 `scopeStack.bounds` 读取位置；selection pill 仍保留原有 frame 动画 owner，并在活动动画/settlement 期间跳过静态对齐。
+- 以后 gate：这类修复不新增同进程 UIWindow/Auto Layout 时序复现测试，也不以 Simulator 全量通过代替物理设备冷启动验收。全量 Debug iOS xcresult 顶层为 80/80 passed、0 failed、0 skipped，只能作为结构/行为回归证据；必须让用户在目标 iPhone 上重新验证按钮几何、后台恢复和视觉位置，验证前不写“已解决”。

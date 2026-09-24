@@ -1,6 +1,6 @@
 # Babel 2.0 需求到验收映射
 
-2026-09-08：按当前源码校准实现状态；“部分实现”不代表对应运行时或设备验收通过。
+2026-09-08：按当前源码与最新验证校准实现状态；“部分实现”不代表对应运行时或设备验收通过。当前优先为 Feeds/Library 首页对齐 Figma file `0kFsVs9DLbE7Um96yrlBKg`、node `22:36`。
 
 状态含义：`未开始` 表示尚未有实现/证据；`in-progress` 表示实现或测试正在进行；`structural done; runtime pending` 表示静态结构准备好但运行时未验收；`in-review` 表示合同/方案正在复审；`延后` 表示用户已授权按路线 A 后置，不是遗忘。
 
@@ -9,7 +9,7 @@
 | 冷启动直接进入 Babel 2.0 Feeds/Library，不再出现无用 landing page | Slice 0 / Phase 1A；Babel2 feature gate/root composition | A0–A6、A9–A11：gate precedence、root count、generation/state restoration、launch trace | A12：0.5/1/2s 启动截图、冷启动、后台恢复、重复进入/退出 | A10–A12：冷热启动和 re-entry 30 次 | 实现进行中/证据待补 |
 | Starred 只显示有 starred 文章的源/文件夹，计数按当前过滤语义 | Slice 2；Feeds filter/count adapters | filter query、source visibility、folder/source counts | Starred/Unread/All 原地切换、空结果 | 真实数据源、同步后计数和返回位置 | 部分实现：真实 source/folder 过滤及分组计数已有；数据库错误传播、同步后更新和设备验收待补 |
 | Feed/Timeline 标题、hero 和日期 header 之间不得存在独立透明/空白 spacer；expanded、compact、中间滚动状态均只保留标准 section inset，surface 持续不透明 | Slice 3；Timeline no-spacer/header geometry + hero motion | geometry/snapshot、section-inset、surface-opacity assertions | expanded/compact/中间滚动位置截图和连续滚动 | safe area、透明空带、滚动连续性人工验收 | 未开始 |
-| pFilter（Starred/Unread/All）的 selection pill、内容列表和计数使用同一 progress 同步滑动/淡入出；rapid tap 可中断并反向，计数始终按当前 filter 语义 | Slice 2；pFilter motion/count state | motion progress、interrupt/reverse、filter count assertions | 快速连续点击、空结果、返回位置 | 真实数据、跟手性、计数与列表同步 | 2026-09-08：三套持久 ScopeSurface、共享 animator 与 pill 转场沿用既有 `UIViewPropertyAnimator` 机制（未迁移到 `Babel2MotionDriver` 类，见 DECISIONS.md ADR-015）；新增 3 个行为测试补齐此前完全没有自动化覆盖的"中断/反向/第三目标"场景（含一次真正的动画期中断，不只是取消未完成的网络请求），计数在这些场景下正确；新增 `Babel2.Library.Filter` typed signpost（begin/event/end 三个时机，含 fromFilter/toFilter/pFilter/token）。仍未关闭：Instruments 真实采集、真机/模拟器跟手视觉验收。2026-09-08 同日追加：用户真机反馈按钮冷启动时挤在左边，排查后发现是 `layoutScopeControlsIfNeeded()` 零宽度保底分支被真机冷启动早期布局命中且从此卡住（与画布宽度换算无关，真实设备宽度就是 402pt）；已在 `viewDidAppear` 补一次强制布局作为修复，但这类真实布局时序 bug 无法在同进程单元测试里可靠复现（两次尝试均失败，含"单独跑过、混进全量套件跑就抖动"的证据，见 LESSONS.md 第 28 条），修复本身仍需用户真机冷启动重新确认 |
+| pFilter（Starred/Unread/All）的 selection pill、内容列表和计数使用同一 progress 同步滑动/淡入出；rapid tap 可中断并反向，计数始终按当前 filter 语义 | Slice 2；pFilter motion/count state | motion progress、interrupt/reverse、filter count assertions | 快速连续点击、空结果、返回位置 | 真实数据、跟手性、计数与列表同步 | 2026-09-08：三套持久 ScopeSurface、共享 animator 与 pill 转场沿用既有 `UIViewPropertyAnimator` 机制（未迁移到 `Babel2MotionDriver` 类，见 DECISIONS.md ADR-015）；新增 3 个行为测试覆盖中断/反向/第三目标，计数按当前 filter 语义；新增 `Babel2.Library.Filter` typed signpost。旧 `viewDidAppear`/window layout workaround 已被真机证伪；当前改为现有 controller 内一次性 Auto Layout 约束，删除手工 frame 与零宽 fallback。用户明确回复“好的，成功了”，据此确认目标物理设备冷启动按钮布局通过；不外推到旋转、其他尺寸或其他设备。全量 Debug iOS test xcresult 顶层 80/80 passed、0 failed、0 skipped，动态参数展开 `passedTests=82`。仍未关闭：Instruments 真实采集、整页真机/模拟器跟手视觉验收。 |
 | Feed hero 延伸到状态栏/动态岛，展开收缩连续 | Slice 3；hero motion/icon cache | progress clamp、hero state、icon cache contract | Light/Dark、无图/坏图、滚动截图 | safe area、opaque chrome、连续跟手收缩 | 未开始 |
 | 同步箭头只在真实 syncing 出现并自动隐藏 | Slice 0/3；loading owner/sync state | sync state machine、visibility transitions | 刷新、完成、失败、取消 | 网络切换、后台/前台、无重复控件 | 部分实现：Feeds 已按 isSyncing 显隐和旋转；完整同步/失败/后台恢复验收待补 |
 | 文章打开快，避免中间空白加载页；必要时预加载 | Slice 4/5；Reader preparation/cache | cancellation、prepared route、cache hit/miss | 冷/热进入、短文/长文、返回 | 首屏时间、峰值内存、滚动帧率、真实源 | 部分实现：列表 snapshot 直接传正文页并有取消保护；正式 Reader、预加载和性能未验收 |
@@ -27,6 +27,13 @@
 | loading/empty/error/offline/sync/translation 统一且不重复 | Slice 0–7；state surfaces | state transition/owner assertions | 每种状态、retry、恢复 | 网络和后台恢复 | 部分实现：首页/列表已有 loading/empty/error/retry；数据库错误仍可能被转为空结果，完整状态未完成 |
 | Light/Dark/Mono AppIcon；Light 为亮桌面+独立暗色封面，非黑蒙版 | Slice 1/7；asset catalog/runtime appearance | asset catalog/actool/name checks | 外观资源解析 | home screen 外观和用户视觉接受 | structural done; runtime pending；静态资产已在 `9fda5c565` 提交；早期烧焦/全局蒙版 Light 已否决，当前 Final 已重生成并通过静态 QA；Dark master 为 `Design/Babel2/Icon Concepts/Final/Babel2AppIcon-Dark.png` |
 | 新代码/资源/测试/文案统一 Babel；历史技术命名和死代码分批清理 | Slice 7；no-new-name、compatibility boundary、cleanup | diff-based name gate、dependency/migration checks | 用户可见零历史名、回滚场景 | 稳定后数据/状态恢复和迁移 | 当前执行 Gate A/B；技术清理延后 |
+
+## 当前优先：Feeds/Library 首页 Figma 22:36（2026-09-08）
+
+- 目标画布为 402×874。实现范围包括 header/title、真实 syncing 时的 subtitle+glyph、Add 路由、150pt tableHeader 摘要与 Folders、44pt folder/feed 行、24pt favicon/initials、inset selection background，以及 bottom filter 的既有 assets、labels 和不同 pill 宽度；删除 Figma 未使用的左上 settings 可见槽位，保留 Add。
+- 实现文件限定为 `iOS/Babel2/Babel2RootViewController.swift`、`iOS/Babel2/Babel2Localization.swift`、`iOS/Babel2/Resources/Babel2Localizable.xcstrings` 和现有 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。没有改 DataProviding/Core/adapter/旧 controller，没有新文件、依赖或测试体系。
+- summary count 由当前 `LibrarySnapshot` 的实际 feed `articleCount` 按当前 scope 求和，不硬编码、不新增 collection total 字段。
+- 当前实现已通过一次全量 Debug iOS test；2026-09-24 用户在目标物理 iPhone 冷启动完成首页整页视觉验收（标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态），回复“首页验收通过了”；为口头确认，非截图/自动化证据。Dark、不同语言、旋转和其他设备不在已验证范围。
 
 ## 历史验收与合同记录（audit-only historical reference）
 

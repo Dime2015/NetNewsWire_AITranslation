@@ -656,26 +656,20 @@ final class Babel2FeatureGateTests: XCTestCase {
 		print("Babel2 lifecycle (loaded views) final rootDeinitCount=\(rootReferences.count) navigationDeinitCount=\(navigationReferences.count) liveRootObjects=0 liveNavigationObjects=0")
 	}
 
-	func testRootHasFeedsTitleAndTwoReachableActions() {
+	func testRootHasFeedsTitleAddAndScopeControls() {
 		let navigation = Babel2SceneComposition.makeRoot()
 		let root = try! XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
 		root.loadViewIfNeeded()
 		root.view.layoutIfNeeded()
 		let labels = root.view.subviews.compactMap { $0 as? UILabel }
-		XCTAssertTrue(labels.contains { $0.text == "Feeds" || $0.text == "订阅源" })
-		let settings = try! XCTUnwrap(root.view.subviews.compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "babel2.settings" })
+		XCTAssertTrue(labels.contains { $0.text == "Feeds" || $0.text == "订阅" })
 		let add = try! XCTUnwrap(root.view.subviews.compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "babel2.add" })
-		XCTAssertNotNil(settings)
 		XCTAssertNotNil(add)
 		for identifier in ["babel2.scope.all", "babel2.scope.unread", "babel2.scope.starred"] {
 			let scope = try! XCTUnwrap(babel2View(in: root.view, accessibilityIdentifier: identifier) as? UIButton)
 			XCTAssertGreaterThanOrEqual(scope.frame.width, 44)
 			XCTAssertEqual(scope.frame.height, 44)
 		}
-		settings.sendActions(for: .touchUpInside)
-		XCTAssertEqual(navigation.viewControllers.count, 2)
-		XCTAssertEqual(navigation.restorationValue().routes, [.home, .settings])
-		navigation.popBabel2(animated: false)
 		add.sendActions(for: .touchUpInside)
 		XCTAssertEqual(navigation.restorationValue().routes, [.home, .addSubscription])
 	}

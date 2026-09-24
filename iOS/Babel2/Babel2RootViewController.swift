@@ -26,10 +26,16 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	@MainActor
 	private final class ScopeSurface: UIView {
+		private static let listHeaderHeight: CGFloat = 150
 		let scope: Babel2FeedScope
 		let tableView = UITableView(frame: .zero, style: .plain)
 		let stateLabel = UILabel()
 		let retryButton = UIButton(type: .system)
+		private let listHeader = UIView()
+		private let shortRule = UIView()
+		private let summaryTitleLabel = UILabel()
+		private let summaryCountLabel = UILabel()
+		private let foldersTitleLabel = UILabel()
 		var rows = [LibraryRow]()
 		var snapshot: LibrarySnapshot?
 		var state: SurfaceState = .loading
@@ -46,6 +52,49 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			isOpaque = true
 			accessibilityIdentifier = "babel2.feeds.surface.\(scope.rawValue)"
 
+			listHeader.backgroundColor = BabelPalette.background
+			listHeader.frame = CGRect(x: 0, y: 0, width: 0, height: Self.listHeaderHeight)
+			shortRule.backgroundColor = BabelPalette.hairline
+			shortRule.translatesAutoresizingMaskIntoConstraints = false
+			listHeader.addSubview(shortRule)
+
+			summaryTitleLabel.text = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
+			summaryTitleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+			summaryTitleLabel.textColor = BabelPalette.ink
+			summaryTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+			listHeader.addSubview(summaryTitleLabel)
+
+			summaryCountLabel.font = .systemFont(ofSize: 20, weight: .regular)
+			summaryCountLabel.textColor = BabelPalette.tertiaryInk
+			summaryCountLabel.textAlignment = .right
+			summaryCountLabel.isHidden = true
+			summaryCountLabel.translatesAutoresizingMaskIntoConstraints = false
+			listHeader.addSubview(summaryCountLabel)
+
+			foldersTitleLabel.text = Babel2Localization.text(.folders, bundle: localizationBundle)
+			foldersTitleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+			foldersTitleLabel.textColor = BabelPalette.ink
+			foldersTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+			listHeader.addSubview(foldersTitleLabel)
+
+			NSLayoutConstraint.activate([
+				shortRule.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 111),
+				shortRule.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 2),
+				shortRule.widthAnchor.constraint(equalToConstant: 180),
+				shortRule.heightAnchor.constraint(equalToConstant: 0.5),
+				summaryTitleLabel.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 20),
+				summaryTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 31),
+				summaryTitleLabel.heightAnchor.constraint(equalToConstant: 28),
+				summaryTitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: summaryCountLabel.leadingAnchor, constant: -12),
+				summaryCountLabel.trailingAnchor.constraint(equalTo: listHeader.trailingAnchor, constant: -20),
+				summaryCountLabel.topAnchor.constraint(equalTo: summaryTitleLabel.topAnchor),
+				summaryCountLabel.heightAnchor.constraint(equalToConstant: 28),
+				summaryCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 92),
+				foldersTitleLabel.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 20),
+				foldersTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 99),
+				foldersTitleLabel.heightAnchor.constraint(equalToConstant: 28)
+			])
+
 			tableView.backgroundColor = BabelPalette.background
 			tableView.backgroundView = nil
 			tableView.separatorStyle = .none
@@ -55,6 +104,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			tableView.accessibilityIdentifier = "babel2.feeds.table.\(scope.rawValue)"
 			tableView.accessibilityValue = SurfaceState.loading.rawValue
 			tableView.translatesAutoresizingMaskIntoConstraints = false
+			tableView.tableHeaderView = listHeader
 			addSubview(tableView)
 
 			stateLabel.text = Babel2Localization.text(.loading, bundle: localizationBundle)
@@ -95,6 +145,22 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 		required init?(coder: NSCoder) { nil }
 
+		override func layoutSubviews() {
+			super.layoutSubviews()
+			guard tableView.bounds.width > 0 else { return }
+			let frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: Self.listHeaderHeight)
+			guard listHeader.frame != frame else { return }
+			listHeader.frame = frame
+			tableView.tableHeaderView = listHeader
+		}
+
+		func setSummaryCount(_ count: Int?) {
+			let text = count.flatMap { $0 > 0 ? $0.formatted() : nil }
+			summaryCountLabel.text = text
+			summaryCountLabel.accessibilityValue = text
+			summaryCountLabel.isHidden = text == nil
+		}
+
 		func setState(_ state: SurfaceState, text: String) {
 			self.state = state
 			accessibilityValue = state.rawValue
@@ -110,9 +176,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	let environment: AppEnvironment
 	private let localizationBundle: Bundle
 	private let titleLabel = UILabel()
-	private let settingsButton = UIButton(type: .system)
 	private let addButton = UIButton(type: .system)
 	private let syncArrow = UIButton(type: .system)
+	private let syncGlyph = BabelSyncGlyphView()
+	private let syncSubtitleLabel = UILabel()
 	private let bottomBar = UIView()
 	private let scopeStack = UIView()
 	private let selectionPill = UIView()
@@ -179,24 +246,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		hasAppeared = true
-		// [界面] `viewDidLayoutSubviews()` only re-fires when the view's bounds
-		// actually change; on a real device's first cold-launch layout pass(es)
-		// `scopeStack` can still measure a zero/placeholder width before Auto
-		// Layout resolves the real screen size, so `layoutScopeControlsIfNeeded()`
-		// falls back to its zero-width guard (packing buttons flush against the
-		// left edge). Reaching `viewDidAppear` does not by itself guarantee a
-		// fresh layout pass already ran with the final geometry. Calling
-		// `view.layoutIfNeeded()` is not enough either: it only re-resolves this
-		// view's own subtree using whatever frame this view already has -- if
-		// that frame itself is still wrong because a parent (the navigation
-		// controller, the window) has not yet re-sized it, nothing changes.
-		// Walking up to `view.window` and laying out from there forces the
-		// whole chain (window -> navigation controller -> this view ->
-		// `scopeStack`) to re-resolve against the real, final geometry, which
-		// in turn re-invokes `viewDidLayoutSubviews()` ->
-		// `layoutScopeControlsIfNeeded()` with the corrected width -- without
-		// depending on the user happening to background/foreground the app.
-		(view.window ?? view).layoutIfNeeded()
 		scheduleContentFirstFrameOnNextDisplayTickIfReady()
 		applyLaunchScopeOverrideIfNeeded()
 		loadLibraryIfNeeded()
@@ -255,45 +304,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	override func viewDidLayoutSubviews() {
 		super.viewDidLayoutSubviews()
-		layoutScopeControlsIfNeeded()
-		scheduleContentFirstFrameOnNextDisplayTickIfReady()
-	}
-
-	private func layoutScopeControlsIfNeeded() {
-		guard scopeTransitionAnimator == nil else { return }
-		let order = Self.filterDisplayOrder
-		let count = CGFloat(order.count)
-		guard count > 0 else { return }
-		let height = max(44, scopeStack.bounds.height)
-		if scopeStack.bounds.width > 0 {
-			// [界面] Figma 参考画布是 402pt 宽，三个按钮的中心分别在
-			// 104/201/290.5。真实设备宽度通常不等于 402pt，写死这三个绝对像素
-			// 会让整组按钮在真实屏幕上偏离居中（越宽的屏幕偏得越明显）。这里改成
-			// 按同样的比例（相对 402pt 画布的位置占比）乘以真实宽度，中间那个按钮
-			// 正好落在 201/402 = 0.5，即真实屏幕的正中央，两侧对称保留 Figma 校准
-			// 的相对间距。
-			let referenceCanvasWidth: CGFloat = 402
-			let referenceCenters: [CGFloat] = [104, 201, 290.5]
-			let width: CGFloat = 90
-			let realWidth = scopeStack.bounds.width
-			for (index, scope) in order.enumerated() {
-				guard let button = scopeButtons[scope] else { continue }
-				let centerX = (referenceCenters[index] / referenceCanvasWidth) * realWidth
-				button.frame = CGRect(x: centerX - width / 2, y: (height - 44) / 2, width: width, height: 44)
-			}
-		} else {
-			// No measured width yet (e.g. a host that never attaches the view to a
-			// window). Guarantee a valid >=44pt tappable rect instead of leaving
-			// buttons at their zero-size initial frame; a later layout pass with a
-			// real width replaces this with the calibrated centers above.
-			let spacing: CGFloat = 8
-			let width = max(44, (scopeStack.bounds.width - spacing * (count - 1)) / count)
-			for (index, scope) in order.enumerated() {
-				guard let button = scopeButtons[scope] else { continue }
-				button.frame = CGRect(x: CGFloat(index) * (width + spacing), y: 0, width: width, height: height)
-			}
+		if scopeTransitionAnimator == nil && !presentationNeedsSettlement {
+			// 约束已经确定按钮位置；只在没有过渡时让 pill 对齐当前按钮。
+			updateScopeButtons()
 		}
-		updateScopeButtons()
+		scheduleContentFirstFrameOnNextDisplayTickIfReady()
 	}
 
 	func cancelContentFirstFramePresentation() {
@@ -322,8 +337,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			view.bounds.height > 0,
 			titleLabel.frame.width > 0,
 			titleLabel.frame.height > 0,
-			settingsButton.frame.width > 0,
-			settingsButton.frame.height > 0,
 			addButton.frame.width > 0,
 			addButton.frame.height > 0 else { return }
 
@@ -345,8 +358,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			view.bounds.height > 0,
 			titleLabel.frame.width > 0,
 			titleLabel.frame.height > 0,
-			settingsButton.frame.width > 0,
-			settingsButton.frame.height > 0,
 			addButton.frame.width > 0,
 			addButton.frame.height > 0 else { return }
 		didPresentContentFirstFrame = true
@@ -379,16 +390,33 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		titleLabel.textAlignment = .center
 		titleLabel.accessibilityIdentifier = Babel2LocalizationKey.feeds.accessibilityIdentifier
 
-		configureSymbolButton(settingsButton, symbolName: "gearshape", key: .settings, action: #selector(settingsTapped))
-		configureSymbolButton(addButton, symbolName: "plus", key: .add, action: #selector(addTapped))
+		addButton.setImage(UIImage(named: "BabelHomeAdd")?.withRenderingMode(.alwaysTemplate), for: .normal)
+		addButton.tintColor = BabelPalette.mutedInk
+		addButton.accessibilityLabel = Babel2Localization.text(.add, bundle: localizationBundle)
+		addButton.accessibilityIdentifier = Babel2LocalizationKey.add.accessibilityIdentifier
+		addButton.configuration = .plain()
+		addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
 		configureScopeControls()
-		syncArrow.setImage(UIImage(systemName: "arrow.triangle.2.circlepath"), for: .normal)
-		syncArrow.tintColor = BabelPalette.mutedInk
-		syncArrow.accessibilityLabel = "Syncing"
-		syncArrow.accessibilityIdentifier = "babel2.sync.arrow"
 		syncArrow.configuration = .plain()
-		syncArrow.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)
+		syncArrow.accessibilityLabel = Babel2Localization.text(.syncing, bundle: localizationBundle)
+		syncArrow.accessibilityIdentifier = "babel2.sync.arrow"
 		syncArrow.isHidden = true
+		syncGlyph.isAccessibilityElement = false
+		syncGlyph.translatesAutoresizingMaskIntoConstraints = false
+		syncArrow.addSubview(syncGlyph)
+		NSLayoutConstraint.activate([
+			syncGlyph.centerXAnchor.constraint(equalTo: syncArrow.centerXAnchor),
+			syncGlyph.centerYAnchor.constraint(equalTo: syncArrow.centerYAnchor),
+			syncGlyph.widthAnchor.constraint(equalToConstant: 24),
+			syncGlyph.heightAnchor.constraint(equalToConstant: 24)
+		])
+
+		syncSubtitleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+		syncSubtitleLabel.textColor = BabelPalette.tertiaryInk
+		syncSubtitleLabel.textAlignment = .center
+		syncSubtitleLabel.accessibilityIdentifier = Babel2LocalizationKey.syncing.accessibilityIdentifier
+		syncSubtitleLabel.isHidden = true
+		syncSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
 
 		bottomBar.backgroundColor = BabelPalette.background
 		bottomBar.isOpaque = true
@@ -400,9 +428,9 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		bottomBar.addSubview(hairline)
 
 		view.addSubview(titleLabel)
-		view.addSubview(settingsButton)
 		view.addSubview(addButton)
 		view.addSubview(syncArrow)
+		view.addSubview(syncSubtitleLabel)
 		view.addSubview(bottomBar)
 		bottomBar.addSubview(scopeStack)
 		NSLayoutConstraint.activate([
@@ -423,103 +451,125 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		for scope in Self.filterDisplayOrder {
 			let button = UIButton(type: .system)
 			button.configuration = .plain()
-			button.setImage(Self.image(for: scope), for: .normal)
-			button.tintColor = BabelPalette.ink
+			button.configuration?.imagePlacement = .leading
+			button.configuration?.imagePadding = scope == .unread ? 7 : 6
+			button.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+				var transformed = attributes
+				transformed.font = .systemFont(ofSize: 10, weight: .semibold)
+				transformed.foregroundColor = BabelPalette.mutedInk
+				return transformed
+			}
+			button.tintColor = BabelPalette.mutedInk
 			button.accessibilityIdentifier = "babel2.scope.\(scope.rawValue)"
 			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
 			button.accessibilityTraits.insert(.button)
 			button.addAction(UIAction { [weak self] _ in self?.scopeTapped(scope) }, for: .touchUpInside)
 			button.backgroundColor = .clear
-			button.translatesAutoresizingMaskIntoConstraints = true
+			button.translatesAutoresizingMaskIntoConstraints = false
 			scopeStack.addSubview(button)
 			scopeButtons[scope] = button
+		}
+
+		// 按 402pt 参考画布的 104/201/290.5 中心比例定位，避免冷启动时
+		// 读取尚未解析的 scopeStack.bounds。
+		let referenceCanvasWidth: CGFloat = 402
+		let referenceCenters: [CGFloat] = [104, 201, 290.5]
+		for (index, scope) in Self.filterDisplayOrder.enumerated() {
+			guard let button = scopeButtons[scope] else { continue }
+			let centerRatio = referenceCenters[index] / (referenceCanvasWidth / 2)
+			let width: CGFloat = scope == .starred ? 90 : (scope == .unread ? 78 : 68)
+			NSLayoutConstraint.activate([
+				button.widthAnchor.constraint(equalToConstant: width),
+				button.heightAnchor.constraint(equalToConstant: 44),
+				button.centerYAnchor.constraint(equalTo: scopeStack.centerYAnchor),
+				NSLayoutConstraint(
+					item: button,
+					attribute: .centerX,
+					relatedBy: .equal,
+					toItem: scopeStack,
+					attribute: .centerX,
+					multiplier: centerRatio,
+					constant: 0
+				)
+			])
 		}
 		updateScopeButtons()
 	}
 
-	private static func image(for scope: Babel2FeedScope) -> UIImage? {
-		let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+	private static func image(for scope: Babel2FeedScope, selected: Bool) -> UIImage? {
 		switch scope {
 		case .starred:
-			return UIImage(systemName: "star", withConfiguration: config)
+			let name = selected ? "BabelFilterSelectedStar" : "BabelHomeStar"
+			return UIImage(named: name)?.withRenderingMode(.alwaysTemplate)
 		case .unread:
-			return UIImage(systemName: "circle.fill", withConfiguration: config)
+			return UIImage(systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
 		case .all:
-			let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
-			return renderer.image { _ in
-				UIColor.black.setFill()
-				for index in 0..<3 {
-					let y = 5 + CGFloat(index) * 5
-					let width = 18 - CGFloat(index) * 3
-					UIBezierPath(roundedRect: CGRect(x: 3, y: y, width: width, height: 2), cornerRadius: 1).fill()
-				}
-			}.withRenderingMode(.alwaysTemplate)
+			guard let image = UIImage(named: "BabelHomeAll")?.withRenderingMode(.alwaysTemplate) else { return nil }
+			return selected ? resizedTemplateImage(image, to: CGSize(width: 15, height: 15)) : image
 		}
 	}
 
+	private static func resizedTemplateImage(_ image: UIImage, to size: CGSize) -> UIImage {
+		let renderer = UIGraphicsImageRenderer(size: size)
+		return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }.withRenderingMode(.alwaysTemplate)
+	}
+
 	private func updateScopeButtons() {
-		let symbol = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
 		for (scope, button) in scopeButtons {
 			let isSelected = scope == displayedScope
 			button.accessibilityValue = isSelected ? "Selected" : "Not selected"
 			button.accessibilityTraits = isSelected ? [.button, .selected] : [.button]
 			button.backgroundColor = .clear
-			button.tintColor = BabelPalette.ink
-			switch scope {
-			case .starred:
-				button.setImage(UIImage(systemName: isSelected ? "star.fill" : "star", withConfiguration: symbol), for: .normal)
-			case .unread, .all:
-				button.setImage(Self.image(for: scope), for: .normal)
-			}
+			button.tintColor = BabelPalette.mutedInk
+			button.contentHorizontalAlignment = isSelected ? .leading : .center
+			var configuration = button.configuration ?? .plain()
+			configuration.image = Self.image(for: scope, selected: isSelected)
+			configuration.title = isSelected ? scope.localizationKey.rawValue.uppercased() : nil
+			configuration.imagePlacement = .leading
+			configuration.imagePadding = scope == .unread ? 7 : 6
+			configuration.contentInsets = NSDirectionalEdgeInsets(
+				top: 0,
+				leading: isSelected ? (scope == .starred ? 10 : (scope == .unread ? 8 : 9)) : 0,
+				bottom: 0,
+				trailing: 0
+			)
+			button.configuration = configuration
 		}
 		if let button = scopeButtons[displayedScope] {
-			selectionPill.frame = button.frame.insetBy(dx: 6, dy: 9)
+			selectionPill.frame = selectionPillFrame(for: button)
 			selectionPill.layer.cornerRadius = min(selectionPill.bounds.height, 26) / 2
 		}
 	}
 
-	private func configureSymbolButton(
-		_ button: UIButton,
-		symbolName: String,
-		key: Babel2LocalizationKey,
-		action: Selector
-	) {
-		button.setImage(UIImage(systemName: symbolName), for: .normal)
-		button.tintColor = BabelPalette.mutedInk
-		button.accessibilityLabel = Babel2Localization.text(key, bundle: localizationBundle)
-		button.accessibilityIdentifier = key.accessibilityIdentifier
-		button.configuration = .plain()
-		button.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
-		button.addTarget(self, action: action, for: .touchUpInside)
-		button.isOpaque = true
+	private func selectionPillFrame(for button: UIButton) -> CGRect {
+		button.frame.insetBy(dx: 0, dy: 9)
 	}
 
 	private func installLayout() {
-		for item in [titleLabel, settingsButton, addButton, syncArrow, bottomBar, scopeStack] {
+		for item in [titleLabel, addButton, syncArrow, syncSubtitleLabel, bottomBar, scopeStack] {
 			item.translatesAutoresizingMaskIntoConstraints = false
 		}
 		for surface in scopeSurfaces.values {
 			surface.translatesAutoresizingMaskIntoConstraints = false
 		}
-		let safeArea = view.safeAreaLayoutGuide
 		var constraints = [NSLayoutConstraint]()
 		constraints += [
-			settingsButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-			settingsButton.topAnchor.constraint(equalTo: safeArea.topAnchor, constant: 0),
-			settingsButton.widthAnchor.constraint(equalToConstant: 44),
-			settingsButton.heightAnchor.constraint(equalToConstant: 44),
-			addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
-			addButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+			addButton.centerXAnchor.constraint(equalTo: view.leadingAnchor, constant: 370),
+			addButton.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 81),
 			addButton.widthAnchor.constraint(equalToConstant: 44),
 			addButton.heightAnchor.constraint(equalToConstant: 44),
 			syncArrow.centerXAnchor.constraint(equalTo: view.leadingAnchor, constant: 201),
-			syncArrow.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+			syncArrow.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 81),
 			syncArrow.widthAnchor.constraint(equalToConstant: 44),
 			syncArrow.heightAnchor.constraint(equalToConstant: 44),
 			titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 			titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-			titleLabel.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 8),
+			titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 94),
 			titleLabel.heightAnchor.constraint(equalToConstant: 43),
+			syncSubtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+			syncSubtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+			syncSubtitleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 135),
+			syncSubtitleLabel.heightAnchor.constraint(equalToConstant: 22),
 			bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -533,7 +583,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			constraints += [
 				surface.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 				surface.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-				surface.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+				surface.topAnchor.constraint(equalTo: view.topAnchor, constant: 184),
 				surface.bottomAnchor.constraint(equalTo: bottomBar.topAnchor)
 			]
 		}
@@ -621,6 +671,17 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.rows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
 			surface.hasLoaded = true
 			surface.isSyncing = snapshot.isSyncing
+			let summaryCount = snapshot.feeds.reduce(into: 0) { total, feed in
+				guard !feed.isMuted else { return }
+				let count = feed.articleCount ?? 0
+				switch surface.scope {
+				case .all:
+					total += count
+				case .unread, .starred:
+					if count > 0 { total += count }
+				}
+			}
+			surface.setSummaryCount(summaryCount)
 			surface.tableView.reloadData()
 			let state: SurfaceState = surface.rows.isEmpty ? .empty : .loaded
 			let textKey: Babel2LocalizationKey = surface.rows.isEmpty ? .noFeeds : .loading
@@ -634,6 +695,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.rows.removeAll(keepingCapacity: true)
 			surface.hasLoaded = true
 			surface.isSyncing = false
+			surface.setSummaryCount(nil)
 			surface.tableView.reloadData()
 			surface.setState(.error, text: Babel2Localization.text(.unableToLoadFeeds, bundle: localizationBundle))
 			if surface.scope == displayedScope {
@@ -688,17 +750,15 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private func updateSyncState(_ isSyncing: Bool) {
 		if !isSyncing {
 			syncArrow.isHidden = true
-			syncArrow.layer.removeAnimation(forKey: "babel2.sync.rotation")
+			syncSubtitleLabel.text = nil
+			syncSubtitleLabel.isHidden = true
+			syncGlyph.setSyncing(false)
 			return
 		}
 		syncArrow.isHidden = false
-		guard syncArrow.layer.animation(forKey: "babel2.sync.rotation") == nil else { return }
-		let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-		animation.fromValue = 0
-		animation.toValue = CGFloat.pi * 2
-		animation.duration = 1
-		animation.repeatCount = .infinity
-		syncArrow.layer.add(animation, forKey: "babel2.sync.rotation")
+		syncSubtitleLabel.text = Babel2Localization.text(.syncing, bundle: localizationBundle)
+		syncSubtitleLabel.isHidden = false
+		syncGlyph.setSyncing(true)
 	}
 
 	private func scopeTapped(_ scope: Babel2FeedScope) {
@@ -781,10 +841,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			filterMotionToScope = target
 			recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .zero, phase: .begin)
 			if !presentationNeedsSettlement {
-				selectionPill.frame = sourceButton.frame.insetBy(dx: 6, dy: 9)
+				selectionPill.frame = selectionPillFrame(for: sourceButton)
 				selectionPill.transform = .identity
 			}
-			let targetPillFrame = destinationButton.frame.insetBy(dx: 6, dy: 9)
+			let targetPillFrame = selectionPillFrame(for: destinationButton)
 			let direction: CGFloat = scopeIndex(target) >= scopeIndex(displayedScope) ? 1 : -1
 			let offset: CGFloat = 12 * direction
 			if !presentationNeedsSettlement {
@@ -973,10 +1033,16 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 private final class Babel2LibraryRowCell: UITableViewCell {
 	static let reuseIdentifier = "Babel2LibraryRowCell"
 	private let iconView = UIImageView()
+	private let initialsLabel = UILabel()
 	private let chevronView = UIImageView()
 	private let titleLabel = UILabel()
 	private let countLabel = UILabel()
 	private var toggleFolder: (() -> Void)?
+	private var iconLeadingConstraint: NSLayoutConstraint!
+	private var initialsLeadingConstraint: NSLayoutConstraint!
+	private var titleLeadingConstraint: NSLayoutConstraint!
+	private var countTrailingConstraint: NSLayoutConstraint!
+	private var countWidthConstraint: NSLayoutConstraint!
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -993,6 +1059,13 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		iconView.clipsToBounds = true
 		iconView.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(iconView)
+
+		initialsLabel.font = .systemFont(ofSize: 10, weight: .medium)
+		initialsLabel.textColor = BabelPalette.mutedInk
+		initialsLabel.textAlignment = .center
+		initialsLabel.translatesAutoresizingMaskIntoConstraints = false
+		initialsLabel.isHidden = true
+		contentView.addSubview(initialsLabel)
 
 		chevronView.contentMode = .scaleAspectFit
 		chevronView.tintColor = BabelPalette.mutedInk
@@ -1011,61 +1084,106 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		countLabel.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(countLabel)
 
+		iconLeadingConstraint = iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32)
+		initialsLeadingConstraint = initialsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32)
+		titleLeadingConstraint = titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 62)
+		countTrailingConstraint = countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+		countWidthConstraint = countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
 		NSLayoutConstraint.activate([
-			chevronView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 17),
+			chevronView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 30),
 			chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			chevronView.widthAnchor.constraint(equalToConstant: 14),
-			chevronView.heightAnchor.constraint(equalToConstant: 14),
-			iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+			chevronView.widthAnchor.constraint(equalToConstant: 18),
+			chevronView.heightAnchor.constraint(equalToConstant: 18),
+			iconLeadingConstraint,
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			iconView.widthAnchor.constraint(equalToConstant: 19),
-			iconView.heightAnchor.constraint(equalToConstant: 19),
+			iconView.widthAnchor.constraint(equalToConstant: 24),
+			iconView.heightAnchor.constraint(equalToConstant: 24),
+			initialsLeadingConstraint,
+			initialsLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+			initialsLabel.widthAnchor.constraint(equalToConstant: 24),
+			initialsLabel.heightAnchor.constraint(equalToConstant: 24),
+			titleLeadingConstraint,
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -10),
-			countLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -36),
+			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
+			countTrailingConstraint,
 			countLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28)
+			countWidthConstraint
 		])
 	}
 
 	required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		selectedBackgroundView?.frame = bounds.insetBy(dx: 10, dy: 0)
+	}
+
+	override func setSelected(_ selected: Bool, animated: Bool) {
+		super.setSelected(selected, animated: animated)
+		initialsLabel.textColor = selected ? BabelPalette.ink : BabelPalette.mutedInk
+	}
+
 	func configureFolder(title: String, count: Int?, expanded: Bool, toggle: @escaping () -> Void) {
 		toggleFolder = toggle
+		selectionStyle = .default
 		titleLabel.text = title
 		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
 		countLabel.text = count?.formatted()
+		countLabel.font = .systemFont(ofSize: 18, weight: .regular)
 		countLabel.isHidden = count == nil
 		iconView.isHidden = true
+		iconView.image = nil
+		initialsLabel.isHidden = true
+		initialsLabel.text = nil
+		initialsLabel.textColor = isSelected ? BabelPalette.ink : BabelPalette.mutedInk
 		chevronView.isHidden = false
 		chevronView.image = UIImage(
 			systemName: expanded ? "chevron.down" : "chevron.right",
 			withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
 		)
-		titleLabelLeading(to: 56)
+		titleLeadingConstraint.constant = 56
+		countTrailingConstraint.constant = -20
+		countWidthConstraint.constant = 72
 	}
 
 	func configureFeed(title: String, count: Int?, icon: UIImage?, nested: Bool) {
 		toggleFolder = nil
+		selectionStyle = .default
 		titleLabel.text = title
 		titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
 		countLabel.text = count?.formatted()
+		countLabel.font = .systemFont(ofSize: 17, weight: .regular)
 		countLabel.isHidden = count == nil
 		chevronView.isHidden = true
+		chevronView.image = nil
 		iconView.isHidden = false
-		iconView.image = icon ?? UIImage(systemName: "circle.fill")
+		iconView.image = icon
 		iconView.tintColor = BabelPalette.mutedInk
-		let leading: CGFloat = nested ? 54 : 32
-		iconView.constraints.filter { $0.firstAttribute == .leading }.forEach { $0.isActive = false }
-		iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: leading).isActive = true
-		titleLabelLeading(to: leading + 27)
+		let leading: CGFloat = nested ? 49 : 32
+		iconLeadingConstraint.constant = leading
+		initialsLeadingConstraint.constant = leading
+		countTrailingConstraint.constant = -18
+		countWidthConstraint.constant = 65
+		titleLeadingConstraint.constant = nested ? 79 : 62
+		initialsLabel.text = icon == nil ? Self.feedInitials(for: title) : nil
+		initialsLabel.isHidden = icon != nil || initialsLabel.text?.isEmpty != false
+		initialsLabel.textColor = isSelected ? BabelPalette.ink : BabelPalette.mutedInk
+		iconView.isHidden = icon == nil
 	}
 
-	private func titleLabelLeading(to constant: CGFloat) {
-		titleLabel.constraints.filter { $0.firstAttribute == .leading }.forEach { $0.isActive = false }
-		contentView.constraints.filter {
-			($0.firstItem as? UIView) === titleLabel && $0.firstAttribute == .leading
-		}.forEach { $0.isActive = false }
-		titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: constant).isActive = true
+	private static func feedInitials(for title: String) -> String {
+		if title.lowercased().hasPrefix("www.") {
+			let domain = title.dropFirst(4).split(separator: ".").first.map(String.init) ?? title
+			return String(domain.prefix(1)).uppercased()
+		}
+		let characters = Array(title)
+		if characters.contains(where: { $0.unicodeScalars.contains(where: { $0.value >= 0x3000 }) }) {
+			return String(characters.prefix(2))
+		}
+		let tokens = title.split { !$0.isLetter && !$0.isNumber }.filter { !$0.isEmpty }
+		if tokens.count >= 2 {
+			return tokens.suffix(2).compactMap(\.first).map(String.init).joined().uppercased()
+		}
+		return tokens.first.map { String($0.prefix(2)).uppercased() } ?? ""
 	}
 }

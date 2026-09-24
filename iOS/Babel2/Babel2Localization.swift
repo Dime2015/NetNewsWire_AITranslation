@@ -3,8 +3,10 @@ import Babel2Core
 
 enum Babel2LocalizationKey: String, CaseIterable {
 	case feeds = "Feeds"
+	case folders = "Folders"
 	case settings = "Settings"
 	case add = "Add"
+	case syncing = "Syncing…"
 	case notAvailable = "Not available yet"
 	case ok = "OK"
 	case all = "All"
@@ -20,8 +22,10 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	var accessibilityIdentifier: String {
 		switch self {
 		case .feeds: return "babel2.feeds"
+		case .folders: return "babel2.feeds.folders"
 		case .settings: return "babel2.settings"
 		case .add: return "babel2.add"
+		case .syncing: return "babel2.feeds.syncing"
 		case .notAvailable: return "babel2.not-available"
 		case .ok: return "babel2.ok"
 		case .all: return "babel2.scope.all"

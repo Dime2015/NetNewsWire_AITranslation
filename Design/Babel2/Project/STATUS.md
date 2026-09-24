@@ -1,20 +1,21 @@
 # Babel 2.0 当前状态
 
-更新时间：2026-09-08（Asia/Tokyo）。以下为本次源码/Git 核实结果；应用行为未在本轮重新验收。
+更新时间：2026-09-24（Asia/Tokyo）。2026-09-24 用户在目标物理 iPhone 冷启动完成 Feeds/Library 首页整页视觉验收，回复“首页验收通过了”；本批首页 Figma 对齐随后提交（见下方 Git 基线）。Dark、不同语言、旋转和其他设备仍不在已验证范围。
 
 ## 当前 Git 基线
 
 - 分支：`codex/reeder-classic-rebuild`。
-- 实现基线 `HEAD`：`d97c6c0db6af2f59f24cec746fd35e5c5a8df197`；最新提交已包含 M1 导航边缘返回消费者，不再是“尚未提交”。
-- 本地 remote-tracking：`aa51965361bd52356653ad3658f4db6a8c31cc46`；相对该记录 ahead 1 / behind 0。本轮没有 fetch/远端实时核验，不能据此断言 hosted remote 状态。
-- 接手检查时工作树干净；本轮仅修改状态、需求与旧入口等 Markdown 文档，未提交、未推送。未改应用代码、工程、资源或生成文件。
+- 实现基线 `HEAD`：`ca1fa1ae46932f04569ffdd0e0bda318de467e0d`；该提交记录了旧筛选按钮修复未生效。
+- root 已执行 `git fetch origin codex/reeder-classic-rebuild`；fetch 后 `origin` 与 `FETCH_HEAD` 均为 `7567f685cd85012c7774c658959f3a66386940d6`，本地 `HEAD` 为 `ca1fa1ae46932f04569ffdd0e0bda318de467e0d`，ahead 2 / behind 0。
+- 本任务开始时已有用户 Xcode 真机签名留下的 `NetNewsWire.xcodeproj/project.pbxproj` dirty diff；已保留且未修改，diff hash 前后均为 `c5f5a8cfbf73750210af0fdd15cea22fcedb7cb09fd5c5a786353f646028dc35`。`Shared/Localizable.xcstrings` 仍有独立 dirty，未纳入本批；Babel2 string catalog 在本批前已有格式化/stale dirty，本批仅在其上增加 `Folders`/`Syncing…` 键。
+- 2026-09-24：同一工作树在 Xcode 27.0 重新 Debug build（iPhone 17 Simulator）`BUILD SUCCEEDED`；pbxproj dirty diff hash 复核仍为 `c5f5a8cf…`。首页批次（Babel2 root/localization/string catalog、FeatureGateTests 与本目录五份文档）作为 `ca1fa1ae4` 之后的一个本地提交落地；pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` 的 stale 行仍留在工作树、不纳入提交。未推送（本地 ahead 3）。build pre-action 重新生成了被 gitignore 的 `SecretKey.swift`（hash 变为 `d6337cc0…`），不影响 git。
 
 ## 当前实现与缺口
 
 | 范围 | 源码核实结果 | 尚未关闭 |
 |---|---|---|
 | 启动 | 单一 Babel2 root；外部动作解析后安全 no-op | Phase 1A 完整恢复/回调、资源与 target allowlist、设备验收 |
-| Feeds | 真实源/文件夹、计数、展开、三档筛选及转场已部分实现；2026-09-08 补齐筛选中断/第三目标行为测试与 `Babel2.Library.Filter` typed signpost | 数据库错误传播、同步后刷新及快速切换的一致性、设备/视觉验收；**筛选按钮冷启动挤左边的真机 bug 仍未解决**（已尝试一次修复，用户真机复测确认无效，见 HANDOFF.md/LESSONS.md 第 28 条，需要新的诊断角度） |
+| Feeds | 真实源/文件夹、计数、展开、三档筛选及转场已部分实现；筛选按钮已改为一次性 Auto Layout 约束定位，用户明确回复“好的，成功了” | 数据库错误传播、同步后刷新及快速切换的一致性；首页 Figma 整页视觉已于 2026-09-24 用户真机验收通过，不外推到 Dark、其他语言、旋转或其他设备 |
 | Timeline | 真实缓存文章、缩略图、已有标题译文缓存展示 | 完整 hero/日期分组/搜索与翻译流程 |
 | Reader | 缓存正文转纯文本展示；原文链接交给系统打开 | 正式图文阅读器、标题收缩、阅读进度、正文翻译、内置浏览器、分享/长图 |
 | 导航 | M1 已接入左边缘返回；2026-09-08 用户真机确认跟手+可取消 | 深栈/根路由/旋转/非边缘误触发/120Hz 帧率数据、OSLogStore consumer integration |
@@ -23,11 +24,26 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 筛选按钮 Auto Layout 改写（物理真机冷启动通过；视觉待确认，2026-09-08，未提交）
+
+- 旧的 `a707e4bae` `viewDidAppear`/`window.layoutIfNeeded()` 修复已被用户真机复测证伪；本轮没有继续叠加窗口布局时序 workaround。
+- `iOS/Babel2/Babel2RootViewController.swift` 直接安装一次性 Auto Layout 约束：三个按钮固定 `90×44`，垂直居中，水平中心按 402pt 参考画布的 `104/201/290.5` 比例约束；删除手工 frame 分支、零宽度 fallback 和 `layoutScopeControlsIfNeeded()`。`selectionPill` 仍由现有 controller 以 frame 驱动，活动过渡期间不被布局回调覆盖。
+- 不新增文件或第二 layout owner：现有 controller 继续同时拥有按钮、pFilter 和 selection pill。未改视觉常量、默认 scope、pFilter 数据/动画语义或 `NetNewsWire.xcodeproj/project.pbxproj`。
+- 用户随后明确回复“好的，成功了”，据此关闭本次目标物理设备的筛选按钮冷启动布局验收；不外推到旋转、其他尺寸、其他设备或整页视觉。
+- 全量 Debug iOS test：`/private/tmp/babel2-library-figma-r1.xcresult` 顶层 `total=80`、`passed=80`、`failed=0`、`skipped=0`，结果为 Passed；设备配置为 iPhone 17 / iOS 27 Simulator，动态参数展开后的 `passedTests=82`。精确命令见 [VALIDATION](VALIDATION.md) 当前 Figma 小节。
+
 ## 本轮验证与下一步
 
 - 同日接手检查已跑 Babel2UI package：32/32 passed，源码基线同上；不重复运行。该检查在 macOS 上运行，不覆盖 UIKit 条件编译路径。
-- 本轮应用级编译及生成文件哈希结果见 [VALIDATION](VALIDATION.md) 顶部。历史 77/77 应用测试保留为历史证据，不记为本轮通过。
-- 本轮只完成“固定可信基线”；下一批再处理现有阅读闭环的数据错误与筛选一致性、导航完成/取消/中断。没有提前修复这些问题。
+- 本轮应用级全量测试、用户真机确认与生成文件哈希结果见 [VALIDATION](VALIDATION.md)「筛选按钮 Auto Layout 与 Feeds/Library 首页 Figma 对齐」一节；此前 77/77 应用测试仍是历史证据。
+- 2026-09-24 用户在目标物理 iPhone 冷启动完成首页整页视觉验收（标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态），回复“首页验收通过了”；为口头确认，非截图/自动化证据。Dark、不同语言、旋转和其他设备不在已验证范围。 下一步候选（待用户选择）：正式图文 Reader（Slice 4，推荐）或 Timeline hero（Slice 3）。
+
+## Feeds/Library 首页 Figma 对齐（2026-09-24 用户真机验收通过，已提交）
+
+- 当前排期优先对齐 Figma file `0kFsVs9DLbE7Um96yrlBKg`、node `22:36`（02 · Library，402×874）。实现文件为 `iOS/Babel2/Babel2RootViewController.swift`、`iOS/Babel2/Babel2Localization.swift`、`iOS/Babel2/Resources/Babel2Localizable.xcstrings` 和现有 `Tests/NetNewsWire-iOSTests/Babel2FeatureGateTests.swift`。
+- 已覆盖 header/title、真实 syncing 时的 subtitle+glyph、Add 路由、150pt tableHeader 摘要与 Folders、44pt folder/feed 行、24pt favicon/initials、inset selection background，以及 bottom filter 的既有 assets、labels 和不同 pill 宽度；删除 Figma 未使用的左上 settings 可见槽位，保留 Add。
+- summary count 由当前 `LibrarySnapshot` 的实际 feed `articleCount` 按当前 scope 求和，不硬编码、不新增 collection total 字段。没有改 DataProviding/Core/adapter/旧 controller，没有新文件、依赖或测试体系。
+- 2026-09-24 用户在目标真机冷启动检查标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态，回复“首页验收通过了”。验收方式为用户口头确认，非截图/自动化证据。不同语言、Dark、旋转和其他设备不在本轮已验证范围。
 
 ## 历史阶段记录（截至 2026-09-05；audit-only historical reference）
 
