@@ -44,11 +44,18 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	var onLinkActivated: ((URL) -> Void)?
 	/// 网页内容进程意外退出（系统内存紧张时会发生），外面应显示错误并允许重试。
 	var onContentProcessTerminated: (() -> Void)?
+	/// 滚动位置或正文长度变了（图片加载完正文会变长）。阅读页据此更新紧凑标题栏和进度圆环。
+	var onScrollGeometryChange: (() -> Void)?
 	private(set) var renderState: RenderState = .idle
+	/// 正文实际高度（pt）。网页文档至少有一屏高，短文也一样，所以不能用滚动区的内容高度代替；
+	/// 这里由页内脚本直接测量正文容器，图片加载后变长会再次上报。nil = 还没测到。
+	private(set) var articleHeight: CGFloat?
 
 	private var shellBaseURL: URL?
 	private var isShellLoaded = false
 	private var shellWaiters = [CheckedContinuation<Bool, Never>]()
+	private var scrollObservations = [NSKeyValueObservation]()
+	private static let heightMessageName = "babel2ArticleHeight"
 
 	override init(frame: CGRect) {
 		webView = WKWebView(frame: .zero)
@@ -70,6 +77,22 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			webView.topAnchor.constraint(equalTo: topAnchor),
 			webView.bottomAnchor.constraint(equalTo: bottomAnchor)
 		])
+		// 页内脚本上报正文高度的通道（只在我们自己的隔离脚本环境里可用，文章内容碰不到）
+		webView.configuration.userContentController.add(
+			Babel2ReaderHeightMessageProxy(owner: self),
+			contentWorld: .defaultClient,
+			name: Self.heightMessageName
+		)
+		// 只观察、不接管滚动区的代理（代理归网页控件自己所有）
+		let scrollView = webView.scrollView
+		scrollObservations = [
+			scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+				MainActor.assumeIsolated { self?.onScrollGeometryChange?() }
+			},
+			scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+				MainActor.assumeIsolated { self?.onScrollGeometryChange?() }
+			}
+		]
 	}
 
 	required init?(coder: NSCoder) { nil }
@@ -77,6 +100,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	/// 把文章原文排进页面。返回 nil 表示失败（外壳页没加载成功或脚本出错）。
 	func render(body: String, baseURL: URL?) async -> RenderResult? {
 		renderState = .loadingShell
+		articleHeight = nil
 		guard await loadShellIfNeeded(baseURL: baseURL) else {
 			renderState = .failed
 			return nil
@@ -96,6 +120,9 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 				return nil
 			}
 			renderState = .rendered
+			if let height = (values["articleHeight"] as? NSNumber)?.doubleValue {
+				updateArticleHeight(CGFloat(height))
+			}
 			return RenderResult(textLength: textLength, imageCount: imageCount)
 		} catch {
 			renderState = .failed
@@ -116,6 +143,12 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	/// 仅供自动化测试：在正文容器里执行一段只读查询脚本。
 	func evaluateForTesting(_ functionBody: String) async -> Any? {
 		try? await webView.callAsyncJavaScript(functionBody, arguments: [:], in: nil, contentWorld: .defaultClient)
+	}
+
+	fileprivate func updateArticleHeight(_ height: CGFloat) {
+		guard height.isFinite, height >= 0, height != articleHeight else { return }
+		articleHeight = height
+		onScrollGeometryChange?()
 	}
 
 	// MARK: - 外壳页
@@ -330,7 +363,14 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			img.addEventListener('load', () => classify(img), { once: true });
 		}
 	});
-	return { textLength: root.innerText.trim().length, imageCount: images.length };
+	// 正文高度：先量一次随结果返回；之后正文尺寸变化（图片加载、旋转）时再上报
+	const measure = () => Math.ceil(root.getBoundingClientRect().bottom + window.scrollY);
+	if (window.babel2HeightObserver) { window.babel2HeightObserver.disconnect(); }
+	window.babel2HeightObserver = new ResizeObserver(() => {
+		window.webkit.messageHandlers.babel2ArticleHeight.postMessage(measure());
+	});
+	window.babel2HeightObserver.observe(root);
+	return { textLength: root.innerText.trim().length, imageCount: images.length, articleHeight: measure() };
 	"""
 
 	private static func hex(_ color: UIColor, _ traits: UITraitCollection) -> String {
@@ -344,5 +384,20 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			return String(format: "rgba(%d, %d, %d, %.2f)", byte(red), byte(green), byte(blue), alpha)
 		}
 		return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+	}
+}
+
+/// 转发页内上报的正文高度。单独一个弱引用小对象，避免网页控件和显示面互相强引用导致内存泄漏。
+@MainActor
+private final class Babel2ReaderHeightMessageProxy: NSObject, WKScriptMessageHandler {
+	private weak var owner: Babel2ReaderContentView?
+
+	init(owner: Babel2ReaderContentView) {
+		self.owner = owner
+	}
+
+	func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+		guard let height = (message.body as? NSNumber)?.doubleValue else { return }
+		owner?.updateArticleHeight(CGFloat(height))
 	}
 }

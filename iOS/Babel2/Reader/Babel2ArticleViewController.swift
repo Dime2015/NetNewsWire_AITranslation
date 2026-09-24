@@ -1,20 +1,30 @@
 import Foundation
 import UIKit
 import Babel2Core
+import Babel2UI
 
-/// Babel 2.0 阅读页（Slice 4 第 1 步：静态图文页）。
+/// Babel 2.0 阅读页（Slice 4：第 1 步静态图文页 + 第 2 步滑动收缩）。
 ///
 /// 页面结构（从上到下）：
 /// - 顶栏（58pt，不透明）：返回 / 打开原文 / 分享
 /// - 正文滚动区：最上面是原生的标题区（日期、标题、订阅源名），下面是网页排版的正文
 ///
 /// 标题区是原生控件、不等网页加载 —— 合同要求「一进文章，标题和作者立刻可见」。
-/// 它放在正文滚动区里、跟正文一起滚动；第 2 步的「滑动收缩」会基于同一个滚动位置来做。
+/// 它放在正文滚动区里、跟正文一起滚动。
+///
+/// 第 2 步「滑动收缩」（方案 A）：顶栏下方盖一条紧凑标题栏，由滚动位置直接驱动 ——
+/// 大标题随正文滚走，紧凑栏的底色/图标/圆环/小标题同步渐显，小标题滑入到位；
+/// 之后圆环跟随阅读进度。滚动时不改变正文区域的尺寸。
 @MainActor
 final class Babel2ArticleViewController: UIViewController {
 	private let article: ArticleSnapshot
 	private let environment: AppEnvironment
 	private let feedTitle: String?
+	private let compactHeader: Babel2ReaderCompactHeaderView
+	private let motionRecorder: any Babel2MotionRecording
+	/// 大标题上沿开始钻进顶栏时的已滚动距离（布局后测得）。
+	private var collapseStart: CGFloat = 0
+	private var chromeState: MotionReaderChromeState = .expanded
 	private let contentView = Babel2ReaderContentView()
 	private let headerView = UIView()
 	private let dateLabel = UILabel()
@@ -35,10 +45,18 @@ final class Babel2ArticleViewController: UIViewController {
 	var readerContentView: Babel2ReaderContentView { contentView }
 	private(set) var lastRenderResult: Babel2ReaderContentView.RenderResult?
 
-	init(article: ArticleSnapshot, environment: AppEnvironment, feedTitle: String? = nil) {
+	init(
+		article: ArticleSnapshot,
+		environment: AppEnvironment,
+		feedTitle: String? = nil,
+		feedIconData: Data? = nil,
+		motionRecorder: any Babel2MotionRecording = Babel2OSLogMotionRecorder()
+	) {
 		self.article = article
 		self.environment = environment
 		self.feedTitle = feedTitle
+		self.motionRecorder = motionRecorder
+		compactHeader = Babel2ReaderCompactHeaderView(feedTitle: feedTitle, articleTitle: article.title, iconData: feedIconData)
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 	}
@@ -50,8 +68,12 @@ final class Babel2ArticleViewController: UIViewController {
 		view.backgroundColor = BabelPalette.background
 		let topBar = configureTopBar()
 		configureContent(below: topBar)
+		configureCompactHeader(below: topBar)
 		configureHeader()
 		configureMessage()
+		contentView.onScrollGeometryChange = { [weak self] in
+			self?.updateChrome()
+		}
 		contentView.onLinkActivated = { [weak self] url in
 			self?.onOpenLink?(url)
 		}
@@ -288,7 +310,73 @@ final class Babel2ArticleViewController: UIViewController {
 		if wasAtTop {
 			scrollView.contentOffset = CGPoint(x: 0, y: -scrollView.adjustedContentInset.top)
 		}
+		headerView.layoutIfNeeded()
+		collapseStart = titleLabel.convert(titleLabel.bounds, to: headerView).minY
 		layoutMessage()
+		updateChrome()
+	}
+
+	// MARK: - 紧凑标题栏（滑动收缩）
+
+	private func configureCompactHeader(below topBar: UIView) {
+		compactHeader.translatesAutoresizingMaskIntoConstraints = false
+		view.insertSubview(compactHeader, belowSubview: topBar)
+		// 合同：紧凑栏与顶栏的空白内边距重叠 14pt（402×874 画布上紧凑栏从 y=103 开始）
+		NSLayoutConstraint.activate([
+			compactHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			compactHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			compactHeader.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: -14),
+			compactHeader.heightAnchor.constraint(equalToConstant: 86)
+		])
+	}
+
+	/// 当前的收缩规则（随正文长度变化而变化）。
+	var chromeProgress: Babel2ReaderChromeProgress {
+		let scrollView = contentView.scrollView
+		let insets = scrollView.adjustedContentInset
+		// 用正文的实际高度（而不是至少一屏高的网页文档高度）计算最多能读到哪；
+		// 还没测到高度时视为不可收缩，紧凑栏不出现
+		guard let articleHeight = contentView.articleHeight else {
+			return Babel2ReaderChromeProgress(collapseStart: collapseStart, maxScroll: 0)
+		}
+		let maxScroll = articleHeight + insets.top + insets.bottom - scrollView.bounds.height
+		return Babel2ReaderChromeProgress(collapseStart: collapseStart, maxScroll: maxScroll)
+	}
+
+	/// 已滚动距离：0 = 刚进文章的位置。
+	private var scrolledDistance: CGFloat {
+		let scrollView = contentView.scrollView
+		return scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+	}
+
+	/// 仅供自动化测试观察。
+	var compactHeaderView: Babel2ReaderCompactHeaderView { compactHeader }
+
+	/// 每次滚动 / 正文变长时调用：只重算两个进度值并交给紧凑栏重画。
+	private func updateChrome() {
+		guard lastHeaderWidth > 0 else { return }
+		let progress = chromeProgress
+		let scrolled = scrolledDistance
+		let pCollapse = progress.pCollapse(scrolled: scrolled)
+		let pReading = progress.pReading(scrolled: scrolled)
+		compactHeader.apply(pCollapse: pCollapse, pReading: pReading)
+
+		// 性能打点只在状态切换时记，不在每一帧记：
+		// 进入「收缩中」= 区间开始；离开「收缩中」= 区间结束；
+		// 一帧内直接从展开跳到固定（或反过来，例如快速甩动）= 单点事件，不留下不成对的区间
+		let state = Babel2ReaderChromeProgress.state(pCollapse: pCollapse)
+		guard state != chromeState else { return }
+		let previous = chromeState
+		chromeState = state
+		let phase: MotionSignpostPhase = state == .collapsing ? .begin : (previous == .collapsing ? .end : .event)
+		motionRecorder.record(MotionSignpostEvent(
+			payload: .readerChrome(MotionReaderChromePayload(
+				state: state,
+				pCollapse: MotionProgress(Double(pCollapse)),
+				barP: MotionProgress(0)
+			)),
+			phase: phase
+		))
 	}
 
 	// MARK: - 错误 / 无正文提示

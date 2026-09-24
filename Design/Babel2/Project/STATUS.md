@@ -24,6 +24,15 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 4 第 2 步：滑动收缩（2026-09-24，用户真机验收通过，已提交）
+
+- 用户选定方案 A：大标题随正文滚走，顶栏下方 86pt 紧凑标题栏（与顶栏重叠 14pt）的底色/48pt 进度圆环+42pt 圆形订阅源图标/订阅源名+一行标题，按 pCollapse 线性渐显，文字从下方 12pt 滑入；固定后圆环按 pReading 顺时针增长（12 点起，主题色，唯一用主题色处）。全部由滚动位置直接驱动、可倒放，无自动播放动画；紧凑栏是覆盖层，滚动时不改正文区域几何。
+- 公式按 MOTION-CONTRACT §9：collapseStart = 大标题上沿在标题区内的位置（布局后测得），collapseDistance = 70pt（to-tune），eligibility = maxScroll > collapseStart。maxScroll 用页内 ResizeObserver 测得的**正文实际高度**计算（网页文档至少一屏高，不能用滚动区 contentSize，见 LESSONS 31）；未测到高度前视为不可收缩。
+- 打点：`Babel2.Reader.Chrome` 只在状态切换时记录；进入收缩中=begin、离开收缩中=end、一帧内展开↔固定直接跳跃=event，避免不成对区间；barP 暂恒为 0（第 3 步接）。
+- 文件：新增 `iOS/Babel2/Reader/Babel2ReaderChromeProgress.swift`（纯计算）、`Babel2ReaderCompactHeaderView.swift`（紧凑栏+圆环）；修改 `Babel2ArticleViewController.swift`、`Reader/WebKit/Babel2ReaderContentView.swift`（滚动/高度观察、正文高度上报通道）、`Babel2SceneComposition.swift`（传订阅源图标）、`Tests/.../Babel2FeedReaderTests.swift`（+3 项）。未改 Core/adapter/禁区/pbxproj。
+- 验证：全量 89 项中 88 通过；唯一失败 `testRapidScopeTapsThroughThirdTargetDuringActiveAnimationSettleOnLastSelection` 在已提交的 `4c58dfcaa`（不含本步改动）单独运行同样失败，属既有时序敏感测试（按 Task.yield 次数而非真实时间等待动画）。用户同意后把 `waitForSelectedScopeButton` 改为按真实时间等待（最多约 3 秒）：3 项筛选测试单独连跑 3 轮全过，全量 89/89 通过。UI Driver 1/1 通过。
+- 2026-09-24 用户按 7 项清单（渐显而非弹出、半路停住与倒放、固定与真实图标、圆环顺时针与主题色、快速甩动无闪烁、短文不出现、深色模式）真机验收，回复“真机验收通过了”；70pt 收缩距离未提出调整。口头确认，非 Instruments 证据。第 3 步（顶/底栏随方向显隐、底部工具栏）未开始。
+
 ## Reader Slice 4 第 1 步：静态图文页（2026-09-24，用户真机验收通过，已提交）
 
 - 用户 2026-09-24 确认方案（“按建议来”）：Slice 4 拆三步（静态图文页 → 滑动收缩 → 底栏与上下滑隐藏），每步停下等真机验收；「打开原文」按钮保留到 Slice 5 内置浏览器落地；排版数值按 `Figma Drafts/BATCH-01-SPEC.md`（本会话无 Figma 连接）。

@@ -44,7 +44,12 @@ enum Babel2SceneComposition {
 			let feedViewController = Babel2FeedViewController(feed: feed, scope: scope, environment: resolvedEnvironment)
 			feedViewController.onSelectArticle = { [weak navigationController] article in
 				guard let navigationController else { return }
-				let articleViewController = Babel2ArticleViewController(article: article, environment: resolvedEnvironment, feedTitle: feed.title)
+				let articleViewController = Babel2ArticleViewController(
+					article: article,
+					environment: resolvedEnvironment,
+					feedTitle: feed.title,
+					feedIconData: feed.iconData
+				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)
 				}

@@ -9,6 +9,24 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-24 Reader Slice 4 第 2 步：滑动收缩（r4；用户真机验收通过，已提交）
+
+基线：`HEAD` = `4c58dfcaa` + 未提交第 2 步改动；Xcode 27.0；iPhone 17 Simulator。
+
+```sh
+xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/dd -collect-test-diagnostics never -resultBundlePath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-collapse-r3.xcresult test
+```
+
+结果：xcresult `totalTestCount=89`、`passedTests=88`、`failedTests=1`。新增 3 项全部通过：公式（线性、钳制、短文不合格）、长文连续收缩/圆环跟随/倒放/打点成对（含一帧直接跳跃）、短文即使被拉动也不出现紧凑栏。失败项为既有 `testRapidScopeTapsThroughThirdTargetDuringActiveAnimationSettleOnLastSelection`：在临时 worktree 中对已提交 `4c58dfcaa` 单独运行同样失败（另一既有 `testScopeTransitionEmitsLibraryFilterBeginAndEndMotionSignposts` 在该对照中也失败、在 r3 全量中通过），判定为既有时序敏感，不是本步引入。
+
+失败/中间轮次：r1 编译错误（测试用了不存在的 `payload` 字段）；r2 11 项失败——短文被判为可收缩（用 contentSize 当文章长度的真实缺陷，已改为页内测量正文高度）、打点期望写错、以及上述既有时序测试；两次 xcodebuild 在测试结束后卡在 `simctl diagnose` 约 10 分钟，已改用 `-collect-test-diagnostics never`。
+
+r4（修正 `waitForSelectedScopeButton` 为真实时间等待后）：3 项筛选测试 `-only-testing` 连跑 3 轮均 3/3；全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-collapse-r4.xcresult` `result=Passed`、`totalTestCount=89`、`passedTests=89`、`failedTests=0`。
+
+UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-collapse-ui-r1.xcresult`：1/1 passed。
+
+边界：手感、观感、深色、真实长短文均待用户真机确认。
+
 ## 2026-09-24 Reader Slice 4 第 1 步：静态图文页（r1；用户真机验收通过，已提交）
 
 基线：`HEAD` = `64119b8b1` + 未提交 Reader 改动；Xcode 27.0；iPhone 17 Simulator。

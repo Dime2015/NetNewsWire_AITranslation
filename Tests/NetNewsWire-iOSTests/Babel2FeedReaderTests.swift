@@ -300,6 +300,113 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(decide(false, false, "https://www.youtube.com/embed/x"), .allow)
 	}
 
+	// MARK: - 阅读页滑动收缩（Slice 4 第 2 步）
+
+	func testChromeProgressFormulas() {
+		let progress = Babel2ReaderChromeProgress(collapseStart: 40, collapseDistance: 70, maxScroll: 1040)
+		XCTAssertTrue(progress.isEligible)
+		XCTAssertEqual(progress.pCollapse(scrolled: 0), 0)
+		XCTAssertEqual(progress.pCollapse(scrolled: 40), 0)
+		XCTAssertEqual(progress.pCollapse(scrolled: 75), 0.5, accuracy: 0.0001)
+		XCTAssertEqual(progress.pCollapse(scrolled: 110), 1)
+		XCTAssertEqual(progress.pCollapse(scrolled: 5000), 1)
+		XCTAssertEqual(progress.pReading(scrolled: 40), 0)
+		XCTAssertEqual(progress.pReading(scrolled: 540), 0.5, accuracy: 0.0001)
+		XCTAssertEqual(progress.pReading(scrolled: 1040), 1)
+		XCTAssertEqual(progress.pReading(scrolled: 1200), 1, "rubber-band overscroll stays clamped")
+		XCTAssertEqual(Babel2ReaderChromeProgress.state(pCollapse: 0), .expanded)
+		XCTAssertEqual(Babel2ReaderChromeProgress.state(pCollapse: 0.3), .collapsing)
+		XCTAssertEqual(Babel2ReaderChromeProgress.state(pCollapse: 1), .compactPinned)
+
+		// 短文：最多只能滚到收缩起点之前 → 永远不收缩、圆环永远为 0
+		let short = Babel2ReaderChromeProgress(collapseStart: 40, maxScroll: 30)
+		XCTAssertFalse(short.isEligible)
+		XCTAssertEqual(short.pCollapse(scrolled: 30), 0)
+		XCTAssertEqual(short.pReading(scrolled: 30), 0)
+		let empty = Babel2ReaderChromeProgress(collapseStart: 40, maxScroll: -200)
+		XCTAssertFalse(empty.isEligible)
+	}
+
+	func testLongArticleCollapsesContinuouslyAndRingTracksReading() async throws {
+		let paragraphs = (1...80).map { "<p>Paragraph \($0) with enough words to wrap across the reading column.</p>" }.joined()
+		let recorder = RecordingMotionRecorder()
+		let viewController = makeReader(body: paragraphs, motionRecorder: recorder)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitForScrollableLength(viewController, atLeast: 1500)
+
+		let compact = viewController.compactHeaderView
+		let scrollView = viewController.readerContentView.scrollView
+		// 刚进文章：停在顶部，且还没有任何收缩打点
+		XCTAssertEqual(scrollView.contentOffset.y, -scrollView.adjustedContentInset.top, accuracy: 0.5)
+		XCTAssertTrue(recorder.events.isEmpty)
+		let progress = viewController.chromeProgress
+		XCTAssertTrue(progress.isEligible)
+		XCTAssertGreaterThan(progress.collapseStart, 0)
+		func scroll(to scrolled: CGFloat) {
+			scrollView.contentOffset = CGPoint(x: 0, y: scrolled - scrollView.adjustedContentInset.top)
+		}
+
+		// 刚进来：展开态，紧凑栏不出现
+		scroll(to: 0)
+		XCTAssertEqual(compact.pCollapse, 0)
+		XCTAssertTrue(compact.isHidden)
+
+		// 收缩到一半：紧凑栏半透明出现，圆环还没开始走多少
+		scroll(to: progress.collapseStart + progress.collapseDistance / 2)
+		XCTAssertEqual(compact.pCollapse, 0.5, accuracy: 0.01)
+		XCTAssertFalse(compact.isHidden)
+		XCTAssertEqual(compact.textLayer.alpha, 0.5, accuracy: 0.01)
+
+		// 滑过收缩距离：固定
+		scroll(to: progress.collapseStart + progress.collapseDistance + 10)
+		XCTAssertEqual(compact.pCollapse, 1)
+		XCTAssertEqual(compact.textLayer.transform, .identity)
+
+		// 读到一半、读到底：圆环连续跟随
+		let midReading = progress.collapseStart + (progress.maxScroll - progress.collapseStart) / 2
+		scroll(to: midReading)
+		XCTAssertEqual(compact.pReading, 0.5, accuracy: 0.01)
+		scroll(to: progress.maxScroll)
+		XCTAssertEqual(compact.pReading, 1, accuracy: 0.001)
+
+		// 往回滑：经过收缩中，倒着走回展开态
+		scroll(to: progress.collapseStart + progress.collapseDistance / 4)
+		XCTAssertEqual(compact.pCollapse, 0.25, accuracy: 0.01)
+		scroll(to: 0)
+		XCTAssertEqual(compact.pCollapse, 0)
+		XCTAssertTrue(compact.isHidden)
+		// 一帧直接从展开甩到固定（快速甩动），再直接回顶
+		scroll(to: progress.collapseStart + progress.collapseDistance * 3)
+		scroll(to: 0)
+
+		// 打点只记状态切换，且区间成对：收缩中=开始，离开收缩中=结束，直接跳跃=单点事件
+		let transitions = recorder.events.compactMap { event -> String? in
+			if case .readerChrome(let payload)? = event.typedPayload { return "\(payload.state.rawValue):\(event.phase.rawValue)" }
+			return nil
+		}
+		XCTAssertEqual(transitions, [
+			"collapsing:begin", "compactPinned:end",
+			"collapsing:begin", "expanded:end",
+			"compactPinned:event", "expanded:event"
+		])
+	}
+
+	func testShortArticleNeverShowsCompactHeader() async throws {
+		let viewController = makeReader(body: "<p>Short.</p>")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertFalse(viewController.chromeProgress.isEligible)
+		let scrollView = viewController.readerContentView.scrollView
+		// 即使被拉动（橡皮筋回弹）也不出现
+		scrollView.contentOffset = CGPoint(x: 0, y: 200)
+		XCTAssertEqual(viewController.compactHeaderView.pCollapse, 0)
+		XCTAssertTrue(viewController.compactHeaderView.isHidden)
+	}
+
 	func testRootScopeChangesQueryAndKeepsOnlyScopedPositiveCounts() async throws {
 		let allFeedID = FeedSnapshot.ID(accountID: "account", feedID: "all")
 		let unreadFeedID = FeedSnapshot.ID(accountID: "account", feedID: "unread")
@@ -858,9 +965,11 @@ private func waitForLibraryStart(_ provider: FakeDataProvider, _ scope: Babel2Fe
 
 @MainActor
 private func waitForSelectedScopeButton(_ button: UIButton) async {
-	for _ in 0..<1000 {
+	// 按真实时间等（最多约 3 秒），而不是按空转次数：选中态要等 180ms 的切换动画结束，
+	// 空转次数对应的时间随机器忙闲变化，曾导致测试时过时不过（2026-09-24 修正）
+	for _ in 0..<300 {
 		if button.accessibilityValue == "Selected" { return }
-		await Task.yield()
+		try? await Task.sleep(for: .milliseconds(10))
 	}
 	XCTFail("Timed out waiting for scope button selection")
 }
@@ -922,7 +1031,7 @@ private extension UIView {
 }
 
 @MainActor
-private func makeReader(body: String) -> Babel2ArticleViewController {
+private func makeReader(body: String, motionRecorder: any Babel2MotionRecording = Babel2NullMotionRecorder()) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
 		id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: UUID().uuidString),
@@ -931,7 +1040,12 @@ private func makeReader(body: String) -> Babel2ArticleViewController {
 		url: URL(string: "https://example.com/post"),
 		feedID: feedID
 	)
-	return Babel2ArticleViewController(article: article, environment: makeEnvironment(provider: FakeDataProvider()), feedTitle: "Feed")
+	return Babel2ArticleViewController(
+		article: article,
+		environment: makeEnvironment(provider: FakeDataProvider()),
+		feedTitle: "Feed",
+		motionRecorder: motionRecorder
+	)
 }
 
 /// 网页正文只有真正放进窗口后才会稳定加载，所以阅读页测试都先挂到一个 402×874 的窗口里。
@@ -964,4 +1078,14 @@ private func pngDataURI(size: CGSize) -> String {
 		context.fill(CGRect(origin: .zero, size: size))
 	}
 	return "data:image/png;base64," + (image.pngData() ?? Data()).base64EncodedString()
+}
+
+/// 等正文排版后的可滚动长度足够（网页布局是异步的）。
+@MainActor
+private func waitForScrollableLength(_ viewController: Babel2ArticleViewController, atLeast length: CGFloat) async {
+	for _ in 0..<200 {
+		if viewController.chromeProgress.maxScroll >= length { return }
+		try? await Task.sleep(for: .milliseconds(50))
+	}
+	XCTFail("Timed out waiting for scrollable length; maxScroll=\(viewController.chromeProgress.maxScroll)")
 }

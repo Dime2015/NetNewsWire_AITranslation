@@ -13,7 +13,7 @@
 | Feed hero 延伸到状态栏/动态岛，展开收缩连续 | Slice 3；hero motion/icon cache | progress clamp、hero state、icon cache contract | Light/Dark、无图/坏图、滚动截图 | safe area、opaque chrome、连续跟手收缩 | 未开始 |
 | 同步箭头只在真实 syncing 出现并自动隐藏 | Slice 0/3；loading owner/sync state | sync state machine、visibility transitions | 刷新、完成、失败、取消 | 网络切换、后台/前台、无重复控件 | 部分实现：Feeds 已按 isSyncing 显隐和旋转；完整同步/失败/后台恢复验收待补 |
 | 文章打开快，避免中间空白加载页；必要时预加载 | Slice 4/5；Reader preparation/cache | cancellation、prepared route、cache hit/miss | 冷/热进入、短文/长文、返回 | 首屏时间、峰值内存、滚动帧率、真实源 | 部分实现：列表 snapshot 直接传正文页并有取消保护；正式 Reader、预加载和性能未验收 |
-| Reader 初始 title/byline 在正文上方，滚动后连续移入 compact header，icon 渐出 | Slice 4；Reader chrome motion | collapse progress、reverse/interruption、content height | 首屏、滚动、旋转、后台恢复 | 多 safe area/文章高度、用户跟手验收 | 部分实现（2026-09-24，用户真机验收通过）：原生标题区在正文上方首帧可见，已有自动化；滑动收缩/图标/进度环为 Slice 4 第 2 步，未开始 |
+| Reader 初始 title/byline 在正文上方，滚动后连续移入 compact header，icon 渐出 | Slice 4；Reader chrome motion | collapse progress、reverse/interruption、content height | 首屏、滚动、旋转、后台恢复 | 多 safe area/文章高度、用户跟手验收 | 部分实现：原生标题区首帧可见（2026-09-24 真机通过）；滑动收缩、图标与进度环渐入、圆环跟随阅读进度已实现并有自动化，2026-09-24 用户真机验收通过；顶/底栏随方向显隐为第 3 步 |
 | 翻译标题/正文不重影、不闪退、速度可接受 | Slice 5；translation session/DOM update | generation/cancellation、incremental update、error recovery | 大源、多次切换、翻译失败 | 真实翻译源、峰值内存和性能 | 部分实现：Timeline 仅展示已有标题译文缓存；正文翻译及完整状态流尚未接入 |
 | 横向正文图贴屏幕两端、直角；文字/caption 保持 inset | Slice 4/5；Reader HTML/media | media classification、viewport style checks | 横向/竖向/无图、caption | 真实图片、safe area、缩放和滚动 | 部分实现（2026-09-24，用户真机验收通过）：宽≥320 且宽>高×1.1 的图 100vw 贴边直角，文字/图注保留 20pt；有自动化（贴边宽度=视口宽度）；嵌套在引用/列表内的横图贴边位置未处理 |
 | 文章正文左滑打开内置浏览器，浏览器右滑回到 Reader | Slice 5；Browser route/motion | direction/edge arbitration、cancel/finish | WebView/Reader 手势冲突 | 跟手性、网页加载、双向返回 | 未开始 |
