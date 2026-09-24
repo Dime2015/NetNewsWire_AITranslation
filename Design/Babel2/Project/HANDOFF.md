@@ -11,6 +11,8 @@
 7. dirty 边界必须保留：用户-owned `NetNewsWire.xcodeproj/project.pbxproj` diff hash 为 `c5f5a8cfbf73750210af0fdd15cea22fcedb7cb09fd5c5a786353f646028dc35`；`Shared/Localizable.xcstrings` 有独立 dirty，未纳入本批；Babel2 string catalog 测试前已有格式化/stale dirty，本批仅增加 `Folders`/`Syncing…` 键。SecretKey 测试后已恢复并与测试前 byte-identical，hash 为 `1b1f630f9a56cc47424a0b05288701cb8647a3c6badc0ccf32ed5a28dc2c9fef`；`.gyb` 测试前后 hash 均为 `46d881c9558f535e57b51c25bc66479c6cf915f1d217ab13c0bc4908f4e22292`。
 8. 2026-09-24 用户在目标物理 iPhone 冷启动完成首页整页视觉验收（标题/同步显示、摘要与 Folders、folder/feed 几何与展开、三档筛选静态/切换、返回后状态），回复“首页验收通过了”；为口头确认，非截图/自动化证据。Dark、不同语言、旋转和其他设备不在已验证范围。 本批已本地提交（`ca1fa1ae4` 之后一个提交），pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行仍留工作树；未推送，推送需用户逐次授权。下一任务待用户在正式图文 Reader（Slice 4，推荐）与 Timeline hero（Slice 3）之间选择。
 
+9. **2026-09-24 最新**：首页批次已提交并推送（`64119b8b1`，本地与远端一致）。随后开始 Reader Slice 4 第 1 步（静态图文页），实现与自动化已完成，用户同日真机验收通过并已本地提交（未推送，推送需用户授权）；细节见 STATUS「Reader Slice 4 第 1 步」。下一任务：Slice 4 第 2 步「滑动收缩」（标题连续移入 compact header、订阅源图标与进度环渐入、短文不收缩），动手前先交书面方案。
+
 ## 历史交接记录（audit-only historical reference）
 
 下方保留旧批次上下文。其中“当前下一任务”“未提交”“等待推送”“恢复后不要再 build”等只适用于当时批次，不是本轮待执行指令；当前任务和验证方式以上方与 STATUS/VALIDATION 为准。Phase 1A 的已有证据与未覆盖场景继续保留，不能因文档校准而关闭。

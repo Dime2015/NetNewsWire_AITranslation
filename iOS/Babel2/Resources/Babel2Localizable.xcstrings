@@ -35,6 +35,23 @@
         }
       }
     },
+    "Back" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回"
+          }
+        }
+      }
+    },
     "Feeds" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -154,6 +171,23 @@
         }
       }
     },
+    "Open Original" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Original"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开原文"
+          }
+        }
+      }
+    },
     "Retry" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -188,6 +222,23 @@
         }
       }
     },
+    "Share" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
     "Starred" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -218,6 +269,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在同步…"
+          }
+        }
+      }
+    },
+    "This article has no content" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This article has no content"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这篇文章没有正文"
+          }
+        }
+      }
+    },
+    "Unable to load article" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load article"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载文章"
           }
         }
       }

@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 4 第 1 步：静态图文页（2026-09-24，用户真机验收通过，已提交）
+
+- 用户 2026-09-24 确认方案（“按建议来”）：Slice 4 拆三步（静态图文页 → 滑动收缩 → 底栏与上下滑隐藏），每步停下等真机验收；「打开原文」按钮保留到 Slice 5 内置浏览器落地；排版数值按 `Figma Drafts/BATCH-01-SPEC.md`（本会话无 Figma 连接）。
+- 实现：原生标题区（日期/34pt 标题/订阅源名）挂在正文滚动区顶部、不等网页加载即可见；正文用专用网页显示面（仅在 Boundary 白名单目录 `iOS/Babel2/Reader/WebKit/`），先载固定外壳页再由隔离环境脚本排版，Swift 不拼接文章 HTML；外壳页 CSP 禁止页面脚本，排版时移除 script/表单/on* 属性/javascript: 链接/内联 style 与 class；横图（宽≥320 且宽>高×1.1）100vw 贴边直角，竖图/文字/图注保留 20pt 边距；链接加粗+中性下划线；浅/深两套 BabelPalette 值；正文链接交系统打开；顶栏 58pt 不透明：返回（x=32）/打开原文（x≈326）/系统分享（x=370）；失败显示提示+重试，无正文显示“这篇文章没有正文”。
+- 文件：新增 `iOS/Babel2/Reader/Babel2ArticleViewController.swift`、`iOS/Babel2/Reader/WebKit/Babel2ReaderContentView.swift`；修改 `iOS/Babel2/Babel2LibraryViewControllers.swift`（仅删除旧纯文本阅读页 143 行）、`Babel2SceneComposition.swift`（传 feed 标题、链接交系统打开）、`Babel2Localization.swift` 与 `Resources/Babel2Localizable.xcstrings`（新增 Back/Share/Open Original/Unable to load article/This article has no content 五个中英键）、`Tests/NetNewsWire-iOSTests/Babel2FeedReaderTests.swift`、`Babel2FeedReaderUITests.swift`（正文改按 webView 子文本读取）。未改 Core/adapter/DataProviding、上游 template/stylesheet、A/C 级禁区或 pbxproj（签名 diff hash 仍 `c5f5a8cf…`）。
+- 验证：全量 Debug iOS test 86/86 passed（原 80 + 新增 6）；UI Driver（Release、真实模拟器数据）1/1 passed，正文 webView 文本可读、Open Original handoff 正常。详见 [VALIDATION](VALIDATION.md)。
+- 2026-09-24 用户确认 Xcode 工程路径为本仓库后，在目标 iPhone 按 6 项清单（首屏标题、图文排版/横图贴边、链接样式与外部打开、系统分享、左边缘返回与正文滚动不冲突、深色模式）验收，回复“真机验收通过了”；为口头确认，非截图/Instruments 证据，不外推到其他设备、旋转或英文界面。尚未做：滑动收缩、进度环、底栏、作者名（快照无作者字段，暂以订阅源名作署名）、正文标题译文（Slice 5）。
+
 ## 筛选按钮 Auto Layout 改写（物理真机冷启动通过；视觉待确认，2026-09-08，未提交）
 
 - 旧的 `a707e4bae` `viewDidAppear`/`window.layoutIfNeeded()` 修复已被用户真机复测证伪；本轮没有继续叠加窗口布局时序 workaround。

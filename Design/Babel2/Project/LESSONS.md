@@ -190,3 +190,9 @@
 - 症状：旧 `a707e4bae` 在 `viewDidAppear` 中强制 window layout 后，用户再次真机冷启动仍看到 Starred/Unread/All 挤在左边，后台回来才正常；因此“补一次布局就能得到最终 frame”的假设已被现实否定。
 - 根因边界：原实现由 `viewDidLayoutSubviews()` 读取 `scopeStack.bounds`，再手工写三个按钮 frame，并以零宽度 fallback 处理早期布局。这个 owner 依赖某一轮布局回调是否拿到最终容器宽度；`view.window.layoutIfNeeded()` 不能保证该时序假设成立。新实现把按钮的尺寸、垂直中心和按 402pt 参考画布比例的水平中心约束一次性安装在现有 controller 内，布局不再从 `scopeStack.bounds` 读取位置；selection pill 仍保留原有 frame 动画 owner，并在活动动画/settlement 期间跳过静态对齐。
 - 以后 gate：这类修复不新增同进程 UIWindow/Auto Layout 时序复现测试，也不以 Simulator 全量通过代替物理设备冷启动验收。全量 Debug iOS xcresult 顶层为 80/80 passed、0 failed、0 skipped，只能作为结构/行为回归证据；必须让用户在目标 iPhone 上重新验证按钮几何、后台恢复和视觉位置，验证前不写“已解决”。
+
+## 30. 系统类名也会撞上边界测试的禁用字样（2026-09-24，写 Reader 网页显示面时发现）
+
+- 现象：Babel2BoundaryTests 把旧实现的 `WebViewConfiguration` 列为永久禁用字样，按“包含”判断；而系统的网页配置类名本身就包含这串字，写进任何 Babel2 文件（包括白名单网页目录）都会让边界测试失败。
+- 教训：边界测试是子串匹配，不认语义；新写代码前先把禁用字样表过一遍，别等测试红了才发现。
+- 怎么应用：Reader 网页显示面改用默认配置创建网页控件、不写那个类名；以后需要定制配置（例如内联播放视频）时，先和用户商量是给边界测试加精确例外，还是换写法，不能自行放宽测试。

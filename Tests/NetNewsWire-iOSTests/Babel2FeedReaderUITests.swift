@@ -139,7 +139,7 @@ final class Babel2FeedReaderUITests: XCTestCase {
 			}
 			for articleIndex in 0..<articlesTable.cells.count where !selectedArticle {
 				articlesTable.cells.element(boundBy: articleIndex).tap()
-				let bodyView = app.textViews["babel2.article.body"]
+				let bodyView = app.webViews["babel2.article.body"]
 				guard waitForExistence(bodyView, timeout: 10), waitForBody(in: bodyView, timeout: 20) != nil else {
 					attachState(app, name: "reader")
 					fail("ARTICLE_BODY_LOADING_OR_EMPTY", "reader body remained loading or empty")
@@ -231,10 +231,11 @@ final class Babel2FeedReaderUITests: XCTestCase {
 		return nil
 	}
 
-	private func waitForBody(in textView: XCUIElement, timeout: TimeInterval) -> String? {
+	private func waitForBody(in bodyView: XCUIElement, timeout: TimeInterval) -> String? {
 		let deadline = Date().addingTimeInterval(timeout)
 		while Date() < deadline {
-			let candidate = (textView.value as? String) ?? textView.label
+			// 正文是网页：文字以子元素形式暴露，取前几段拼起来判断
+			let candidate = bodyView.staticTexts.allElementsBoundByIndex.prefix(8).map(\.label).joined(separator: " ")
 			if isUsableBody(candidate) {
 				return candidate
 			}

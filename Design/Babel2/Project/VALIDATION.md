@@ -9,6 +9,24 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-24 Reader Slice 4 第 1 步：静态图文页（r1；用户真机验收通过，已提交）
+
+基线：`HEAD` = `64119b8b1` + 未提交 Reader 改动；Xcode 27.0；iPhone 17 Simulator。
+
+```sh
+xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/dd -resultBundlePath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-r1.xcresult test
+```
+
+结果：`TEST SUCCEEDED`；xcresult summary `result=Passed`、`totalTestCount=86`、`passedTests=86`、`failed=0`、`skipped=0`。新增 6 项（Babel2FeedReaderTests）：标题区先于正文可见且位于正文上方、脚本/on* 属性/javascript: 链接/style/class 被移除且未执行、横图贴边（宽度=视口宽度）而竖图不贴边、空正文显示无正文提示、纯文本拆段、链接去向规则。3 项旧测试由“读纯文本框”改为“读网页正文/渲染状态”。
+
+```sh
+xcodebuild -project NetNewsWire.xcodeproj -scheme "NetNewsWire-iOS UI Driver" -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/dd-ui -resultBundlePath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-ui-r1.xcresult test
+```
+
+结果：Executed 1 test, 0 failures——真实模拟器数据下进入文章、网页正文可读、Open Original 系统 handoff 与返回正常。结果包在会话 scratchpad（临时目录），未持久归档。
+
+边界：以上均为模拟器/自动化证据；视觉观感、深色、分享面板、链接点击、左边缘返回与正文滚动的手势仲裁需用户真机确认，不能写成已验证。build pre-action 再次改写 gitignored `SecretKey.swift`（当前 hash `536faeed…`），不在 git diff 内。
+
 ## 2026-09-08 筛选按钮 Auto Layout 与 Feeds/Library 首页 Figma 对齐（r1，未提交）
 
 - 旧 `a707e4bae` 的 `viewDidAppear`/window layout workaround 已被用户真机证伪。当前在现有 `Babel2RootViewController` 内删除手工 frame 与零宽 fallback，改为一次性 Auto Layout 约束；用户随后在本对话明确回复“好的，成功了”，据此确认目标物理设备冷启动时筛选按钮布局通过。该结论不外推到旋转、其他尺寸或其他设备。

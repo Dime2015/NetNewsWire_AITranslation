@@ -18,6 +18,11 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case noArticles = "No articles"
 	case unableToLoadArticles = "Unable to load articles"
 	case retry = "Retry"
+	case back = "Back"
+	case share = "Share"
+	case openOriginal = "Open Original"
+	case unableToLoadArticle = "Unable to load article"
+	case noArticleContent = "This article has no content"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -37,6 +42,11 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .noArticles: return "babel2.feed.articles.empty"
 		case .unableToLoadArticles: return "babel2.feed.articles.error"
 		case .retry: return "babel2.retry"
+		case .back: return "babel2.article.back"
+		case .share: return "babel2.article.share"
+		case .openOriginal: return "babel2.article.open-original"
+		case .unableToLoadArticle: return "babel2.article.error"
+		case .noArticleContent: return "babel2.article.empty"
 		}
 	}
 }

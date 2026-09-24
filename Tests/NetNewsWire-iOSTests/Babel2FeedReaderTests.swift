@@ -49,12 +49,14 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(selectedArticle, articleA)
 
 		let articleViewController = Babel2ArticleViewController(article: articleA, environment: environment)
-		articleViewController.loadViewIfNeeded()
+		let window = hostInWindow(articleViewController)
+		defer { window.isHidden = true }
 		await waitForRenderer(renderer)
 		let receivedArticles = await renderer.received
 		XCTAssertEqual(receivedArticles, [articleA])
-		let textView = try XCTUnwrap(descendant(of: articleViewController.view, matching: UITextView.self))
-		XCTAssertEqual(textView.text, "Only account A")
+		await waitForReaderRender(articleViewController)
+		let bodyText = await articleViewController.readerContentView.articleTextForTesting()
+		XCTAssertEqual(bodyText, "Only account A")
 		XCTAssertNotEqual(articleA.id, articleB.id)
 	}
 
@@ -75,9 +77,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		viewController.loadViewIfNeeded()
 		await waitForRenderer(renderer)
+		for _ in 0..<20 { await Task.yield() }
 
-		let textView = try XCTUnwrap(descendant(of: viewController.view, matching: UITextView.self))
-		XCTAssertEqual(textView.text, "Loading…")
+		// 渲染结果属于别的文章 → 被丢弃，正文从未开始排版
+		XCTAssertEqual(viewController.readerContentView.renderState, .idle)
+		XCTAssertNil(viewController.lastRenderResult)
 	}
 
 	func testDeinitCancelsSuspendedRendererAndRejectsLateResult() async throws {
@@ -93,14 +97,14 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let renderer = SuspendedRenderer()
 		let environment = makeEnvironment(provider: FakeDataProvider(), renderer: renderer)
 		var controllerReference: WeakReference<Babel2ArticleViewController>?
-		var retainedTextView: UITextView?
+		var retainedContentView: Babel2ReaderContentView?
 
 		do {
 			let viewController = Babel2ArticleViewController(article: article, environment: environment)
 			controllerReference = WeakReference(viewController)
 			viewController.loadViewIfNeeded()
 			await waitForRendererStart(renderer)
-			retainedTextView = try XCTUnwrap(descendant(of: viewController.view, matching: UITextView.self))
+			retainedContentView = viewController.readerContentView
 		}
 
 		let reference = try XCTUnwrap(controllerReference)
@@ -111,7 +115,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await waitForRendererReturn(renderer)
 		let rendererTaskWasCancelled = await renderer.taskWasCancelled
 		XCTAssertTrue(rendererTaskWasCancelled)
-		XCTAssertEqual(retainedTextView?.text, "Loading…")
+		XCTAssertEqual(retainedContentView?.renderState, .idle)
 	}
 
 	func testOpenOriginalUsesInjectedClosureAndMissingURLHasNoButton() async throws {
@@ -160,6 +164,140 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let buttons = bodyOnlyViewController.view.allSubviews.compactMap { $0 as? UIButton }
 		let bodyOnlyOpenButton = try XCTUnwrap(buttons.first { $0.accessibilityIdentifier == "babel2.article.open-original" })
 		XCTAssertTrue(bodyOnlyOpenButton.isHidden)
+	}
+
+	// MARK: - 阅读页（Slice 4 第 1 步）
+
+	func testReaderHeaderIsVisibleBeforeBodyRenders() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let article = ArticleSnapshot(
+			id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "article"),
+			title: "Header first",
+			content: "<p>Body</p>",
+			url: nil,
+			feedID: feedID,
+			publishedAt: Date(timeIntervalSince1970: 1_790_000_000)
+		)
+		let renderer = SuspendedRenderer()
+		let viewController = Babel2ArticleViewController(
+			article: article,
+			environment: makeEnvironment(provider: FakeDataProvider(), renderer: renderer),
+			feedTitle: "Example Feed"
+		)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForRendererStart(renderer)
+
+		// 正文还卡在加载中，标题区已经在正文上方显示
+		let title = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.title" })
+		let byline = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.byline" })
+		let date = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.date" })
+		XCTAssertEqual(title.attributedText?.string, "Header first")
+		XCTAssertEqual(byline.text, "EXAMPLE FEED")
+		XCTAssertFalse(date.isHidden)
+		XCTAssertNil(viewController.lastRenderResult)
+		let header = try XCTUnwrap(title.superview?.superview)
+		XCTAssertGreaterThan(header.bounds.height, 40)
+		XCTAssertLessThan(header.frame.maxY, 0.5, "header sits above the body content")
+		let scrollView = viewController.readerContentView.scrollView
+		XCTAssertEqual(scrollView.contentInset.top, header.bounds.height, accuracy: 0.5)
+		await renderer.resume()
+	}
+
+	func testReaderStripsScriptsEventHandlersAndScriptLinks() async throws {
+		let viewController = makeReader(body: """
+		<p>Safe text</p>
+		<script>document.title = 'script-ran';</script>
+		<img id="broken" src="https://invalid.invalid/x.png" onerror="document.title = 'handler-ran'">
+		<a id="bad" href="javascript:document.title='link'">bad link</a>
+		<p style="width: 2000px" class="evil">Styled</p>
+		""")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+
+		let result = await viewController.readerContentView.evaluateForTesting("""
+		const root = document.getElementById('babel2-article');
+		return [
+			root.querySelectorAll('script').length,
+			root.querySelectorAll('[onerror]').length,
+			root.querySelector('#bad').hasAttribute('href') ? 1 : 0,
+			root.querySelectorAll('[style], [class]').length,
+			document.title
+		].join('|');
+		""") as? String
+		XCTAssertEqual(result, "0|0|0|0|")
+		let text = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertTrue(text?.contains("Safe text") == true)
+	}
+
+	func testLandscapeImageBleedsAndPortraitImageKeepsInset() async throws {
+		let wide = pngDataURI(size: CGSize(width: 800, height: 400))
+		let tall = pngDataURI(size: CGSize(width: 300, height: 600))
+		let viewController = makeReader(body: "<p>Text</p><img id=\"wide\" src=\"\(wide)\"><img id=\"tall\" src=\"\(tall)\">")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		XCTAssertEqual(viewController.lastRenderResult?.imageCount, 2)
+
+		var classes: String?
+		for _ in 0..<100 {
+			classes = await viewController.readerContentView.evaluateForTesting("""
+			const wide = document.getElementById('wide');
+			const tall = document.getElementById('tall');
+			if (!wide.complete || !tall.complete) { return null; }
+			return wide.className + '|' + tall.className + '|' + Math.round(wide.getBoundingClientRect().width) + '|' + Math.round(window.innerWidth);
+			""") as? String
+			if classes?.hasPrefix("babel2-bleed") == true { break }
+			try await Task.sleep(for: .milliseconds(50))
+		}
+		let parts = try XCTUnwrap(classes).split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+		XCTAssertEqual(parts[0], "babel2-bleed")
+		XCTAssertEqual(parts[1], "")
+		XCTAssertEqual(parts[2], parts[3], "landscape image spans the full viewport width")
+	}
+
+	func testEmptyBodyShowsNoContentMessage() async throws {
+		let viewController = makeReader(body: "")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		XCTAssertEqual(viewController.lastRenderResult?.isEmpty, true)
+		let message = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.message" })
+		XCTAssertEqual(message.text, Babel2Localization.text(.noArticleContent))
+		XCTAssertFalse(message.superview?.isHidden ?? true)
+	}
+
+	func testPlainTextBodyBecomesParagraphs() async throws {
+		let viewController = makeReader(body: "First paragraph.\n\nSecond paragraph.")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		let count = await viewController.readerContentView.evaluateForTesting(
+			"return document.querySelectorAll('#babel2-article > p').length;"
+		) as? NSNumber
+		XCTAssertEqual(count?.intValue, 2)
+	}
+
+	func testReaderLinkDecisions() {
+		let base = URL(string: "https://example.com/post")
+		func decide(_ link: Bool, _ mainFrame: Bool, _ url: String?, loaded: Bool = true) -> Babel2ReaderContentView.LinkDecision {
+			Babel2ReaderContentView.linkDecision(
+				isLinkActivation: link,
+				isMainFrame: mainFrame,
+				url: url.flatMap(URL.init(string:)),
+				shellIsLoaded: loaded,
+				shellBaseURL: base
+			)
+		}
+		let external = URL(string: "https://other.example/page")!
+		XCTAssertEqual(decide(true, true, "https://other.example/page"), .cancelAndOpenExternally(external))
+		XCTAssertEqual(decide(true, false, "https://other.example/page"), .cancelAndOpenExternally(external))
+		XCTAssertEqual(decide(true, true, "https://example.com/post#section"), .allow)
+		XCTAssertEqual(decide(true, true, "javascript:alert(1)"), .cancel)
+		XCTAssertEqual(decide(false, true, "https://example.com/post", loaded: false), .allow)
+		XCTAssertEqual(decide(false, true, "https://redirect.example/"), .cancel)
+		XCTAssertEqual(decide(false, false, "https://www.youtube.com/embed/x"), .allow)
 	}
 
 	func testRootScopeChangesQueryAndKeepsOnlyScopedPositiveCounts() async throws {
@@ -781,4 +919,49 @@ private extension UIView {
 	var allSubviews: [UIView] {
 		subviews + subviews.flatMap(\.allSubviews)
 	}
+}
+
+@MainActor
+private func makeReader(body: String) -> Babel2ArticleViewController {
+	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+	let article = ArticleSnapshot(
+		id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: UUID().uuidString),
+		title: "Reader",
+		content: body,
+		url: URL(string: "https://example.com/post"),
+		feedID: feedID
+	)
+	return Babel2ArticleViewController(article: article, environment: makeEnvironment(provider: FakeDataProvider()), feedTitle: "Feed")
+}
+
+/// 网页正文只有真正放进窗口后才会稳定加载，所以阅读页测试都先挂到一个 402×874 的窗口里。
+@MainActor
+private func hostInWindow(_ viewController: UIViewController) -> UIWindow {
+	let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+	window.rootViewController = viewController
+	window.makeKeyAndVisible()
+	viewController.view.layoutIfNeeded()
+	return window
+}
+
+/// 等正文排版完成（成功或失败），最多约 10 秒。
+@MainActor
+private func waitForReaderRender(_ viewController: Babel2ArticleViewController) async {
+	for _ in 0..<200 {
+		let state = viewController.readerContentView.renderState
+		if state == .rendered || state == .failed { return }
+		try? await Task.sleep(for: .milliseconds(50))
+	}
+	XCTFail("Timed out waiting for reader render; state=\(viewController.readerContentView.renderState)")
+}
+
+@MainActor
+private func pngDataURI(size: CGSize) -> String {
+	let format = UIGraphicsImageRendererFormat()
+	format.scale = 1
+	let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+		UIColor.gray.setFill()
+		context.fill(CGRect(origin: .zero, size: size))
+	}
+	return "data:image/png;base64," + (image.pngData() ?? Data()).base64EncodedString()
 }
