@@ -3,7 +3,7 @@ import UIKit
 import Babel2Core
 import Babel2UI
 
-/// Babel 2.0 阅读页（Slice 4：第 1 步静态图文页 + 第 2 步滑动收缩）。
+/// Babel 2.0 阅读页（Slice 4：第 1 步静态图文页 + 第 2 步滑动收缩 + 第 3 步底栏与显隐）。
 ///
 /// 页面结构（从上到下）：
 /// - 顶栏（58pt，不透明）：返回 / 打开原文 / 分享
@@ -15,6 +15,9 @@ import Babel2UI
 /// 第 2 步「滑动收缩」（方案 A）：顶栏下方盖一条紧凑标题栏，由滚动位置直接驱动 ——
 /// 大标题随正文滚走，紧凑栏的底色/图标/圆环/小标题同步渐显，小标题滑入到位；
 /// 之后圆环跟随阅读进度。滚动时不改变正文区域的尺寸。
+///
+/// 第 3 步：底部工具栏（已读 / 星标可用，其余占位）；紧凑栏固定后，
+/// 顶栏按钮与底栏随上下滑一起显隐（方案 A：顶栏底色保留，紧凑栏纹丝不动；底栏整条滑出）。
 @MainActor
 final class Babel2ArticleViewController: UIViewController {
 	private let article: ArticleSnapshot
@@ -25,6 +28,19 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 大标题上沿开始钻进顶栏时的已滚动距离（布局后测得）。
 	private var collapseStart: CGFloat = 0
 	private var chromeState: MotionReaderChromeState = .expanded
+	private let toolbar = Babel2ReaderToolbarView()
+	private var topButtons = [UIButton]()
+	private var barVisibility = Babel2ReaderBarVisibility()
+	private var barAnimator: UIViewPropertyAnimator?
+	private var barAnimationStart: CGFloat = 0
+	/// 一次「栏显隐」交互是否正在进行（用于性能打点成对：一次交互只记一对 begin/end）。
+	private var isBarIntervalOpen = false
+	private var barAnimationTarget: CGFloat = 0
+	private var lastScrolled: CGFloat?
+	private var settleTimer: Timer?
+	private var isRead: Bool
+	private var isStarred: Bool
+	private var isStatusRequestInFlight = false
 	private let contentView = Babel2ReaderContentView()
 	private let headerView = UIView()
 	private let dateLabel = UILabel()
@@ -56,6 +72,8 @@ final class Babel2ArticleViewController: UIViewController {
 		self.environment = environment
 		self.feedTitle = feedTitle
 		self.motionRecorder = motionRecorder
+		isRead = article.isRead
+		isStarred = article.isStarred
 		compactHeader = Babel2ReaderCompactHeaderView(feedTitle: feedTitle, articleTitle: article.title, iconData: feedIconData)
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
@@ -69,6 +87,7 @@ final class Babel2ArticleViewController: UIViewController {
 		let topBar = configureTopBar()
 		configureContent(below: topBar)
 		configureCompactHeader(below: topBar)
+		configureToolbar()
 		configureHeader()
 		configureMessage()
 		contentView.onScrollGeometryChange = { [weak self] in
@@ -87,11 +106,16 @@ final class Babel2ArticleViewController: UIViewController {
 	override func viewDidLayoutSubviews() {
 		super.viewDidLayoutSubviews()
 		layoutHeaderIfNeeded()
+		updateBottomInset()
 	}
 
 	override func viewDidDisappear(_ animated: Bool) {
 		super.viewDidDisappear(animated)
-		if isMovingFromParent { cancelRendering() }
+		if isMovingFromParent {
+			cancelRendering()
+			settleTimer?.invalidate()
+			barAnimator?.stopAnimation(true)
+		}
 	}
 
 	deinit { renderTask?.cancel() }
@@ -161,6 +185,7 @@ final class Babel2ArticleViewController: UIViewController {
 		original.isHidden = article.url == nil
 		let share = makeBarButton(symbol: "square.and.arrow.up", key: .share, identifier: "babel2.article.share", action: #selector(shareTapped))
 		[back, original, share].forEach(bar.addSubview)
+		topButtons = [back, original, share]
 
 		// 按钮中心位置对应 402pt 设计稿的 x = 32（返回）/ 330（原文）/ 370（分享）
 		NSLayoutConstraint.activate([
@@ -352,7 +377,7 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 仅供自动化测试观察。
 	var compactHeaderView: Babel2ReaderCompactHeaderView { compactHeader }
 
-	/// 每次滚动 / 正文变长时调用：只重算两个进度值并交给紧凑栏重画。
+	/// 每次滚动 / 正文变长时调用：重算两个进度值交给紧凑栏重画，并更新顶/底栏显隐。
 	private func updateChrome() {
 		guard lastHeaderWidth > 0 else { return }
 		let progress = chromeProgress
@@ -360,6 +385,8 @@ final class Babel2ArticleViewController: UIViewController {
 		let pCollapse = progress.pCollapse(scrolled: scrolled)
 		let pReading = progress.pReading(scrolled: scrolled)
 		compactHeader.apply(pCollapse: pCollapse, pReading: pReading)
+		// 先记收缩状态的打点，再处理顶/底栏（同一帧里「固定」发生在「栏开始跟手」之前）
+		defer { updateBarVisibility(scrolled: scrolled, isPinned: pCollapse >= 1) }
 
 		// 性能打点只在状态切换时记，不在每一帧记：
 		// 进入「收缩中」= 区间开始；离开「收缩中」= 区间结束；
@@ -369,14 +396,193 @@ final class Babel2ArticleViewController: UIViewController {
 		let previous = chromeState
 		chromeState = state
 		let phase: MotionSignpostPhase = state == .collapsing ? .begin : (previous == .collapsing ? .end : .event)
+		recordChrome(state: state, pCollapse: pCollapse, phase: phase)
+	}
+
+	private func recordChrome(state: MotionReaderChromeState, pCollapse: CGFloat, phase: MotionSignpostPhase) {
 		motionRecorder.record(MotionSignpostEvent(
 			payload: .readerChrome(MotionReaderChromePayload(
 				state: state,
 				pCollapse: MotionProgress(Double(pCollapse)),
-				barP: MotionProgress(0)
+				barP: MotionProgress(Double(barVisibility.barP))
 			)),
 			phase: phase
 		))
+	}
+
+	// MARK: - 底部工具栏
+
+	/// 仅供自动化测试观察。
+	var toolbarView: Babel2ReaderToolbarView { toolbar }
+	var barVisibilityProgress: CGFloat { barVisibility.barP }
+	var topBarButtons: [UIButton] { topButtons }
+
+	private func configureToolbar() {
+		toolbar.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(toolbar)
+		NSLayoutConstraint.activate([
+			toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			toolbar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+			toolbar.heightAnchor.constraint(equalToConstant: Babel2ReaderToolbarView.height)
+		])
+		toolbar.setRead(isRead)
+		toolbar.setStarred(isStarred)
+		toolbar.onToggleRead = { [weak self] in self?.toggleRead() }
+		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
+		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）
+		contentView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanChanged(_:)))
+	}
+
+	/// 正文底部让出底栏高度（系统已自动让出 Home 指示条那部分），最后几行不被挡住。
+	/// 只在安全区变化时改一次，不在滚动中改。
+	private func updateBottomInset() {
+		let scrollView = contentView.scrollView
+		let desired = max(Babel2ReaderToolbarView.height - view.safeAreaInsets.bottom, 0)
+		guard scrollView.contentInset.bottom != desired else { return }
+		var inset = scrollView.contentInset
+		inset.bottom = desired
+		scrollView.contentInset = inset
+	}
+
+	/// 已读 / 星标：调用现成的数据接口，成功后才切换按钮状态；请求进行中不重复发送。
+	private func toggleRead() {
+		let action: LibraryAction = isRead ? .markUnread(article.id) : .markRead(article.id)
+		performStatusAction(action) { controller in
+			controller.isRead.toggle()
+			controller.toolbar.setRead(controller.isRead)
+		}
+	}
+
+	private func toggleStar() {
+		performStatusAction(.toggleStar(article.id)) { controller in
+			controller.isStarred.toggle()
+			controller.toolbar.setStarred(controller.isStarred)
+		}
+	}
+
+	private func performStatusAction(_ action: LibraryAction, onSuccess: @escaping @MainActor (Babel2ArticleViewController) -> Void) {
+		guard !isStatusRequestInFlight else { return }
+		isStatusRequestInFlight = true
+		let handler = environment.actionHandler
+		Task { @MainActor [weak self] in
+			do {
+				try await handler.handle(action)
+				guard let self else { return }
+				self.isStatusRequestInFlight = false
+				onSuccess(self)
+			} catch {
+				self?.isStatusRequestInFlight = false
+			}
+		}
+	}
+
+	// MARK: - 顶/底栏随上下滑显隐
+
+	private func updateBarVisibility(scrolled: CGFloat, isPinned: Bool) {
+		defer { lastScrolled = scrolled }
+		guard let previous = lastScrolled else { return }
+		let delta = scrolled - previous
+		guard delta != 0 else { return }
+
+		if !isPinned {
+			// 没固定（包括回到顶部）：强制显示；若当前是隐藏着的，用 180ms 显示回来
+			closeBarInterval(pCollapse: 0)
+			if barVisibility.barP > 0 {
+				let start = barVisibility.barP
+				barVisibility.forceShown()
+				animateBars(from: start, to: 0)
+			}
+			return
+		}
+
+		let scrollView = contentView.scrollView
+		let physicalMax = scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height
+		let isBottomOverscroll = scrollView.contentOffset.y > physicalMax
+
+		if let animator = barAnimator, animator.state == .active {
+			// 补完动画进行中又开始滑：停在当前画面位置，从这里接着跟手（可中断、可反向）
+			let current = barAnimationStart + (barAnimationTarget - barAnimationStart) * animator.fractionComplete
+			animator.stopAnimation(true)
+			barAnimator = nil
+			barVisibility.settle(at: current)
+			applyBars(current)
+		}
+		let before = barVisibility.barP
+		barVisibility.update(delta: delta, isPinned: true, isBottomOverscroll: isBottomOverscroll)
+		if barVisibility.isTracking && !isBarIntervalOpen {
+			isBarIntervalOpen = true
+			recordChrome(state: .controlsChanging, pCollapse: 1, phase: .begin)
+		}
+		if barVisibility.barP != before {
+			applyBars(barVisibility.barP)
+		}
+		scheduleSettleIfIdle()
+	}
+
+	@objc private func scrollPanChanged(_ gesture: UIPanGestureRecognizer) {
+		switch gesture.state {
+		case .ended, .cancelled, .failed:
+			// 此刻滚动区可能还标记为「手指按着」，所以这里不做那项检查
+			scheduleSettleIfIdle(afterFingerLifted: true)
+		default:
+			settleTimer?.invalidate()
+		}
+	}
+
+	/// 手指已离开且滚动停下约 0.12 秒后，把停在半路的栏补完到最近的一端。
+	private func scheduleSettleIfIdle(afterFingerLifted: Bool = false) {
+		settleTimer?.invalidate()
+		guard afterFingerLifted || !contentView.scrollView.isTracking else { return }
+		settleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+			MainActor.assumeIsolated { self?.settleBars() }
+		}
+	}
+
+	private func settleBars() {
+		let target = barVisibility.settleTarget
+		let start = barVisibility.barP
+		barVisibility.settle(at: target)
+		if start != target {
+			animateBars(from: start, to: target)
+		}
+		closeBarInterval(pCollapse: 1)
+	}
+
+	/// 栏显隐区间：controlsChanging begin（开始跟手）↔ controlsChanging end（补完 / 被强制显示）。
+	private func closeBarInterval(pCollapse: CGFloat) {
+		guard isBarIntervalOpen else { return }
+		isBarIntervalOpen = false
+		recordChrome(state: .controlsChanging, pCollapse: pCollapse, phase: .end)
+	}
+
+	private func animateBars(from start: CGFloat, to target: CGFloat) {
+		barAnimator?.stopAnimation(true)
+		barAnimationStart = start
+		barAnimationTarget = target
+		let animator = UIViewPropertyAnimator(duration: Babel2ReaderBarVisibility.settleDuration, curve: .linear) { [weak self] in
+			self?.applyBars(target)
+		}
+		animator.addCompletion { [weak self] position in
+			guard position == .end else { return }
+			self?.barAnimator = nil
+		}
+		barAnimator = animator
+		animator.startAnimation()
+	}
+
+	/// 按 barP 画出顶栏按钮与底栏：0 = 显示，1 = 隐藏。
+	/// 顶栏只让按钮淡出并上移 8pt，底色保留；紧凑栏不动；底栏整条向下滑出并淡出。
+	private func applyBars(_ barP: CGFloat) {
+		let hidden = barP >= 0.5
+		for button in topButtons {
+			button.alpha = 1 - barP
+			button.transform = CGAffineTransform(translationX: 0, y: -8 * barP)
+			button.isUserInteractionEnabled = !hidden
+		}
+		toolbar.alpha = 1 - barP
+		toolbar.transform = CGAffineTransform(translationX: 0, y: Babel2ReaderToolbarView.height * barP)
+		toolbar.isUserInteractionEnabled = !hidden
 	}
 
 	// MARK: - 错误 / 无正文提示

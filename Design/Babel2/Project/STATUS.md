@@ -24,6 +24,16 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 4 第 3 步：底栏与上下滑显隐（2026-09-24，用户真机验收通过，已提交）
+
+- 用户 2026-09-24 选定（“都按建议来”）：①隐藏方式 A——顶栏只让按钮淡出并上移 8pt、底色保留，紧凑栏完全不动（遵守合同“隐藏栏不得移动固定标识”），底栏整条向下滑出并淡出；②底栏先按 Figma 五项：已读 / 星标 / 下一篇 / 阅读模式 / 翻译，“生成长图”放哪到 Slice 5 再定。
+- 底栏：72pt 贴屏幕底（含 Home 指示条区域），顶部细分隔线；按钮中心按 402pt 画布比例 x=32/104/201/290.5/362、距栏顶 24pt。已读（实心点=未读/空心圈=已读）与星标调用现成 `LibraryAction.markRead/markUnread/toggleStar`（Babel2LiveActionHandler，未改数据层），成功后才切换图标、进行中不重复发送、失败不变。下一篇/阅读模式/翻译为 Slice 5 占位：灰色、不可点。正文底部 contentInset 让出 72pt−安全区（只在安全区变化时改）。
+- 显隐（MOTION-CONTRACT §10）：仅在紧凑栏固定后生效；同方向累计 12pt 才开始；之后 barP 跟手（hideDistance 60pt，to-tune）；反向重新累计；到底回弹忽略；手指离开且滚动停下 0.12s 后，停在半路则 180ms 线性补完到最近一端（≥0.5→隐藏）；补完中再滑可从当前画面位置接着跟手；未固定/回顶强制显示（有动画）。打点：controlsChanging begin/end 每次交互成对。
+- 文件：新增 `iOS/Babel2/Reader/Babel2ReaderBarVisibility.swift`（纯规则）、`Babel2ReaderToolbarView.swift`；修改 `Babel2ArticleViewController.swift`、`Babel2Localization.swift` 与 `Resources/Babel2Localizable.xcstrings`（新增 7 个中英键）、`Tests/.../Babel2FeedReaderTests.swift`（+3 项，1 项旧期望过滤显隐打点）。未改 Core/adapter/禁区/pbxproj。
+- 验证：全量 92/92；UI Driver 1/1（未点底栏，不改真实数据）。
+- 已知限制（用户已知悉，建议单独一步）：阅读页改了已读/星标后，返回的文章列表行与首页计数不会立即更新——Babel2LiveDataProvider 的 articleCache 不失效，需改 `iOS/Babel2Integration/Babel2LiveDataAdapters.swift`。
+- 2026-09-24 用户按 10 项清单（底栏外观、已读与星标真实写入并在重新进入后可见、固定后下滑隐藏且紧凑栏不动、上滑恢复且小抖动不闪、半路松手补完、回顶显示、短文不隐藏、深色、左边缘返回）真机验收，回复“真机验收通过了”；12pt/60pt 未提出调整。口头确认，非 Instruments 证据。**Slice 4 三步至此全部完成**；整体 Slice 4 合同中的“多种 safe area/旋转/后台恢复保留位置、横图贴边在引用/列表内”等仍未专门验收。
+
 ## Reader Slice 4 第 2 步：滑动收缩（2026-09-24，用户真机验收通过，已提交）
 
 - 用户选定方案 A：大标题随正文滚走，顶栏下方 86pt 紧凑标题栏（与顶栏重叠 14pt）的底色/48pt 进度圆环+42pt 圆形订阅源图标/订阅源名+一行标题，按 pCollapse 线性渐显，文字从下方 12pt 滑入；固定后圆环按 pReading 顺时针增长（12 点起，主题色，唯一用主题色处）。全部由滚动位置直接驱动、可倒放，无自动播放动画；紧凑栏是覆盖层，滚动时不改正文区域几何。

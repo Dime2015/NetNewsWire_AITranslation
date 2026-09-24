@@ -103,6 +103,57 @@
         }
       }
     },
+    "Mark as Read" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Read"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为已读"
+          }
+        }
+      }
+    },
+    "Mark as Unread" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Unread"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为未读"
+          }
+        }
+      }
+    },
+    "Next Article" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next Article"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一篇"
+          }
+        }
+      }
+    },
     "No articles" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -188,6 +239,40 @@
         }
       }
     },
+    "Reading Mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading Mode"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读模式"
+          }
+        }
+      }
+    },
+    "Remove Star" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Star"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消星标"
+          }
+        }
+      }
+    },
     "Retry" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -239,6 +324,23 @@
         }
       }
     },
+    "Star" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Star"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加星标"
+          }
+        }
+      }
+    },
     "Starred" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -286,6 +388,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这篇文章没有正文"
+          }
+        }
+      }
+    },
+    "Translate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translate"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译"
           }
         }
       }

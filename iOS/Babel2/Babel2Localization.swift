@@ -23,6 +23,13 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case openOriginal = "Open Original"
 	case unableToLoadArticle = "Unable to load article"
 	case noArticleContent = "This article has no content"
+	case markRead = "Mark as Read"
+	case markUnread = "Mark as Unread"
+	case star = "Star"
+	case unstar = "Remove Star"
+	case nextArticle = "Next Article"
+	case readingMode = "Reading Mode"
+	case translate = "Translate"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -47,6 +54,11 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .openOriginal: return "babel2.article.open-original"
 		case .unableToLoadArticle: return "babel2.article.error"
 		case .noArticleContent: return "babel2.article.empty"
+		case .markRead, .markUnread: return "babel2.article.toolbar.read"
+		case .star, .unstar: return "babel2.article.toolbar.star"
+		case .nextArticle: return "babel2.article.toolbar.next"
+		case .readingMode: return "babel2.article.toolbar.reading-mode"
+		case .translate: return "babel2.article.toolbar.translate"
 		}
 	}
 }

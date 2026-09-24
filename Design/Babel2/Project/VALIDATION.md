@@ -9,6 +9,22 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-24 Reader Slice 4 第 3 步：底栏与上下滑显隐（r1；用户真机验收通过，已提交）
+
+基线：`HEAD` = `a1ae1a246` + 未提交第 3 步改动；Xcode 27.0；iPhone 17 Simulator。
+
+```sh
+xcodebuild -project NetNewsWire.xcodeproj -scheme NetNewsWire-iOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/dd -collect-test-diagnostics never -resultBundlePath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-bars-r1.xcresult test
+```
+
+结果：`result=Passed`、`totalTestCount=92`、`passedTests=92`、`failedTests=0`。新增 3 项：显隐纯规则（未固定不动、12pt 门槛只计超出部分、小幅反向不动、反向越过门槛、到底回弹忽略、半路就近补完、回顶强制显示）；底栏按钮位置/初始状态/已读与星标调用正确 LibraryAction 且失败不变/占位不可点；长文固定后下滑跟手隐藏、上滑恢复、停下补完、回顶强制显示、紧凑栏不动、正文底部让出 72pt、打点成对。
+
+中间轮次：本类测试 r1 3 项失败（测试里的算术写错、第 2 步测试未过滤新打点、同帧打点先后顺序）；r2 仅剩打点成对（方向反转时重复 begin），改为按“交互进行中”标记后全过。
+
+UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reader-bars-ui-r1.xcresult`：1/1 passed；该驱动不点底栏，不改真实数据。
+
+边界：手感与真实写入待用户真机。
+
 ## 2026-09-24 Reader Slice 4 第 2 步：滑动收缩（r4；用户真机验收通过，已提交）
 
 基线：`HEAD` = `4c58dfcaa` + 未提交第 2 步改动；Xcode 27.0；iPhone 17 Simulator。

@@ -383,7 +383,10 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		// 打点只记状态切换，且区间成对：收缩中=开始，离开收缩中=结束，直接跳跃=单点事件
 		let transitions = recorder.events.compactMap { event -> String? in
-			if case .readerChrome(let payload)? = event.typedPayload { return "\(payload.state.rawValue):\(event.phase.rawValue)" }
+			// 只看收缩状态；顶/底栏显隐（controlsChanging）另有测试
+			if case .readerChrome(let payload)? = event.typedPayload, payload.state != .controlsChanging {
+				return "\(payload.state.rawValue):\(event.phase.rawValue)"
+			}
 			return nil
 		}
 		XCTAssertEqual(transitions, [
@@ -405,6 +408,142 @@ final class Babel2FeedReaderTests: XCTestCase {
 		scrollView.contentOffset = CGPoint(x: 0, y: 200)
 		XCTAssertEqual(viewController.compactHeaderView.pCollapse, 0)
 		XCTAssertTrue(viewController.compactHeaderView.isHidden)
+	}
+
+	// MARK: - 阅读页底栏与显隐（Slice 4 第 3 步）
+
+	func testBarVisibilityRules() {
+		var bars = Babel2ReaderBarVisibility()
+		// 没固定：怎么滑都显示
+		bars.update(delta: 200, isPinned: false, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 0)
+		// 固定后，小于 12pt 不动
+		bars.update(delta: 5, isPinned: true, isBottomOverscroll: false)
+		bars.update(delta: 6, isPinned: true, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 0)
+		XCTAssertFalse(bars.isTracking)
+		// 越过 12pt 后只计越过的部分：累计 41 → 越过 29 → 29/60
+		bars.update(delta: 30, isPinned: true, isBottomOverscroll: false)
+		XCTAssertTrue(bars.isTracking)
+		XCTAssertEqual(bars.barP, 29 / 60, accuracy: 0.0001)
+		bars.update(delta: 100, isPinned: true, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 1)
+		// 小幅反向（<12pt）不动，防闪烁
+		bars.update(delta: -8, isPinned: true, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 1)
+		// 反向累计 8+42=50pt，越过门槛 38pt → 显示了 38/60
+		bars.update(delta: -42, isPinned: true, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 1 - 38.0 / 60, accuracy: 0.0001)
+		XCTAssertEqual(bars.settleTarget, 0, "less than half hidden settles to shown")
+		var halfway = Babel2ReaderBarVisibility()
+		halfway.update(delta: 12 + 30, isPinned: true, isBottomOverscroll: false)
+		XCTAssertEqual(halfway.barP, 0.5, accuracy: 0.0001)
+		XCTAssertEqual(halfway.settleTarget, 1, "exactly half-way settles to hidden")
+		// 到底回弹不算
+		let before = bars.barP
+		bars.update(delta: 40, isPinned: true, isBottomOverscroll: true)
+		XCTAssertEqual(bars.barP, before)
+		// 回到未固定（顶部附近）强制显示
+		bars.update(delta: -1, isPinned: false, isBottomOverscroll: false)
+		XCTAssertEqual(bars.barP, 0)
+		XCTAssertFalse(bars.isTracking)
+	}
+
+	func testToolbarReadAndStarUseActionHandlerAndPlaceholdersAreDisabled() async throws {
+		let handler = RecordingActionHandler()
+		let viewController = makeReader(body: "<p>Body</p>", actionHandler: handler, isRead: false, isStarred: true)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		let toolbar = viewController.toolbarView
+		XCTAssertEqual(toolbar.frame.maxY, window.bounds.maxY, accuracy: 0.5)
+		XCTAssertEqual(toolbar.frame.height, 72)
+		XCTAssertEqual(toolbar.readButton.accessibilityValue, "unread")
+		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
+		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
+		XCTAssertEqual(toolbar.placeholderButtons.count, 3)
+		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
+		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons).map { $0.center.x }
+		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
+			XCTAssertEqual(actual, expected, accuracy: 0.5)
+		}
+
+		let articleID = ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")
+		toolbar.readButton.sendActions(for: .touchUpInside)
+		await waitUntil { toolbar.readButton.accessibilityValue == "read" }
+		toolbar.starButton.sendActions(for: .touchUpInside)
+		await waitUntil { toolbar.starButton.accessibilityValue == "unstarred" }
+		toolbar.readButton.sendActions(for: .touchUpInside)
+		await waitUntil { toolbar.readButton.accessibilityValue == "unread" }
+		let actions = await handler.actions
+		XCTAssertEqual(actions, [.markRead(articleID), .toggleStar(articleID), .markUnread(articleID)])
+
+		// 失败时按钮状态不变
+		await handler.setShouldFail(true)
+		toolbar.starButton.sendActions(for: .touchUpInside)
+		try await Task.sleep(for: .milliseconds(200))
+		XCTAssertEqual(toolbar.starButton.accessibilityValue, "unstarred")
+	}
+
+	func testBarsHideAfterPinnedDownwardTravelAndReturnOnUpwardTravel() async throws {
+		let paragraphs = (1...120).map { "<p>Paragraph \($0) with enough words to wrap across the reading column.</p>" }.joined()
+		let recorder = RecordingMotionRecorder()
+		let viewController = makeReader(body: paragraphs, motionRecorder: recorder)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitForScrollableLength(viewController, atLeast: 2500)
+		let scrollView = viewController.readerContentView.scrollView
+		// 正文底部让出底栏：窗口无安全区时应让出整整 72pt
+		XCTAssertEqual(scrollView.contentInset.bottom, 72, accuracy: 0.5)
+		let progress = viewController.chromeProgress
+		func scroll(by distance: CGFloat, step: CGFloat = 4) {
+			var moved: CGFloat = 0
+			while abs(moved) < abs(distance) {
+				let delta = distance > 0 ? min(step, distance - moved) : max(-step, distance - moved)
+				scrollView.contentOffset.y += delta
+				moved += delta
+			}
+		}
+		// 固定之前往下滑：栏不动
+		scrollView.contentOffset.y = -scrollView.adjustedContentInset.top
+		scroll(by: progress.collapseStart + progress.collapseDistance - 2)
+		XCTAssertEqual(viewController.barVisibilityProgress, 0)
+		// 固定后继续往下：跟手隐藏
+		scroll(by: 12 + 30 + 2)
+		XCTAssertEqual(viewController.barVisibilityProgress, 30.0 / 60, accuracy: 0.05)
+		XCTAssertEqual(viewController.toolbarView.alpha, 0.5, accuracy: 0.05)
+		scroll(by: 100)
+		XCTAssertEqual(viewController.barVisibilityProgress, 1)
+		XCTAssertTrue(viewController.topBarButtons.allSatisfy { $0.alpha == 0 })
+		XCTAssertEqual(viewController.toolbarView.transform.ty, 72, accuracy: 0.5)
+		// 紧凑栏始终固定在原位
+		XCTAssertEqual(viewController.compactHeaderView.pCollapse, 1)
+		// 往上滑：先 8pt 不动，越过 12pt 后显示回来
+		scroll(by: -8)
+		XCTAssertEqual(viewController.barVisibilityProgress, 1)
+		scroll(by: -12 - 50)
+		XCTAssertLessThan(viewController.barVisibilityProgress, 0.25)
+		// 停下后补完到显示
+		await waitUntil { viewController.barVisibilityProgress == 0 }
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertTrue(viewController.topBarButtons.allSatisfy { $0.alpha == 1 && $0.isUserInteractionEnabled })
+		XCTAssertEqual(viewController.toolbarView.transform, .identity)
+		// 半路停下：补完到最近的一端（这里 >0.5 → 隐藏）
+		scroll(by: 12 + 40)
+		await waitUntil { viewController.barVisibilityProgress == 1 }
+		// 拉回顶部：强制显示
+		scrollView.contentOffset.y = -scrollView.adjustedContentInset.top
+		XCTAssertEqual(viewController.barVisibilityProgress, 0)
+		// 栏显隐打点成对出现：每个 begin 之后都有一个 end
+		let barPhases = recorder.events.compactMap { event -> MotionSignpostPhase? in
+			guard case .readerChrome(let payload)? = event.typedPayload, payload.state == .controlsChanging else { return nil }
+			return event.phase
+		}
+		XCTAssertFalse(barPhases.isEmpty)
+		XCTAssertEqual(barPhases.count % 2, 0, "bar intervals are paired: \(barPhases)")
+		for (index, phase) in barPhases.enumerated() {
+			XCTAssertEqual(phase, index % 2 == 0 ? .begin : .end)
+		}
 	}
 
 	func testRootScopeChangesQueryAndKeepsOnlyScopedPositiveCounts() async throws {
@@ -870,6 +1009,18 @@ private struct NoopActionHandler: ActionHandling {
 	func handle(_ action: LibraryAction) async throws {}
 }
 
+private actor RecordingActionHandler: ActionHandling {
+	private(set) var actions = [LibraryAction]()
+	var shouldFail = false
+
+	func setShouldFail(_ value: Bool) { shouldFail = value }
+
+	func handle(_ action: LibraryAction) async throws {
+		actions.append(action)
+		if shouldFail { throw CancellationError() }
+	}
+}
+
 private struct NoopSettingsProvider: SettingsProviding {
 	func settingsSnapshot() async throws -> SettingsSnapshot { SettingsSnapshot() }
 }
@@ -881,11 +1032,12 @@ private struct NoopImageProvider: ImageProviding {
 @MainActor
 private func makeEnvironment(
 	provider: any DataProviding,
-	renderer: any ArticleRendering = RecordingRenderer()
+	renderer: any ArticleRendering = RecordingRenderer(),
+	actionHandler: any ActionHandling = NoopActionHandler()
 ) -> AppEnvironment {
 	Babel2AppAssembly.makeEnvironment(
 		dataProvider: provider,
-		actionHandler: NoopActionHandler(),
+		actionHandler: actionHandler,
 		settingsProvider: NoopSettingsProvider(),
 		articleRenderer: renderer,
 		imageProvider: NoopImageProvider()
@@ -1031,18 +1183,26 @@ private extension UIView {
 }
 
 @MainActor
-private func makeReader(body: String, motionRecorder: any Babel2MotionRecording = Babel2NullMotionRecorder()) -> Babel2ArticleViewController {
+private func makeReader(
+	body: String,
+	motionRecorder: any Babel2MotionRecording = Babel2NullMotionRecorder(),
+	actionHandler: any ActionHandling = NoopActionHandler(),
+	isRead: Bool = false,
+	isStarred: Bool = false
+) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
-		id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: UUID().uuidString),
+		id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article"),
 		title: "Reader",
 		content: body,
 		url: URL(string: "https://example.com/post"),
-		feedID: feedID
+		feedID: feedID,
+		isRead: isRead,
+		isStarred: isStarred
 	)
 	return Babel2ArticleViewController(
 		article: article,
-		environment: makeEnvironment(provider: FakeDataProvider()),
+		environment: makeEnvironment(provider: FakeDataProvider(), actionHandler: actionHandler),
 		feedTitle: "Feed",
 		motionRecorder: motionRecorder
 	)
@@ -1088,4 +1248,14 @@ private func waitForScrollableLength(_ viewController: Babel2ArticleViewControll
 		try? await Task.sleep(for: .milliseconds(50))
 	}
 	XCTFail("Timed out waiting for scrollable length; maxScroll=\(viewController.chromeProgress.maxScroll)")
+}
+
+/// 按真实时间等待某个条件成立（最多约 3 秒）。
+@MainActor
+private func waitUntil(_ condition: () -> Bool) async {
+	for _ in 0..<300 {
+		if condition() { return }
+		try? await Task.sleep(for: .milliseconds(10))
+	}
+	XCTFail("Timed out waiting for condition")
 }
