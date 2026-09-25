@@ -166,6 +166,82 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(bodyOnlyOpenButton.isHidden)
 	}
 
+	// MARK: - 文章列表随状态变化原地刷新（2026-09-24）
+
+	func testFeedListUpdatesReadStateInPlaceWithoutRemovingRows() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, read: Bool, starred: Bool = false) -> ArticleSnapshot {
+			ArticleSnapshot(
+				id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id),
+				title: "Article \(id)",
+				url: nil,
+				feedID: feedID,
+				isRead: read,
+				isStarred: starred
+			)
+		}
+		let provider = FakeDataProvider(feeds: [feedID: [article("a", read: false), article("b", read: false), article("c", read: false)]])
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread, environment: makeEnvironment(provider: provider))
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+
+		// 数据库里：b 被标为已读并加星，c 已不在（例如未读档下被读掉后的新查询结果不含它）
+		await provider.setFeedArticles([article("a", read: false), article("b", read: true, starred: true)], for: feedID)
+		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		await waitUntil { feedViewController.articlesForTesting.map(\.isRead) == [false, true, false] }
+
+		// 行数、顺序不变；b 原地变成已读；缺失的 c 保持原样不被删掉
+		XCTAssertEqual(feedViewController.articlesForTesting.map(\.id.articleID), ["a", "b", "c"])
+		XCTAssertEqual(tableView.numberOfRows(inSection: 0), 3)
+		XCTAssertTrue(feedViewController.articlesForTesting[1].isStarred)
+		let bCell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 1, section: 0)))
+		let bTitle = try XCTUnwrap(descendant(of: bCell.contentView, matching: UILabel.self) { $0.text == "Article b" })
+		XCTAssertEqual(bTitle.font.fontDescriptor.object(forKey: .traits).flatMap { ($0 as? [UIFontDescriptor.TraitKey: Any])?[.weight] as? CGFloat } ?? 0, UIFont.Weight.regular.rawValue, accuracy: 0.01)
+		// 两次通知被合并成一次刷新：初次加载 1 次 + 刷新 1 次
+		let requests = await provider.feedScopeRequests
+		XCTAssertEqual(requests, [.unread, .all])
+	}
+
+	/// 真实使用场景：状态变化发生时列表被阅读页盖住，返回后才露出来。
+	func testFeedListRepaintsRowsChangedWhileCoveredByReader() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, read: Bool) -> ArticleSnapshot {
+			ArticleSnapshot(
+				id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id),
+				title: "Article \(id)",
+				url: nil,
+				feedID: feedID,
+				isRead: read
+			)
+		}
+		let provider = FakeDataProvider(feeds: [feedID: [article("a", read: false), article("b", read: false)]])
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread, environment: makeEnvironment(provider: provider))
+		let navigation = UINavigationController(rootViewController: feedViewController)
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 2)
+
+		// 进入「阅读页」盖住列表
+		navigation.pushViewController(UIViewController(), animated: false)
+		navigation.view.layoutIfNeeded()
+		XCTAssertNil(feedViewController.view.window, "list is covered")
+		await provider.setFeedArticles([article("a", read: true), article("b", read: false)], for: feedID)
+		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		await waitUntil { feedViewController.articlesForTesting.first?.isRead == true }
+
+		// 返回列表：a 的标题必须已经是常规字重
+		navigation.popViewController(animated: false)
+		navigation.view.layoutIfNeeded()
+		let aCell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 0, section: 0)))
+		let aTitle = try XCTUnwrap(descendant(of: aCell.contentView, matching: UILabel.self) { $0.text == "Article a" })
+		let weight = (aTitle.font.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any])?[.weight] as? CGFloat
+		XCTAssertEqual(weight ?? -1, UIFont.Weight.regular.rawValue, accuracy: 0.01, "row changed while covered must repaint on return")
+	}
+
 	// MARK: - 阅读页（Slice 4 第 1 步）
 
 	func testReaderHeaderIsVisibleBeforeBodyRenders() async throws {
@@ -880,7 +956,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 private actor FakeDataProvider: DataProviding {
 	private enum ProviderError: Error { case failed }
-	private let feedArticles: [FeedSnapshot.ID: [ArticleSnapshot]]
+	private var feedArticles: [FeedSnapshot.ID: [ArticleSnapshot]]
 	private var librarySnapshots: [Babel2FeedScope: LibrarySnapshot]
 	private var delayedScopes = Set<Babel2FeedScope>()
 	private var failedScopes = Set<Babel2FeedScope>()
@@ -932,6 +1008,11 @@ private actor FakeDataProvider: DataProviding {
 
 	func hasStarted(_ scope: Babel2FeedScope, atLeast count: Int) -> Bool {
 		libraryStarts.filter { $0 == scope }.count >= count
+	}
+
+	/// 模拟「数据库里的状态被改了」（阅读页操作或后台同步）。
+	func setFeedArticles(_ articles: [ArticleSnapshot], for id: FeedSnapshot.ID) {
+		feedArticles[id] = articles
 	}
 
 	func feedArticlesSnapshot(for id: FeedSnapshot.ID, scope: Babel2FeedScope) async throws -> [ArticleSnapshot] {

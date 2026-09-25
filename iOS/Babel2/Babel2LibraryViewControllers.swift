@@ -22,6 +22,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var loadTask: Task<Void, Never>?
 	private var loadGeneration = UUID()
 	private var loadState: LoadState = .loading
+	private var statusRefreshTimer: Timer?
+	private var statusRefreshTask: Task<Void, Never>?
 	var onSelectArticle: ((ArticleSnapshot) -> Void)?
 
 	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment) {
@@ -30,6 +32,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		self.environment = environment
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.feed.\(feed.id.accountID).\(feed.id.feedID)"
+		// 已读/星标等状态变化（阅读页操作、后台同步）时，原地刷新每一行的状态
+		NotificationCenter.default.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .babel2LibraryDidChange, object: nil)
 	}
 
 	required init?(coder: NSCoder) { nil }
@@ -44,10 +48,62 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	override func viewDidDisappear(_ animated: Bool) {
 		super.viewDidDisappear(animated)
-		if isMovingFromParent { cancelLoading() }
+		if isMovingFromParent {
+			cancelLoading()
+			statusRefreshTimer?.invalidate()
+			statusRefreshTask?.cancel()
+		}
 	}
 
-	deinit { loadTask?.cancel() }
+	deinit {
+		loadTask?.cancel()
+		statusRefreshTask?.cancel()
+	}
+
+	// MARK: - 状态原地刷新
+
+	/// 同步时通知会一串串地来：攒 0.3 秒再统一刷新一次。
+	@objc private func libraryDidChange(_ notification: Notification) {
+		statusRefreshTimer?.invalidate()
+		statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+			MainActor.assumeIsolated { self?.refreshStatusesInPlace() }
+		}
+	}
+
+	/// 重新读取这个订阅源所有文章的最新状态，只替换已显示的行（用户 2026-09-24 选定方案 A）：
+	/// 不增删行、不改顺序、不动滚动位置、不显示加载中。例如「未读」档里刚读完的文章
+	/// 仍留在列表里、只是标题变细，离开再进来才按新状态筛选。
+	private func refreshStatusesInPlace() {
+		guard loadState == .loaded, !articles.isEmpty else { return }
+		statusRefreshTask?.cancel()
+		let provider = environment.dataProvider
+		let feedID = feed.id
+		let generation = loadGeneration
+		statusRefreshTask = Task { @MainActor [weak self, provider, feedID, generation] in
+			guard let fresh = try? await provider.feedArticlesSnapshot(for: feedID, scope: .all),
+				!Task.isCancelled,
+				let self,
+				self.loadGeneration == generation,
+				self.loadState == .loaded else { return }
+			let freshByID = Dictionary(fresh.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+			var changedRows = [IndexPath]()
+			for (index, article) in self.articles.enumerated() {
+				guard let updated = freshByID[article.id], updated != article else { continue }
+				self.articles[index] = updated
+				changedRows.append(IndexPath(row: index, section: 0))
+			}
+			let visible = Set(self.tableView.indexPathsForVisibleRows ?? [])
+			let visibleChanged = changedRows.filter { visible.contains($0) }
+			if !visibleChanged.isEmpty {
+				UIView.performWithoutAnimation {
+					self.tableView.reloadRows(at: visibleChanged, with: .none)
+				}
+			}
+		}
+	}
+
+	/// 仅供自动化测试观察。
+	var articlesForTesting: [ArticleSnapshot] { articles }
 
 	private func cancelLoading() {
 		loadGeneration = UUID()

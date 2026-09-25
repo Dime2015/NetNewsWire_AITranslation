@@ -9,6 +9,14 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-24/25 文章列表随状态变化原地刷新（r2；用户真机验收通过，已提交）
+
+r2（2026-09-25，移除临时诊断代码后、含新增「列表被盖住时变化返回后重画」测试）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/list-refresh-r2.xcresult` `result=Passed`、`totalTestCount=94`、`passedTests=94`。
+
+基线：`HEAD` = `35d44c4a0` + 未提交改动；Xcode 27.0；iPhone 17 Simulator。命令同上（`-collect-test-diagnostics never`），result `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/list-refresh-r1.xcresult`：`result=Passed`、`totalTestCount=93`、`passedTests=93`。新增 `testFeedListUpdatesReadStateInPlaceWithoutRemovingRows`：「未读」档列表收到两次状态通知后只刷新一次（请求序列 unread→all）、b 原地变已读（标题常规字重）并带星标、行数与顺序不变、新查询中缺失的 c 不被删除。
+
+静态核实（非运行证据）：本地账户 `LocalAccountDelegate.markArticles` → `Account.updateStatusesAsync` → `noteStatusesForArticleIDsDidChange` 发出 `StatusesDidChange`；`Babel2LiveDataProvider` 转为 `.babel2LibraryDidChange`；首页 `libraryDidChange → reloadLibraryIfVisible`。首页真机表现待用户确认。
+
 ## 2026-09-24 Reader Slice 4 第 3 步：底栏与上下滑显隐（r1；用户真机验收通过，已提交）
 
 基线：`HEAD` = `a1ae1a246` + 未提交第 3 步改动；Xcode 27.0；iPhone 17 Simulator。

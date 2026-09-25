@@ -24,6 +24,16 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表随状态变化原地刷新（2026-09-25 用户真机验收通过，已提交）
+
+- 更正：第 3 步记录里“列表与首页不即时刷新、原因是 articleCache 不失效”的判断有误。核实后：首页 `Babel2RootViewController` 已监听 `.babel2LibraryDidChange`（由 Account 的 `StatusesDidChange` 转发；本地账户 `markArticles → updateStatusesAsync → noteStatusesForArticleIDsDidChange` 会发出），应当已会刷新；真正不刷新的是 `Babel2FeedViewController`（只在打开时加载一次）。`articleCache` 仅被未使用的 `articleSnapshot(for:)` 读取，与此无关，未改动。
+- 修复（用户选定方案 A）：文章列表监听 `.babel2LibraryDidChange`，0.3s 合并后按「全部」档重新读取该源文章最新状态，只原地替换已显示行（仅重载可见且有变化的行）；不增删行、不改顺序、不动滚动位置、不显示加载中；「未读」档里刚读完的文章留在列表只是标题变细，离开再进来才按新状态筛选。同时覆盖后台同步引起的状态变化。
+- 文件：仅 `iOS/Babel2/Babel2LibraryViewControllers.swift`（列表页）与 `Tests/.../Babel2FeedReaderTests.swift`（+1 项；测试用假数据源增加可改写数据的方法）。未改数据接入层/Core/禁区/pbxproj。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/list-refresh-r1.xcresult` 93/93。
+- 首轮真机反馈“第 3 步起全无变化”，排查（模拟器真实数据诊断：写库成功、通知在主线程发出 4 次、未读数 63→62 后已还原；新增“列表被阅读页盖住时变化、返回后重画”测试通过；端到端 UI 测试因模拟器 runner 连续超时未跑成，已删除）后，用户确认原因是**图标含义理解相反**（以为实心=已读）。按正确含义重测，2026-09-25 用户确认 6 步全部正常：列表行原地变细不跳动、首页未读数减 1、重新进入后不在未读列表、反向标未读变回粗体。
+- 排查用的临时诊断测试、端到端 UI 测试与行 accessibilityValue 已全部移除，未进入提交。
+- 用户同日追加两项决定（下一步实现）：①已读图标反过来——实心圆=已读、空心圈=未读；②打开文章时自动标为已读（Babel 2.0 阅读页此前从未实现，属遗漏，非有意设计）。
+
 ## Reader Slice 4 第 3 步：底栏与上下滑显隐（2026-09-24，用户真机验收通过，已提交）
 
 - 用户 2026-09-24 选定（“都按建议来”）：①隐藏方式 A——顶栏只让按钮淡出并上移 8pt、底色保留，紧凑栏完全不动（遵守合同“隐藏栏不得移动固定标识”），底栏整条向下滑出并淡出；②底栏先按 Figma 五项：已读 / 星标 / 下一篇 / 阅读模式 / 翻译，“生成长图”放哪到 Slice 5 再定。
@@ -31,7 +41,7 @@
 - 显隐（MOTION-CONTRACT §10）：仅在紧凑栏固定后生效；同方向累计 12pt 才开始；之后 barP 跟手（hideDistance 60pt，to-tune）；反向重新累计；到底回弹忽略；手指离开且滚动停下 0.12s 后，停在半路则 180ms 线性补完到最近一端（≥0.5→隐藏）；补完中再滑可从当前画面位置接着跟手；未固定/回顶强制显示（有动画）。打点：controlsChanging begin/end 每次交互成对。
 - 文件：新增 `iOS/Babel2/Reader/Babel2ReaderBarVisibility.swift`（纯规则）、`Babel2ReaderToolbarView.swift`；修改 `Babel2ArticleViewController.swift`、`Babel2Localization.swift` 与 `Resources/Babel2Localizable.xcstrings`（新增 7 个中英键）、`Tests/.../Babel2FeedReaderTests.swift`（+3 项，1 项旧期望过滤显隐打点）。未改 Core/adapter/禁区/pbxproj。
 - 验证：全量 92/92；UI Driver 1/1（未点底栏，不改真实数据）。
-- 已知限制（用户已知悉，建议单独一步）：阅读页改了已读/星标后，返回的文章列表行与首页计数不会立即更新——Babel2LiveDataProvider 的 articleCache 不失效，需改 `iOS/Babel2Integration/Babel2LiveDataAdapters.swift`。
+- 已知限制（已于同日处理，见上方「文章列表随状态变化原地刷新」；此处原因分析有误，保留原文供追溯）：阅读页改了已读/星标后，返回的文章列表行与首页计数不会立即更新——Babel2LiveDataProvider 的 articleCache 不失效，需改 `iOS/Babel2Integration/Babel2LiveDataAdapters.swift`。
 - 2026-09-24 用户按 10 项清单（底栏外观、已读与星标真实写入并在重新进入后可见、固定后下滑隐藏且紧凑栏不动、上滑恢复且小抖动不闪、半路松手补完、回顶显示、短文不隐藏、深色、左边缘返回）真机验收，回复“真机验收通过了”；12pt/60pt 未提出调整。口头确认，非 Instruments 证据。**Slice 4 三步至此全部完成**；整体 Slice 4 合同中的“多种 safe area/旋转/后台恢复保留位置、横图贴边在引用/列表内”等仍未专门验收。
 
 ## Reader Slice 4 第 2 步：滑动收缩（2026-09-24，用户真机验收通过，已提交）
