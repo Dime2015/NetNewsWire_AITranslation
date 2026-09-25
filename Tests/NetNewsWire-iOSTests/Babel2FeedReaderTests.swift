@@ -197,10 +197,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let hero = try XCTUnwrap(controller.heroViewForTesting)
 		XCTAssertEqual(hero.frame.minY, 0, "hero starts at the very top (under the status bar)")
 		XCTAssertEqual(hero.frame.maxY, controller.view.safeAreaInsets.top + 169, accuracy: 0.5)
-		XCTAssertEqual(tableView.frame.minY, hero.frame.maxY, accuracy: 0.5, "list starts right below the hero, no gap")
+		XCTAssertEqual(tableView.rect(forSection: 0).minY - tableView.contentOffset.y, hero.frame.maxY, accuracy: 0.5, "list content starts right below the hero, no gap")
 		XCTAssertFalse(hero.hasArtForTesting, "no cached art yet → plain paper")
 		XCTAssertEqual(hero.titleLabel.text, "Marginal Revolution")
-		XCTAssertTrue(hero.backButton.isDescendant(of: hero))
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		XCTAssertEqual(compact.backButton.accessibilityIdentifier, "babel2.feed.back", "back lives in the fixed compact layer")
 
 		let count = try XCTUnwrap(descendant(of: hero, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed.count" })
 		XCTAssertEqual(count.accessibilityValue, "3", "UI driver reads the plain number")
@@ -211,6 +212,101 @@ final class Babel2FeedReaderTests: XCTestCase {
 		fetch(art)
 		for _ in 0..<150 where !hero.hasArtForTesting { try await Task.sleep(for: .milliseconds(20)) }
 		XCTAssertTrue(hero.hasArtForTesting)
+	}
+
+	// MARK: - 顶部大图收缩（ADR-027 第 3 步，MOTION-CONTRACT §11）
+
+	/// 一行标题（有无缩略图）的行不被撑高、标题标签不被拉伸，图标与第一行字对齐（2026-09-25 用户截图：
+	/// 隐藏的缩略图仍把每行撑到 120pt，一行标题的字被上下居中而下沉）。
+	func testSingleLineTitleRowsAreNotStretched() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let titles = ["自民党项目组要求针对获取重要土地采用许可制并加强审查的一个长标题", "蒙古国总理乌其尔勒将于27日起访日", "Treasury Trading at the Close"]
+		let list = titles.enumerated().map { index, title in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "\(index)"), title: title,
+				summary: "【共同社9月25日电】日本政府25日宣布一段较长的摘要文字", url: nil, feedID: feedID,
+				publishedAt: now.addingTimeInterval(-Double(index) * 60), imageURL: index == 2 ? URL(string: "https://e.com/x.png") : nil)
+		}
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "新闻 - 共同网"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])))
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+		tableView.layoutIfNeeded()
+		var heights = [CGFloat]()
+		for row in 0..<3 {
+			let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: row, section: 0)))
+			let title = try XCTUnwrap(cell.contentView.subviews.compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "babel2.article.title" })
+			let icon = try XCTUnwrap(descendant(of: cell, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.feed-icon" })
+			let fit = title.sizeThatFits(CGSize(width: title.bounds.width, height: .greatestFiniteMagnitude)).height
+			XCTAssertEqual(title.bounds.height, fit, accuracy: 0.5, "title label is not stretched (row \(row))")
+			// 第一行字的中线 = 标题顶 + 半个行高（行高固定 22）
+			XCTAssertEqual(icon.frame.midY, title.frame.minY + 11, accuracy: 1.5, "icon aligned with first title line (row \(row))")
+			heights.append(cell.bounds.height)
+		}
+		XCTAssertLessThan(heights[1], heights[0], "a one-line title row without thumbnail is shorter than a two-line row")
+		XCTAssertGreaterThanOrEqual(heights[2], 33 + 3 + 70 + 14, "thumbnail row still fits the thumbnail")
+	}
+
+	func testFeedHeroMotionProgressAndSettling() {
+		let rest: CGFloat = -161
+		XCTAssertEqual(Babel2FeedHeroMotion.progress(offsetY: rest, restOffset: rest), 0)
+		XCTAssertEqual(Babel2FeedHeroMotion.progress(offsetY: rest - 50, restOffset: rest), 0, "pull-down bounce keeps the hero expanded")
+		XCTAssertEqual(Babel2FeedHeroMotion.progress(offsetY: rest + 35, restOffset: rest), 0.5, accuracy: 0.0001)
+		XCTAssertEqual(Babel2FeedHeroMotion.progress(offsetY: rest + 70, restOffset: rest), 1)
+		XCTAssertEqual(Babel2FeedHeroMotion.progress(offsetY: rest + 900, restOffset: rest), 1)
+		// 松手停在半路：不到一半回到展开，过半收到窄栏；两端以外不干预
+		XCTAssertEqual(Babel2FeedHeroMotion.settledTargetOffset(proposed: rest + 20, restOffset: rest), rest)
+		XCTAssertEqual(Babel2FeedHeroMotion.settledTargetOffset(proposed: rest + 50, restOffset: rest), rest + 70)
+		XCTAssertEqual(Babel2FeedHeroMotion.settledTargetOffset(proposed: rest + 300, restOffset: rest), rest + 300)
+		XCTAssertEqual(Babel2FeedHeroMotion.settledTargetOffset(proposed: rest, restOffset: rest), rest)
+		XCTAssertEqual(Babel2FeedHeroMotion.compactBackgroundAlpha(1), 1, "compact chrome is fully opaque when collapsed")
+	}
+
+	/// 展开 / 中间 / 收缩 三个状态：大图（或窄栏）下沿与列表内容紧贴、无缝；收缩后窄栏完全不透明、
+	/// 日期段标题吸在窄栏下沿；切换档位回顶后大图重新展开。
+	func testFeedHeroCollapsesWithScrollWithoutGaps() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let list = (1...40).map { index in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "\(index)"), title: "Title \(index)",
+				summary: "Summary", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-Double(index) * 60))
+		}
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])))
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 40)
+		controller.view.layoutIfNeeded()
+		let hero = try XCTUnwrap(controller.heroViewForTesting)
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		let safeTop = controller.view.safeAreaInsets.top
+		let rest = -tableView.adjustedContentInset.top
+		XCTAssertEqual(rest, -(safeTop + 99), accuracy: 0.5, "list reserves exactly the compact bar height")
+		func contentTop() -> CGFloat { tableView.rect(forSection: 0).minY - tableView.contentOffset.y }
+
+		for (travel, expectedHeroBottom) in [(CGFloat(0), safeTop + 169), (35, safeTop + 134), (70, safeTop + 99)] {
+			tableView.contentOffset.y = rest + travel
+			XCTAssertEqual(controller.heroProgressForTesting, travel / 70, accuracy: 0.001)
+			XCTAssertEqual(hero.frame.maxY, expectedHeroBottom, accuracy: 0.5, "hero bottom at travel \(travel)")
+			XCTAssertEqual(contentTop(), hero.frame.maxY, accuracy: 0.5, "no gap between hero and list at travel \(travel)")
+		}
+		XCTAssertEqual(compact.backdropAlphaForTesting, 1, "collapsed compact bar is fully opaque")
+		XCTAssertEqual(compact.frame.maxY, safeTop + 99, accuracy: 0.5)
+
+		// 继续往下：窄栏固定，日期段标题吸在窄栏下沿
+		tableView.contentOffset.y = rest + 600
+		tableView.layoutIfNeeded()
+		XCTAssertEqual(controller.heroProgressForTesting, 1)
+		let header = try XCTUnwrap(tableView.headerView(forSection: 0))
+		XCTAssertEqual(header.convert(header.bounds, to: controller.view).minY, compact.frame.maxY, accuracy: 0.5, "day header pins right under the compact bar")
+
+		// 切换档位：回顶，大图重新展开
+		controller.selectScope(.unread, fromUser: false)
+		XCTAssertEqual(controller.heroProgressForTesting, 0)
+		XCTAssertEqual(hero.transform, .identity)
 	}
 
 	// MARK: - Reeder 式文章行与按天分组（2026-09-25）

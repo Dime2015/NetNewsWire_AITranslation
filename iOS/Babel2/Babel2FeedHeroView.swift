@@ -6,20 +6,22 @@ import UIKit
 /// - 只在最下面约 45% 渐隐成纸色（深色模式即深色底），与下面的列表无缝相接
 ///   （A 版「虚化 + 半透明 + 大面积渐隐」遮得太重、几乎看不出图，被否决）
 /// - 标题用正文墨色、28pt 粗体，落在已接近纸色的底部；下面一行「N 篇」
-/// - 只放返回按钮；有大图时不放圆形小图标（用户 2026-09-25）
+/// - 有大图时不放圆形小图标（用户 2026-09-25）；返回按钮在上层的窄栏里，全程不动
 /// - 没有高清图标：同样版式、纯纸色底（不另做一套样子）
 ///
-/// 这一步大图固定高度，不随滚动收缩（第 3 步再做）。
+/// 第 3 步：随列表滚动整体上移、图与大标题淡出（`apply(progress:)`，只改平移与透明度）。
+/// 不接收点按——手指从大图上开始拖，照样能滚动下面的列表。
 final class Babel2FeedHeroView: UIView {
 	/// 安全区以下的高度（Figma 03A「Feed Hero / Expanded」169pt）。
 	static let expandedHeight: CGFloat = 169
 
-	let backButton = UIButton(type: .system)
 	let titleLabel = UILabel()
 	private let countLabel: UILabel
 	private let artView = UIImageView()
 	private let fadeLayer = CAGradientLayer()
 	private var artTask: Task<Void, Never>?
+	/// 当前收缩进度（0 展开 … 1 收缩），决定图与大标题的透明度。
+	private var progress: CGFloat = 0
 	/// 仅供自动化测试观察：是否已经铺上了订阅源的图。
 	var hasArtForTesting: Bool { artView.image != nil }
 
@@ -28,6 +30,7 @@ final class Babel2FeedHeroView: UIView {
 		super.init(frame: .zero)
 		backgroundColor = BabelPalette.background
 		clipsToBounds = true
+		isUserInteractionEnabled = false
 
 		artView.contentMode = .scaleAspectFill
 		artView.clipsToBounds = true
@@ -36,12 +39,6 @@ final class Babel2FeedHeroView: UIView {
 		addSubview(artView)
 		layer.addSublayer(fadeLayer)
 		updateFadeColors()
-
-		backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)), for: .normal)
-		backButton.tintColor = BabelPalette.ink
-		backButton.accessibilityLabel = "Back"
-		backButton.accessibilityIdentifier = "babel2.feed.back"
-		backButton.translatesAutoresizingMaskIntoConstraints = false
 
 		titleLabel.text = title
 		titleLabel.font = .systemFont(ofSize: 28, weight: .bold)
@@ -59,18 +56,13 @@ final class Babel2FeedHeroView: UIView {
 		countLabel.accessibilityIdentifier = "babel2.feed.count"
 		countLabel.translatesAutoresizingMaskIntoConstraints = false
 
-		[backButton, titleLabel, countLabel].forEach(addSubview)
+		[titleLabel, countLabel].forEach(addSubview)
 
 		NSLayoutConstraint.activate([
 			artView.leadingAnchor.constraint(equalTo: leadingAnchor),
 			artView.trailingAnchor.constraint(equalTo: trailingAnchor),
 			artView.topAnchor.constraint(equalTo: topAnchor),
 			artView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-			backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-			backButton.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 22),
-			backButton.widthAnchor.constraint(equalToConstant: 44),
-			backButton.heightAnchor.constraint(equalToConstant: 44),
 
 			titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
@@ -110,13 +102,25 @@ final class Babel2FeedHeroView: UIView {
 			let prepared = await image.byPreparingForDisplay() ?? image
 			guard let self, !Task.isCancelled else { return }
 			self.artView.image = prepared
-			let show = { self.artView.alpha = Self.artAlpha }
+			let show = { self.artView.alpha = Self.artAlpha * Babel2FeedHeroMotion.heroContentAlpha(self.progress) }
 			if animated {
 				UIView.animate(withDuration: 0.25, animations: show)
 			} else {
 				show()
 			}
 		}
+	}
+
+	/// 按收缩进度更新：整体上移 70pt × 进度，图淡出、大标题更快淡出。只改平移与透明度，不重新排版。
+	func apply(progress newProgress: CGFloat) {
+		progress = newProgress
+		transform = CGAffineTransform(translationX: 0, y: -Babel2FeedHeroMotion.collapseDistance * newProgress)
+		if artView.image != nil {
+			artView.alpha = Self.artAlpha * Babel2FeedHeroMotion.heroContentAlpha(newProgress)
+		}
+		let titleAlpha = Babel2FeedHeroMotion.heroTitleAlpha(newProgress)
+		titleLabel.alpha = titleAlpha
+		countLabel.alpha = titleAlpha
 	}
 
 	/// 图完全不透明：要让人看清订阅源的图。
@@ -127,5 +131,109 @@ final class Babel2FeedHeroView: UIView {
 		let paper = BabelPalette.background.resolvedColor(with: traitCollection)
 		fadeLayer.colors = [0, 0, 0.85, 1].map { paper.withAlphaComponent($0).cgColor }
 		fadeLayer.locations = [0, 0.55, 0.8, 1]
+	}
+}
+
+/// 收缩后的窄栏（Figma 03C「Feed Hero / Compact Sticky」，ADR-027 保留「小图标 + 名字」）：
+/// 从屏幕最顶端到安全区下方 99pt；纸色底随收缩进度变为完全不透明；
+/// 第二行 26pt 圆形小图标（x=20）+ 订阅源名 17pt 半粗（x=56）在后半程淡入；底部细线。
+/// 返回按钮在这一层、全程不动。除返回按钮外不拦截触摸（拖动照样滚动列表）。
+final class Babel2FeedCompactBar: UIView {
+	let backButton = UIButton(type: .system)
+	let titleLabel = UILabel()
+	private let backdrop = UIView()
+	private let iconView = UIImageView()
+	private let initialLabel = UILabel()
+	private let hairline = UIView()
+	/// 仅供自动化测试观察：纸色底的不透明度（1 = 完全不透明）。
+	var backdropAlphaForTesting: CGFloat { backdrop.alpha }
+
+	init(title: String, icon: UIImage?) {
+		super.init(frame: .zero)
+		backgroundColor = .clear
+
+		backdrop.backgroundColor = BabelPalette.background
+		backdrop.alpha = 0
+		backdrop.translatesAutoresizingMaskIntoConstraints = false
+		addSubview(backdrop)
+
+		backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)), for: .normal)
+		backButton.tintColor = BabelPalette.ink
+		backButton.accessibilityLabel = "Back"
+		backButton.accessibilityIdentifier = "babel2.feed.back"
+		backButton.translatesAutoresizingMaskIntoConstraints = false
+
+		iconView.image = icon
+		iconView.contentMode = .scaleAspectFill
+		iconView.clipsToBounds = true
+		iconView.layer.cornerRadius = 13
+		iconView.layer.borderWidth = 0.75
+		iconView.layer.borderColor = UIColor(red: 209 / 255, green: 209 / 255, blue: 204 / 255, alpha: 0.42).cgColor
+		iconView.backgroundColor = icon == nil ? BabelPalette.hairline : .clear
+		iconView.alpha = 0
+		iconView.translatesAutoresizingMaskIntoConstraints = false
+		initialLabel.text = icon == nil ? title.first.map { String($0).uppercased() } : nil
+		initialLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+		initialLabel.textColor = BabelPalette.mutedInk
+		initialLabel.translatesAutoresizingMaskIntoConstraints = false
+		iconView.addSubview(initialLabel)
+
+		titleLabel.text = title
+		titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+		titleLabel.textColor = BabelPalette.ink
+		titleLabel.lineBreakMode = .byTruncatingTail
+		titleLabel.alpha = 0
+		titleLabel.accessibilityIdentifier = "babel2.feed.compact-title"
+		titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+		hairline.backgroundColor = BabelPalette.hairline
+		hairline.alpha = 0
+		hairline.translatesAutoresizingMaskIntoConstraints = false
+
+		[backButton, iconView, titleLabel, hairline].forEach(addSubview)
+		let safeTop = safeAreaLayoutGuide.topAnchor
+		NSLayoutConstraint.activate([
+			backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
+			backdrop.trailingAnchor.constraint(equalTo: trailingAnchor),
+			backdrop.topAnchor.constraint(equalTo: topAnchor),
+			backdrop.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+			backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+			backButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
+			backButton.widthAnchor.constraint(equalToConstant: 44),
+			backButton.heightAnchor.constraint(equalToConstant: 44),
+
+			iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+			iconView.topAnchor.constraint(equalTo: safeTop, constant: 54),
+			iconView.widthAnchor.constraint(equalToConstant: 26),
+			iconView.heightAnchor.constraint(equalToConstant: 26),
+			initialLabel.centerXAnchor.constraint(equalTo: iconView.centerXAnchor),
+			initialLabel.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+
+			titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 56),
+			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+			titleLabel.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+
+			hairline.leadingAnchor.constraint(equalTo: leadingAnchor),
+			hairline.trailingAnchor.constraint(equalTo: trailingAnchor),
+			hairline.bottomAnchor.constraint(equalTo: bottomAnchor),
+			hairline.heightAnchor.constraint(equalToConstant: 0.5)
+		])
+	}
+
+	required init?(coder: NSCoder) { nil }
+
+	/// 按收缩进度更新透明度（不重新排版）。
+	func apply(progress: CGFloat) {
+		backdrop.alpha = Babel2FeedHeroMotion.compactBackgroundAlpha(progress)
+		hairline.alpha = progress
+		let contentAlpha = Babel2FeedHeroMotion.compactContentAlpha(progress)
+		iconView.alpha = contentAlpha
+		titleLabel.alpha = contentAlpha
+	}
+
+	/// 只有返回按钮接收触摸；其余位置交给下面的列表（从顶部开始拖也能滚动）。
+	override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+		backButton.frame.insetBy(dx: -4, dy: -4).contains(point)
 	}
 }

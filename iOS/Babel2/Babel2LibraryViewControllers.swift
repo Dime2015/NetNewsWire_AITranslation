@@ -54,6 +54,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let titleTranslationToggle = Babel2TranslationToggle()
 	private weak var headerTitleLabel: UILabel?
 	private weak var heroView: Babel2FeedHeroView?
+	private weak var compactBar: Babel2FeedCompactBar?
+	/// 仅供自动化测试观察。
+	var compactBarForTesting: Babel2FeedCompactBar? { compactBar }
+	var heroProgressForTesting: CGFloat { heroProgress }
+	private var heroProgress: CGFloat = 0
 	private let heroImage: Babel2FeedHeroImageSource?
 	/// 仅供自动化测试观察。
 	var heroViewForTesting: Babel2FeedHeroView? { heroView }
@@ -425,21 +430,30 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
-	/// 顶部大图（ADR-027 第 2 步）：从屏幕最顶端铺到安全区下方 169pt；返回 / 标题 / 「N 篇」都在里面。
+	/// 顶部大图（ADR-027）：从屏幕最顶端铺到安全区下方 169pt，标题 / 「N 篇」在里面；
+	/// 上层是收缩后的窄栏（安全区 + 99pt，返回按钮在这层、全程不动）。随列表滚动跟手收缩（第 3 步）。
 	private func configureHeader() {
 		setCount(feed.articleCount)
 		let hero = Babel2FeedHeroView(title: feed.title, countLabel: countLabel)
 		hero.titleLabel.accessibilityValue = scope.rawValue
 		headerTitleLabel = hero.titleLabel
-		hero.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
 		hero.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(hero)
 		heroView = hero
+		let compact = Babel2FeedCompactBar(title: feed.title, icon: feedIconImage)
+		compact.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+		compact.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(compact)
+		compactBar = compact
 		NSLayoutConstraint.activate([
 			hero.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			hero.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			hero.topAnchor.constraint(equalTo: view.topAnchor),
-			hero.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight)
+			hero.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight),
+			compact.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			compact.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			compact.topAnchor.constraint(equalTo: view.topAnchor),
+			compact.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroMotion.compactHeight)
 		])
 		// 头图：有缓存立即铺上（不动画）；再请求一次，抓到更好的图时淡入替换
 		if let heroImage {
@@ -469,7 +483,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		tableView.register(Babel2ArticleCell.self, forCellReuseIdentifier: Babel2ArticleCell.reuseIdentifier)
 		tableView.accessibilityIdentifier = "babel2.feed.articles.table"
 		tableView.translatesAutoresizingMaskIntoConstraints = false
-		view.addSubview(tableView)
+		// 列表铺满全屏、压在大图与窄栏下面：顶部固定留出窄栏高度（系统再自动加上安全区），
+		// 最上面垫 70pt 空白——静止时「窄栏 + 垫片」正好等于大图的 169pt。边距只设这一次，滚动中不改（MOTION-CONTRACT §11）。
+		tableView.contentInset.top = Babel2FeedHeroMotion.compactHeight
+		let spacer = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: Babel2FeedHeroMotion.collapseDistance))
+		spacer.backgroundColor = .clear
+		tableView.tableHeaderView = spacer
+		view.insertSubview(tableView, at: 0)
 
 		emptyLabel.text = Babel2Localization.text(.noArticles)
 		emptyLabel.accessibilityIdentifier = "babel2.feed.articles.state"
@@ -492,7 +512,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		NSLayoutConstraint.activate([
 			tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-			tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight),
+			tableView.topAnchor.constraint(equalTo: view.topAnchor),
 			tableView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
 			emptyLabel.centerXAnchor.constraint(equalTo: tableView.centerXAnchor),
 			emptyLabel.centerYAnchor.constraint(equalTo: tableView.centerYAnchor, constant: -20),
@@ -530,12 +550,33 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 段标题吸在顶部时，下方显示一根细线（与参考截图一致）；在原位时不显示。
 	func scrollViewDidScroll(_ scrollView: UIScrollView) {
 		guard scrollView === tableView else { return }
+		updateHeroProgress()
 		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
 		for section in 0..<daySections.count {
 			guard let header = tableView.headerView(forSection: section) as? Babel2DayHeaderView else { continue }
 			let naturalTop = tableView.rect(forSection: section).minY
 			header.setPinned(naturalTop < pinnedTop - 0.5 && header.frame.minY > naturalTop + 0.5)
 		}
+	}
+
+	// MARK: - 顶部大图收缩（ADR-027 第 3 步）
+
+	/// 按滚动位置更新大图与窄栏（只改平移与透明度）。
+	private func updateHeroProgress() {
+		let progress = Babel2FeedHeroMotion.progress(offsetY: tableView.contentOffset.y, restOffset: -tableView.adjustedContentInset.top)
+		guard progress != heroProgress else { return }
+		heroProgress = progress
+		heroView?.apply(progress: progress)
+		compactBar?.apply(progress: progress)
+	}
+
+	/// 松手后预计停在半路：改停到最近的一端（不到一半弹回展开，过半收到窄栏）。
+	func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+		guard scrollView === tableView else { return }
+		targetContentOffset.pointee.y = Babel2FeedHeroMotion.settledTargetOffset(
+			proposed: targetContentOffset.pointee.y,
+			restOffset: -tableView.adjustedContentInset.top
+		)
 	}
 
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -665,6 +706,9 @@ private final class Babel2ArticleCell: UITableViewCell {
 	private var titleToTrailing: NSLayoutConstraint!
 	private var summaryToThumb: NSLayoutConstraint!
 	private var summaryToTrailing: NSLayoutConstraint!
+	/// 「行高至少容纳缩略图」：只在有缩略图时生效。隐藏的缩略图也会参与布局，若一直生效，
+	/// 每行都被撑到 120pt，多出的高度分给标题、字被上下居中，与图标错位（2026-09-25 用户截图）。
+	private var bottomBelowThumb: NSLayoutConstraint!
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -712,11 +756,16 @@ private final class Babel2ArticleCell: UITableViewCell {
 		titleLabel.accessibilityIdentifier = "babel2.article.title"
 		summaryLabel.numberOfLines = 1
 		summaryLabel.accessibilityIdentifier = "babel2.article.summary"
+		// 标题、摘要竖直方向不许被拉高：行高有富余时空白留在摘要下面，字不会被上下居中而与图标错位
+		for label in [feedLabel, titleLabel, summaryLabel] {
+			label.setContentHuggingPriority(.required, for: .vertical)
+		}
 
 		titleToThumb = titleLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
 		titleToTrailing = titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
 		summaryToThumb = summaryLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
 		summaryToTrailing = summaryLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+		bottomBelowThumb = contentView.bottomAnchor.constraint(greaterThanOrEqualTo: thumbnailView.bottomAnchor, constant: 14)
 
 		// 行高由内容决定：文字底 / 缩略图底，取较低者再留 14pt
 		let textBottom = contentView.bottomAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 14)
@@ -753,7 +802,6 @@ private final class Babel2ArticleCell: UITableViewCell {
 			thumbnailView.topAnchor.constraint(equalTo: titleLabel.topAnchor, constant: 3),
 			thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbSide),
 			thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbSide),
-			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: thumbnailView.bottomAnchor, constant: 14),
 			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: summaryLabel.bottomAnchor, constant: 14),
 			textBottom
 		])
@@ -839,6 +887,7 @@ private final class Babel2ArticleCell: UITableViewCell {
 
 	private func setThumbVisible(_ visible: Bool) {
 		thumbnailView.isHidden = !visible
+		bottomBelowThumb.isActive = visible
 		titleToThumb.isActive = visible
 		summaryToThumb.isActive = visible
 		titleToTrailing.isActive = !visible

@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表顶部大图滚动收缩（Slice 3 第 3 步，ADR-027 / MOTION-CONTRACT §11；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 新增 `iOS/Babel2/Babel2FeedHeroMotion.swift`（纯计算）：pHero = clamp((offsetY − rest) / 70)；松手预计停在半路时改停最近一端（< 35 回展开、≥ 35 收到窄栏）；各层透明度映射（大图与图 1−p、大标题 1−1.6p、窄栏底 p、窄栏图标与名字 (p−0.4)/0.6）。
+- 结构：列表铺满全屏、压在最下层，`contentInset.top` 固定 99（系统再加安全区）+ 70pt 透明 tableHeaderView 垫片，只设一次；大图叠其上、不接收触摸，滚动时整体平移 −70p 并淡出；最上层 `Babel2FeedCompactBar`（安全区 + 99pt，Figma 03C：26pt 圆形小图标 x=20 / 名字 17pt 半粗 x=56 / 底部细线；无图标时首字母圆），纸色底随 p 变不透明，返回按钮在这一层全程不动，除返回外触摸穿透给列表。大标题与窄栏标题为交叉淡入淡出（不做位置形变，用户要求少纠结细节）。未加性能打点。
+- 验证（独立 DerivedData，核对 Ld）：测试 +2（进度与补完规则；展开/中间/收缩三态大图或窄栏下沿与列表内容紧贴、收缩后窄栏完全不透明、日期段标题吸在窄栏下沿、切档回顶后重新展开），原大图测试随结构更新。反向验证：大图不平移时无缝断言失败（差 35pt）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/col-full.xcresult` 127/127；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/col-ui.xcresult` 1/1。
+- 未能自动验证：跟手顺滑度、补完手感、120Hz 帧率——真机验收。
+- 2026-09-25 用户真机验收收缩通过；同时报告文章行偶发「标题与图标不对齐」（一行标题的行）。复现量得：每行都是 120pt、一行标题的标签被撑到 49pt（文字只需 22pt）、字上下居中下沉约 13pt。原因（第 1 步改版时引入）：「行高至少容纳缩略图」约束在缩略图隐藏时仍生效，多余高度分给了最软的标题标签。修复：该约束只在有缩略图时生效；来源名/标题/摘要竖直方向 hugging 设为 required（富余空白留在摘要下方）。测试 +1（一行标题不被拉伸、图标对齐、行高随内容变化、缩略图行仍放得下缩略图）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/align-full.xcresult` 128/128。
+
 ## 文章列表顶部大图（Slice 3 第 2 步，ADR-027；2026-09-25，样式 E 用户真机验收通过，已提交并推送）
 
 - 新增 `iOS/Babel2/Babel2FeedHeroView.swift`：从屏幕最顶端铺到安全区下方 169pt；订阅源高清图标后台一次性缩到 240px 并高斯模糊（σ 12，边缘夹紧）、不透明度 0.55 作氛围底，CAGradientLayer 渐隐为纸色（0/0.25/0.92/1 @ 0/45/80/100%，随深浅色更新）；标题 28pt 粗体墨色（单行，过长缩到 0.75）、下接「N 篇」13pt；只放返回（沿用 babel2.feed.back / title / count 标识）；无高清图标时同版式纯纸色；图晚到时淡入。这一步不随滚动收缩。
