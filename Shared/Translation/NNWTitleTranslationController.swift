@@ -432,13 +432,18 @@ enum NNWTitleBatchTranslator {
 		request.setValue("https://github.com/Dime2015/NetNewsWire_AITranslation", forHTTPHeaderField: "HTTP-Referer")
 		request.setValue("NetNewsWire AI Translation", forHTTPHeaderField: "X-Title")
 
-		let provider: Provider? = config.baseURL.lowercased().contains("openrouter")
-			? Provider(sort: "throughput") : nil
+		let isOpenRouter = config.baseURL.lowercased().contains("openrouter")
+		let provider: Provider? = isOpenRouter ? Provider(sort: "throughput") : nil
+		// [翻译] 关掉思考模式（2026-09-25 补）：正文翻译 2026-08-08 就加了这一条，标题这边当时漏了。
+		// 默认开着推理的模型会先思考一大段再给译文，标题翻译因此明显变慢、多花钱（用户报告「很慢」）。
+		// 写法与 OpenAICompatibleTranslator.ChatRequest.Reasoning 相同，同样只对 OpenRouter 发。
+		let reasoning: Reasoning? = isOpenRouter ? Reasoning(effort: "none", exclude: true) : nil
 		let body = Request(model: model,
 						   messages: [Message(role: "system", content: systemPrompt),
 									  Message(role: "user", content: inputJSON)],
 						   temperature: 0.3,
-						   provider: provider)
+						   provider: provider,
+						   reasoning: reasoning)
 		request.httpBody = try JSONEncoder().encode(body)
 
 		let data: Data
@@ -488,6 +493,14 @@ enum NNWTitleBatchTranslator {
 		let messages: [Message]
 		let temperature: Double
 		let provider: Provider?
+		/// nil 时整个字段不出现在请求里（非 OpenRouter 服务商不认识它）。
+		let reasoning: Reasoning?
+	}
+
+	/// `effort: "none"` 彻底不思考；`exclude: true` 关不掉的模型至少别把推理回传。
+	private struct Reasoning: Encodable {
+		let effort: String
+		let exclude: Bool
 	}
 
 	private struct Message: Encodable {

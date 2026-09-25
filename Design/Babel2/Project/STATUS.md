@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 标题翻译请求关闭思考（2026-09-25，用户真机确认明显变快，已提交并推送）
+
+- 起因：用户反馈标题翻译慢。查证：`NNWTitleBatchTranslator` 请求未带正文翻译已有的 `reasoning: {effort: "none", exclude: true}`（2026-08-08 只加在正文那边）。
+- 改动（用户同意改共享翻译引擎一处）：`Shared/Translation/NNWTitleTranslationController.swift` 的标题请求补上同一字段，仅对 OpenRouter 发送。
+- 验证：新增测试用本地拦截检查真实请求体——OpenRouter 请求含 effort=none、exclude=true，其他服务商不带该字段；全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reasoning-r1.xcresult` 114/114。macOS：工作区直接编译被 `DEVELOPMENT_TEAM` 不应写在 pbxproj 的检查拦下（来自用户未提交的真机签名改动，与本改动无关）；在仅含本改动的临时副本中 macOS Debug build 成功。
+- 2026-09-25 用户真机对比：标题翻译「明显变快了」——说明所选模型默认会思考，之前慢主要因思考过程。
+
 ## 文章列表标题翻译开关（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-024 实现：列表底栏「原 翻译」开关接通；打开后请求屏幕上未翻标题，译文到达原地刷新；滚动停下继续请求；关闭原地恢复原文；启动唤醒引擎恢复新文章提前翻译。

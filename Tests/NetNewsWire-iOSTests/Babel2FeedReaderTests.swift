@@ -111,6 +111,35 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(feedViewController.titleTranslationToggleForTesting.displayedText.caption, "原文")
 	}
 
+	/// 用户反馈标题翻译慢：标题请求要和正文请求一样关掉思考（只对 OpenRouter 发该字段）。
+	func testTitleTranslationRequestDisablesReasoningOnOpenRouter() async throws {
+		URLProtocol.registerClass(CapturingTranslationProtocol.self)
+		defer { URLProtocol.unregisterClass(CapturingTranslationProtocol.self) }
+
+		CapturingTranslationProtocol.lastBody = nil
+		let translated = try await NNWTitleBatchTranslator.translate(
+			["A headline"],
+			config: TranslationConfig(baseURL: "https://openrouter.ai/api/v1", apiKey: "test"),
+			model: "some/model"
+		)
+		XCTAssertEqual(translated, ["一个标题"])
+		let openRouterBody = try XCTUnwrap(CapturingTranslationProtocol.lastBody)
+		let json = try XCTUnwrap(JSONSerialization.jsonObject(with: openRouterBody) as? [String: Any])
+		let reasoning = try XCTUnwrap(json["reasoning"] as? [String: Any], "OpenRouter request must carry reasoning settings")
+		XCTAssertEqual(reasoning["effort"] as? String, "none")
+		XCTAssertEqual(reasoning["exclude"] as? Bool, true)
+
+		CapturingTranslationProtocol.lastBody = nil
+		_ = try await NNWTitleBatchTranslator.translate(
+			["A headline"],
+			config: TranslationConfig(baseURL: "https://api.example-provider.com/v1", apiKey: "test"),
+			model: "some/model"
+		)
+		let otherBody = try XCTUnwrap(CapturingTranslationProtocol.lastBody)
+		let otherJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: otherBody) as? [String: Any])
+		XCTAssertNil(otherJSON["reasoning"], "non-OpenRouter providers do not get the field")
+	}
+
 	func testMarkAllReadConfirmsCountThenMarksWholeFeed() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 		func article(_ id: String) -> ArticleSnapshot {
@@ -1893,4 +1922,39 @@ private final class StubBrowser: UIViewController, Babel2PreparableRoute {
 	required init?(coder: NSCoder) { nil }
 	func prepare() { didPrepare = true; loadViewIfNeeded() }
 	func discard() { didDiscard = true }
+}
+
+/// 拦截翻译请求：记下请求体，回一个合法的标题翻译结果（不联网）。
+private final class CapturingTranslationProtocol: URLProtocol {
+	nonisolated(unsafe) static var lastBody: Data?
+
+	override class func canInit(with request: URLRequest) -> Bool {
+		request.url?.path.hasSuffix("/chat/completions") == true
+	}
+
+	override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+	override func startLoading() {
+		var body = request.httpBody
+		if body == nil, let stream = request.httpBodyStream {
+			stream.open()
+			var data = Data()
+			var buffer = [UInt8](repeating: 0, count: 4096)
+			while stream.hasBytesAvailable {
+				let read = stream.read(&buffer, maxLength: buffer.count)
+				if read <= 0 { break }
+				data.append(buffer, count: read)
+			}
+			stream.close()
+			body = data
+		}
+		Self.lastBody = body
+		let payload = #"{"choices":[{"message":{"content":"[\"一个标题\"]"}}]}"#.data(using: .utf8)!
+		let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+		client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+		client?.urlProtocol(self, didLoad: payload)
+		client?.urlProtocolDidFinishLoading(self)
+	}
+
+	override func stopLoading() {}
 }
