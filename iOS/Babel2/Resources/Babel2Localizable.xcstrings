@@ -35,6 +35,23 @@
         }
       }
     },
+    "Always Use Reading Mode for This Feed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always Use Reading Mode for This Feed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此订阅源总是用阅读模式"
+          }
+        }
+      }
+    },
     "Back" : {
       "extractionState" : "stale",
       "localizations" : {

@@ -335,6 +335,26 @@ enum Babel2LiveArticleLookup {
 	}
 }
 
+/// 按订阅源的「总是用阅读模式」开关：直接读写现成的 `Feed.readerViewAlwaysEnabled`
+/// （公开接口，Babel 1.x 的订阅源设置页用的就是它，1.x 里设过的在新版继续生效）。ADR-020。
+@MainActor
+enum Babel2LiveFeedReaderSetting {
+	static func isAlwaysOn(_ id: FeedSnapshot.ID) -> Bool {
+		feed(id)?.readerViewAlwaysEnabled ?? false
+	}
+
+	static func setAlwaysOn(_ on: Bool, for id: FeedSnapshot.ID) {
+		feed(id)?.readerViewAlwaysEnabled = on
+	}
+
+	private static func feed(_ id: FeedSnapshot.ID) -> Feed? {
+		guard let account = AccountManager.shared.existingAccount(accountID: id.accountID),
+			let feed = account.existingFeed(withFeedID: id.feedID),
+			feed.accountID == id.accountID else { return nil }
+		return feed
+	}
+}
+
 /// A concrete settings boundary. The initial value is intentionally in-memory;
 /// the settings screen can later replace this provider with its persisted
 /// store without making the library or reader depend on UIKit defaults.

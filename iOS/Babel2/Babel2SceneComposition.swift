@@ -49,7 +49,11 @@ enum Babel2SceneComposition {
 					environment: resolvedEnvironment,
 					feedTitle: feed.title,
 					feedIconData: feed.iconData,
-					hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) }
+					hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) },
+					feedReaderModeSetting: Babel2FeedReaderModeSetting(
+						isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },
+						setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
+					)
 				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)

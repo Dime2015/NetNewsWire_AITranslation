@@ -3,11 +3,11 @@ import UIKit
 /// 阅读页底栏：按 Figma「Reader Toolbar」(21:5) 对齐（ADR-018）。
 ///
 /// - 72pt 高、贴屏幕最底（含 Home 指示条区域），顶部 0.5pt 分隔线
-/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 长图，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
-///   （第 4 格按 ADR-016 由「阅读模式」改为「长图」，阅读模式在顶栏 ••• 菜单里）
+/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
+///   （ADR-020：第 4 格回到 Figma 原样的「阅读模式」，长图移入顶栏 ••• 菜单）
 /// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 362
 /// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
-/// 已接通：已读、星标、翻译；「下一篇」「长图」仍是占位（灰色不可点）。
+/// 已接通：已读、星标、阅读模式、翻译；「下一篇」仍是占位（灰色不可点）。
 @MainActor
 final class Babel2ReaderToolbarView: UIView {
 	static let height: CGFloat = 72
@@ -16,11 +16,13 @@ final class Babel2ReaderToolbarView: UIView {
 
 	let readButton: UIButton
 	let starButton: UIButton
+	let readingModeButton: UIButton
 	let translationToggle = Babel2TranslationToggle()
 	let placeholderButtons: [UIButton]
 	var onToggleRead: (() -> Void)?
 	var onToggleStar: (() -> Void)?
 	var onTranslate: (() -> Void)?
+	var onToggleReaderMode: (() -> Void)?
 
 	private(set) var isRead = false
 	private(set) var isStarred = false
@@ -33,16 +35,16 @@ final class Babel2ReaderToolbarView: UIView {
 		readButton = Self.makeButton(identifier: "babel2.article.toolbar.read")
 		starButton = Self.makeButton(identifier: "babel2.article.toolbar.star")
 		let next = Self.makeButton(identifier: "babel2.article.toolbar.next")
-		let longImage = Self.makeButton(identifier: "babel2.article.toolbar.long-image")
-		placeholderButtons = [next, longImage]
+		readingModeButton = Self.makeButton(identifier: "babel2.article.toolbar.reading-mode")
+		placeholderButtons = [next]
 		super.init(frame: frame)
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
 
 		Self.setIcon("Babel2ReaderNext", on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
-		Self.setIcon("BabelReaderShareLongImage", on: longImage)
-		longImage.accessibilityLabel = Babel2Localization.text(.longImage)
+		readingModeButton.accessibilityLabel = Babel2Localization.text(.readingMode)
+		readingModeButton.addTarget(self, action: #selector(readingModeTapped), for: .touchUpInside)
 		placeholderButtons.forEach { $0.isEnabled = false }
 
 		readButton.addTarget(self, action: #selector(readTapped), for: .touchUpInside)
@@ -62,7 +64,7 @@ final class Babel2ReaderToolbarView: UIView {
 		])
 
 		// 按参考画布比例定位，屏幕宽度不同也保持相对位置
-		let controls: [UIView] = [readButton, starButton] + placeholderButtons + [translationToggle]
+		let controls: [UIView] = [readButton, starButton, next, readingModeButton, translationToggle]
 		for (control, center) in zip(controls, Self.slotCenters) {
 			addSubview(control)
 			let size = control === translationToggle ? Babel2TranslationToggle.size : CGSize(width: 44, height: 44)
@@ -81,6 +83,15 @@ final class Babel2ReaderToolbarView: UIView {
 		setStarred(false)
 		setTranslationState(.original)
 		setTranslationAvailable(false)
+		setReaderMode(false, available: true)
+	}
+
+	/// 阅读模式按钮：关 = 设计稿图标（次要灰）；开 = 既有的加粗版图标（主墨色）。没有原文地址时不可点。
+	func setReaderMode(_ on: Bool, available: Bool) {
+		Self.setIcon(on ? "BabelReaderReadingModeActive" : "BabelReaderReadingMode", on: readingModeButton)
+		readingModeButton.tintColor = on ? BabelPalette.ink : BabelPalette.mutedInk
+		readingModeButton.isEnabled = available
+		readingModeButton.accessibilityValue = on ? "on" : "off"
 	}
 
 	required init?(coder: NSCoder) { nil }
@@ -114,6 +125,7 @@ final class Babel2ReaderToolbarView: UIView {
 	@objc private func readTapped() { onToggleRead?() }
 	@objc private func starTapped() { onToggleStar?() }
 	@objc private func translateTapped() { onTranslate?() }
+	@objc private func readingModeTapped() { onToggleReaderMode?() }
 
 	private static func makeButton(identifier: String) -> UIButton {
 		let button = UIButton(type: .system)

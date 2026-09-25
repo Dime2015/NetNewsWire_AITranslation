@@ -30,17 +30,20 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let window = hostInWindow(viewController)
 		defer { window.isHidden = true }
 		await waitForReaderRender(viewController)
-		XCTAssertEqual(viewController.moreMenuReaderModeState, .off)
+		let readingModeButton = viewController.toolbarView.readingModeButton
+		XCTAssertEqual(readingModeButton.accessibilityValue, "off")
+		XCTAssertTrue(readingModeButton.isEnabled)
 		let scrollView = viewController.readerContentView.scrollView
 		scrollView.contentOffset.y += 5
 
-		viewController.toggleReaderMode()
+		// 底栏第 4 格「阅读模式」一点即开（ADR-020）
+		readingModeButton.sendActions(for: .touchUpInside)
 		await waitUntil { viewController.isReaderModeOn }
 		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 30 }
 		let fullText = await viewController.readerContentView.articleTextForTesting()
 		XCTAssertTrue(fullText?.contains("The complete article text.") == true)
 		XCTAssertEqual(requested, [URL(string: "https://example.com/post")!])
-		XCTAssertEqual(viewController.moreMenuReaderModeState, .on)
+		XCTAssertEqual(readingModeButton.accessibilityValue, "on")
 		XCTAssertNil(viewController.statusTextForTesting)
 		XCTAssertEqual(scrollView.contentOffset.y, -scrollView.adjustedContentInset.top, accuracy: 0.5, "switching scrolls to top")
 		XCTAssertTrue(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
@@ -52,6 +55,43 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(original, "Summary only.")
 		XCTAssertFalse(viewController.isReaderModeOn)
 		XCTAssertFalse(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
+	}
+
+	func testFeedAlwaysReaderModeOpensFullTextWithoutPerArticleMemory() async throws {
+		var feedSetting = true
+		let setting = Babel2FeedReaderModeSetting(isAlwaysOn: { feedSetting }, setAlwaysOn: { feedSetting = $0 })
+		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
+			"<p>Full text because the feed always uses reading mode.</p>"
+		}, feedReaderModeSetting: setting)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		// 订阅源开着「总是用阅读模式」：打开即取全文，零操作
+		await waitUntil { viewController.isReaderModeOn }
+		XCTAssertEqual(viewController.toolbarView.readingModeButton.accessibilityValue, "on")
+		// 因订阅源设置自动打开的，不记到单篇文章上
+		XCTAssertFalse(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
+		XCTAssertEqual(viewController.moreMenuItemIdentifiers, ["babel2.article.feed-always-reading-mode", "babel2.article.open-original", "babel2.article.long-image"])
+		XCTAssertEqual(viewController.moreMenuFeedAlwaysReaderModeState, .on)
+		// 菜单里关掉订阅源开关：写回设置，当前文章保持全文
+		viewController.toggleFeedAlwaysReaderMode()
+		XCTAssertFalse(feedSetting)
+		XCTAssertEqual(viewController.moreMenuFeedAlwaysReaderModeState, .off)
+		XCTAssertTrue(viewController.isReaderModeOn)
+	}
+
+	func testTurningOnFeedAlwaysReaderModeFetchesCurrentArticle() async throws {
+		var feedSetting = false
+		let setting = Babel2FeedReaderModeSetting(isAlwaysOn: { feedSetting }, setAlwaysOn: { feedSetting = $0 })
+		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
+			"<p>Full text after turning on the feed setting.</p>"
+		}, feedReaderModeSetting: setting)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		XCTAssertFalse(viewController.isReaderModeOn)
+		viewController.toggleFeedAlwaysReaderMode()
+		XCTAssertTrue(feedSetting)
+		await waitUntil { viewController.isReaderModeOn }
 	}
 
 	func testReaderModeFailureKeepsOriginalAndShowsStatus() async throws {
@@ -242,9 +282,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let bodyOnlyViewController = Babel2ArticleViewController(article: bodyOnlyArticle, environment: environment)
 		bodyOnlyViewController.loadViewIfNeeded()
 		XCTAssertFalse(bodyOnlyViewController.moreMenuHasOpenOriginal)
-		XCTAssertNil(bodyOnlyViewController.moreMenuReaderModeState, "no reading mode without an original URL")
+		XCTAssertFalse(bodyOnlyViewController.toolbarView.readingModeButton.isEnabled, "no reading mode without an original URL")
+		XCTAssertEqual(bodyOnlyViewController.moreMenuItemIdentifiers, ["babel2.article.long-image"])
 		let moreButton = try XCTUnwrap(descendant(of: bodyOnlyViewController.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.article.more" })
-		XCTAssertFalse(moreButton.isEnabled, "empty more menu is disabled")
+		// 菜单里始终有「生成长图」（第 5 步前为灰色占位），所以 ••• 本身可以打开
+		XCTAssertTrue(moreButton.isEnabled)
 	}
 
 	// MARK: - 文章列表随状态变化原地刷新（2026-09-24）
@@ -732,9 +774,9 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(toolbar.frame.height, 72)
 		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
 		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
-		XCTAssertEqual(toolbar.placeholderButtons.count, 2)
+		XCTAssertEqual(toolbar.placeholderButtons.count, 1)
 		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
-		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.translationToggle]).map { $0.center.x }
+		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.readingModeButton, toolbar.translationToggle]).map { $0.center.x }
 		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
 			XCTAssertEqual(actual, expected, accuracy: 0.5)
 		}
@@ -1474,7 +1516,8 @@ private func makeReader(
 	isStarred: Bool = false,
 	hostArticle: AnyObject? = nil,
 	author: String? = nil,
-	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() }
+	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() },
+	feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -1493,7 +1536,8 @@ private func makeReader(
 		feedTitle: "Feed",
 		motionRecorder: motionRecorder,
 		hostArticleProvider: { _ in hostArticle },
-		fullTextProvider: fullTextProvider
+		fullTextProvider: fullTextProvider,
+		feedReaderModeSetting: feedReaderModeSetting
 	)
 }
 

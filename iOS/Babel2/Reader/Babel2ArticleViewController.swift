@@ -18,6 +18,12 @@ import Babel2UI
 ///
 /// 第 3 步：底部工具栏（已读 / 星标可用，其余占位）；紧凑栏固定后，
 /// 顶栏按钮与底栏随上下滑一起显隐（方案 A：顶栏底色保留，紧凑栏纹丝不动；底栏整条滑出）。
+/// 按订阅源的「总是用阅读模式」开关（读写由装配层注入，页面不直接碰账户数据）。
+struct Babel2FeedReaderModeSetting {
+	let isAlwaysOn: @MainActor () -> Bool
+	let setAlwaysOn: @MainActor (Bool) -> Void
+}
+
 @MainActor
 final class Babel2ArticleViewController: UIViewController {
 	private let article: ArticleSnapshot
@@ -55,6 +61,7 @@ final class Babel2ArticleViewController: UIViewController {
 	private var fullTextHTML: String?
 	private var fullTextTask: Task<Void, Never>?
 	private let fullTextProvider: @MainActor (URL, UIView) async throws -> String
+	private let feedReaderModeSetting: Babel2FeedReaderModeSetting?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
 	/// 复用的翻译引擎：分块、流式、缓存、断点续翻、骨架色条都在里面，这里只接按钮和标题。
@@ -97,8 +104,10 @@ final class Babel2ArticleViewController: UIViewController {
 		hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)? = nil,
 		fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { url, host in
 			try await Babel2FullTextFetcher.fetch(url: url, hostView: host)
-		}
+		},
+		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil
 	) {
+		self.feedReaderModeSetting = feedReaderModeSetting
 		self.hostArticleProvider = hostArticleProvider
 		self.fullTextProvider = fullTextProvider
 		self.article = article
@@ -136,9 +145,13 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 		startRendering()
 		resolveTranslationHostArticle()
-		// 这篇上次是开着阅读模式离开的：自动再取一次全文（ADR-019，按单篇文章记忆）
-		if article.url != nil, ArticleReadingStateStore.state(for: readingStateKey).readerMode {
-			startFullTextFetch()
+		// 自动取全文：订阅源设了「总是用阅读模式」（ADR-020），或这篇上次开着阅读模式离开（ADR-019）
+		if article.url != nil {
+			if isFeedAlwaysReaderMode {
+				startFullTextFetch(rememberForArticle: false)
+			} else if ArticleReadingStateStore.state(for: readingStateKey).readerMode {
+				startFullTextFetch(rememberForArticle: true)
+			}
 		}
 	}
 
@@ -253,7 +266,20 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 与翻译引擎相同的单篇文章键（ArticleReadingStateStore 里同时存着「阅读模式」「译文」两个记忆）。
 	private var readingStateKey: String { article.id.accountID + "|" + article.id.articleID }
 
-	/// ••• 菜单里点「阅读模式」：开 → 取全文；关 → 回到订阅源自带的正文。
+	private var isFeedAlwaysReaderMode: Bool { feedReaderModeSetting?.isAlwaysOn() ?? false }
+
+	/// ••• 菜单「此订阅源总是用阅读模式」：写进订阅源设置；打开时若本篇还不是全文，立刻取。
+	func toggleFeedAlwaysReaderMode() {
+		guard let feedReaderModeSetting else { return }
+		let newValue = !feedReaderModeSetting.isAlwaysOn()
+		feedReaderModeSetting.setAlwaysOn(newValue)
+		if newValue, !isReaderModeOn, fullTextTask == nil {
+			startFullTextFetch(rememberForArticle: false)
+		}
+		readerModeStateDidChange()
+	}
+
+	/// 底栏第 4 格「阅读模式」：开 → 取全文；关 → 回到订阅源自带的正文（ADR-020）。
 	func toggleReaderMode() {
 		if isReaderModeOn || fullTextTask != nil {
 			fullTextTask?.cancel()
@@ -262,14 +288,16 @@ final class Babel2ArticleViewController: UIViewController {
 			let wasOn = isReaderModeOn
 			isReaderModeOn = false
 			ArticleReadingStateStore.setReaderMode(false, for: readingStateKey)
-			refreshMoreMenu()
+			readerModeStateDidChange()
 			if wasOn { startRendering(fullText: nil, scrollToTop: true) }
 		} else {
-			startFullTextFetch()
+			startFullTextFetch(rememberForArticle: true)
 		}
 	}
 
-	private func startFullTextFetch() {
+	/// - rememberForArticle: 手动打开才记到「这篇文章」上；因订阅源设置自动打开的不记，
+	///   以免关掉订阅源开关后，那些文章仍各自记着全文。
+	private func startFullTextFetch(rememberForArticle: Bool) {
 		guard let url = article.url, fullTextTask == nil else { return }
 		showStatus(Babel2Localization.text(.fetchingFullText), autoHide: false)
 		let provider = fullTextProvider
@@ -281,19 +309,29 @@ final class Babel2ArticleViewController: UIViewController {
 				self.fullTextTask = nil
 				self.fullTextHTML = html
 				self.isReaderModeOn = true
-				ArticleReadingStateStore.setReaderMode(true, for: self.readingStateKey)
-				self.refreshMoreMenu()
+				if rememberForArticle {
+					ArticleReadingStateStore.setReaderMode(true, for: self.readingStateKey)
+				}
+				self.readerModeStateDidChange()
 				self.hideStatus()
 				self.startRendering(fullText: html, scrollToTop: true)
 			} catch {
 				guard !Task.isCancelled, let self else { return }
 				self.fullTextTask = nil
 				self.isReaderModeOn = false
-				ArticleReadingStateStore.setReaderMode(false, for: self.readingStateKey)
-				self.refreshMoreMenu()
+				if rememberForArticle {
+					ArticleReadingStateStore.setReaderMode(false, for: self.readingStateKey)
+				}
+				self.readerModeStateDidChange()
 				self.showStatus(Babel2Localization.text(.unableToFetchFullText), autoHide: true)
 			}
 		}
+		readerModeStateDidChange()
+	}
+
+	/// 阅读模式开关状态变化后，同步底栏按钮与 ••• 菜单。
+	private func readerModeStateDidChange() {
+		toolbar.setReaderMode(isReaderModeOn, available: article.url != nil)
 		refreshMoreMenu()
 	}
 
@@ -337,8 +375,11 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 仅供自动化测试观察。
 	var statusTextForTesting: String? { statusLabel.isHidden ? nil : statusLabel.text }
 	var isFetchingFullTextForTesting: Bool { fullTextTask != nil }
-	var moreMenuReaderModeState: UIMenuElement.State? {
-		(moreButton?.menu?.children.first { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.reading-mode" } as? UIAction)?.state
+	var moreMenuItemIdentifiers: [String] {
+		moreButton?.menu?.children.compactMap { ($0 as? UIAction)?.identifier.rawValue } ?? []
+	}
+	var moreMenuFeedAlwaysReaderModeState: UIMenuElement.State? {
+		(moreButton?.menu?.children.first { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.feed-always-reading-mode" } as? UIAction)?.state
 	}
 
 	// MARK: - 翻译
@@ -439,23 +480,31 @@ final class Babel2ArticleViewController: UIViewController {
 		return bar
 	}
 
-	/// 「•••」更多菜单：阅读模式（带勾表示开着）+ 打开原文；没有原文地址时两项都没有、按钮变灰。
+	/// 「•••」更多菜单（ADR-020）：此订阅源总是用阅读模式（带勾）/ 打开原文 / 生成长图（Slice 5 第 5 步前为灰色）。
+	/// 阅读模式本身的开关在底栏第 4 格。没有原文地址时前两项不出现。
 	private func makeMoreMenu() -> UIMenu {
 		var actions = [UIMenuElement]()
-		if article.url != nil {
-			let readerMode = UIAction(
-				title: Babel2Localization.text(.readingMode),
+		if article.url != nil, feedReaderModeSetting != nil {
+			actions.append(UIAction(
+				title: Babel2Localization.text(.feedAlwaysReadingMode),
 				image: UIImage(named: "BabelReaderReadingMode"),
-				identifier: UIAction.Identifier("babel2.article.reading-mode"),
-				state: isReaderModeOn ? .on : .off
-			) { [weak self] _ in self?.toggleReaderMode() }
-			actions.append(readerMode)
+				identifier: UIAction.Identifier("babel2.article.feed-always-reading-mode"),
+				state: isFeedAlwaysReaderMode ? .on : .off
+			) { [weak self] _ in self?.toggleFeedAlwaysReaderMode() })
+		}
+		if article.url != nil {
 			actions.append(UIAction(
 				title: Babel2Localization.text(.openOriginal),
 				image: UIImage(systemName: "safari"),
 				identifier: UIAction.Identifier("babel2.article.open-original")
 			) { [weak self] _ in self?.originalTapped() })
 		}
+		actions.append(UIAction(
+			title: Babel2Localization.text(.longImage),
+			image: UIImage(named: "BabelReaderShareLongImage"),
+			identifier: UIAction.Identifier("babel2.article.long-image"),
+			attributes: .disabled
+		) { _ in })
 		return UIMenu(children: actions)
 	}
 
@@ -704,6 +753,8 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.setStarred(isStarred)
 		toolbar.onToggleRead = { [weak self] in self?.toggleRead() }
 		toolbar.onTranslate = { [weak self] in self?.translation.toggle() }
+		toolbar.onToggleReaderMode = { [weak self] in self?.toggleReaderMode() }
+		toolbar.setReaderMode(false, available: article.url != nil)
 		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
 		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）
 		contentView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanChanged(_:)))

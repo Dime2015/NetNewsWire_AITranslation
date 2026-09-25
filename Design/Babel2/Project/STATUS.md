@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 阅读模式入口调整（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-020：底栏第 4 格恢复「阅读模式」按钮（一点即开/关，开时加粗图标主墨色，无原文地址时不可点）；••• 菜单改为「此订阅源总是用阅读模式」（勾选）/ 打开原文 / 生成长图（灰色占位）。按订阅源开关读写既有 `Feed.readerViewAlwaysEnabled`（集成层 `Babel2LiveFeedReaderSetting`），开着的源打开即全文、不写单篇记忆；1.x 设过的直接生效。
+- 文件：`Reader/Babel2ArticleViewController.swift`、`Reader/Babel2ReaderToolbarView.swift`、`Babel2SceneComposition.swift`、`Babel2Integration/Babel2LiveDataAdapters.swift`、`Babel2Localization.swift` + xcstrings（+1 键）、测试（+2）。
+- 验证：r2 102/103——一条旧预期“无原文地址时 ••• 为空并禁用”不再成立（菜单恒有长图占位），改预期后 r3 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/readermode-r3.xcresult` 103/103。
+- 2026-09-25 用户按 7 项清单真机验收通过（底栏一点开关、菜单三项、设源开关后同源文章自动全文、取消后不再自动）。口头确认。
+
 ## Reader Slice 5 第 2 步：阅读模式（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-019 实现：••• 菜单「阅读模式」开关（勾选态）→ `Babel2FullTextFetcher`（包装未改动的 ReaderViewExtractor）取全文 → 以全文重新排版并回到顶部；关闭则回到原正文。署名下方状态字「正在获取全文… / 无法获取全文」。按单篇记忆，再次打开自动取全文。切换时翻译回到原文并在新正文排好后重新就绪。底栏第 4 格改为「长图」占位（既有 `BabelReaderShareLongImage`，与 Figma 105:45 导出 SVG 逐字节一致）。Figma 无阅读模式状态画面，仅图标。

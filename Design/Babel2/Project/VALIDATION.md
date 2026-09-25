@@ -9,6 +9,10 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 阅读模式入口调整（r3；用户真机验收通过，已提交）
+
+基线：`HEAD` = `eb0e180c6` + 未提交改动。r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/readermode-r2.xcresult` 102/103（旧预期：无原文地址时 ••• 禁用，现菜单恒含长图占位）；r3 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/readermode-r3.xcresult` `result=Passed`、`totalTestCount=103`、`passedTests=103`。新增：订阅源总是阅读模式→打开即全文且不写单篇记忆、菜单三项顺序与勾选、菜单里关掉写回设置；菜单里打开→立即取本篇全文。真实 `Feed.readerViewAlwaysEnabled` 读写未在模拟器单独验证（与 1.x 设置页同一公开属性）。
+
 ## 2026-09-25 Reader Slice 5 第 2 步：阅读模式（r1；用户真机验收通过，已提交）
 
 基线：`HEAD` = `29c47ee56` + 未提交改动。`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/readermode-r1.xcresult` `result=Passed`、`totalTestCount=101`、`passedTests=101`。新增：成功切全文/回顶/记忆/关闭恢复；失败保留原文并显示状态字；重开自动恢复；无原文地址不显示入口。临时探针（已删）：`Babel2FullTextFetcher.fetch` 抓 https://www.gnu.org/philosophy/free-sw.en.html 成功，29,206 字符，4.29 秒。

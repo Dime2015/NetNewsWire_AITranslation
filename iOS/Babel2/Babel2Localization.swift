@@ -37,6 +37,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case fetchingFullText = "Fetching full text…"
 	case unableToFetchFullText = "Unable to fetch full text"
 	case longImage = "Long Image"
+	case feedAlwaysReadingMode = "Always Use Reading Mode for This Feed"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -70,6 +71,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .more: return "babel2.article.more"
 		case .fetchingFullText, .unableToFetchFullText: return "babel2.article.status"
 		case .longImage: return "babel2.article.toolbar.long-image"
+		case .feedAlwaysReadingMode: return "babel2.article.feed-always-reading-mode"
 		}
 	}
 }
