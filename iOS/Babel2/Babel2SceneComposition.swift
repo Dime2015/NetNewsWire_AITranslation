@@ -42,8 +42,8 @@ enum Babel2SceneComposition {
 		root.onFeedRequested = { [weak navigationController] feed, scope in
 			guard let navigationController else { return }
 			let feedViewController = Babel2FeedViewController(feed: feed, scope: scope, environment: resolvedEnvironment)
-			feedViewController.onSelectArticle = { [weak navigationController] article in
-				guard let navigationController else { return }
+			// 同一个装配函数既用于「从列表点进文章」，也用于「下一篇」原地换页（ADR-022）
+			@MainActor func makeReader(_ article: ArticleSnapshot) -> Babel2ArticleViewController {
 				let articleViewController = Babel2ArticleViewController(
 					article: article,
 					environment: resolvedEnvironment,
@@ -62,7 +62,20 @@ enum Babel2SceneComposition {
 				articleViewController.onOpenLink = { url in
 					openURL(url)
 				}
-				navigationController.pushBabel2(articleViewController, animated: true)
+				articleViewController.nextArticleProvider = { [weak feedViewController] in
+					feedViewController?.nextArticle(after: article.id)
+				}
+				articleViewController.onShowNext = { [weak navigationController, weak feedViewController] next in
+					guard let navigationController else { return }
+					// 列表先滚到这一篇，返回时它就在屏幕上
+					feedViewController?.revealArticle(next.id)
+					navigationController.replaceTopBabel2(with: makeReader(next), animated: true)
+				}
+				return articleViewController
+			}
+			feedViewController.onSelectArticle = { [weak navigationController] article in
+				guard let navigationController else { return }
+				navigationController.pushBabel2(makeReader(article), animated: true)
 			}
 			navigationController.pushBabel2(feedViewController, animated: true)
 		}

@@ -7,7 +7,7 @@ import UIKit
 ///   （ADR-020：第 4 格回到 Figma 原样的「阅读模式」，长图移入顶栏 ••• 菜单）
 /// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 362
 /// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
-/// 已接通：已读、星标、阅读模式、翻译；「下一篇」仍是占位（灰色不可点）。
+/// 全部接通：已读、星标、下一篇（没有下一篇时变灰）、阅读模式、翻译。
 @MainActor
 final class Babel2ReaderToolbarView: UIView {
 	static let height: CGFloat = 72
@@ -17,12 +17,14 @@ final class Babel2ReaderToolbarView: UIView {
 	let readButton: UIButton
 	let starButton: UIButton
 	let readingModeButton: UIButton
+	let nextButton: UIButton
 	let translationToggle = Babel2TranslationToggle()
 	let placeholderButtons: [UIButton]
 	var onToggleRead: (() -> Void)?
 	var onToggleStar: (() -> Void)?
 	var onTranslate: (() -> Void)?
 	var onToggleReaderMode: (() -> Void)?
+	var onNext: (() -> Void)?
 
 	private(set) var isRead = false
 	private(set) var isStarred = false
@@ -35,8 +37,9 @@ final class Babel2ReaderToolbarView: UIView {
 		readButton = Self.makeButton(identifier: "babel2.article.toolbar.read")
 		starButton = Self.makeButton(identifier: "babel2.article.toolbar.star")
 		let next = Self.makeButton(identifier: "babel2.article.toolbar.next")
+		nextButton = next
 		readingModeButton = Self.makeButton(identifier: "babel2.article.toolbar.reading-mode")
-		placeholderButtons = [next]
+		placeholderButtons = []
 		super.init(frame: frame)
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
@@ -45,7 +48,8 @@ final class Babel2ReaderToolbarView: UIView {
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
 		readingModeButton.accessibilityLabel = Babel2Localization.text(.readingMode)
 		readingModeButton.addTarget(self, action: #selector(readingModeTapped), for: .touchUpInside)
-		placeholderButtons.forEach { $0.isEnabled = false }
+		next.isEnabled = false
+		next.addTarget(self, action: #selector(nextTapped), for: .touchUpInside)
 
 		readButton.addTarget(self, action: #selector(readTapped), for: .touchUpInside)
 		starButton.addTarget(self, action: #selector(starTapped), for: .touchUpInside)
@@ -126,6 +130,12 @@ final class Babel2ReaderToolbarView: UIView {
 	@objc private func starTapped() { onToggleStar?() }
 	@objc private func translateTapped() { onTranslate?() }
 	@objc private func readingModeTapped() { onToggleReaderMode?() }
+	@objc private func nextTapped() { onNext?() }
+
+	/// 有下一篇才可点（没有时变灰，ADR-022）。
+	func setNextAvailable(_ available: Bool) {
+		nextButton.isEnabled = available
+	}
 
 	private static func makeButton(identifier: String) -> UIButton {
 		let button = UIButton(type: .system)

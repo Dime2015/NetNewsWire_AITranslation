@@ -19,6 +19,59 @@ final class Babel2FeedReaderTests: XCTestCase {
 		try await super.tearDown()
 	}
 
+	// MARK: - 下一篇（Slice 5 第 4 步）
+
+	func testNextArticleFollowsListOrderAndSkipsReadInUnreadScope() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, read: Bool) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id, url: nil, feedID: feedID, isRead: read)
+		}
+		let list = [article("a", read: false), article("b", read: true), article("c", read: false)]
+		func loadedFeed(_ scope: Babel2FeedScope) async throws -> Babel2FeedViewController {
+			let provider = FakeDataProvider(feeds: [feedID: list])
+			let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: scope, environment: makeEnvironment(provider: provider))
+			controller.loadViewIfNeeded()
+			let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+			await waitForRows(in: tableView, count: 3)
+			return controller
+		}
+		let unread = try await loadedFeed(.unread)
+		XCTAssertEqual(unread.nextArticle(after: list[0].id)?.id.articleID, "c", "unread scope skips already-read b")
+		XCTAssertNil(unread.nextArticle(after: list[2].id), "last article has no next")
+		let all = try await loadedFeed(.all)
+		XCTAssertEqual(all.nextArticle(after: list[0].id)?.id.articleID, "b", "all scope keeps read articles")
+	}
+
+	func testNextButtonReplacesReaderInPlaceWithoutGrowingTheStack() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed")
+		let first = makeArticle(accountID: "account", feedID: "feed", articleID: "first", title: "First", body: "<p>One</p>", url: nil)
+		let second = makeArticle(accountID: "account", feedID: "feed", articleID: "second", title: "Second", body: "<p>Two</p>", url: nil)
+		let provider = FakeDataProvider(feeds: [feedID: [first, second]])
+		let navigationController = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider))
+		let root = try XCTUnwrap(navigationController.viewControllers.first as? Babel2RootViewController)
+		root.onFeedRequested?(feed, .all)
+		let feedViewController = try XCTUnwrap(navigationController.topViewController as? Babel2FeedViewController)
+		feedViewController.loadViewIfNeeded()
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 2)
+		feedViewController.tableView(tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
+		let firstReader = try XCTUnwrap(navigationController.topViewController as? Babel2ArticleViewController)
+		firstReader.loadViewIfNeeded()
+		let depth = navigationController.viewControllers.count
+		XCTAssertTrue(firstReader.toolbarView.nextButton.isEnabled)
+
+		firstReader.showNextArticle()
+		let secondReader = try XCTUnwrap(navigationController.topViewController as? Babel2ArticleViewController)
+		XCTAssertFalse(secondReader === firstReader)
+		XCTAssertEqual(navigationController.viewControllers.count, depth, "next replaces in place, no stack growth")
+		secondReader.loadViewIfNeeded()
+		let title = try XCTUnwrap(descendant(of: secondReader.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.title" })
+		XCTAssertEqual(title.attributedText?.string, "Second")
+		// 已是最后一篇：∨ 变灰
+		XCTAssertFalse(secondReader.toolbarView.nextButton.isEnabled)
+	}
+
 	// MARK: - 内置浏览器（Slice 5 第 3 步）
 
 	func testBrowserMotionProgressAndFinishRule() {
@@ -879,10 +932,10 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(toolbar.frame.maxY, window.bounds.maxY, accuracy: 0.5)
 		XCTAssertEqual(toolbar.frame.height, 72)
 		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
-		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
-		XCTAssertEqual(toolbar.placeholderButtons.count, 1)
+		XCTAssertTrue(toolbar.placeholderButtons.isEmpty, "all toolbar controls are wired")
+		XCTAssertFalse(toolbar.nextButton.isEnabled, "no next article provider → disabled")
 		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
-		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.readingModeButton, toolbar.translationToggle]).map { $0.center.x }
+		let centers = ([toolbar.readButton, toolbar.starButton, toolbar.nextButton, toolbar.readingModeButton, toolbar.translationToggle] as [UIView]).map { $0.center.x }
 		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
 			XCTAssertEqual(actual, expected, accuracy: 0.5)
 		}

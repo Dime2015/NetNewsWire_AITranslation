@@ -93,6 +93,11 @@ final class Babel2ArticleViewController: UIViewController {
 	var onOpenOriginal: ((URL, String) -> Void)?
 	/// 用户点了正文里的链接。
 	var onOpenLink: ((URL) -> Void)?
+	/// 下一篇（ADR-022）：由文章列表按显示顺序决定；装配层负责原地替换成新的阅读页。
+	var nextArticleProvider: (() -> ArticleSnapshot?)? {
+		didSet { refreshNextAvailability() }
+	}
+	var onShowNext: ((ArticleSnapshot) -> Void)?
 
 	/// 仅供自动化测试观察。
 	var readerContentView: Babel2ReaderContentView { contentView }
@@ -171,6 +176,21 @@ final class Babel2ArticleViewController: UIViewController {
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
 		autoMarkReadIfNeeded()
+		refreshNextAvailability()
+	}
+
+	private func refreshNextAvailability() {
+		guard isViewLoaded else { return }
+		toolbar.setNextAvailable(nextArticleProvider?() != nil)
+	}
+
+	/// 底栏 ∨：有下一篇就交给装配层原地换页；没有就把按钮置灰。
+	func showNextArticle() {
+		guard let next = nextArticleProvider?() else {
+			toolbar.setNextAvailable(false)
+			return
+		}
+		onShowNext?(next)
 	}
 
 	/// 打开文章即标为已读（用户 2026-09-25 决定；旧版与 Reeder 同样如此）。
@@ -800,6 +820,9 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.onToggleRead = { [weak self] in self?.toggleRead() }
 		toolbar.onTranslate = { [weak self] in self?.translation.toggle() }
 		toolbar.onToggleReaderMode = { [weak self] in self?.toggleReaderMode() }
+		toolbar.onNext = { [weak self] in self?.showNextArticle() }
+		// 页面一建好就确定 ∨ 能不能点，滑入动画期间状态就是对的（出现后还会再刷新一次）
+		refreshNextAvailability()
 		toolbar.setReaderMode(false, available: article.url != nil)
 		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
 		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）

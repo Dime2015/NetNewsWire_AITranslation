@@ -105,6 +105,21 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 仅供自动化测试观察。
 	var articlesForTesting: [ArticleSnapshot] { articles }
 
+	// MARK: - 下一篇（ADR-022）
+
+	/// 按列表显示顺序，找这一篇之后的下一篇；「未读」档里跳过已经读过的（它们留在列表里只是变细）。
+	/// 没有下一篇、或这一篇不在列表里时返回 nil。
+	func nextArticle(after id: ArticleSnapshot.ID) -> ArticleSnapshot? {
+		guard let index = articles.firstIndex(where: { $0.id == id }) else { return nil }
+		return articles[(index + 1)...].first { scope != .unread || !$0.isRead }
+	}
+
+	/// 翻到某一篇后，让列表滚到它、保证返回时它在屏幕上（只做最小滚动）。
+	func revealArticle(_ id: ArticleSnapshot.ID) {
+		guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
+		tableView.scrollToRow(at: IndexPath(row: index, section: 0), at: .none, animated: false)
+	}
+
 	private func cancelLoading() {
 		loadGeneration = UUID()
 		loadTask?.cancel()

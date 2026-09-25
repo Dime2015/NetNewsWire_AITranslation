@@ -49,6 +49,32 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 		pushViewController(viewController, animated: animated)
 	}
 
+	/// 用新页面原地替换栈顶（「下一篇」，ADR-022）：导航层数不变，看多少篇都只需一次返回。
+	/// 动画：旧页面向上滑走、新页面从下方滑上来，约 0.3 秒。
+	func replaceTopBabel2(with viewController: UIViewController, animated: Bool) {
+		guard viewControllers.count > 1, let current = topViewController else {
+			pushBabel2(viewController, animated: animated)
+			return
+		}
+		var stack = viewControllers
+		stack[stack.count - 1] = viewController
+		let snapshot = animated && view.window != nil ? current.view.snapshotView(afterScreenUpdates: false) : nil
+		setViewControllers(stack, animated: false)
+		guard let snapshot else { return }
+		view.layoutIfNeeded()
+		let height = view.bounds.height
+		snapshot.frame = current.view.frame
+		view.addSubview(snapshot)
+		viewController.view.transform = CGAffineTransform(translationX: 0, y: height)
+		UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
+			snapshot.transform = CGAffineTransform(translationX: 0, y: -height)
+			viewController.view.transform = .identity
+		} completion: { _ in
+			snapshot.removeFromSuperview()
+			viewController.view.transform = .identity
+		}
+	}
+
 	@discardableResult
 	func popBabel2(animated: Bool) -> UIViewController? {
 		guard viewControllers.count > 1 else { return nil }

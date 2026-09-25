@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 5 第 4 步：下一篇（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-022 实现：`Babel2FeedViewController.nextArticle(after:)` / `revealArticle(_:)`；`Babel2NavigationController.replaceTopBabel2`（竖向滑动过渡）；装配层统一 `makeReader` 同时服务点进与下一篇；底栏 ∨ 接通，全部底栏控件已无占位。
+- 文件：`Babel2LibraryViewControllers.swift`（列表页 2 个方法）、`Babel2NavigationController.swift`（1 个方法）、`Babel2SceneComposition.swift`、`Reader/Babel2ArticleViewController.swift`、`Reader/Babel2ReaderToolbarView.swift`、测试（+2，1 项旧占位断言更新）。
+- 验证：r1 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/next-r1.xcresult` 108/109——暴露真实小问题：∨ 可用状态要等页面出现才刷新，滑入动画期间是灰的；改为页面建好即刷新。r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/next-r2.xcresult` 109/109。滑动过渡观感只能真机验证（测试窗口不挂屏幕场景，动画不播）。
+- 2026-09-25 用户按 6 项清单真机验收通过。用户随即指出文章列表页缺少 Figma「Feed Toolbar」底栏（全部已读 / 星标 / 未读 / 全部 / 标题译开关）——属 Slice 3 未做部分，经同意提前单独做。
+
 ## Reader Slice 5 第 3 步：内置浏览器（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-021 实现：右缘左滑跟手进入（`Reader/Babel2ReaderBrowserMotion.swift`）；浏览器页 `Reader/WebKit/Babel2BrowserViewController.swift`；••• 打开原文、正文网页链接、紧凑栏「↗」均进内置浏览器；UI Driver 相应改为验证内置浏览器出现并 ✕ 返回。

@@ -9,6 +9,10 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 Reader Slice 5 第 4 步：下一篇（r2；用户真机验收通过，已提交）
+
+基线：`HEAD` = `14cafca05` + 未提交改动。r1 108/109（∨ 在页面出现前未刷新，真实缺陷已修）；r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/next-r2.xcresult` `result=Passed`、`totalTestCount=109`、`passedTests=109`。新增：未读档跳过已读/全部档不跳/最后一篇为 nil；经真实装配（makeRoot → 列表 → 阅读页 → 下一篇）栈深不变、新页标题正确、最后一篇 ∨ 置灰。
+
 ## 2026-09-25 Reader Slice 5 第 3 步：内置浏览器（r3；用户真机验收通过，已提交）
 
 基线：`HEAD` = `8d0d75683` + 未提交改动。r1 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/browser-r1.xcresult` 106/107、r2 106/107（均为测试时序写法），r3 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/browser-r3.xcresult` `result=Passed`、`totalTestCount=107`、`passedTests=107`。新增：投影规则；导航栈上右缘跟手取消（浏览器丢弃、阅读页原样）与补完（浏览器成为栈顶）；链接/邮件分流与「↗」；浏览器页按钮与打不开地址的重试。UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/browser-ui-r1.xcresult` 1/1（真实数据：••• → 打开原文 → 内置浏览器出现 → ✕ 回到文章；会把模拟器中一篇文章标为已读）。手感只能真机验证。
