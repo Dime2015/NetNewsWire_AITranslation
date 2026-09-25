@@ -24,6 +24,12 @@ final class Babel2LiveDataProvider: DataProviding {
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .AccountDidDownloadArticles, object: nil)
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .feedIconDidBecomeAvailable, object: nil)
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .FaviconDidBecomeAvailable, object: nil)
+		// 标题译文入库（或开关变了）：转给 Babel2 文章列表原地刷新（ADR-024）
+		center.addObserver(self, selector: #selector(titleTranslationDidChange(_:)), name: .nnwTitleTranslationDidUpdate, object: nil)
+	}
+
+	@objc private func titleTranslationDidChange(_ notification: Notification) {
+		NotificationCenter.default.post(name: .babel2TitleTranslationDidChange, object: nil)
 	}
 
 	deinit {
@@ -364,6 +370,40 @@ enum Babel2LiveFeedReaderSetting {
 	}
 }
 
+/// 文章列表的标题翻译（ADR-024）：原样复用旧版标题批量翻译引擎
+/// （NNWTitleTranslationController：攒批 ≤12 条一次请求、缓存、失败静默；开关按订阅源存在
+/// NNWTitleTranslationStore，与 1.x 同一份，1.x 开过的源继续生效）。这里只做三件事：读写开关、
+/// 把屏幕上的文章交给引擎排队、启动时唤醒引擎（它会在后台更新拉回新文章时提前翻，每次最多 50 条）。
+@MainActor
+enum Babel2LiveTitleTranslation {
+	/// 唤醒引擎单例：它在初始化时开始监听「新文章下载完成」做提前翻译。
+	static func start() {
+		_ = NNWTitleTranslationController.shared
+	}
+
+	static func isEnabled(_ id: FeedSnapshot.ID) -> Bool {
+		NNWTitleTranslationStore.shared.isEnabled(accountID: id.accountID, feedID: id.feedID)
+	}
+
+	static func setEnabled(_ on: Bool, for id: FeedSnapshot.ID) {
+		NNWTitleTranslationStore.shared.setEnabled(on, accountID: id.accountID, feedID: id.feedID)
+		if on { NNWTitleTranslationController.shared.resetFailures() }
+		NotificationCenter.default.post(name: .babel2TitleTranslationDidChange, object: nil)
+	}
+
+	/// 把这些文章交给引擎：已有译文或本来是中文的由引擎自己跳过，其余攒批翻译。
+	static func request(_ ids: [ArticleSnapshot.ID]) async {
+		let byAccount = Dictionary(grouping: ids, by: \.accountID)
+		for (accountID, accountIDs) in byAccount {
+			guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
+			let articles = await account.fetchArticlesAsync(.articleIDs(Set(accountIDs.map(\.articleID))))
+			for article in articles {
+				_ = NNWTitleTranslationController.shared.displayArticle(for: article)
+			}
+		}
+	}
+}
+
 /// A concrete settings boundary. The initial value is intentionally in-memory;
 /// the settings screen can later replace this provider with its persisted
 /// store without making the library or reader depend on UIKit defaults.
@@ -407,5 +447,6 @@ struct Babel2LiveImageProvider: ImageProviding {
 extension Notification.Name {
 	static let babel2SelectionDidChange = Notification.Name("Babel2SelectionDidChange")
 	static let babel2LibraryDidChange = Notification.Name("Babel2LibraryDidChange")
+	static let babel2TitleTranslationDidChange = Notification.Name("Babel2TitleTranslationDidChange")
 	static let babel2SettingsDidChange = Notification.Name("Babel2SettingsDidChange")
 }

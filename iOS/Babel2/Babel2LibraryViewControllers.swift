@@ -2,6 +2,14 @@ import Foundation
 import UIKit
 import Babel2Core
 
+/// 文章列表的标题翻译开关（按订阅源；读写与请求由装配层注入，页面不直接碰翻译引擎或账户数据）。ADR-024。
+struct Babel2TitleTranslationSetting {
+	let isEnabled: @MainActor () -> Bool
+	let setEnabled: @MainActor (Bool) -> Void
+	/// 把这些文章的标题交给翻译引擎（已有译文 / 本来是中文的由引擎跳过）。
+	let request: @MainActor ([ArticleSnapshot.ID]) -> Void
+}
+
 @MainActor
 final class Babel2FeedViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 	private enum LoadState: String {
@@ -33,14 +41,19 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let titleTranslationToggle = Babel2TranslationToggle()
 	private weak var headerTitleLabel: UILabel?
 
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment) {
+	private let titleTranslation: Babel2TitleTranslationSetting?
+	private var titleTranslationTimeout: Task<Void, Never>?
+
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil) {
 		self.feed = feed
 		self.scope = scope
 		self.environment = environment
+		self.titleTranslation = titleTranslation
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.feed.\(feed.id.accountID).\(feed.id.feedID)"
 		// 已读/星标等状态变化（阅读页操作、后台同步）时，原地刷新每一行的状态
 		NotificationCenter.default.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .babel2LibraryDidChange, object: nil)
+		NotificationCenter.default.addObserver(self, selector: #selector(titleTranslationDidChange(_:)), name: .babel2TitleTranslationDidChange, object: nil)
 	}
 
 	required init?(coder: NSCoder) { nil }
@@ -60,6 +73,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			cancelLoading()
 			statusRefreshTimer?.invalidate()
 			statusRefreshTask?.cancel()
+			titleTranslationTimeout?.cancel()
 		}
 	}
 
@@ -139,8 +153,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		readAllButton.translatesAutoresizingMaskIntoConstraints = false
 		bottomToolbar.addSubview(readAllButton)
 
-		titleTranslationToggle.setState(.original)
-		titleTranslationToggle.isEnabled = false
+		titleTranslationToggle.isEnabled = titleTranslation != nil
+		titleTranslationToggle.setState(titleTranslation?.isEnabled() == true ? .translated : .original)
+		titleTranslationToggle.addTarget(self, action: #selector(titleTranslationTapped), for: .touchUpInside)
 		titleTranslationToggle.accessibilityIdentifier = "babel2.feed.title-translation"
 		titleTranslationToggle.translatesAutoresizingMaskIntoConstraints = false
 		bottomToolbar.addSubview(titleTranslationToggle)
@@ -217,6 +232,65 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
+	// MARK: - 标题翻译（ADR-024）
+
+	/// 「原 翻译」开关：开 → 屏幕上的标题交给翻译引擎（显示「译 生成中」）；关 → 列表原地恢复原文。
+	@objc private func titleTranslationTapped() {
+		guard let titleTranslation else { return }
+		let newValue = !titleTranslation.isEnabled()
+		titleTranslation.setEnabled(newValue)
+		if newValue {
+			requestVisibleTitleTranslations()
+		} else {
+			titleTranslationTimeout?.cancel()
+			titleTranslationToggle.setState(.original)
+		}
+	}
+
+	/// 只翻屏幕上看得到、还没有译文的标题（用户选的省钱方式）；滚动停下、列表加载完成时也会调用。
+	private func requestVisibleTitleTranslations() {
+		guard let titleTranslation, titleTranslation.isEnabled() else { return }
+		let visible = (tableView.indexPathsForVisibleRows ?? []).compactMap { $0.row < articles.count ? articles[$0.row] : nil }
+		let missing = visible.filter { $0.translatedTitle == nil && Self.mayNeedTranslation($0.title) }
+		guard !missing.isEmpty else {
+			titleTranslationToggle.setState(.translated)
+			return
+		}
+		titleTranslationToggle.setState(.working)
+		titleTranslation.request(missing.map(\.id))
+		// 引擎失败时是静默的（不弹窗、不通知）：最多等 20 秒就把开关从「生成中」放回「译 原文」
+		titleTranslationTimeout?.cancel()
+		titleTranslationTimeout = Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .seconds(20))
+			guard !Task.isCancelled, let self, self.titleTranslation?.isEnabled() == true else { return }
+			self.titleTranslationToggle.setState(.translated)
+		}
+	}
+
+	/// 含拉丁字母才可能需要翻（纯中文等标题引擎会跳过，不应让开关一直停在「生成中」）。
+	private static func mayNeedTranslation(_ title: String) -> Bool {
+		title.range(of: "[A-Za-z]", options: .regularExpression) != nil
+	}
+
+	/// 有译文入库或开关变了：原地刷新各行（沿用状态刷新那套：只重画变了的行，不跳位置）。
+	@objc private func titleTranslationDidChange(_ notification: Notification) {
+		libraryDidChange(notification)
+		guard titleTranslation?.isEnabled() == true else { return }
+		titleTranslationTimeout?.cancel()
+		titleTranslationToggle.setState(.translated)
+	}
+
+	func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+		requestVisibleTitleTranslations()
+	}
+
+	func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+		if !decelerate { requestVisibleTitleTranslations() }
+	}
+
+	var titleTranslationToggleForTesting: Babel2TranslationToggle { titleTranslationToggle }
+	func requestVisibleTitleTranslationsForTesting() { requestVisibleTitleTranslations() }
+
 	/// 仅供自动化测试。
 	private(set) var pendingMarkAllReadCountForTesting: Int?
 	func confirmMarkAllReadForTesting() { performMarkAllRead() }
@@ -274,6 +348,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				self.countLabel.isHidden = false
 				self.tableView.reloadData()
 				self.setState(self.articles.isEmpty ? .empty : .loaded)
+				// 列表排好后再看哪些行在屏幕上
+				DispatchQueue.main.async { [weak self] in self?.requestVisibleTitleTranslations() }
 			} catch is CancellationError {
 				return
 			} catch {

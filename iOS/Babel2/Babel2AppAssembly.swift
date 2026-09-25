@@ -31,7 +31,9 @@ public enum Babel2AppAssembly {
 	/// graph directly.
 	@MainActor
 	static func makeLiveEnvironment() -> AppEnvironment {
-		Babel2Assembly.makeEnvironment(
+		// 标题翻译引擎要在后台更新前就位，才能对新下载的文章提前翻译（ADR-024）
+		Babel2LiveTitleTranslation.start()
+		return Babel2Assembly.makeEnvironment(
 			dataProvider: Babel2LiveDataProvider(),
 			actionHandler: Babel2LiveActionHandler(),
 			settingsProvider: Babel2LiveSettingsProvider(),

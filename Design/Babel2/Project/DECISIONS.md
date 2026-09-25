@@ -201,3 +201,11 @@
 - 档位原地切换、列表回顶；**档位全局**：在列表里切，首页同步到同一档（`Babel2RootViewController.applyScope`）。
 - 全部标为已读：范围 = 本订阅源所有未读（不只是屏幕上的）；先弹确认「将 N 篇文章标为已读？」；一次批量（Core 新增 `LibraryAction.markFeedRead`，集成层用现成 `markArticles` 一次标一组），完成后重新加载列表（显式批量操作，不沿用返回列表时「行留在原位」的规则）。
 - 新增可复用 `Babel2ScopeFilterControl`（外观照抄首页底栏）；**首页暂不改用**（已验收，避免回归）——统一属技术待办。
+
+## ADR-024：文章列表标题翻译开关（2026-09-25，用户“都按建议来”）
+
+- 复用旧版标题批量翻译引擎（`NNWTitleTranslationController`，零改动）：攒批 ≤12 条一次请求、缓存、失败静默；开关按订阅源存在 `NNWTitleTranslationStore`（与 1.x 同一份，1.x 开过的源继续生效）。
+- 翻译范围：只翻屏幕上可见、尚无译文、且含拉丁字母的标题（打开开关、列表加载完成、滚动停下时各请求一次）；不预翻整个列表。
+- 提前翻译：启动时唤醒引擎（`Babel2LiveTitleTranslation.start()` 于 `makeLiveEnvironment`），恢复 1.x 行为——后台更新拉回新文章时，对开了开关的源最多提前翻 50 条（会翻到未必会看的标题，属于用户接受的花费）。
+- 开关状态按 Figma Translation Toggle：「原 翻译」/「译 生成中」/「译 原文」；引擎失败静默，最多 20 秒后从「生成中」回到「译 原文」。译文入库经 `.babel2TitleTranslationDidChange` 触发列表原地刷新。
+- 限制：`babel2TitleTranslationDidChange` 在任何一批译文入库时都会触发，列表据此把「生成中」切回「译 原文」，不逐行核对屏幕上的每一条是否都已翻好。

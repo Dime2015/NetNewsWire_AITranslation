@@ -39,7 +39,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(filter.selectedScope, .unread)
 		XCTAssertEqual(filter.buttons[.unread]?.accessibilityValue, "Selected")
 		let translation = try XCTUnwrap(descendant(of: feedViewController.view, matching: Babel2TranslationToggle.self))
-		XCTAssertFalse(translation.isEnabled, "title translation toggle is a placeholder in this step")
+		XCTAssertTrue(translation.isEnabled, "title translation toggle is wired (ADR-024)")
 
 		// 点「全部」：原地换档位重新加载，首页同步到同一档
 		filter.buttons[.all]?.sendActions(for: .touchUpInside)
@@ -49,6 +49,66 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(requests, [.unread, .all])
 		XCTAssertEqual(root.selectedScope, .all, "scope is global: home follows")
 		XCTAssertEqual(filter.buttons[.all]?.accessibilityValue, "Selected")
+	}
+
+	// MARK: - 标题翻译开关（ADR-024）
+
+	func testTitleTranslationToggleRequestsVisibleTitlesAndShowsFigmaStates() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, title: String, translated: String? = nil) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: title, translatedTitle: translated, url: nil, feedID: feedID)
+		}
+		let list = [
+			article("en", title: "An English headline"),
+			article("done", title: "Already translated", translated: "已经翻好"),
+			article("zh", title: "纯中文标题")
+		]
+		var enabled = false
+		var requested = [[String]]()
+		let setting = Babel2TitleTranslationSetting(
+			isEnabled: { enabled },
+			setEnabled: { enabled = $0 },
+			request: { requested.append($0.map(\.articleID)) }
+		)
+		let provider = FakeDataProvider(feeds: [feedID: list])
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all, environment: makeEnvironment(provider: provider), titleTranslation: setting)
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+		let toggle = feedViewController.titleTranslationToggleForTesting
+		XCTAssertEqual(toggle.displayedText.main, "原")
+		XCTAssertTrue(requested.isEmpty, "nothing is requested while off")
+
+		// 打开：只请求屏幕上、还没有译文、且可能需要翻的（英文那条），显示「译 生成中」
+		toggle.sendActions(for: .touchUpInside)
+		XCTAssertTrue(enabled)
+		XCTAssertEqual(requested, [["en"]])
+		XCTAssertEqual(toggle.displayedText.main, "译")
+		XCTAssertEqual(toggle.displayedText.caption, "生成中")
+		// 有译文入库：变成「译 原文」
+		NotificationCenter.default.post(name: .babel2TitleTranslationDidChange, object: nil)
+		XCTAssertEqual(toggle.displayedText.caption, "原文")
+		// 关掉：回到「原 翻译」
+		toggle.sendActions(for: .touchUpInside)
+		XCTAssertFalse(enabled)
+		XCTAssertEqual(toggle.displayedText.main, "原")
+		XCTAssertEqual(toggle.displayedText.caption, "翻译")
+	}
+
+	func testTitleTranslationSkipsWhenNothingOnScreenNeedsIt() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let list = [ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "zh"), title: "纯中文标题", url: nil, feedID: feedID)]
+		var requested = [[ArticleSnapshot.ID]]()
+		let setting = Babel2TitleTranslationSetting(isEnabled: { true }, setEnabled: { _ in }, request: { requested.append($0) })
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all, environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])), titleTranslation: setting)
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 1)
+		feedViewController.requestVisibleTitleTranslationsForTesting()
+		XCTAssertTrue(requested.isEmpty, "Chinese-only titles are not sent (no cost, no stuck 生成中)")
+		XCTAssertEqual(feedViewController.titleTranslationToggleForTesting.displayedText.caption, "原文")
 	}
 
 	func testMarkAllReadConfirmsCountThenMarksWholeFeed() async throws {

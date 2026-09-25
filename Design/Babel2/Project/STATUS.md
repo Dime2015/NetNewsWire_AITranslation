@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表标题翻译开关（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-024 实现：列表底栏「原 翻译」开关接通；打开后请求屏幕上未翻标题，译文到达原地刷新；滚动停下继续请求；关闭原地恢复原文；启动唤醒引擎恢复新文章提前翻译。
+- 文件：`Babel2LibraryViewControllers.swift`（列表页开关与请求）、`Babel2SceneComposition.swift`（注入）、`Babel2AppAssembly.swift`（启动唤醒引擎）、`Babel2Integration/Babel2LiveDataAdapters.swift`（`Babel2LiveTitleTranslation`、通知转发）、测试（+2，1 项旧占位断言更新）。`Shared/Translation/` 零改动。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/titletr-r1.xcresult` 113/113；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/titletr-ui-r1.xcresult` 1/1（启动与主路径不受引擎唤醒影响）。真实联网标题翻译未在模拟器验证（无 API key）。
+- 2026-09-25 用户真机验收通过，但反馈标题翻译「很慢」。查证：标题批量翻译请求（`NNWTitleBatchTranslator`）没有带正文翻译 8 月 8 日加上的 `reasoning: {effort: none, exclude: true}`，若所选模型默认思考会显著变慢；另标题 12 条一批非流式、整批返回。手机上所选模型未知（设置页未做）。用户同意补上该字段（下一小步）。
+
 ## 首页底栏改用共享档位组件（2026-09-25，用户真机回归验收通过，已提交并推送）
 
 - 起因：用户报告首页选别的档再选回「未读」时胶囊变窄、圆点压在 UNREAD 上；列表页（`Babel2ScopeFilterControl`）无此问题。模拟器测试不播放动画，复现不了（LESSONS 36）。用户选方案 A：首页改用同一组件。

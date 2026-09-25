@@ -41,7 +41,16 @@ enum Babel2SceneComposition {
 		}
 		root.onFeedRequested = { [weak navigationController, weak root] feed, scope in
 			guard let navigationController else { return }
-			let feedViewController = Babel2FeedViewController(feed: feed, scope: scope, environment: resolvedEnvironment)
+			let feedViewController = Babel2FeedViewController(
+				feed: feed,
+				scope: scope,
+				environment: resolvedEnvironment,
+				titleTranslation: Babel2TitleTranslationSetting(
+					isEnabled: { Babel2LiveTitleTranslation.isEnabled(feed.id) },
+					setEnabled: { Babel2LiveTitleTranslation.setEnabled($0, for: feed.id) },
+					request: { ids in Task { await Babel2LiveTitleTranslation.request(ids) } }
+				)
+			)
 			feedViewController.onScopeChanged = { [weak root] scope in
 				root?.applyScope(scope)
 			}
