@@ -9,6 +9,10 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 已读图标反转 + 打开文章自动标已读（r1；用户真机验收通过，已提交）
+
+基线：`HEAD` = `2897962e9` + 未提交改动。`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/autoread-r1.xcresult`：`result=Passed`、`totalTestCount=94`、`passedTests=94`。UI Driver 未重跑（它现在会把模拟器中一篇真实文章标为已读）。
+
 ## 2026-09-24/25 文章列表随状态变化原地刷新（r2；用户真机验收通过，已提交）
 
 r2（2026-09-25，移除临时诊断代码后、含新增「列表被盖住时变化返回后重画」测试）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/list-refresh-r2.xcresult` `result=Passed`、`totalTestCount=94`、`passedTests=94`。

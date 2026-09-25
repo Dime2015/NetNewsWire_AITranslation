@@ -533,7 +533,6 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let toolbar = viewController.toolbarView
 		XCTAssertEqual(toolbar.frame.maxY, window.bounds.maxY, accuracy: 0.5)
 		XCTAssertEqual(toolbar.frame.height, 72)
-		XCTAssertEqual(toolbar.readButton.accessibilityValue, "unread")
 		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
 		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
 		XCTAssertEqual(toolbar.placeholderButtons.count, 3)
@@ -544,14 +543,19 @@ final class Babel2FeedReaderTests: XCTestCase {
 		}
 
 		let articleID = ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")
-		toolbar.readButton.sendActions(for: .touchUpInside)
+		// 打开即自动标为已读，图标变为实心圆
 		await waitUntil { toolbar.readButton.accessibilityValue == "read" }
-		toolbar.starButton.sendActions(for: .touchUpInside)
-		await waitUntil { toolbar.starButton.accessibilityValue == "unstarred" }
+		// 手动标回未读：空心圈，且不会被再次自动改回已读
 		toolbar.readButton.sendActions(for: .touchUpInside)
 		await waitUntil { toolbar.readButton.accessibilityValue == "unread" }
+		viewController.viewDidAppear(false)
+		toolbar.starButton.sendActions(for: .touchUpInside)
+		await waitUntil { toolbar.starButton.accessibilityValue == "unstarred" }
+		XCTAssertEqual(toolbar.readButton.accessibilityValue, "unread")
+		toolbar.readButton.sendActions(for: .touchUpInside)
+		await waitUntil { toolbar.readButton.accessibilityValue == "read" }
 		let actions = await handler.actions
-		XCTAssertEqual(actions, [.markRead(articleID), .toggleStar(articleID), .markUnread(articleID)])
+		XCTAssertEqual(actions, [.markRead(articleID), .markUnread(articleID), .toggleStar(articleID), .markRead(articleID)])
 
 		// 失败时按钮状态不变
 		await handler.setShouldFail(true)

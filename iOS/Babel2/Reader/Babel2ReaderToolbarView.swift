@@ -74,10 +74,11 @@ final class Babel2ReaderToolbarView: UIView {
 
 	required init?(coder: NSCoder) { nil }
 
-	/// 已读 = 空心圆，未读 = 实心圆点；按钮文字说明的是「点了会怎样」。
+	/// 已读 = 实心圆，未读 = 空心圈（用户 2026-09-25 决定，与 Reeder/旧版相反）；
+	/// 按钮的无障碍说明描述的是「点了会怎样」。
 	func setRead(_ read: Bool) {
 		isRead = read
-		Self.setSymbol(read ? "circle" : "circle.fill", on: readButton)
+		Self.setSymbol(read ? "circle.fill" : "circle", on: readButton)
 		readButton.accessibilityLabel = Babel2Localization.text(read ? .markUnread : .markRead)
 		readButton.accessibilityValue = read ? "read" : "unread"
 	}

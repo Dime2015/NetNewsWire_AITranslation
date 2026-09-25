@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 已读图标反转 + 打开文章自动标已读（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 用户决定：①底栏已读图标改为 实心圆 = 已读、空心圈 = 未读（与 Reeder/旧版相反）；②打开文章即标为已读。
+- 实现：`Babel2ReaderToolbarView.setRead` 只换两个图标名；`Babel2ArticleViewController` 在 viewDidAppear 时若文章未读则调用现成 `LibraryAction.markRead`，每次打开只自动标一次，之后手动标回未读不会被再次改掉；成功后图标变实心，列表/首页经既有通知刷新。
+- 文件：`iOS/Babel2/Reader/Babel2ReaderToolbarView.swift`、`Babel2ArticleViewController.swift`、`Tests/.../Babel2FeedReaderTests.swift`（底栏测试改为先验证自动标已读、再手动切换、且再次出现不重复自动标）。未改数据层/禁区。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/autoread-r1.xcresult` 94/94。注意：UI Driver 现在进入文章会把模拟器里的一篇真实文章标为已读（仅模拟器数据），本步未重跑。
+- 2026-09-25 用户按 6 步清单（打开即实心圆、返回列表原位变细、首页未读数减 1、手动标未读后停留不被自动改回、返回变回粗体）真机验收通过。口头确认。
+
 ## 文章列表随状态变化原地刷新（2026-09-25 用户真机验收通过，已提交）
 
 - 更正：第 3 步记录里“列表与首页不即时刷新、原因是 articleCache 不失效”的判断有误。核实后：首页 `Babel2RootViewController` 已监听 `.babel2LibraryDidChange`（由 Account 的 `StatusesDidChange` 转发；本地账户 `markArticles → updateStatusesAsync → noteStatusesForArticleIDsDidChange` 会发出），应当已会刷新；真正不刷新的是 `Babel2FeedViewController`（只在打开时加载一次）。`articleCache` 仅被未使用的 `articleSnapshot(for:)` 读取，与此无关，未改动。

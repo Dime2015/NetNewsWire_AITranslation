@@ -41,6 +41,8 @@ final class Babel2ArticleViewController: UIViewController {
 	private var isRead: Bool
 	private var isStarred: Bool
 	private var isStatusRequestInFlight = false
+	/// 本次打开是否已经自动标过已读（只标一次；之后手动标回未读不会被再次改掉）。
+	private var didAutoMarkRead = false
 	private let contentView = Babel2ReaderContentView()
 	private let headerView = UIView()
 	private let dateLabel = UILabel()
@@ -101,6 +103,22 @@ final class Babel2ArticleViewController: UIViewController {
 			self?.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
 		}
 		startRendering()
+	}
+
+	override func viewDidAppear(_ animated: Bool) {
+		super.viewDidAppear(animated)
+		autoMarkReadIfNeeded()
+	}
+
+	/// 打开文章即标为已读（用户 2026-09-25 决定；旧版与 Reeder 同样如此）。
+	private func autoMarkReadIfNeeded() {
+		guard !didAutoMarkRead else { return }
+		didAutoMarkRead = true
+		guard !isRead else { return }
+		performStatusAction(.markRead(article.id)) { controller in
+			controller.isRead = true
+			controller.toolbar.setRead(true)
+		}
 	}
 
 	override func viewDidLayoutSubviews() {
