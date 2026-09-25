@@ -9,7 +9,8 @@ enum Babel2SceneComposition {
 		restoration: Babel2NavigationRestoration? = nil,
 		localizationBundle: Bundle = .main,
 		openURL: @escaping (URL) -> Void = { UIApplication.shared.open($0) },
-		settingsService: Babel2SettingsService? = nil
+		settingsService: Babel2SettingsService? = nil,
+		subscriptionService: Babel2SubscriptionService? = nil
 	) -> Babel2NavigationController {
 		// A production scene always gets the live adapter graph. Preview/test
 		// callers can still inject deterministic collaborators explicitly.
@@ -18,8 +19,10 @@ enum Babel2SceneComposition {
 		let navigationController = Babel2NavigationController(rootViewController: root)
 		// 设置页（Slice 6）：接到现有存储的正式实现；测试可注入假的实现
 		let resolvedSettings = settingsService ?? Babel2LiveSettingsService()
+		// 添加订阅页（2026-09-25）：接 1.x 发现引擎的正式实现；测试可注入假的实现
+		let resolvedSubscriptions = subscriptionService ?? Babel2LiveSubscriptionService()
 		navigationController.routeFactory = { route in
-			makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings)
+			makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings, subscriptions: resolvedSubscriptions)
 		}
 		// 配色模式应用到整个窗口；设置里改了立即重新应用
 		navigationController.interfaceStyleProvider = { resolvedSettings.appearance.interfaceStyle }
@@ -38,7 +41,8 @@ enum Babel2SceneComposition {
 				.addSubscription,
 				environment: resolvedEnvironment,
 				localizationBundle: localizationBundle,
-				settings: resolvedSettings
+				settings: resolvedSettings,
+				subscriptions: resolvedSubscriptions
 			) else { return }
 			navigationController.pushBabel2(addSubscription, animated: true)
 		}
@@ -103,24 +107,25 @@ enum Babel2SceneComposition {
 
 		if let restoration {
 			navigationController.applyRestoration(restoration) { route in
-				makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings)
+				makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings, subscriptions: resolvedSubscriptions)
 			}
 		}
 		return navigationController
 	}
 
-	/// 路由恢复与路由工厂：设置 → 设置首页；添加订阅仍是占位页。
+	/// 路由恢复与路由工厂：设置 → 设置首页；添加订阅 → 添加订阅页。
 	private static func makeRoute(
 		_ route: Babel2RouteState,
 		environment: AppEnvironment,
 		localizationBundle: Bundle,
-		settings: Babel2SettingsService
+		settings: Babel2SettingsService,
+		subscriptions: Babel2SubscriptionService
 	) -> UIViewController? {
 		switch route {
 		case .settings:
 			return Babel2SettingsHomeViewController(service: settings)
 		case .addSubscription:
-			return Babel2PlaceholderViewController(route: route, environment: environment, localizationBundle: localizationBundle)
+			return Babel2AddSubscriptionViewController(service: subscriptions, imageProvider: environment.imageProvider)
 		default:
 			return nil
 		}

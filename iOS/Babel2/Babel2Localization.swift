@@ -54,6 +54,17 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case searchFeedPlaceholder = "Search %@"
 	case noSearchResults = "No articles match “%@”"
 	case searchFailed = "Search failed"
+	case addSubscription = "Add Subscription"
+	case addSubscriptionPlaceholder = "Paste a URL or search by keyword"
+	case addSubscriptionHint = "Paste a website, feed, YouTube or Reddit address, or enter a keyword to search websites, podcasts, YouTube and Reddit."
+	case searching = "Searching…"
+	case subscribeTo = "Subscribe To"
+	case noSubscriptionDestination = "No account is available to subscribe with. Add an account in Settings first."
+	case subscribe = "Subscribe"
+	case unsubscribe = "Unsubscribe"
+	case unsubscribeConfirm = "Unsubscribe from “%@”? Its articles will be removed."
+	case discoveryWebsites = "Websites"
+	case discoveryPodcasts = "Podcasts"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -100,6 +111,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .articleCount: return "babel2.feed.count"
 		case .search, .searchFeedPlaceholder: return "babel2.feed.search"
 		case .noSearchResults, .searchFailed: return "babel2.feed.articles.state"
+		case .addSubscription, .addSubscriptionPlaceholder, .addSubscriptionHint, .searching, .subscribeTo, .noSubscriptionDestination,
+			.subscribe, .unsubscribe, .unsubscribeConfirm, .discoveryWebsites, .discoveryPodcasts:
+			return "babel2.add-subscription"
 		}
 	}
 }

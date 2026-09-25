@@ -214,6 +214,79 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(hero.hasArtForTesting)
 	}
 
+	// MARK: - 添加订阅页（2026-09-25，ADR-030）
+
+	/// 首页「+」打开添加订阅页（路由恢复 home → addSubscription）。
+	func testAddButtonOpensAddSubscriptionPage() throws {
+		let navigation = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: FakeDataProvider()),
+			settingsService: FakeSettingsService(), subscriptionService: FakeSubscriptionService())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		let root = try XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
+		root.loadViewIfNeeded()
+		let add = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.add" })
+		add.sendActions(for: .touchUpInside)
+		XCTAssertTrue(navigation.topViewController is Babel2AddSubscriptionViewController)
+		XCTAssertEqual(navigation.restorationValue().routes, [.home, .addSubscription])
+		let restored = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: FakeDataProvider()),
+			restoration: Babel2NavigationRestoration(routes: [.home, .addSubscription]),
+			settingsService: FakeSettingsService(), subscriptionService: FakeSubscriptionService())
+		XCTAssertTrue(restored.topViewController is Babel2AddSubscriptionViewController, "restores the add subscription page")
+	}
+
+	/// 搜索结果分组（无结果的组显示自己的说明，组可收起）；默认订阅到第一个位置、可改；
+	/// 订阅订到选中位置且留在本页、行变成已订阅；取消订阅调用服务。
+	func testAddSubscriptionSearchSubscribeAndUnsubscribe() async throws {
+		let service = FakeSubscriptionService()
+		let page = Babel2AddSubscriptionViewController(service: service)
+		let window = hostInWindow(page)
+		defer { window.isHidden = true }
+		page.view.layoutIfNeeded()
+		XCTAssertEqual(page.destinationIDForTesting, "local", "defaults to the first destination (top level)")
+		XCTAssertEqual(page.statusTextForTesting, Babel2Localization.text(.addSubscriptionHint))
+
+		page.runSearch("swift")
+		for _ in 0..<100 where page.groupsForTesting.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertEqual(page.groupsForTesting.map(\.kind), [.website, .podcast])
+		XCTAssertNil(page.statusTextForTesting, "results shown")
+		let table = page.tableViewForTesting
+		table.layoutIfNeeded()
+		XCTAssertEqual(table.numberOfRows(inSection: 1), 2, "website results")
+		XCTAssertEqual(table.numberOfRows(inSection: 2), 1, "podcast group shows its own status message")
+		page.toggleGroupForTesting(0)
+		XCTAssertEqual(table.numberOfRows(inSection: 1), 0, "group collapses")
+		page.toggleGroupForTesting(0)
+
+		// 改订阅位置：弹出选单选第二项
+		let destinationRow = try XCTUnwrap(descendant(of: table, matching: Babel2SettingsSelectRow.self) { $0.accessibilityIdentifier == "babel2.add-subscription.destination" })
+		destinationRow.sendActions(for: .touchUpInside)
+		let popover = try XCTUnwrap(page.view.subviews.compactMap { $0 as? Babel2SettingsPopover }.last)
+		popover.selectForTesting(1)
+		XCTAssertEqual(page.destinationIDForTesting, "local/1")
+
+		let result = service.websiteResults[0]
+		page.subscribeForTesting(result)
+		for _ in 0..<100 where service.subscribed.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertEqual(service.subscribed.first?.1, "local/1", "subscribes into the chosen folder")
+		try await Task.sleep(for: .milliseconds(50))
+		table.reloadData()
+		table.layoutIfNeeded()
+		let cell = try XCTUnwrap(table.cellForRow(at: IndexPath(row: 0, section: 1)) as? Babel2DiscoveryResultCell)
+		XCTAssertEqual(cell.stateForTesting, .subscribed, "row shows subscribed; page stays open")
+
+		page.performUnsubscribe(result)
+		for _ in 0..<100 where service.unsubscribed.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertEqual(service.unsubscribed, [result.feedURL])
+	}
+
+	/// 真实实现：粘贴 Reddit 版块网址直接给出 Reddit 那一组（不联网；关键词会走四类并行搜索，要联网，不在这里测）。
+	func testLiveSubscriptionServiceRoutesSubredditWithoutNetwork() async {
+		let groups = await Babel2LiveSubscriptionService().search("https://www.reddit.com/r/swift/")
+		XCTAssertEqual(groups.map(\.kind), [.reddit])
+		XCTAssertFalse(groups[0].results.isEmpty)
+		XCTAssertTrue(groups[0].results.allSatisfy { $0.feedURL.contains("reddit.com/r/swift") })
+	}
+
 	// MARK: - 列表搜索（2026-09-25）
 
 	/// 放大镜原地进入搜索：窄栏换成搜索框、底栏隐藏；按全部文章（不分档）搜索、结果替换列表；
@@ -2746,3 +2819,33 @@ private final class FakeSettingsService: Babel2SettingsService {
 	func openHelp(_ kind: Babel2HelpKind) {}
 	func makeAboutPage() -> UIViewController { UIViewController() }
 }
+
+/// 添加订阅页测试用的假服务。
+@MainActor
+private final class FakeSubscriptionService: Babel2SubscriptionService {
+	let websiteResults = [
+		Babel2DiscoveryResult(kind: .website, title: "Swift.org", subtitle: "swift.org", feedURL: "https://swift.org/atom.xml", iconURL: nil),
+		Babel2DiscoveryResult(kind: .website, title: "Swift by Sundell", subtitle: nil, feedURL: "https://swiftbysundell.com/rss", iconURL: nil)
+	]
+	var subscribedURLs = Set<String>()
+	var subscribed = [(String, String)]()
+	var unsubscribed = [String]()
+	func search(_ query: String) async -> [Babel2DiscoveryGroup] {
+		[Babel2DiscoveryGroup(kind: .website, results: websiteResults, statusMessage: nil, isExpanded: true),
+		 Babel2DiscoveryGroup(kind: .podcast, results: [], statusMessage: "No matching podcasts.", isExpanded: true)]
+	}
+	var destinations = [Babel2SubscriptionDestination(id: "local", title: "Top Level"), Babel2SubscriptionDestination(id: "local/1", title: "Tech")]
+	func isSubscribed(_ result: Babel2DiscoveryResult) -> Bool { subscribedURLs.contains(result.feedURL) }
+	func subscribe(_ result: Babel2DiscoveryResult, to destinationID: String) async -> String? {
+		subscribed.append((result.feedURL, destinationID))
+		subscribedURLs.insert(result.feedURL)
+		return nil
+	}
+	func unsubscribe(_ result: Babel2DiscoveryResult) async -> String? {
+		unsubscribed.append(result.feedURL)
+		subscribedURLs.remove(result.feedURL)
+		return nil
+	}
+	func makePreview(_ result: Babel2DiscoveryResult, isBusy: @escaping () -> Bool, subscribe: @escaping (@escaping (String?) -> Void) -> Void) -> UIViewController? { nil }
+}
+

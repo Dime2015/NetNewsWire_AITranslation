@@ -4,6 +4,7 @@ import Account
 import Articles
 import Images
 import RSWeb
+import RSCore
 import Babel2Core
 
 /// The Babel 2.0 boundary to the existing feed/account services.
@@ -25,6 +26,8 @@ final class Babel2LiveDataProvider: DataProviding {
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .AccountDidDownloadArticles, object: nil)
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .feedIconDidBecomeAvailable, object: nil)
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .FaviconDidBecomeAvailable, object: nil)
+		// 订阅源增删（添加订阅、取消订阅、导入 OPML、删除账户）：首页重新加载（2026-09-25 添加订阅页时补上）
+		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .ChildrenDidChange, object: nil)
 		// 标题译文入库（或开关变了）：转给 Babel2 文章列表原地刷新（ADR-024）
 		center.addObserver(self, selector: #selector(titleTranslationDidChange(_:)), name: .nnwTitleTranslationDidUpdate, object: nil)
 	}
@@ -641,6 +644,96 @@ enum Babel2LiveAccounts {
 				}
 			}
 		}
+	}
+}
+
+/// 添加订阅页的账户操作（2026-09-25）：订阅落点、是否已订阅、订阅、取消订阅。
+/// 账户单例只能在本文件使用（边界测试放行点）；只调用账户的公开接口（createFeed / removeFeed），禁区一行不改。
+@MainActor
+enum Babel2LiveSubscriptions {
+	struct Destination {
+		/// 「账户编号」或「账户编号/文件夹编号」。
+		let id: String
+		let accountName: String
+		/// nil = 顶层（不放进文件夹）。
+		let folderName: String?
+	}
+
+	/// 可订阅到的位置：每个账户的顶层（个别同步服务不允许放顶层则不给）+ 各文件夹。
+	static func destinations() -> [Destination] {
+		AccountManager.shared.sortedActiveAccounts.flatMap { account -> [Destination] in
+			var list = [Destination]()
+			if !account.behaviors.contains(.disallowFeedInRootFolder) {
+				list.append(Destination(id: account.accountID, accountName: account.nameForDisplay, folderName: nil))
+			}
+			for folder in account.sortedFolders ?? [] {
+				list.append(Destination(id: "\(account.accountID)/\(folder.folderID)", accountName: account.nameForDisplay, folderName: folder.nameForDisplay))
+			}
+			return list
+		}
+	}
+
+	private static func container(for destinationID: String) -> Container? {
+		let parts = destinationID.split(separator: "/", maxSplits: 1).map(String.init)
+		guard let account = AccountManager.shared.existingAccount(accountID: parts[0]) else { return nil }
+		guard parts.count == 2 else { return account }
+		return account.sortedFolders?.first { String($0.folderID) == parts[1] }
+	}
+
+	/// 当场问账户（不维护第二份缓存）：任一活跃账户订了这个地址就算已订阅。
+	static func isSubscribed(_ feedURL: String) -> Bool {
+		AccountManager.shared.activeAccounts.contains { $0.hasFeed(withURL: feedURL) }
+	}
+
+	enum SubscribeOutcome {
+		case subscribed
+		case alreadySubscribed
+		case failed(Error)
+	}
+
+	static func subscribe(feedURL: String, name: String?, destinationID: String) async -> SubscribeOutcome {
+		guard let container = container(for: destinationID) else { return .failed(AccountError.createErrorNotFound) }
+		let account: Account? = (container as? Account) ?? (container as? Folder)?.account
+		guard let account else { return .failed(AccountError.createErrorNotFound) }
+		if account.hasFeed(withURL: feedURL) { return .alreadySubscribed }
+		BatchUpdate.shared.start()
+		defer { BatchUpdate.shared.end() }
+		return await withCheckedContinuation { continuation in
+			account.createFeed(url: feedURL, name: name, container: container, validateFeed: true) { result in
+				switch result {
+				case .success: continuation.resume(returning: .subscribed)
+				case .failure(let error): continuation.resume(returning: .failed(error))
+				}
+			}
+		}
+	}
+
+	/// 取消订阅：跨账户找到这个地址的所有落点逐个移除（与 1.x 发现页同一做法）。失败返回第一个错误。
+	static func unsubscribe(feedURL: String) async -> Error? {
+		var targets = [(Account, Feed, Container)]()
+		for account in AccountManager.shared.activeAccounts {
+			guard let feed = account.existingFeed(withURL: feedURL) else { continue }
+			for container in account.existingContainers(withFeed: feed) {
+				targets.append((account, feed, container))
+			}
+		}
+		guard !targets.isEmpty else { return nil }
+		BatchUpdate.shared.start()
+		defer { BatchUpdate.shared.end() }
+		var firstError: Error?
+		for (account, feed, container) in targets {
+			let error: Error? = await withCheckedContinuation { continuation in
+				account.removeFeed(feed, from: container) { result in
+					if case .failure(let error) = result {
+						continuation.resume(returning: error)
+					} else {
+						continuation.resume(returning: nil)
+					}
+				}
+			}
+			if firstError == nil { firstError = error }
+		}
+		return firstError
 	}
 }
 

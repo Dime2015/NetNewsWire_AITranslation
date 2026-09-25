@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ (Top Level)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (Top Level)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@（不放进文件夹）"
+          }
+        }
+      }
+    },
     "%@ · Top 3" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -218,6 +235,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先添加一个账户。"
+          }
+        }
+      }
+    },
+    "Add Subscription" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Subscription"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加订阅"
           }
         }
       }
@@ -626,6 +660,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法完成操作"
+          }
+        }
+      }
+    },
+    "Couldn't connect. Check your network and try again." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't connect. Check your network and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上网络，请检查网络后重试。"
           }
         }
       }
@@ -1446,6 +1497,40 @@
         }
       }
     },
+    "No %@ API key yet. Add it in Settings → Subscriptions & Discovery → Discovery API Keys to search %@ here." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No %@ API key yet. Add it in Settings → Subscriptions & Discovery → Discovery API Keys to search %@ here."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有配置 %@ 的 API Key。到 设置 → 订阅与发现 → 订阅发现 API Key 里填写后，就能在这里直接搜 %@。"
+          }
+        }
+      }
+    },
+    "No account is available to subscribe with. Add an account in Settings first." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No account is available to subscribe with. Add an account in Settings first."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有可用于订阅的账户，请先在设置里添加账户。"
+          }
+        }
+      }
+    },
     "No Accounts" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1514,6 +1599,74 @@
         }
       }
     },
+    "No matching podcasts." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching podcasts."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有找到匹配的播客。"
+          }
+        }
+      }
+    },
+    "No matching subreddits." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching subreddits."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有找到匹配的 Reddit 版块。"
+          }
+        }
+      }
+    },
+    "No matching websites." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching websites."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有找到匹配的网站。"
+          }
+        }
+      }
+    },
+    "No matching YouTube channels." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching YouTube channels."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有找到匹配的 YouTube 频道。"
+          }
+        }
+      }
+    },
     "No models yet. Tap Refresh Model List." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1527,6 +1680,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "还没有模型列表，点「刷新模型列表」。"
+          }
+        }
+      }
+    },
+    "No RSS feed was found on this website. If you know its feed address, paste that instead." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No RSS feed was found on this website. If you know its feed address, paste that instead."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个网站上没找到 RSS 地址。如果你知道它的 RSS 地址，可以直接粘贴那个地址。"
           }
         }
       }
@@ -1769,6 +1939,40 @@
         }
       }
     },
+    "Paste a URL or search by keyword" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste a URL or search by keyword"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴网址，或输入关键词搜索"
+          }
+        }
+      }
+    },
+    "Paste a website, feed, YouTube or Reddit address, or enter a keyword to search websites, podcasts, YouTube and Reddit." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste a website, feed, YouTube or Reddit address, or enter a keyword to search websites, podcasts, YouTube and Reddit."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴网站、RSS、YouTube 或 Reddit 地址；或输入关键词，同时搜索网站、播客、YouTube 和 Reddit。"
+          }
+        }
+      }
+    },
     "Plum" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1782,6 +1986,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "梅紫"
+          }
+        }
+      }
+    },
+    "Podcasts" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客"
           }
         }
       }
@@ -1884,6 +2105,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "阅读模式"
+          }
+        }
+      }
+    },
+    "Reddit is rate limiting requests. Wait a minute or two and try again." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reddit is rate limiting requests. Wait a minute or two and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reddit 暂时限制了访问频率，等一两分钟再试。"
           }
         }
       }
@@ -2092,6 +2330,23 @@
         }
       }
     },
+    "Searching…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在搜索…"
+          }
+        }
+      }
+    },
     "Self-Hosted" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2292,6 +2547,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "星标"
+          }
+        }
+      }
+    },
+    "Subscribe" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subscribe"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅"
+          }
+        }
+      }
+    },
+    "Subscribe To" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subscribe To"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅到"
           }
         }
       }
@@ -2636,6 +2925,23 @@
         }
       }
     },
+    "The server returned an error (%d). Try again later." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server returned an error (%d). Try again later."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方服务器返回了错误（%d），稍后再试。"
+          }
+        }
+      }
+    },
     "The service URL is probably wrong, or this model isn't available there." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2683,6 +2989,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这篇文章没有正文"
+          }
+        }
+      }
+    },
+    "Top Level (No Folder)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Level (No Folder)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不放进文件夹"
           }
         }
       }
@@ -2908,6 +3231,40 @@
         }
       }
     },
+    "Unsubscribe" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsubscribe"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消订阅"
+          }
+        }
+      }
+    },
+    "Unsubscribe from “%@”? Its articles will be removed." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsubscribe from “%@”? Its articles will be removed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要取消订阅「%@」吗？它的文章会一并移除。"
+          }
+        }
+      }
+    },
     "Web Services" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2921,6 +3278,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网络服务"
+          }
+        }
+      }
+    },
+    "Websites" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Websites"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网站"
+          }
+        }
+      }
+    },
+    "You're already subscribed to this feed." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You're already subscribed to this feed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已经订阅过这个源了。"
+          }
+        }
+      }
+    },
+    "YouTube refused the search. The free daily quota (about 100 searches) may be used up, or the API key is wrong." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YouTube refused the search. The free daily quota (about 100 searches) may be used up, or the API key is wrong."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YouTube 搜索被拒绝了，多半是每天的免费额度（约 100 次）用完了，或者 API Key 不对。"
           }
         }
       }

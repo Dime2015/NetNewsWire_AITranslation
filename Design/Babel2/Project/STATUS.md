@@ -24,7 +24,17 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 文章列表搜索（Slice 3，ADR-029；2026-09-25，用户真机验收通过，已提交并推送）
+## 添加订阅页（Slice 6，ADR-030；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 首页「+」打开新页面 `Babel2AddSubscriptionViewController`（替换占位页，沿用恢复标识 babel2.add-subscription）。Figma 无设计稿，样式按列表搜索框与设置行近似。
+- 沿用 1.x 发现页用户决定：一个搜索框（网址直连对应类型；关键词并行搜网站 / 播客 / YouTube / Reddit，按此顺序分组，网站默认展开、其余收起，组标题可点收起/展开）；一类失败不影响其它，每组显示自己的说明（无结果 / 未配置 Key〔指向 设置 → 订阅与发现〕/ 限流 / 网络错误）；顶部「订阅到」（设置页同款弹出选单，默认第一个位置、不记住）；点行试读（复用 1.x 试读页，底部卡片）；行尾 ⊕ 订阅、灰色实心勾 = 已订阅（再点先确认后取消）；订阅后留在本页。按键盘「搜索」才搜（多类联网、第三方额度有限）。
+- 接入层：新文件 `Babel2LiveSubscriptionService.swift`（发现引擎、常见错误中英文化、试读桥接、保留原始结果供试读）；`Babel2LiveDataAdapters.swift` 新增 `Babel2LiveSubscriptions`（订阅位置、是否已订阅、createFeed、跨账户 removeFeed）。
+- 顺带修复：首页数据层未监听「订阅源增删」（ChildrenDidChange），订阅 / 导入 OPML / 删除账户后首页不刷新——已加监听，订阅与取消订阅后也主动通知刷新。
+- 文案 +26 条中英文（1.x 发现引擎中未映射的少数错误说明仍为中文原文）。
+- 验证：测试 +3（「+」进入与路由恢复；分组与组内说明、收起展开、默认位置与改位置、订到所选位置并留在本页、已订阅状态、取消订阅调用；真实实现粘贴 Reddit 版块网址不联网给出 Reddit 组）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/add-full.xcresult` 140/140；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/add-ui.xcresult` 1/1。
+- 未能自动验证：真实联网搜索四类、真实订阅写入与首页刷新、试读卡片、取消订阅、未配置 Key 提示、观感——真机验收。
+
+## 文章列表搜索（Slice 3，ADR-029；2026-09-25，用户真机验收通过，已提交并推送 `ce0a42c6b`）
 
 - 入口：窄栏层右上角放大镜（Figma 搜索位 x=330，全程不动）。点按原地进入搜索：大图收成窄栏、第二行换成搜索框 +「取消」（新文件 `Babel2FeedSearch.swift`；Figma 无搜索界面稿，样式按设置页输入框近似，用户同意）、列表顶 70pt 垫片暂时去掉、底栏隐藏、键盘弹出。
 - 搜索：停止输入 0.25 秒后搜；空搜索框显示原列表；旧搜索取消只显示最新结果；结果沿用文章行与按天分组；无结果显示「没有找到与「xxx」相关的文章」，出错显示「搜索失败」；拖动结果收起键盘。下一篇按结果顺序；点结果进阅读页返回仍在结果里。
