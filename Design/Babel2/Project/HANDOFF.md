@@ -2,14 +2,11 @@
 
 ## ★ 下一会话从这里开始（2026-09-25 更新）
 
-**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～025、LESSONS.md 第 30～38 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～026、LESSONS.md 第 30～40 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**用户指定的下一任务：长图小改善**（均在 Babel2 阅读页的「生成长图」，ADR-025）
-1. 把长图末尾的「分享自 <品牌名>」签名（页脚：app 图标 + 文字）移到长图**顶部**。
-2. 签名里的 app 图标换成 Babel 2.0 最新图标（`iOS/Babel2/Assets.xcassets/AppIcon.appiconset` 的 Light/Dark/Mono；按长图深浅色选对应版本）。已核实：旧代码画的是资源 `ShareFooterIcon`（`ArticleLongImageExporter.swift` 约第 172 行 `UIImage(named: "ShareFooterIcon")`），是 1.x 的旧图。
-3. 在分享面板里「存储图像」成功时给出提示（可用 `UIActivityViewController.completionWithItemsHandler`，`activityType == .saveToCameraRoll` 且 completed；提示样式沿用署名下方状态字或与用户确认）。
-- 相关代码：页脚绘制在 `iOS/Article/ArticleLongImageExporter.swift` 的 `renderLongImage`（旧版 fork 代码，ADR-025 时承诺“零改动”——改动前需向用户说明并取得同意）；Babel2 侧入口在 `iOS/Babel2/Reader/Babel2ArticleViewController.swift` 的 `generateLongImage` / `makeLongImage` / `presentShare`。
-- 流程照旧：先读代码交书面方案 → 用户确认 → 写代码 → 相关测试组 → 交付前全量测试（-collect-test-diagnostics never）→ 真机验收清单 → 用户说提交才提交推送。
+**最近完成：长图三项改善 + 超长文章空白修复/拆多张（ADR-026，2026-09-25 用户真机验收通过，已提交并推送）**
+- 签名移到顶部、换 Babel 2.0 新图标（`Babel2ShareSignatureIcon`）、「存储图像」成功提示；多页 PDF 拼图覆盖已修复（1.x 同步修好），超长文章拆成多张清晰图。全量 117/117。详见 STATUS 顶部。
+- 下一任务待用户指定。
 
 **之后的候选**：Slice 3 其余（文章列表顶部大图 hero、列表搜索）、Slice 6（设置页：API key/模型、主题色等）、Reader 翻页手势（ADR-016 暂缓）。
 

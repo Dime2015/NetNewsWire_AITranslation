@@ -193,7 +193,9 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		// 真实导出：得到一张竖长图；结束后临时标题区、定格截图、状态字都清掉
 		let subviewCount = viewController.view.subviews.count
-		let image = try await viewController.makeLongImage()
+		let images = try await viewController.makeLongImage()
+		XCTAssertEqual(images.count, 1, "a short article stays one image")
+		let image = try XCTUnwrap(images.first)
 		XCTAssertGreaterThan(image.size.height, image.size.width, "a tall long image")
 		XCTAssertGreaterThan(image.size.width, 300)
 		let leftover = await viewController.readerContentView.evaluateForTesting(
@@ -203,6 +205,102 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(viewController.view.subviews.count, subviewCount, "no leftover views")
 		XCTAssertNil(viewController.statusTextForTesting)
 		XCTAssertFalse(viewController.isGeneratingLongImage)
+
+		// 「分享自 Babel」签名在长图顶部（2026-09-25）：图标所在的那一行有非底色像素；
+		// 长图末尾同一位置（旧版页脚的图标处）是纯底色，不再有签名
+		XCTAssertNotNil(UIImage(named: "Babel2ShareSignatureIcon"), "new Babel 2.0 icon asset is bundled")
+		let pixelsPerPoint: CGFloat = 2		// 文章不长，导出器按 2 倍、不降分辨率
+		let signatureCenterY = 38 * pixelsPerPoint
+		XCTAssertGreaterThan(nonBackgroundPixelCount(in: image, row: Int(signatureCenterY)), 70, "signature drawn at the top (icon + text ≈ 100 px; page content alone ≈ 34)")
+		XCTAssertEqual(nonBackgroundPixelCount(in: image, row: Int(image.size.height - signatureCenterY)), 0, "no signature at the bottom")
+	}
+
+	/// 超长文章（网页导出时会被切成多页 PDF，每页最高 14400 点）：
+	/// 修复前拼出来的长图只剩最后一页，其余一整片底色（2026-09-25 用户真机报告）。
+	func testVeryLongArticleSplitsIntoSharpImagesWithContentThroughout() async throws {
+		let paragraphs = (1...900).map { "<p>Paragraph \($0) of a very long article body that keeps going.</p>" }.joined()
+		let viewController = makeReader(body: paragraphs, author: "Jane Doe")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		// 排版完成后内容高度才会长到位，最多等约 5 秒
+		for _ in 0..<100 where viewController.readerContentView.scrollView.contentSize.height <= 14400 * 2 {
+			try await Task.sleep(for: .milliseconds(50))
+		}
+		XCTAssertGreaterThan(viewController.readerContentView.scrollView.contentSize.height, 14400 * 2, "long enough for a multi-page PDF")
+
+		// 旧版「一张图」画法（1.x 阅读页用）：中间不再是一整片底色
+		let single = try await ArticleLongImageExporter.export(from: viewController)
+		XCTAssertGreaterThan(contentSliceCount(in: single, slices: 10), 8, "legacy single image has content throughout")
+
+		// Babel 2.0：拆成几张、每张 2 倍清晰度、每张都有内容、接缝在两行字之间
+		let images = try await viewController.makeLongImage()
+		XCTAssertGreaterThanOrEqual(images.count, 2, "split into several images")
+		for (index, image) in images.enumerated() {
+			XCTAssertEqual(image.size.width, 804, "image \(index + 1) keeps 2x sharpness")
+			XCTAssertLessThanOrEqual(image.size.height, 25000)
+			XCTAssertGreaterThanOrEqual(contentSliceCount(in: image, slices: 5), 4, "image \(index + 1) has content throughout")
+		}
+		for image in images.dropLast() {
+			XCTAssertEqual(nonBackgroundPixelCount(in: image, row: Int(image.size.height) - 1), 0, "cut falls between lines")
+		}
+		for image in images.dropFirst() {
+			XCTAssertEqual(nonBackgroundPixelCount(in: image, row: 0), 0, "next image starts between lines")
+		}
+		// 签名只在第 1 张顶部
+		XCTAssertGreaterThan(nonBackgroundPixelCount(in: images[0], row: 76), 70, "signature on the first image")
+	}
+
+	/// 把图片竖着分成几段，数有多少段里能找到非底色的行。
+	private func contentSliceCount(in image: UIImage, slices: Int) -> Int {
+		let height = Int(image.size.height)
+		return (0..<slices).filter { slice in
+			let start = height * slice / slices, end = height * (slice + 1) / slices
+			return stride(from: start, to: end, by: 7).contains { nonBackgroundPixelCount(in: image, row: $0) > 0 }
+		}.count
+	}
+
+	func testSavingImageFromShareSheetShowsToastOnlyOnSuccess() async throws {
+		let viewController = makeReader(body: "<p>Body</p>", author: nil)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+
+		// 取消、分享给别的 app、保存失败：都不提示
+		viewController.handleShareCompletion(activityType: .saveToCameraRoll, completed: false, error: nil)
+		viewController.handleShareCompletion(activityType: .copyToPasteboard, completed: true, error: nil)
+		viewController.handleShareCompletion(activityType: .saveToCameraRoll, completed: true, error: NSError(domain: "test", code: 1))
+		XCTAssertNil(viewController.toastTextForTesting)
+
+		// 「存储图像」成功：底栏上方浮出「已存储到相册」
+		viewController.handleShareCompletion(activityType: .saveToCameraRoll, completed: true, error: nil)
+		XCTAssertEqual(viewController.toastTextForTesting, Babel2Localization.text(.savedToPhotos))
+		let toast = try XCTUnwrap(descendant(of: viewController.view, matching: UIView.self) { $0.accessibilityIdentifier == "babel2.article.toast" })
+		viewController.view.layoutIfNeeded()
+		XCTAssertLessThan(toast.frame.maxY, viewController.toolbarView.frame.minY, "toast sits above the bottom toolbar")
+		XCTAssertFalse(toast.isUserInteractionEnabled, "toast never blocks taps")
+	}
+
+	/// 某一行像素里，与该行最左边像素（底色）明显不同的像素个数。
+	private func nonBackgroundPixelCount(in image: UIImage, row: Int) -> Int {
+		guard let cgImage = image.cgImage, row >= 0, row < cgImage.height else { return -1 }
+		let width = cgImage.width
+		var pixels = [UInt8](repeating: 0, count: width * 4)
+		let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+			guard let context = CGContext(data: buffer.baseAddress, width: width, height: 1, bitsPerComponent: 8, bytesPerRow: width * 4,
+				space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+			// 只画出目标那一行（CGContext 原点在左下）
+			context.draw(cgImage, in: CGRect(x: 0, y: -(cgImage.height - 1 - row), width: width, height: cgImage.height))
+			return true
+		}
+		guard drawn else { return -1 }
+		let background = Array(pixels[0..<4])
+		var count = 0
+		for x in 0..<width {
+			let pixel = pixels[(x * 4)..<(x * 4 + 4)]
+			if zip(pixel, background).contains(where: { abs(Int($0) - Int($1)) > 24 }) { count += 1 }
+		}
+		return count
 	}
 
 	// MARK: - 下一篇（Slice 5 第 4 步）

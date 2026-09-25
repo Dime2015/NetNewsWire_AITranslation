@@ -24,6 +24,15 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 长图三项改善 + 超长文章修复（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-026：①「分享自 Babel」签名（图标 + 文字）从长图末尾移到**顶部**（签名条 → 细线 → 日期/标题/署名 → 正文）；② 签名图标换成 Babel 2.0 新图标（新资源 `Babel2ShareSignatureIcon`，由 AppIcon 的浅/深两张缩到 240px，按长图深浅色自动取）；③ 分享面板「存储图像」成功后，底栏上方浮出小胶囊「已存储到相册」约 2 秒（取消、分享给别的 app、保存失败都不提示）。
+- 文件：修改 `iOS/Article/ArticleLongImageExporter.swift`（经用户同意：`export` 加可选参数「签名样式」，默认值即旧行为，1.x 两处调用不变）、`Reader/Babel2ArticleViewController.swift`、`Babel2Localization.swift` + xcstrings（+1 键）、测试（+1 项，长图测试追加签名位置检查）；新增资源 `Assets.xcassets/Babel2ShareSignatureIcon.imageset`。
+- 验证：相关 2 项 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/li-t1.xcresult` 通过；反向验证——临时改回「底部签名」时长图测试失败（顶部行 34 像素 / 底部行 101 像素），改回后通过（顶部行 101 像素），阈值定为 70；全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/li-full.xcresult` 116/116。pbxproj 签名 diff hash 仍为 `c5f5a8cf…`，`Shared/Localizable.xcstrings` 的 stale 行未动。
+- 未能自动验证：图标在长图上的观感、真实存入相册与系统权限弹窗、提示的观感——列入真机验收清单。
+- **追加：超长文章长图空白（2026-09-25 用户真机报告，已修复，用户真机验收通过）**。现象：volts.wtf「Do small residential batteries make…」（约 1.2 万词，阅读页约 64,500 点高）存进相册是一整张底色。查证：网页导出 PDF 单页最高 14,400 点、被切成 5 页，PDF 本身完整；导出器拼图时每页 PDF 自带的背景远大于本页，后画的页把前面整片盖掉，只剩最后一页。1.x 起就有，短文章（单页）不受影响。修复（用户同意）：每页先限定在自己的格子里再画。另按用户选择 A：超长时拆成多张、每张保持 2 倍清晰度（最高 2.5 万像素/张，最多 10 张，再长才整体降分辨率），尽量切在两行字之间，签名只在第 1 张顶部；每张画完立即压成 PNG 以免多张位图同时占内存（6 张约 400 MB）。新增 `exportImages`，旧 `export` 仅加了限定格子（1.x 同步修好）。
+- 追加验证：新测试（900 段长文，多页 PDF）——旧单张画法中间有内容、新拆图每张 804 宽/每段有内容/接缝在行间/签名在第 1 张；反向验证：放开限定后该测试失败（第 4–6 张及旧画法大段空白），恢复后连跑 3 次通过。真实文章实测（临时测试，已删）：6 张、每张 804 宽、每张 10/10 段有内容、接缝均在行间、每张 2.4–3 MB、模拟器生成约 1.8 秒。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/split-full.xcresult` 117/117。
+
 ## Reader Slice 5 第 5 步：生成长图（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-025 实现：••• 菜单「生成长图」可点；临时标题区 + 滚动补偿；复用旧导出器；完成弹系统分享面板。

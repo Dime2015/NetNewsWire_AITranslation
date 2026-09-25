@@ -67,6 +67,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private var browserMotion: Babel2ReaderBrowserMotion?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
+	/// 底栏上方的小胶囊提示（目前只用于「已存储到相册」）。
+	private var toastView: UIView?
+	private var toastHideTask: Task<Void, Never>?
 	/// 复用的翻译引擎：分块、流式、缓存、断点续翻、骨架色条都在里面，这里只接按钮和标题。
 	private lazy var translation: TranslationController = {
 		let controller = TranslationController(currentWebViewController: { [weak self] in self })
@@ -415,8 +418,8 @@ final class Babel2ArticleViewController: UIViewController {
 		Task { @MainActor [weak self] in
 			guard let self else { return }
 			do {
-				let image = try await self.makeLongImage()
-				self.presentShare(for: image)
+				let images = try await self.makeLongImage()
+				self.presentShare(for: images)
 			} catch {
 				self.showStatus(error.localizedDescription.isEmpty ? Babel2Localization.text(.unableToGenerateLongImage) : error.localizedDescription, autoHide: true)
 			}
@@ -428,9 +431,11 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 2. 在网页顶部临时放一份和原生标题区同样的日期/标题（当前显示的，含译文）/署名；
 	///    同一瞬间把网页往下滚同样的高度，屏幕上看到的内容不动（不能用定格截图盖住网页：
 	///    被完全盖住的网页系统不再绘制，导出会一直等下去——2026-09-25 实测卡死）
-	/// 3. 原样复用旧版 ArticleLongImageExporter：加载全部图片 → 整页导出 → 拼长图 + 页脚
+	/// 3. 复用旧版 ArticleLongImageExporter：加载全部图片 → 整页导出 → 拼长图；
+	///    「分享自 Babel」签名放在长图**顶部**、用 Babel 2.0 新图标（按当前深浅色取浅/深版本）；
+	///    超长文章拆成几张、每张保持清晰（签名只在第 1 张），短文章仍是 1 张（ADR-026）
 	/// 4. 无论成败都移除临时标题区（同样同一瞬间滚回去）
-	func makeLongImage() async throws -> UIImage {
+	func makeLongImage() async throws -> [UIImage] {
 		isGeneratingLongImage = true
 		refreshMoreMenu()
 		showStatus(Babel2Localization.text(.generatingLongImage), autoHide: false)
@@ -444,10 +449,14 @@ final class Babel2ArticleViewController: UIViewController {
 			byline: bylineLabel.isHidden ? nil : bylineLabel.text
 		)
 		do {
-			let image = try await ArticleLongImageExporter.export(from: self)
+			let signatureIcon = UIImage(named: "Babel2ShareSignatureIcon", in: nil, compatibleWith: traitCollection)
+			let images = try await ArticleLongImageExporter.exportImages(
+				from: self,
+				signature: .init(atTop: true, icon: signatureIcon)
+			)
 			await contentView.removeSnapshotHeader()
 			hideStatus()
-			return image
+			return images
 		} catch {
 			await contentView.removeSnapshotHeader()
 			hideStatus()
@@ -455,11 +464,71 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 	}
 
-	private func presentShare(for image: UIImage) {
-		let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+	/// 多张时一起交给分享面板：「存储图像」会把几张按顺序都存进相册。
+	private func presentShare(for images: [UIImage]) {
+		let activity = UIActivityViewController(activityItems: images, applicationActivities: nil)
 		activity.popoverPresentationController?.sourceView = moreButton ?? view
 		activity.popoverPresentationController?.sourceRect = moreButton?.bounds ?? view.bounds
+		activity.completionWithItemsHandler = { [weak self] activityType, completed, _, error in
+			self?.handleShareCompletion(activityType: activityType, completed: completed, error: error)
+		}
 		present(activity, animated: true)
+	}
+
+	/// 分享面板关闭后：只有点了「存储图像」且真的存成功，才提示「已存储到相册」。
+	/// 取消、分享给别的 app、拒绝照片权限导致失败，都不提示。
+	func handleShareCompletion(activityType: UIActivity.ActivityType?, completed: Bool, error: Error?) {
+		guard activityType == .saveToCameraRoll, completed, error == nil else { return }
+		showToast(Babel2Localization.text(.savedToPhotos))
+	}
+
+	/// 底栏上方正中浮出一个小胶囊，约 2 秒后淡出。不挡操作（不接收点按）。
+	/// Figma 没有这个提示的设计稿，样式按阅读页现有配色近似（反色：墨色底、纸色字）。
+	private func showToast(_ text: String) {
+		toastHideTask?.cancel()
+		toastView?.removeFromSuperview()
+
+		let label = UILabel()
+		label.text = text
+		label.font = .systemFont(ofSize: 13, weight: .semibold)
+		label.textColor = BabelPalette.background
+		label.translatesAutoresizingMaskIntoConstraints = false
+
+		let capsule = UIView()
+		capsule.backgroundColor = BabelPalette.ink
+		capsule.layer.cornerRadius = 17
+		capsule.layer.cornerCurve = .continuous
+		capsule.isUserInteractionEnabled = false
+		capsule.accessibilityIdentifier = "babel2.article.toast"
+		capsule.translatesAutoresizingMaskIntoConstraints = false
+		capsule.addSubview(label)
+		view.addSubview(capsule)
+		NSLayoutConstraint.activate([
+			capsule.heightAnchor.constraint(equalToConstant: 34),
+			label.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 16),
+			label.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -16),
+			label.centerYAnchor.constraint(equalTo: capsule.centerYAnchor),
+			capsule.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			capsule.bottomAnchor.constraint(equalTo: toolbar.topAnchor, constant: -12)
+		])
+		toastView = capsule
+		UIAccessibility.post(notification: .announcement, argument: text)
+
+		capsule.alpha = 0
+		UIView.animate(withDuration: 0.2) { capsule.alpha = 1 }
+		toastHideTask = Task { @MainActor [weak self, weak capsule] in
+			try? await Task.sleep(for: .seconds(2))
+			guard !Task.isCancelled, let capsule else { return }
+			UIView.animate(withDuration: 0.3, animations: { capsule.alpha = 0 }, completion: { _ in
+				capsule.removeFromSuperview()
+				if self?.toastView === capsule { self?.toastView = nil }
+			})
+		}
+	}
+
+	/// 仅供自动化测试观察：当前浮着的提示文字。
+	var toastTextForTesting: String? {
+		(toastView?.subviews.first as? UILabel)?.text
 	}
 
 	/// 仅供自动化测试观察。
