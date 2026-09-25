@@ -24,7 +24,17 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 添加订阅页（Slice 6，ADR-030；2026-09-25，用户真机验收通过，已提交并推送）
+## 文章列表大图的刷新与更多（Slice 3，ADR-031；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 位置照 Figma：窄栏层顶行 刷新 x=201（复用首页同步图标，平时静止可见、同步时旋转）、放大镜 x=330、更多 x=370（复用 Babel2ReaderMore）。没有注入操作时两个按钮不显示。
+- 刷新：刷新所有账户（同步按账户进行，无法只刷新一个源）；同步中副标题「正在同步…」（辅助功能值仍为纯数字，UI Driver 依赖）；**用户亲手点刷新**时，同步结束（最多等 2 分钟）后重新加载列表并保持滚动位置，新文章出现在顶部；后台自动同步只转箭头、不重载。
+- 更多菜单（每次打开按当前状态生成）：打开网站主页（无主页不显示；按「打开链接」设置用内置或系统浏览器）、拷贝订阅地址、此订阅源总是用阅读模式（勾）、新文章通知（勾，打开时请求系统通知权限）、重命名（输入框；成功后大图/窄栏/行来源名同步）、取消订阅（红色，先确认，只移除这个账户里的这个源，成功后返回首页）。
+- 接入层：`Babel2LiveDataAdapters.swift` 新增 `Babel2LiveFeedActions`（refreshAllWithoutWaiting、refreshInProgress、homePageURL、feed URL、newArticleNotificationsEnabled、renameFeed、removeFeed）。
+- 顺带修复：英文「1 articles」→ 单数「1 article」。
+- 验证：测试 +2（按钮位置与无注入时隐藏、菜单 6 项与勾选状态、无主页不显示打开网站、重命名同步显示；刷新调用、同步中显示与纯数字辅助值、同步结束后重载出新文章并停止）。反向验证：去掉重载后测试失败。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/more-full.xcresult` 142/142；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/more-ui.xcresult` 1/1。
+- 未能自动验证：真实同步与新文章、通知权限弹窗、重命名 / 取消订阅对真实账户的写入、菜单观感——真机验收。
+
+## 添加订阅页（Slice 6，ADR-030；2026-09-25，用户真机验收通过，已提交并推送 `06d2dd41c`）
 
 - 首页「+」打开新页面 `Babel2AddSubscriptionViewController`（替换占位页，沿用恢复标识 babel2.add-subscription）。Figma 无设计稿，样式按列表搜索框与设置行近似。
 - 沿用 1.x 发现页用户决定：一个搜索框（网址直连对应类型；关键词并行搜网站 / 播客 / YouTube / Reddit，按此顺序分组，网站默认展开、其余收起，组标题可点收起/展开）；一类失败不影响其它，每组显示自己的说明（无结果 / 未配置 Key〔指向 设置 → 订阅与发现〕/ 限流 / 网络错误）；顶部「订阅到」（设置页同款弹出选单，默认第一个位置、不记住）；点行试读（复用 1.x 试读页，底部卡片）；行尾 ⊕ 订阅、灰色实心勾 = 已订阅（再点先确认后取消）；订阅后留在本页。按键盘「搜索」才搜（多类联网、第三方额度有限）。

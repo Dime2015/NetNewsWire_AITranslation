@@ -50,6 +50,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case unableToGenerateLongImage = "Unable to generate long image"
 	case savedToPhotos = "Saved to Photos"
 	case articleCount = "%d articles"
+	case articleCountOne = "%d article"
 	case search = "Search"
 	case searchFeedPlaceholder = "Search %@"
 	case noSearchResults = "No articles match “%@”"
@@ -65,6 +66,12 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case unsubscribeConfirm = "Unsubscribe from “%@”? Its articles will be removed."
 	case discoveryWebsites = "Websites"
 	case discoveryPodcasts = "Podcasts"
+	case refresh = "Refresh"
+	case openWebsite = "Open Website"
+	case copyFeedAddress = "Copy Feed Address"
+	case newArticleNotifications = "New Article Notifications"
+	case rename = "Rename"
+	case renameFeed = "Rename Feed"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -108,12 +115,14 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .cancel: return "babel2.cancel"
 		case .generatingLongImage, .unableToGenerateLongImage: return "babel2.article.status"
 		case .savedToPhotos: return "babel2.article.toast"
-		case .articleCount: return "babel2.feed.count"
+		case .articleCount, .articleCountOne: return "babel2.feed.count"
 		case .search, .searchFeedPlaceholder: return "babel2.feed.search"
 		case .noSearchResults, .searchFailed: return "babel2.feed.articles.state"
 		case .addSubscription, .addSubscriptionPlaceholder, .addSubscriptionHint, .searching, .subscribeTo, .noSubscriptionDestination,
 			.subscribe, .unsubscribe, .unsubscribeConfirm, .discoveryWebsites, .discoveryPodcasts:
 			return "babel2.add-subscription"
+		case .refresh: return "babel2.feed.refresh"
+		case .openWebsite, .copyFeedAddress, .newArticleNotifications, .rename, .renameFeed: return "babel2.feed.more"
 		}
 	}
 }

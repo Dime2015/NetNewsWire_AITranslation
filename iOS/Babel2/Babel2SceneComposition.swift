@@ -61,7 +61,28 @@ enum Babel2SceneComposition {
 					cached: { Babel2LiveFeedHeroImage.cached(feed.id) },
 					fetch: { onImage in Babel2LiveFeedHeroImage.fetch(feed.id, onImage: onImage) }
 				),
-				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead }
+				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead },
+				// 大图上的「刷新」「更多」（ADR-031）
+				feedActions: Babel2FeedActions(
+					refresh: { Babel2LiveFeedActions.refreshAll() },
+					isSyncing: { Babel2LiveFeedActions.isSyncing },
+					homePageURL: { Babel2LiveFeedActions.homePageURL(feed.id) },
+					feedURL: { Babel2LiveFeedActions.feedURL(feed.id) },
+					isAlwaysReadingMode: { Babel2LiveFeedReaderSetting.isAlwaysOn(feed.id) },
+					setAlwaysReadingMode: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: feed.id) },
+					notificationsEnabled: { Babel2LiveFeedActions.notificationsEnabled(feed.id) },
+					setNotificationsEnabled: { Babel2LiveFeedActions.setNotificationsEnabled($0, for: feed.id) },
+					rename: { name in await Babel2LiveFeedActions.rename(feed.id, to: name) },
+					unsubscribe: { await Babel2LiveFeedActions.unsubscribe(feed.id) },
+					// 打开网站主页：按设置「打开链接」用内置浏览器或系统浏览器
+					openURL: { [weak navigationController] url in
+						if resolvedSettings.openLinksInApp, let navigationController {
+							navigationController.pushBabel2(Babel2BrowserViewController(url: url, openExternally: openURL), animated: true)
+						} else {
+							openURL(url)
+						}
+					}
+				)
 			)
 			feedViewController.onScopeChanged = { [weak root] scope in
 				root?.applyScope(scope)

@@ -11,6 +11,25 @@ struct Babel2TitleTranslationSetting {
 	let request: @MainActor ([ArticleSnapshot.ID]) -> Void
 }
 
+/// 大图上「刷新」「更多」的操作（ADR-031；读写与账户操作由装配层注入，页面不碰账户数据）。
+struct Babel2FeedActions {
+	/// 刷新所有账户（同步按账户进行，无法只刷新一个源）。
+	let refresh: @MainActor () -> Void
+	let isSyncing: @MainActor () -> Bool
+	let homePageURL: @MainActor () -> URL?
+	let feedURL: @MainActor () -> String?
+	let isAlwaysReadingMode: @MainActor () -> Bool
+	let setAlwaysReadingMode: @MainActor (Bool) -> Void
+	let notificationsEnabled: @MainActor () -> Bool
+	let setNotificationsEnabled: @MainActor (Bool) -> Void
+	/// 失败返回说明。
+	let rename: @MainActor (String) async -> String?
+	/// 失败返回说明。
+	let unsubscribe: @MainActor () async -> String?
+	/// 打开网页（按设置：内置浏览器或系统浏览器）。
+	let openURL: @MainActor (URL) -> Void
+}
+
 /// 文章列表页顶部大图的图片来源（订阅源高清图标；读取与下载由装配层注入，页面不碰账户数据）。ADR-027。
 struct Babel2FeedHeroImageSource {
 	/// 已有缓存（内存 / 磁盘），不触发网络；没有返回 nil。
@@ -68,9 +87,17 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 设置「全部标为已读前确认」（Slice 6）；关掉时点底栏按钮直接标记。
 	private let shouldConfirmMarkAllRead: @MainActor () -> Bool
+	private let feedActions: Babel2FeedActions?
+	/// 大图标题（重命名后更新）。
+	private var displayTitle: String
+	/// 用户亲手点了刷新：同步结束时重新加载一次列表（后台自动同步不重载，避免列表突然跳动）。
+	private var userRefreshTask: Task<Void, Never>?
+	private var isShowingSync = false
 
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }) {
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil) {
 		self.shouldConfirmMarkAllRead = confirmMarkAllRead
+		self.feedActions = feedActions
+		self.displayTitle = feed.title
 		self.feed = feed
 		self.scope = scope
 		self.environment = environment
@@ -113,6 +140,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 同步时通知会一串串地来：攒 0.3 秒再统一刷新一次。
 	@objc private func libraryDidChange(_ notification: Notification) {
+		updateSyncState()
 		statusRefreshTimer?.invalidate()
 		statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
 			MainActor.assumeIsolated { self?.refreshStatusesInPlace() }
@@ -451,6 +479,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let compact = Babel2FeedCompactBar(title: feed.title, icon: feedIconImage)
 		compact.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
 		compact.searchButton.addTarget(self, action: #selector(searchTapped), for: .touchUpInside)
+		// 刷新与更多（ADR-031）：没有注入操作时不显示，不放点了没反应的按钮
+		compact.refreshButton.isHidden = feedActions == nil
+		compact.moreButton.isHidden = feedActions == nil
+		compact.refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+		compact.moreButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+			completion(self?.makeMoreMenuElements() ?? [])
+		}])
 		compact.searchField.onChange = { [weak self] query in self?.searchQueryChanged(query) }
 		compact.searchField.onCancel = { [weak self] in self?.endSearch() }
 		compact.translatesAutoresizingMaskIntoConstraints = false
@@ -473,12 +508,165 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
-	/// 文章数：屏幕上显示「N 篇」；辅助功能值保持纯数字（UI 自动测试按它核对行数）。
+	/// 文章数：屏幕上显示「N 篇」（同步中显示「正在同步…」）；辅助功能值保持纯数字（UI 自动测试按它核对行数）。
+	private var shownCount: Int?
+
 	private func setCount(_ count: Int?) {
-		countLabel.text = count.map { String(format: Babel2Localization.text(.articleCount), $0) }
-		countLabel.accessibilityValue = count.map(String.init)
-		countLabel.isHidden = count == nil
+		shownCount = count
+		updateSubtitle()
 	}
+
+	private func updateSubtitle() {
+		if isShowingSync {
+			countLabel.text = Babel2Localization.text(.syncing)
+			countLabel.isHidden = false
+		} else {
+			// 英文单复数：1 篇用单数（中文两者都是「N 篇」）
+			countLabel.text = shownCount.map { String(format: Babel2Localization.text($0 == 1 ? .articleCountOne : .articleCount), $0) }
+			countLabel.isHidden = shownCount == nil
+		}
+		countLabel.accessibilityValue = shownCount.map(String.init)
+	}
+
+	// MARK: - 刷新与更多（ADR-031）
+
+	/// 同步开始 / 结束（账户刷新通知经首页数据层转来）：箭头旋转、副标题「正在同步…」。
+	private func updateSyncState() {
+		guard let feedActions else { return }
+		let syncing = feedActions.isSyncing() || userRefreshTask != nil
+		guard syncing != isShowingSync else { return }
+		isShowingSync = syncing
+		compactBar?.setSyncing(syncing)
+		updateSubtitle()
+	}
+
+	@objc private func refreshTapped() {
+		guard let feedActions, userRefreshTask == nil else { return }
+		feedActions.refresh()
+		// 同步结束（最多等 2 分钟）后重新加载一次，新文章出现在顶部
+		userRefreshTask = Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .milliseconds(400))
+			for _ in 0..<240 {
+				guard self != nil, !Task.isCancelled else { return }
+				if !feedActions.isSyncing() { break }
+				try? await Task.sleep(for: .milliseconds(500))
+			}
+			guard let self, !Task.isCancelled else { return }
+			self.userRefreshTask = nil
+			self.updateSyncState()
+			self.reloadKeepingPosition()
+		}
+		updateSyncState()
+	}
+
+	/// 重新读取当前档位的文章，保持滚动位置（在顶部时新文章直接可见）。搜索中不打扰。
+	private func reloadKeepingPosition() {
+		guard !isSearching else { return }
+		let provider = environment.dataProvider
+		let feedID = feed.id
+		let scope = self.scope
+		let generation = loadGeneration
+		Task { @MainActor [weak self] in
+			guard let snapshot = try? await provider.feedArticlesSnapshot(for: feedID, scope: scope),
+				let self, self.loadGeneration == generation, self.scope == scope, !self.isSearching else { return }
+			let offset = self.tableView.contentOffset
+			self.articles = snapshot
+			self.rebuildDaySections()
+			self.tableView.reloadData()
+			self.tableView.layoutIfNeeded()
+			self.tableView.setContentOffset(offset, animated: false)
+			self.setCount(snapshot.count)
+			self.setState(snapshot.isEmpty ? .empty : .loaded)
+		}
+	}
+
+	/// 「更多」菜单：每次打开时按当前状态生成（开关的勾永远准确）。
+	private func makeMoreMenuElements() -> [UIMenuElement] {
+		guard let feedActions else { return [] }
+		var top = [UIMenuElement]()
+		if let home = feedActions.homePageURL() {
+			top.append(UIAction(title: Babel2Localization.text(.openWebsite), image: UIImage(systemName: "safari"),
+				identifier: UIAction.Identifier("babel2.feed.more.website")) { _ in feedActions.openURL(home) })
+		}
+		if let address = feedActions.feedURL() {
+			top.append(UIAction(title: Babel2Localization.text(.copyFeedAddress), image: UIImage(systemName: "doc.on.doc"),
+				identifier: UIAction.Identifier("babel2.feed.more.copy")) { _ in UIPasteboard.general.string = address })
+		}
+		let readingMode = UIAction(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(systemName: "doc.plaintext"),
+			identifier: UIAction.Identifier("babel2.feed.more.reading-mode"), state: feedActions.isAlwaysReadingMode() ? .on : .off) { _ in
+			feedActions.setAlwaysReadingMode(!feedActions.isAlwaysReadingMode())
+		}
+		let notifications = UIAction(title: Babel2Localization.text(.newArticleNotifications), image: UIImage(systemName: "bell"),
+			identifier: UIAction.Identifier("babel2.feed.more.notifications"), state: feedActions.notificationsEnabled() ? .on : .off) { _ in
+			feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
+		}
+		let rename = UIAction(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
+			identifier: UIAction.Identifier("babel2.feed.more.rename")) { [weak self] _ in self?.presentRename() }
+		let unsubscribe = UIAction(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
+			identifier: UIAction.Identifier("babel2.feed.more.unsubscribe"), attributes: .destructive) { [weak self] _ in self?.confirmUnsubscribe() }
+		return [
+			UIMenu(options: .displayInline, children: top),
+			UIMenu(options: .displayInline, children: [readingMode, notifications]),
+			UIMenu(options: .displayInline, children: [rename, unsubscribe])
+		]
+	}
+
+	private func presentRename() {
+		guard let feedActions else { return }
+		let alert = UIAlertController(title: Babel2Localization.text(.renameFeed), message: nil, preferredStyle: .alert)
+		alert.addTextField { [displayTitle] field in
+			field.text = displayTitle
+			field.clearButtonMode = .whileEditing
+		}
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.cancel), style: .cancel))
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.ok), style: .default) { [weak self, weak alert] _ in
+			let name = (alert?.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+			guard let self, !name.isEmpty, name != self.displayTitle else { return }
+			Task { @MainActor [weak self] in
+				if let message = await feedActions.rename(name) {
+					self?.presentMessage(message)
+				} else {
+					self?.applyRenamedTitle(name)
+				}
+			}
+		})
+		present(alert, animated: true)
+	}
+
+	/// 重命名成功：大图标题、窄栏标题、文章行来源名同步更新。
+	func applyRenamedTitle(_ name: String) {
+		displayTitle = name
+		heroView?.titleLabel.text = name
+		compactBar?.titleLabel.text = name
+		tableView.reloadData()
+	}
+
+	private func confirmUnsubscribe() {
+		guard let feedActions else { return }
+		let alert = UIAlertController(title: Babel2Localization.text(.unsubscribe),
+			message: String(format: Babel2Localization.text(.unsubscribeConfirm), displayTitle), preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.cancel), style: .cancel))
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.unsubscribe), style: .destructive) { [weak self] _ in
+			Task { @MainActor [weak self] in
+				if let message = await feedActions.unsubscribe() {
+					self?.presentMessage(message)
+				} else {
+					self?.backTapped()
+				}
+			}
+		})
+		present(alert, animated: true)
+	}
+
+	private func presentMessage(_ message: String) {
+		let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.ok), style: .default))
+		present(alert, animated: true)
+	}
+
+	/// 仅供自动化测试。
+	var moreMenuElementsForTesting: [UIMenuElement] { makeMoreMenuElements() }
+	func refreshForTesting() { refreshTapped() }
 
 	private func configureTable() {
 		tableView.backgroundColor = BabelPalette.background
@@ -710,7 +898,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let cell = tableView.dequeueReusableCell(withIdentifier: Babel2ArticleCell.reuseIdentifier, for: indexPath) as! Babel2ArticleCell
 		guard let index = articleIndex(for: indexPath) else { return cell }
 		let article = articles[index]
-		cell.configure(article: article, feedTitle: feed.title, feedIcon: feedIconImage, imageProvider: environment.imageProvider)
+		cell.configure(article: article, feedTitle: displayTitle, feedIcon: feedIconImage, imageProvider: environment.imageProvider)
 		cell.accessibilityIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 		return cell
 	}

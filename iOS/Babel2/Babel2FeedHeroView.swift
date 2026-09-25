@@ -142,6 +142,11 @@ final class Babel2FeedHeroView: UIView {
 final class Babel2FeedCompactBar: UIView {
 	let backButton = UIButton(type: .system)
 	let searchButton = UIButton(type: .system)
+	/// 刷新（Figma 刷新位 x=201）：浅色圆盘 + 逆时针箭头，同步时旋转（复用首页同步图标）。ADR-031。
+	let refreshButton = UIButton(type: .system)
+	private let refreshGlyph = BabelSyncGlyphView()
+	/// 更多（Figma 更多位 x=370）：点按弹出本订阅源的操作菜单。ADR-031。
+	let moreButton = UIButton(type: .system)
 	let searchField: Babel2FeedSearchField
 	private(set) var isSearching = false
 	let titleLabel = UILabel()
@@ -206,7 +211,20 @@ final class Babel2FeedCompactBar: UIView {
 		searchField.isHidden = true
 		searchField.translatesAutoresizingMaskIntoConstraints = false
 
-		[backButton, searchButton, iconView, titleLabel, hairline, searchField].forEach(addSubview)
+		refreshButton.accessibilityLabel = Babel2Localization.text(.refresh)
+		refreshButton.accessibilityIdentifier = "babel2.feed.refresh"
+		refreshButton.translatesAutoresizingMaskIntoConstraints = false
+		refreshGlyph.translatesAutoresizingMaskIntoConstraints = false
+		refreshButton.addSubview(refreshGlyph)
+		setSyncing(false)
+		moreButton.setImage(UIImage(named: "Babel2ReaderMore"), for: .normal)
+		moreButton.tintColor = BabelPalette.ink
+		moreButton.showsMenuAsPrimaryAction = true
+		moreButton.accessibilityLabel = Babel2Localization.text(.more)
+		moreButton.accessibilityIdentifier = "babel2.feed.more"
+		moreButton.translatesAutoresizingMaskIntoConstraints = false
+
+		[backButton, searchButton, refreshButton, moreButton, iconView, titleLabel, hairline, searchField].forEach(addSubview)
 		let safeTop = safeAreaLayoutGuide.topAnchor
 		NSLayoutConstraint.activate([
 			backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -218,6 +236,18 @@ final class Babel2FeedCompactBar: UIView {
 			backButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
 			backButton.widthAnchor.constraint(equalToConstant: 44),
 			backButton.heightAnchor.constraint(equalToConstant: 44),
+			refreshButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+			refreshButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
+			refreshButton.widthAnchor.constraint(equalToConstant: 44),
+			refreshButton.heightAnchor.constraint(equalToConstant: 44),
+			refreshGlyph.centerXAnchor.constraint(equalTo: refreshButton.centerXAnchor),
+			refreshGlyph.centerYAnchor.constraint(equalTo: refreshButton.centerYAnchor),
+			refreshGlyph.widthAnchor.constraint(equalToConstant: 24),
+			refreshGlyph.heightAnchor.constraint(equalToConstant: 24),
+			moreButton.centerXAnchor.constraint(equalTo: trailingAnchor, constant: -32),
+			moreButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
+			moreButton.widthAnchor.constraint(equalToConstant: 44),
+			moreButton.heightAnchor.constraint(equalToConstant: 44),
 			searchButton.centerXAnchor.constraint(equalTo: trailingAnchor, constant: -72),
 			searchButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
 			searchButton.widthAnchor.constraint(equalToConstant: 44),
@@ -252,6 +282,8 @@ final class Babel2FeedCompactBar: UIView {
 		isSearching = searching
 		searchField.isHidden = !searching
 		searchButton.isHidden = searching
+		refreshButton.isHidden = searching
+		moreButton.isHidden = searching
 		iconView.isHidden = searching
 		titleLabel.isHidden = searching
 		if searching {
@@ -261,6 +293,16 @@ final class Babel2FeedCompactBar: UIView {
 			searchField.textField.resignFirstResponder()
 		}
 	}
+
+	/// 同步中：刷新箭头旋转；不同步时静止显示（首页的同一图标不同步时会自己隐藏，这里要一直可见）。
+	func setSyncing(_ syncing: Bool) {
+		refreshGlyph.setSyncing(syncing)
+		refreshGlyph.isHidden = false
+		refreshButton.accessibilityValue = syncing ? Babel2Localization.text(.syncing) : nil
+	}
+
+	/// 仅供自动化测试。
+	var isShowingSyncingForTesting: Bool { refreshButton.accessibilityValue != nil }
 
 	/// 按收缩进度更新透明度（不重新排版）。
 	func apply(progress: CGFloat) {
@@ -275,6 +317,6 @@ final class Babel2FeedCompactBar: UIView {
 	/// 搜索时整条窄栏都接收（它是完全不透明的顶栏）。
 	override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
 		if isSearching { return bounds.contains(point) }
-		return [backButton, searchButton].contains { !$0.isHidden && $0.frame.insetBy(dx: -4, dy: -4).contains(point) }
+		return [backButton, searchButton, refreshButton, moreButton].contains { !$0.isHidden && $0.frame.insetBy(dx: -4, dy: -4).contains(point) }
 	}
 }

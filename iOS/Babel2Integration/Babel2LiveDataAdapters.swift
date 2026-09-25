@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UserNotifications
 import Account
 import Articles
 import Images
@@ -734,6 +735,74 @@ enum Babel2LiveSubscriptions {
 			if firstError == nil { firstError = error }
 		}
 		return firstError
+	}
+}
+
+/// 文章列表大图上的「刷新」与「更多」（2026-09-25，ADR-031）：单个订阅源的操作，全部走账户公开接口。
+@MainActor
+enum Babel2LiveFeedActions {
+	/// 同步按账户进行，无法只刷新一个源：刷新所有账户（与 1.x 相同）。
+	static func refreshAll() {
+		AccountManager.shared.refreshAllWithoutWaiting(errorHandler: ErrorHandler.log)
+	}
+
+	static var isSyncing: Bool { AccountManager.shared.refreshInProgress }
+
+	private static func feed(_ id: FeedSnapshot.ID) -> Feed? {
+		Babel2LiveFeedReaderSetting.feed(id)
+	}
+
+	static func homePageURL(_ id: FeedSnapshot.ID) -> URL? {
+		guard let string = feed(id)?.homePageURL, let url = URL(string: string),
+			url.scheme == "http" || url.scheme == "https" else { return nil }
+		return url
+	}
+
+	static func feedURL(_ id: FeedSnapshot.ID) -> String? { feed(id)?.url }
+
+	static func notificationsEnabled(_ id: FeedSnapshot.ID) -> Bool {
+		feed(id)?.newArticleNotificationsEnabled ?? false
+	}
+
+	/// 打开新文章通知时先请求系统通知权限（与现有订阅源详情页同一做法）。
+	static func setNotificationsEnabled(_ on: Bool, for id: FeedSnapshot.ID) {
+		guard let feed = feed(id) else { return }
+		if on {
+			UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+		}
+		feed.newArticleNotificationsEnabled = on
+	}
+
+	/// 重命名：失败返回说明。
+	static func rename(_ id: FeedSnapshot.ID, to name: String) async -> String? {
+		guard let feed = feed(id), let account = feed.account else { return nil }
+		do {
+			try await account.renameFeed(feed, name: name)
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// 取消订阅：只移除**这个账户里的这个源**（它所在的每个文件夹 / 顶层），不碰其它账户里同地址的源。
+	/// 失败返回说明。
+	static func unsubscribe(_ id: FeedSnapshot.ID) async -> String? {
+		guard let feed = feed(id), let account = feed.account else { return nil }
+		BatchUpdate.shared.start()
+		defer { BatchUpdate.shared.end() }
+		for container in account.existingContainers(withFeed: feed) {
+			let error: Error? = await withCheckedContinuation { continuation in
+				account.removeFeed(feed, from: container) { result in
+					if case .failure(let error) = result {
+						continuation.resume(returning: error)
+					} else {
+						continuation.resume(returning: nil)
+					}
+				}
+			}
+			if let error { return error.localizedDescription }
+		}
+		return nil
 	}
 }
 

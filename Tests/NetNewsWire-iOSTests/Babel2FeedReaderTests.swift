@@ -214,6 +214,105 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(hero.hasArtForTesting)
 	}
 
+	// MARK: - 大图上的刷新与更多（ADR-031）
+
+	/// 刷新居中、放大镜 x=330、更多 x=370；没有注入操作时不显示刷新与更多。
+	/// 更多菜单 6 项、开关勾选反映当前状态、无主页时不显示「打开网站主页」；重命名后标题与行来源名同步。
+	func testFeedHeroRefreshAndMoreMenu() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let list = [ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a"), title: "A", url: nil, feedID: feedID)]
+		var readingMode = true
+		var notifications = false
+		var home: URL? = URL(string: "https://example.com")
+		let actions = Babel2FeedActions(
+			refresh: {}, isSyncing: { false }, homePageURL: { home }, feedURL: { "https://example.com/feed" },
+			isAlwaysReadingMode: { readingMode }, setAlwaysReadingMode: { readingMode = $0 },
+			notificationsEnabled: { notifications }, setNotificationsEnabled: { notifications = $0 },
+			rename: { _ in nil }, unsubscribe: { nil }, openURL: { _ in })
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])), feedActions: actions)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 1)
+		controller.view.layoutIfNeeded()
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		let width = controller.view.bounds.width
+		XCTAssertFalse(compact.refreshButton.isHidden)
+		XCTAssertFalse(compact.moreButton.isHidden)
+		XCTAssertEqual(compact.refreshButton.frame.midX, width / 2, accuracy: 0.5)
+		XCTAssertEqual(compact.searchButton.frame.midX, width - 72, accuracy: 0.5)
+		XCTAssertEqual(compact.moreButton.frame.midX, width - 32, accuracy: 0.5)
+
+		func actionsIn(_ elements: [UIMenuElement]) -> [UIAction] {
+			elements.flatMap { element -> [UIAction] in
+				if let menu = element as? UIMenu { return actionsIn(menu.children) }
+				return (element as? UIAction).map { [$0] } ?? []
+			}
+		}
+		var items = actionsIn(controller.moreMenuElementsForTesting)
+		XCTAssertEqual(items.map(\.identifier.rawValue), ["babel2.feed.more.website", "babel2.feed.more.copy", "babel2.feed.more.reading-mode",
+			"babel2.feed.more.notifications", "babel2.feed.more.rename", "babel2.feed.more.unsubscribe"])
+		XCTAssertEqual(items.first { $0.identifier.rawValue == "babel2.feed.more.reading-mode" }?.state, .on)
+		XCTAssertEqual(items.first { $0.identifier.rawValue == "babel2.feed.more.notifications" }?.state, .off)
+		XCTAssertTrue(items.last?.attributes.contains(.destructive) == true)
+		home = nil
+		items = actionsIn(controller.moreMenuElementsForTesting)
+		XCTAssertFalse(items.contains { $0.identifier.rawValue == "babel2.feed.more.website" }, "no home page → no Open Website")
+
+		controller.applyRenamedTitle("Renamed")
+		XCTAssertEqual(controller.heroViewForTesting?.titleLabel.text, "Renamed")
+		XCTAssertEqual(compact.titleLabel.text, "Renamed")
+		tableView.layoutIfNeeded()
+		let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 0, section: 0)))
+		XCTAssertTrue(cell.contentView.subviews.compactMap { $0 as? UILabel }.contains { $0.text == "RENAMED" }, "row source name follows the rename")
+
+		// 没注入操作：不显示刷新与更多
+		let plain = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all, environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])))
+		plain.loadViewIfNeeded()
+		XCTAssertTrue(plain.compactBarForTesting?.refreshButton.isHidden == true)
+		XCTAssertTrue(plain.compactBarForTesting?.moreButton.isHidden == true)
+	}
+
+	/// 点刷新：调用刷新、箭头转、副标题「正在同步…」（辅助功能值仍是纯数字）；同步结束后停止并重新加载（新文章出现）。
+	func testFeedHeroRefreshShowsSyncingThenReloads() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, minutesAgo: Double) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id, url: nil, feedID: feedID,
+				publishedAt: Date().addingTimeInterval(-minutesAgo * 60))
+		}
+		let provider = FakeDataProvider(feeds: [feedID: [article("old", minutesAgo: 60)]])
+		var syncing = false
+		var refreshCount = 0
+		let actions = Babel2FeedActions(
+			refresh: { refreshCount += 1; syncing = true }, isSyncing: { syncing }, homePageURL: { nil }, feedURL: { nil },
+			isAlwaysReadingMode: { false }, setAlwaysReadingMode: { _ in }, notificationsEnabled: { false }, setNotificationsEnabled: { _ in },
+			rename: { _ in nil }, unsubscribe: { nil }, openURL: { _ in })
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: provider), feedActions: actions)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 1)
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		let count = try XCTUnwrap(descendant(of: controller.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed.count" })
+
+		controller.refreshForTesting()
+		XCTAssertEqual(refreshCount, 1)
+		XCTAssertTrue(compact.isShowingSyncingForTesting)
+		XCTAssertEqual(count.text, Babel2Localization.text(.syncing))
+		XCTAssertEqual(count.accessibilityValue, "1", "UI driver still reads the plain number")
+
+		// 同步拉回了新文章，然后同步结束
+		await provider.setFeedArticles([article("new", minutesAgo: 1), article("old", minutesAgo: 60)], for: feedID)
+		syncing = false
+		await waitForRows(in: tableView, count: 2)
+		XCTAssertEqual(controller.articlesForTesting.first?.id.articleID, "new", "new article appears on top after refresh")
+		for _ in 0..<50 where compact.isShowingSyncingForTesting { try await Task.sleep(for: .milliseconds(20)) }
+		XCTAssertFalse(compact.isShowingSyncingForTesting)
+		XCTAssertEqual(count.text, String(format: Babel2Localization.text(.articleCount), 2))
+	}
+
 	// MARK: - 添加订阅页（2026-09-25，ADR-030）
 
 	/// 首页「+」打开添加订阅页（路由恢复 home → addSubscription）。
