@@ -9,6 +9,7 @@
 | Babel2ReaderReadState | Reader Toolbar → Read State (21:7) |
 | Babel2ReaderStar | Reader Toolbar → Star (21:9) |
 | Babel2ReaderNext | Reader Toolbar → Next (21:11) |
+| Babel2FeedReadAll | Feed Toolbar → Read All (22:20)，2026-09-25 |
 
 **派生（设计稿没有该状态）**：`Babel2ReaderReadStateFilled`、`Babel2ReaderStarFilled` 是把上面两个轮廓的同一路径加上填充，
 形状、尺寸、线宽与设计稿一致。用于用户 2026-09-25 决定的「实心 = 已读 / 已加星」。

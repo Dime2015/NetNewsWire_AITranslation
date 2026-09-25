@@ -10,6 +10,8 @@ public enum LibraryAction: Hashable, Sendable {
 	case markRead(ArticleSnapshot.ID)
 	case markUnread(ArticleSnapshot.ID)
 	case toggleStar(ArticleSnapshot.ID)
+	/// 把这个订阅源里所有未读文章标为已读（文章列表底栏「全部标为已读」，ADR-023）。
+	case markFeedRead(FeedSnapshot.ID)
 	case selectFeed(FeedSnapshot.ID)
 	case selectFolder(FolderSnapshot.ID)
 }

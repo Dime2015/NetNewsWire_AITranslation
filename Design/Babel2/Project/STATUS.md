@@ -24,6 +24,15 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表底栏（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-023 实现：文章列表页 72pt 底栏（全部标为已读 / 三档 / 标题译占位）；原地切档回顶并同步首页；全部标为已读先确认再批量标记。
+- 文件：新增 `iOS/Babel2/Babel2ScopeFilterControl.swift`、资源 `Babel2FeedReadAll`（Figma 22:20）；修改 `Babel2LibraryViewControllers.swift`（列表页）、`Babel2RootViewController.swift`（仅新增 `applyScope`）、`Babel2SceneComposition.swift`、`Babel2Core/Contracts.swift`（`markFeedRead`）、`Babel2Integration/Babel2LiveDataAdapters.swift`、`Babel2Localization.swift` + xcstrings（+3 键）、测试（+2）。
+- 技术待办：首页底栏改用 `Babel2ScopeFilterControl`，去掉重复实现（需要首页回归验收）。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/feedbar-r1.xcresult` 111/111；Babel2UI package 32/32；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/feedbar-ui-r1.xcresult` 1/1。
+- 2026-09-25 用户真机验收：文章列表底栏全部通过；另报告**首页**底栏既有问题——选别的档再选回「未读」，胶囊变窄、圆点压在 UNREAD 上（列表页底栏无此问题）。首页代码本步仅新增 `applyScope`，非本步引入。
+- 排查记录：模拟器测试不播放动画，复现不了；一度误把按钮的 `imageView`/`titleLabel`（配置式按钮的隐藏内部副本）当成屏幕内容去量，得出“排版过期”的错误结论并做了无效修复——已撤回，相关测试已删除（LESSONS 36）。用户选 A：首页改用 `Babel2ScopeFilterControl`（下一小步）。
+
 ## Reader Slice 5 第 4 步：下一篇（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-022 实现：`Babel2FeedViewController.nextArticle(after:)` / `revealArticle(_:)`；`Babel2NavigationController.replaceTopBabel2`（竖向滑动过渡）；装配层统一 `makeReader` 同时服务点进与下一篇；底栏 ∨ 接通，全部底栏控件已无占位。

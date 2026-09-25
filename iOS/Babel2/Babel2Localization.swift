@@ -43,6 +43,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case browserReload = "Reload"
 	case openInSafari = "Open in Safari"
 	case unableToLoadPage = "Unable to load page"
+	case markAllRead = "Mark All as Read"
+	case markAllReadConfirm = "Mark %d articles as read?"
+	case cancel = "Cancel"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -82,6 +85,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .browserReload: return "babel2.browser.reload"
 		case .openInSafari: return "babel2.browser.safari"
 		case .unableToLoadPage: return "babel2.browser.error"
+		case .markAllRead, .markAllReadConfirm: return "babel2.feed.read-all"
+		case .cancel: return "babel2.cancel"
 		}
 	}
 }

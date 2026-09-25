@@ -761,6 +761,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		syncGlyph.setSyncing(true)
 	}
 
+	/// 档位是全局的：在订阅源文章列表里切了档位，返回首页时首页也换到同一档（ADR-023）。
+	func applyScope(_ scope: Babel2FeedScope) {
+		scopeTapped(scope)
+	}
+
 	private func scopeTapped(_ scope: Babel2FeedScope) {
 		guard scope != selectedScope || scope != displayedScope else { return }
 		let previousIntent = selectedScope

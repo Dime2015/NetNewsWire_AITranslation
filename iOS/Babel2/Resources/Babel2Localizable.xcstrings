@@ -69,6 +69,23 @@
         }
       }
     },
+    "Cancel" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
+    },
     "Cancel Translation" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -201,6 +218,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "生成长图"
+          }
+        }
+      }
+    },
+    "Mark %d articles as read?" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark %d articles as read?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将 %d 篇文章标为已读？"
+          }
+        }
+      }
+    },
+    "Mark All as Read" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark All as Read"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部标为已读"
           }
         }
       }

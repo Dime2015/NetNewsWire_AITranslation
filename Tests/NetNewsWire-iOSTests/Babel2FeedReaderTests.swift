@@ -19,6 +19,67 @@ final class Babel2FeedReaderTests: XCTestCase {
 		try await super.tearDown()
 	}
 
+	// MARK: - 文章列表底栏（ADR-023）
+
+	func testFeedToolbarSwitchesScopeInPlaceAndSyncsHome() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed")
+		let article = makeArticle(accountID: "account", feedID: "feed", articleID: "a", title: "A", body: "<p>A</p>", url: nil)
+		let provider = FakeDataProvider(feeds: [feedID: [article]])
+		let navigationController = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider))
+		let root = try XCTUnwrap(navigationController.viewControllers.first as? Babel2RootViewController)
+		root.onFeedRequested?(feed, .unread)
+		let feedViewController = try XCTUnwrap(navigationController.topViewController as? Babel2FeedViewController)
+		feedViewController.loadViewIfNeeded()
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 1)
+
+		// 底栏三档：初始选中与首页带进来的档位一致
+		let filter = feedViewController.scopeFilterForTesting
+		XCTAssertEqual(filter.selectedScope, .unread)
+		XCTAssertEqual(filter.buttons[.unread]?.accessibilityValue, "Selected")
+		let translation = try XCTUnwrap(descendant(of: feedViewController.view, matching: Babel2TranslationToggle.self))
+		XCTAssertFalse(translation.isEnabled, "title translation toggle is a placeholder in this step")
+
+		// 点「全部」：原地换档位重新加载，首页同步到同一档
+		filter.buttons[.all]?.sendActions(for: .touchUpInside)
+		XCTAssertEqual(feedViewController.scope, .all)
+		await waitForRows(in: tableView, count: 1)
+		let requests = await provider.feedScopeRequests
+		XCTAssertEqual(requests, [.unread, .all])
+		XCTAssertEqual(root.selectedScope, .all, "scope is global: home follows")
+		XCTAssertEqual(filter.buttons[.all]?.accessibilityValue, "Selected")
+	}
+
+	func testMarkAllReadConfirmsCountThenMarksWholeFeed() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id, url: nil, feedID: feedID)
+		}
+		let provider = FakeDataProvider(feeds: [feedID: [article("a"), article("b")]])
+		let handler = RecordingActionHandler()
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread, environment: makeEnvironment(provider: provider, actionHandler: handler))
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 2)
+
+		let readAll = try XCTUnwrap(descendant(of: feedViewController.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feed.read-all" })
+		readAll.sendActions(for: .touchUpInside)
+		// 先确认：「将 2 篇文章标为已读？」
+		await waitUntil { feedViewController.pendingMarkAllReadCountForTesting == 2 }
+		let actionsBefore = await handler.actions
+		XCTAssertTrue(actionsBefore.isEmpty, "nothing is marked before confirming")
+		feedViewController.presentedViewController?.dismiss(animated: false)
+		feedViewController.confirmMarkAllReadForTesting()
+		for _ in 0..<100 {
+			if await !handler.actions.isEmpty { break }
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		let actions = await handler.actions
+		XCTAssertEqual(actions, [.markFeedRead(feedID)], "one batch action for the whole feed")
+	}
+
 	// MARK: - 下一篇（Slice 5 第 4 步）
 
 	func testNextArticleFollowsListOrderAndSkipsReadInUnreadScope() async throws {

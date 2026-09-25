@@ -12,7 +12,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private let feed: FeedSnapshot
-	private let scope: Babel2FeedScope
+	private(set) var scope: Babel2FeedScope
 	private let environment: AppEnvironment
 	private let tableView = UITableView(frame: .zero, style: .plain)
 	private let emptyLabel = UILabel()
@@ -25,6 +25,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var statusRefreshTimer: Timer?
 	private var statusRefreshTask: Task<Void, Never>?
 	var onSelectArticle: ((ArticleSnapshot) -> Void)?
+	/// 用户在本页底栏切了档位：档位是全局的，由装配层同步给首页（ADR-023）。
+	var onScopeChanged: ((Babel2FeedScope) -> Void)?
+	private let bottomToolbar = UIView()
+	private lazy var scopeFilter = Babel2ScopeFilterControl(selectedScope: scope)
+	private let readAllButton = UIButton(type: .system)
+	private let titleTranslationToggle = Babel2TranslationToggle()
+	private weak var headerTitleLabel: UILabel?
 
 	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment) {
 		self.feed = feed
@@ -42,6 +49,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		super.viewDidLoad()
 		view.backgroundColor = BabelPalette.background
 		configureHeader()
+		configureToolbar()
 		configureTable()
 		startLoading()
 	}
@@ -104,6 +112,115 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 仅供自动化测试观察。
 	var articlesForTesting: [ArticleSnapshot] { articles }
+
+	// MARK: - 底栏（Figma Feed Toolbar，ADR-023）
+
+	/// 72pt 底栏：全部标为已读（x=32）/ 星标·未读·全部（x=104/201/290.5）/ 标题翻译开关（x=362，下一步接通前为灰色）。
+	private func configureToolbar() {
+		bottomToolbar.backgroundColor = BabelPalette.background
+		bottomToolbar.accessibilityIdentifier = "babel2.feed.toolbar"
+		bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(bottomToolbar)
+		let separator = UIView()
+		separator.backgroundColor = BabelPalette.hairline
+		separator.translatesAutoresizingMaskIntoConstraints = false
+		bottomToolbar.addSubview(separator)
+
+		// 档位条铺满整条底栏；左右两个按钮后加，叠在它上面才能点到
+		scopeFilter.onSelect = { [weak self] scope in self?.selectScope(scope, fromUser: true) }
+		scopeFilter.translatesAutoresizingMaskIntoConstraints = false
+		bottomToolbar.addSubview(scopeFilter)
+
+		readAllButton.setImage(UIImage(named: "Babel2FeedReadAll")?.withRenderingMode(.alwaysTemplate), for: .normal)
+		readAllButton.tintColor = BabelPalette.mutedInk
+		readAllButton.accessibilityLabel = Babel2Localization.text(.markAllRead)
+		readAllButton.accessibilityIdentifier = "babel2.feed.read-all"
+		readAllButton.addTarget(self, action: #selector(readAllTapped), for: .touchUpInside)
+		readAllButton.translatesAutoresizingMaskIntoConstraints = false
+		bottomToolbar.addSubview(readAllButton)
+
+		titleTranslationToggle.setState(.original)
+		titleTranslationToggle.isEnabled = false
+		titleTranslationToggle.accessibilityIdentifier = "babel2.feed.title-translation"
+		titleTranslationToggle.translatesAutoresizingMaskIntoConstraints = false
+		bottomToolbar.addSubview(titleTranslationToggle)
+
+		NSLayoutConstraint.activate([
+			bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			bottomToolbar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+			bottomToolbar.heightAnchor.constraint(equalToConstant: 72),
+			separator.leadingAnchor.constraint(equalTo: bottomToolbar.leadingAnchor),
+			separator.trailingAnchor.constraint(equalTo: bottomToolbar.trailingAnchor),
+			separator.topAnchor.constraint(equalTo: bottomToolbar.topAnchor),
+			separator.heightAnchor.constraint(equalToConstant: 0.5),
+			scopeFilter.leadingAnchor.constraint(equalTo: bottomToolbar.leadingAnchor),
+			scopeFilter.trailingAnchor.constraint(equalTo: bottomToolbar.trailingAnchor),
+			scopeFilter.topAnchor.constraint(equalTo: bottomToolbar.topAnchor),
+			scopeFilter.bottomAnchor.constraint(equalTo: bottomToolbar.bottomAnchor),
+			NSLayoutConstraint(item: readAllButton, attribute: .centerX, relatedBy: .equal, toItem: bottomToolbar, attribute: .trailing, multiplier: 32.0 / 402.0, constant: 0),
+			readAllButton.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: 24),
+			readAllButton.widthAnchor.constraint(equalToConstant: 44),
+			readAllButton.heightAnchor.constraint(equalToConstant: 44),
+			NSLayoutConstraint(item: titleTranslationToggle, attribute: .centerX, relatedBy: .equal, toItem: bottomToolbar, attribute: .trailing, multiplier: 362.0 / 402.0, constant: 0),
+			titleTranslationToggle.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: 24),
+			titleTranslationToggle.widthAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.width),
+			titleTranslationToggle.heightAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.height)
+		])
+	}
+
+	/// 切档位：原地换成新档位的文章并回到顶部（设计稿：不跳页、替换当前集合、回顶）。
+	/// fromUser = 本页底栏点的，需要同步给首页；外部同步过来的不再回传。
+	func selectScope(_ newScope: Babel2FeedScope, fromUser: Bool) {
+		guard newScope != scope else { return }
+		scope = newScope
+		scopeFilter.setSelectedScope(newScope, animated: fromUser)
+		headerTitleLabel?.accessibilityValue = newScope.rawValue
+		tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+		startLoading()
+		if fromUser { onScopeChanged?(newScope) }
+	}
+
+	/// 全部标为已读：先数一下本订阅源有多少未读，确认后一次性批量标记，再重新加载列表。
+	@objc private func readAllTapped() {
+		let provider = environment.dataProvider
+		let feedID = feed.id
+		Task { @MainActor [weak self] in
+			let count = (try? await provider.feedArticlesSnapshot(for: feedID, scope: .unread).count) ?? 0
+			guard let self, count > 0 else { return }
+			self.confirmMarkAllRead(count: count)
+		}
+	}
+
+	private func confirmMarkAllRead(count: Int) {
+		let sheet = UIAlertController(
+			title: nil,
+			message: String(format: Babel2Localization.text(.markAllReadConfirm), count),
+			preferredStyle: .actionSheet
+		)
+		sheet.addAction(UIAlertAction(title: Babel2Localization.text(.markAllRead), style: .default) { [weak self] _ in
+			self?.performMarkAllRead()
+		})
+		sheet.addAction(UIAlertAction(title: Babel2Localization.text(.cancel), style: .cancel))
+		sheet.popoverPresentationController?.sourceView = readAllButton
+		sheet.popoverPresentationController?.sourceRect = readAllButton.bounds
+		present(sheet, animated: true)
+		pendingMarkAllReadCountForTesting = count
+	}
+
+	private func performMarkAllRead() {
+		let handler = environment.actionHandler
+		let feedID = feed.id
+		Task { @MainActor [weak self] in
+			try? await handler.handle(.markFeedRead(feedID))
+			self?.startLoading()
+		}
+	}
+
+	/// 仅供自动化测试。
+	private(set) var pendingMarkAllReadCountForTesting: Int?
+	func confirmMarkAllReadForTesting() { performMarkAllRead() }
+	var scopeFilterForTesting: Babel2ScopeFilterControl { scopeFilter }
 
 	// MARK: - 下一篇（ADR-022）
 
@@ -215,6 +332,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let titleLabel = UILabel()
 		titleLabel.text = feed.title
 		titleLabel.accessibilityValue = scope.rawValue
+		headerTitleLabel = titleLabel
 		titleLabel.accessibilityIdentifier = "babel2.feed.title"
 		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
 		titleLabel.textColor = BabelPalette.ink
@@ -291,7 +409,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 64),
-			tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+			tableView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
 			emptyLabel.centerXAnchor.constraint(equalTo: tableView.centerXAnchor),
 			emptyLabel.centerYAnchor.constraint(equalTo: tableView.centerYAnchor, constant: -20),
 			retryButton.topAnchor.constraint(equalTo: emptyLabel.bottomAnchor, constant: 8),

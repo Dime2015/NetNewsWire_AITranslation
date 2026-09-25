@@ -293,6 +293,15 @@ final class Babel2LiveActionHandler: ActionHandling {
 			try await updateStatus(articleID: articleID, key: .read, value: true)
 		case .markUnread(let articleID):
 			try await updateStatus(articleID: articleID, key: .read, value: false)
+		case .markFeedRead(let feedID):
+			// 一次性批量标记（现成公开接口 markArticles 接受一组编号），不逐篇发请求
+			guard let account = AccountManager.shared.existingAccount(accountID: feedID.accountID),
+				let feed = account.existingFeed(withFeedID: feedID.feedID),
+				feed.accountID == feedID.accountID else { return }
+			let unread = await account.fetchUnreadArticlesAsync(feed: feed)
+			let ids = Set(unread.filter { $0.feedID == feedID.feedID }.map(\.articleID))
+			guard !ids.isEmpty else { return }
+			try await account.markArticles(articleIDs: ids, statusKey: .read, flag: true)
 		case .toggleStar(let articleID):
 			guard let article = await article(for: articleID) else { return }
 			try await updateStatus(articleID: articleID, key: .starred, value: !article.status.starred)

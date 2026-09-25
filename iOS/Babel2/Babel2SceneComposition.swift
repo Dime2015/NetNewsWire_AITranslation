@@ -39,9 +39,12 @@ enum Babel2SceneComposition {
 			) else { return }
 			navigationController.pushBabel2(addSubscription, animated: true)
 		}
-		root.onFeedRequested = { [weak navigationController] feed, scope in
+		root.onFeedRequested = { [weak navigationController, weak root] feed, scope in
 			guard let navigationController else { return }
 			let feedViewController = Babel2FeedViewController(feed: feed, scope: scope, environment: resolvedEnvironment)
+			feedViewController.onScopeChanged = { [weak root] scope in
+				root?.applyScope(scope)
+			}
 			// 同一个装配函数既用于「从列表点进文章」，也用于「下一篇」原地换页（ADR-022）
 			@MainActor func makeReader(_ article: ArticleSnapshot) -> Babel2ArticleViewController {
 				let articleViewController = Babel2ArticleViewController(
