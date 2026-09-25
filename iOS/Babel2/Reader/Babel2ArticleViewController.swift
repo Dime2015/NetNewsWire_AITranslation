@@ -62,6 +62,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private var fullTextTask: Task<Void, Never>?
 	private let fullTextProvider: @MainActor (URL, UIView) async throws -> String
 	private let feedReaderModeSetting: Babel2FeedReaderModeSetting?
+	/// 内置浏览器工厂（装配层注入；为 nil 时退回用系统浏览器打开）。ADR-021。
+	private let makeBrowser: ((URL) -> (any Babel2PreparableRoute))?
+	private var browserMotion: Babel2ReaderBrowserMotion?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
 	/// 复用的翻译引擎：分块、流式、缓存、断点续翻、骨架色条都在里面，这里只接按钮和标题。
@@ -105,9 +108,11 @@ final class Babel2ArticleViewController: UIViewController {
 		fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { url, host in
 			try await Babel2FullTextFetcher.fetch(url: url, hostView: host)
 		},
-		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil
+		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
+		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil
 	) {
 		self.feedReaderModeSetting = feedReaderModeSetting
+		self.makeBrowser = makeBrowser
 		self.hostArticleProvider = hostArticleProvider
 		self.fullTextProvider = fullTextProvider
 		self.article = article
@@ -117,7 +122,13 @@ final class Babel2ArticleViewController: UIViewController {
 		self.motionRecorder = motionRecorder
 		isRead = article.isRead
 		isStarred = article.isStarred
-		compactHeader = Babel2ReaderCompactHeaderView(feedTitle: feedTitle, author: article.author, articleTitle: article.title, iconData: feedIconData)
+		compactHeader = Babel2ReaderCompactHeaderView(
+			feedTitle: feedTitle,
+			author: article.author,
+			articleTitle: article.title,
+			iconData: feedIconData,
+			showsSourceLink: article.url != nil && makeBrowser != nil
+		)
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 	}
@@ -137,8 +148,10 @@ final class Babel2ArticleViewController: UIViewController {
 			self?.updateChrome()
 		}
 		contentView.onLinkActivated = { [weak self] url in
-			self?.onOpenLink?(url)
+			self?.openLink(url)
 		}
+		compactHeader.onSourceLinkTapped = { [weak self] in self?.originalTapped() }
+		installBrowserMotion()
 		contentView.onContentProcessTerminated = { [weak self] in
 			self?.cancelRendering()
 			self?.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
@@ -526,10 +539,43 @@ final class Babel2ArticleViewController: UIViewController {
 
 	@objc private func backTapped() { _ = (navigationController as? Babel2NavigationController)?.popBabel2(animated: true) }
 
+	/// 打开原文：有内置浏览器就在里面打开（ADR-021），否则交给系统。
 	@objc private func originalTapped() {
 		guard let url = article.url else { return }
-		onOpenOriginal?(url, article.title)
+		if let browser = makeBrowser?(url) {
+			pushBrowser(browser, animated: true)
+		} else {
+			onOpenOriginal?(url, article.title)
+		}
 	}
+
+	/// 正文里的链接：同样优先在内置浏览器打开；mailto 等非网页链接交给系统。
+	private func openLink(_ url: URL) {
+		let isWeb = ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+		if isWeb, let browser = makeBrowser?(url) {
+			pushBrowser(browser, animated: true)
+		} else {
+			onOpenLink?(url)
+		}
+	}
+
+	private func pushBrowser(_ browser: UIViewController, animated: Bool) {
+		(navigationController as? Babel2NavigationController)?.pushBabel2(browser, animated: animated)
+	}
+
+	/// 正文右边缘往左滑进入浏览器（只在有原文地址时安装）。
+	private func installBrowserMotion() {
+		guard let url = article.url, let makeBrowser else { return }
+		let motion = Babel2ReaderBrowserMotion(reader: self, makeBrowser: { makeBrowser(url) })
+		motion.onCommit = { [weak self] browser in self?.pushBrowser(browser, animated: false) }
+		// 右边缘起手时，正文滚动让位给边缘手势（只影响从右边缘起手的触摸）
+		contentView.scrollView.panGestureRecognizer.require(toFail: motion.edgeGesture)
+		browserMotion = motion
+	}
+
+	/// 仅供自动化测试。
+	var browserMotionForTesting: Babel2ReaderBrowserMotion? { browserMotion }
+	func openLinkForTesting(_ url: URL) { openLink(url) }
 
 	/// 顶部的普通系统分享（合同：顶部原长图位置改为普通分享；长图以后放底栏）。
 	@objc private func shareTapped(_ sender: UIButton) {

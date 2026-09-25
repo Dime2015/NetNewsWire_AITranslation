@@ -19,6 +19,105 @@ final class Babel2FeedReaderTests: XCTestCase {
 		try await super.tearDown()
 	}
 
+	// MARK: - 内置浏览器（Slice 5 第 3 步）
+
+	func testBrowserMotionProgressAndFinishRule() {
+		XCTAssertEqual(Babel2ReaderBrowserMotion.progress(translationX: 0, width: 400), 0)
+		XCTAssertEqual(Babel2ReaderBrowserMotion.progress(translationX: -100, width: 400), 0.25)
+		XCTAssertEqual(Babel2ReaderBrowserMotion.progress(translationX: -900, width: 400), 1)
+		XCTAssertEqual(Babel2ReaderBrowserMotion.progress(translationX: 50, width: 400), 0, "rightward drag never goes negative")
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldFinish(progress: 0.4, velocityX: 0, width: 400))
+		XCTAssertTrue(Babel2ReaderBrowserMotion.shouldFinish(progress: 0.6, velocityX: 0, width: 400))
+		// 快速左甩：0.3 + (1200/400)×0.15 = 0.75 → 补完
+		XCTAssertTrue(Babel2ReaderBrowserMotion.shouldFinish(progress: 0.3, velocityX: -1200, width: 400))
+		// 过半但往回甩：0.6 − (1200/400)×0.15 = 0.15 → 弹回
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldFinish(progress: 0.6, velocityX: 1200, width: 400))
+	}
+
+	func testRightEdgeSwipeCancelLeavesReaderUntouchedAndCommitPushesBrowser() async throws {
+		var made = [StubBrowser]()
+		let reader = makeReader(body: "<p>Body</p>", makeBrowser: { url in
+			let browser = StubBrowser(url: url)
+			made.append(browser)
+			return browser
+		})
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		navigation.pushBabel2(reader, animated: false)
+		navigation.view.layoutIfNeeded()
+		await waitForReaderRender(reader)
+		let motion = try XCTUnwrap(reader.browserMotionForTesting)
+		let width = navigation.view.bounds.width
+
+		// 起手即准备好浏览器（网页在后台开始加载），两页跟手
+		XCTAssertTrue(motion.begin())
+		let first = try XCTUnwrap(made.last)
+		XCTAssertTrue(first.didPrepare)
+		motion.update(translationX: -width * 0.3)
+		XCTAssertEqual(reader.view.transform.tx, -width * 0.3, accuracy: 0.5)
+		XCTAssertEqual(first.view.transform.tx, width * 0.7, accuracy: 0.5)
+		// 没过半松手：弹回，浏览器丢弃，阅读页原样
+		motion.end(velocityX: 0, cancelled: false)
+		motion.finishSettleImmediatelyForTesting()
+		XCTAssertTrue(first.didDiscard)
+		XCTAssertNil(first.view.superview)
+		XCTAssertEqual(reader.view.transform, .identity)
+		XCTAssertTrue(navigation.topViewController === reader)
+
+		// 过半松手：补完，浏览器成为当前页
+		XCTAssertTrue(motion.begin())
+		let second = try XCTUnwrap(made.last)
+		motion.update(translationX: -width * 0.7)
+		motion.end(velocityX: 0, cancelled: false)
+		motion.finishSettleImmediatelyForTesting()
+		XCTAssertFalse(second.didDiscard)
+		XCTAssertTrue(navigation.topViewController === second)
+		XCTAssertEqual(reader.view.transform, .identity)
+		XCTAssertEqual(second.url, URL(string: "https://example.com/post"))
+	}
+
+	func testLinksAndSourceArrowOpenTheInAppBrowser() async throws {
+		var systemOpened = [URL]()
+		let reader = makeReader(body: "<p>Body</p>", makeBrowser: { StubBrowser(url: $0) })
+		reader.onOpenLink = { systemOpened.append($0) }
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		navigation.pushBabel2(reader, animated: false)
+		navigation.view.layoutIfNeeded()
+		await waitForReaderRender(reader)
+		// 紧凑栏副标题末尾出现「↗」
+		XCTAssertEqual(reader.compactHeaderView.subtitleText, "FEED ↗")
+		// 非网页链接（邮件）→ 交给系统，不推新页面
+		reader.openLinkForTesting(URL(string: "mailto:someone@example.com")!)
+		XCTAssertEqual(systemOpened, [URL(string: "mailto:someone@example.com")!])
+		XCTAssertTrue(navigation.topViewController === reader)
+		// 网页链接 → 内置浏览器（测试窗口不挂屏幕场景，推入动画不会播完，只检查栈顶）
+		reader.openLinkForTesting(URL(string: "https://other.example/story")!)
+		let browser = try XCTUnwrap(navigation.topViewController as? StubBrowser)
+		XCTAssertEqual(browser.url, URL(string: "https://other.example/story"))
+		XCTAssertEqual(systemOpened.count, 1, "web links do not go to the system browser")
+	}
+
+	func testBrowserPageShowsChromeAndRetryOnFailure() async throws {
+		let browser = Babel2BrowserViewController(url: URL(string: "https://nonexistent.invalid/")!, openExternally: { _ in })
+		let window = hostInWindow(browser)
+		defer { window.isHidden = true }
+		let ids = browser.view.allSubviews.compactMap { ($0 as? UIButton)?.accessibilityIdentifier }
+		for id in ["babel2.browser.close", "babel2.browser.back", "babel2.browser.forward", "babel2.browser.reload", "babel2.browser.share", "babel2.browser.safari"] {
+			XCTAssertTrue(ids.contains(id), id)
+		}
+		let back = try XCTUnwrap(descendant(of: browser.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.browser.back" })
+		XCTAssertFalse(back.isEnabled, "no history yet")
+		// 打不开的地址：显示原因 + 重试
+		for _ in 0..<200 {
+			if browser.isShowingErrorForTesting { break }
+			try await Task.sleep(for: .milliseconds(50))
+		}
+		XCTAssertTrue(browser.isShowingErrorForTesting)
+	}
+
 	// MARK: - 阅读模式（Slice 5 第 2 步）
 
 	func testReaderModeSwapsToFullTextRemembersAndReturnsToOriginal() async throws {
@@ -267,10 +366,17 @@ final class Babel2FeedReaderTests: XCTestCase {
 		feedViewController.tableView(feedTableView, didSelectRowAt: IndexPath(row: 0, section: 0))
 		let articleViewController = try XCTUnwrap(navigationController.topViewController as? Babel2ArticleViewController)
 		articleViewController.loadViewIfNeeded()
-		// 「打开原文」在顶栏正中的「•••」更多菜单里（ADR-018）
+		// 「打开原文」在「•••」菜单里（ADR-018），在内置浏览器打开（ADR-021）
 		XCTAssertTrue(articleViewController.moreMenuHasOpenOriginal)
 		articleViewController.openOriginalFromMenuForTesting()
+		let browser = try XCTUnwrap(navigationController.topViewController as? Babel2BrowserViewController)
+		XCTAssertEqual(browser.initialURLForTesting, article.url)
+		// 浏览器底栏「在 Safari 中打开」交给系统
+		browser.loadViewIfNeeded()
+		let safari = try XCTUnwrap(descendant(of: browser.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.browser.safari" })
+		safari.sendActions(for: .touchUpInside)
 		XCTAssertEqual(openedURL, article.url)
+		navigationController.popBabel2(animated: false)
 
 		let bodyOnlyArticle = ArticleSnapshot(
 			id: ArticleSnapshot.ID(accountID: feedID.accountID, feedID: feedID.feedID, articleID: "body-only"),
@@ -1517,7 +1623,8 @@ private func makeReader(
 	hostArticle: AnyObject? = nil,
 	author: String? = nil,
 	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() },
-	feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil
+	feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
+	makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -1537,7 +1644,8 @@ private func makeReader(
 		motionRecorder: motionRecorder,
 		hostArticleProvider: { _ in hostArticle },
 		fullTextProvider: fullTextProvider,
-		feedReaderModeSetting: feedReaderModeSetting
+		feedReaderModeSetting: feedReaderModeSetting,
+		makeBrowser: makeBrowser
 	)
 }
 
@@ -1591,4 +1699,19 @@ private func waitUntil(_ condition: () -> Bool) async {
 		try? await Task.sleep(for: .milliseconds(10))
 	}
 	XCTFail("Timed out waiting for condition")
+}
+
+/// 测试用浏览器替身：记录是否被准备 / 丢弃。
+@MainActor
+private final class StubBrowser: UIViewController, Babel2PreparableRoute {
+	let url: URL
+	private(set) var didPrepare = false
+	private(set) var didDiscard = false
+	init(url: URL) {
+		self.url = url
+		super.init(nibName: nil, bundle: nil)
+	}
+	required init?(coder: NSCoder) { nil }
+	func prepare() { didPrepare = true; loadViewIfNeeded() }
+	func discard() { didDiscard = true }
 }

@@ -158,16 +158,19 @@ final class Babel2FeedReaderUITests: XCTestCase {
 					continue
 				}
 				originalButton.tap()
-				let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-				let safariViewService = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-				let safariForeground = safari.wait(for: .runningForeground, timeout: 15)
-				let safariViewServiceForeground = safariViewService.wait(for: .runningForeground, timeout: 1)
-				attachState(safariForeground ? safari : safariViewService, name: "after-browser")
-				guard safariForeground || safariViewServiceForeground else {
-					fail("HANDOFF_FAILURE", "system browser did not become foreground")
+				// ADR-021：原文在内置浏览器打开（不再跳到 Safari），✕ 回到文章
+				let browserWeb = app.webViews["babel2.browser.web"]
+				guard waitForExistence(browserWeb, timeout: 15) else {
+					attachState(app, name: "after-browser")
+					fail("HANDOFF_FAILURE", "in-app browser did not appear")
 					return
 				}
-				app.activate()
+				attachState(app, name: "after-browser")
+				guard tapAndWait(app.buttons["babel2.browser.close"], app: app, timeout: 10),
+					waitForExistence(app.buttons["babel2.article.back"], timeout: 10) else {
+					fail("HANDOFF_FAILURE", "in-app browser close did not return to the article")
+					return
+				}
 				selectedArticle = true
 			}
 			if !selectedArticle {

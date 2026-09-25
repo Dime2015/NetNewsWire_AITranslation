@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 5 第 3 步：内置浏览器（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-021 实现：右缘左滑跟手进入（`Reader/Babel2ReaderBrowserMotion.swift`）；浏览器页 `Reader/WebKit/Babel2BrowserViewController.swift`；••• 打开原文、正文网页链接、紧凑栏「↗」均进内置浏览器；UI Driver 相应改为验证内置浏览器出现并 ✕ 返回。
+- 文件：新增上述 2 个；修改 `Reader/Babel2ArticleViewController.swift`、`Reader/Babel2ReaderCompactHeaderView.swift`、`Babel2SceneComposition.swift`、`Babel2Localization.swift` + xcstrings（+5 键）、单元测试（+4，1 项旧预期改为验证内置浏览器）、UI Driver 测试。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/browser-r3.xcresult` 107/107；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/browser-ui-r1.xcresult` 1/1。中间轮次：r1/r2 各 1 项失败均为测试写法（阅读页未显示就推页面；测试窗口不挂屏幕场景导致推入动画不结束），已改测试。
+- 2026-09-25 用户按 10 项清单真机验收通过（右缘跟手、半途弹回、过半补完、中间划不误触、左边缘返回与 ✕、浏览器五按钮、链接与 ↗ 入口、深色）；投影 0.15 s / 阈值 0.5 未提出调整。口头确认，非 Instruments 证据。
+
 ## 阅读模式入口调整（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-020：底栏第 4 格恢复「阅读模式」按钮（一点即开/关，开时加粗图标主墨色，无原文地址时不可点）；••• 菜单改为「此订阅源总是用阅读模式」（勾选）/ 打开原文 / 生成长图（灰色占位）。按订阅源开关读写既有 `Feed.readerViewAlwaysEnabled`（集成层 `Babel2LiveFeedReaderSetting`），开着的源打开即全文、不写单篇记忆；1.x 设过的直接生效。

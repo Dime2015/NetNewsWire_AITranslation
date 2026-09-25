@@ -53,7 +53,8 @@ enum Babel2SceneComposition {
 					feedReaderModeSetting: Babel2FeedReaderModeSetting(
 						isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },
 						setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
-					)
+					),
+					makeBrowser: { url in Babel2BrowserViewController(url: url, openExternally: openURL) }
 				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)

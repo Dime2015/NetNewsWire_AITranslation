@@ -21,12 +21,18 @@ final class Babel2ReaderCompactHeaderView: UIView {
 	private(set) var pCollapse: CGFloat = 0
 	private(set) var pReading: CGFloat = 0
 
-	init(feedTitle: String?, author: String? = nil, articleTitle: String, iconData: Data?) {
+	/// 点副标题末尾「↗」：在内置浏览器打开原文（ADR-021）。
+	var onSourceLinkTapped: (() -> Void)?
+	private let showsSourceLink: Bool
+
+	init(feedTitle: String?, author: String? = nil, articleTitle: String, iconData: Data?, showsSourceLink: Bool = false) {
+		self.showsSourceLink = showsSourceLink
 		super.init(frame: .zero)
 		accessibilityIdentifier = "babel2.article.compact-header"
 		isAccessibilityElement = true
 		accessibilityLabel = [feedTitle, author, articleTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
 		isUserInteractionEnabled = false
+		addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
 
 		backgroundView.backgroundColor = BabelPalette.background
 		separator.backgroundColor = BabelPalette.hairline
@@ -39,12 +45,13 @@ final class Babel2ReaderCompactHeaderView: UIView {
 		ringView.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(ringView)
 
-		// 设计稿在这一行末尾有「↗」（打开来源）；在内置浏览器那一步接通点击前先不显示，以免误导
-		let subtitle = [feedTitle, author]
+		// 设计稿这一行末尾有「↗」（打开来源）：能在内置浏览器打开原文时才显示
+		var subtitle = [feedTitle, author]
 			.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
 			.filter { !$0.isEmpty }
 			.joined(separator: " · ")
 			.uppercased()
+		if showsSourceLink { subtitle += subtitle.isEmpty ? "↗" : " ↗" }
 		sourceLabel.text = subtitle
 		sourceLabel.font = .systemFont(ofSize: 13, weight: .regular)
 		sourceLabel.textColor = BabelPalette.mutedInk
@@ -107,7 +114,14 @@ final class Babel2ReaderCompactHeaderView: UIView {
 		}
 		ringView.progress = pReading
 		accessibilityValue = "\(Int((pReading * 100).rounded()))%"
+		// 基本出现后才接收点击（打开原文）；其余时候点击穿透到正文
+		isUserInteractionEnabled = showsSourceLink && pCollapse >= 0.5
 	}
+
+	@objc private func tapped() { onSourceLinkTapped?() }
+
+	/// 仅供自动化测试。
+	var subtitleText: String? { sourceLabel.text }
 }
 
 /// 48pt 的进度圆环，中间是 42pt 圆形订阅源图标（没有图标显示首字母）。
