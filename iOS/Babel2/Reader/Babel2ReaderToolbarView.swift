@@ -1,11 +1,13 @@
 import UIKit
 
-/// 阅读页底栏：72pt 高、贴屏幕最底（含 Home 指示条区域），顶上一条细分隔线。
+/// 阅读页底栏：按 Figma「Reader Toolbar」(21:5) 对齐（ADR-018）。
 ///
-/// 5 个按钮按 Figma「Reader Toolbar」：已读 / 星标 / 下一篇 / 阅读模式 / 翻译，
-/// 中心位置对应 402pt 画布的 x = 32 / 104 / 201 / 290.5 / 362，垂直中心距底栏顶 24pt。
-/// 已接通「已读」「星标」「翻译」（Slice 5 第 1 步）；「下一篇」「阅读模式」仍是占位，灰色不可点。
-/// （按 ADR-016，之后第 4 格会改成「长图」，阅读模式移入顶栏「更多」菜单。）
+/// - 72pt 高、贴屏幕最底（含 Home 指示条区域），顶部 0.5pt 分隔线
+/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
+/// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 362
+/// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
+/// 已接通：已读、星标、翻译；「下一篇」「阅读模式」仍是占位（灰色不可点）。
+/// （按 ADR-016，后续第 4 格改为「长图」，阅读模式移入顶栏「更多」菜单。）
 @MainActor
 final class Babel2ReaderToolbarView: UIView {
 	static let height: CGFloat = 72
@@ -14,54 +16,39 @@ final class Babel2ReaderToolbarView: UIView {
 
 	let readButton: UIButton
 	let starButton: UIButton
-	let translateButton: UIButton
+	let translationToggle = Babel2TranslationToggle()
 	let placeholderButtons: [UIButton]
 	var onToggleRead: (() -> Void)?
 	var onToggleStar: (() -> Void)?
 	var onTranslate: (() -> Void)?
-	/// 翻译按钮右下角的状态角标（实心点 / 空心圈 / 小勾），颜色为中性墨色。
-	private let translateBadge = UIImageView()
-	private(set) var translationState: TranslationButtonState = .original
-	/// 仅供自动化测试：当前角标用的符号名（nil = 无角标）。
-	private(set) var translateBadgeSymbol: String?
 
 	private(set) var isRead = false
 	private(set) var isStarred = false
+	/// 仅供自动化测试：当前已读 / 星标按钮用的资源名。
+	private(set) var readIconName = ""
+	private(set) var starIconName = ""
+	var translationState: TranslationButtonState { translationToggle.translationState }
 
 	override init(frame: CGRect) {
 		readButton = Self.makeButton(identifier: "babel2.article.toolbar.read")
 		starButton = Self.makeButton(identifier: "babel2.article.toolbar.star")
 		let next = Self.makeButton(identifier: "babel2.article.toolbar.next")
 		let readingMode = Self.makeButton(identifier: "babel2.article.toolbar.reading-mode")
-		translateButton = Self.makeButton(identifier: "babel2.article.toolbar.translate")
 		placeholderButtons = [next, readingMode]
 		super.init(frame: frame)
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
 
-		Self.setSymbol("chevron.down", on: next)
+		Self.setIcon("Babel2ReaderNext", on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
-		Self.setSymbol("doc.text", on: readingMode)
+		Self.setIcon("BabelReaderReadingMode", on: readingMode)
 		readingMode.accessibilityLabel = Babel2Localization.text(.readingMode)
 		placeholderButtons.forEach { $0.isEnabled = false }
-		translateButton.addTarget(self, action: #selector(translateTapped), for: .touchUpInside)
-		translateBadge.tintColor = BabelPalette.ink
-		translateBadge.contentMode = .center
-		// 晕圈：角标脚下垫一圈背景色，和翻译图标的笔画隔开（同旧版定稿设计）
-		translateBadge.backgroundColor = BabelPalette.background
-		translateBadge.layer.cornerRadius = 6
-		translateBadge.isUserInteractionEnabled = false
-		translateBadge.translatesAutoresizingMaskIntoConstraints = false
-		translateButton.addSubview(translateBadge)
-		NSLayoutConstraint.activate([
-			translateBadge.centerXAnchor.constraint(equalTo: translateButton.centerXAnchor, constant: 11),
-			translateBadge.centerYAnchor.constraint(equalTo: translateButton.centerYAnchor, constant: 10),
-			translateBadge.widthAnchor.constraint(equalToConstant: 12),
-			translateBadge.heightAnchor.constraint(equalToConstant: 12)
-		])
 
 		readButton.addTarget(self, action: #selector(readTapped), for: .touchUpInside)
 		starButton.addTarget(self, action: #selector(starTapped), for: .touchUpInside)
+		translationToggle.addTarget(self, action: #selector(translateTapped), for: .touchUpInside)
+		translationToggle.translatesAutoresizingMaskIntoConstraints = false
 
 		let separator = UIView()
 		separator.backgroundColor = BabelPalette.hairline
@@ -71,21 +58,23 @@ final class Babel2ReaderToolbarView: UIView {
 			separator.leadingAnchor.constraint(equalTo: leadingAnchor),
 			separator.trailingAnchor.constraint(equalTo: trailingAnchor),
 			separator.topAnchor.constraint(equalTo: topAnchor),
-			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+			separator.heightAnchor.constraint(equalToConstant: 0.5)
 		])
 
 		// 按参考画布比例定位，屏幕宽度不同也保持相对位置
-		for (button, center) in zip([readButton, starButton] + placeholderButtons + [translateButton], Self.slotCenters) {
-			addSubview(button)
+		let controls: [UIView] = [readButton, starButton] + placeholderButtons + [translationToggle]
+		for (control, center) in zip(controls, Self.slotCenters) {
+			addSubview(control)
+			let size = control === translationToggle ? Babel2TranslationToggle.size : CGSize(width: 44, height: 44)
 			NSLayoutConstraint.activate([
 				NSLayoutConstraint(
-					item: button, attribute: .centerX, relatedBy: .equal,
+					item: control, attribute: .centerX, relatedBy: .equal,
 					toItem: self, attribute: .trailing,
 					multiplier: center / Self.referenceWidth, constant: 0
 				),
-				button.centerYAnchor.constraint(equalTo: topAnchor, constant: 24),
-				button.widthAnchor.constraint(equalToConstant: 44),
-				button.heightAnchor.constraint(equalToConstant: 44)
+				control.centerYAnchor.constraint(equalTo: topAnchor, constant: 24),
+				control.widthAnchor.constraint(equalToConstant: size.width),
+				control.heightAnchor.constraint(equalToConstant: size.height)
 			])
 		}
 		setRead(false)
@@ -94,66 +83,32 @@ final class Babel2ReaderToolbarView: UIView {
 		setTranslationAvailable(false)
 	}
 
-	/// 页面还没准备好（正文未排版、文章对象未取回）时翻译按钮不可点。
-	func setTranslationAvailable(_ available: Bool) {
-		translateButton.isEnabled = available
-		translateBadge.isHidden = !available || translateBadge.image == nil
-	}
-
-	/// 翻译按钮的六种状态（沿用 2026-07-30 定稿的「翻译符号 + 右下角角标」设计，按本底栏 20pt 重画）：
-	/// 原文 = 无角标；有完整缓存 = 实心点；有未完成缓存 = 空心圈；已显示译文 = 小勾；
-	/// 翻译中 = 图标变淡（合同禁止系统转圈，进度由正文骨架色条表示），仍可点 = 取消；失败 = 感叹号气泡。
-	func setTranslationState(_ state: TranslationButtonState) {
-		translationState = state
-		var symbol = "translate"
-		var badge: String?
-		var alpha: CGFloat = 1
-		let label: Babel2LocalizationKey
-		let value: String
-		switch state {
-		case .original:
-			label = .translate; value = "original"
-		case .cachedAvailable:
-			badge = "circle.fill"; label = .translate; value = "cached"
-		case .partialCacheAvailable:
-			badge = "circle"; label = .translate; value = "partial"
-		case .working:
-			alpha = 0.35; label = .cancelTranslation; value = "working"
-		case .translated:
-			// 单独的小勾（不带圆底）：带圆底的勾在这个尺寸下看起来就是实心点，会和「有缓存」混淆
-			badge = "checkmark"; label = .showOriginal; value = "translated"
-		case .failed:
-			symbol = "exclamationmark.bubble"; label = .translate; value = "failed"
-		}
-		Self.setSymbol(symbol, on: translateButton)
-		translateButton.imageView?.alpha = alpha
-		// 勾比圆点略大略粗（笔画细，同尺寸显小）——沿用旧版设计稿要点
-		let badgeConfiguration = badge == "checkmark"
-			? UIImage.SymbolConfiguration(pointSize: 10, weight: .heavy)
-			: UIImage.SymbolConfiguration(pointSize: 7, weight: .bold)
-		translateBadge.image = badge.flatMap { UIImage(systemName: $0, withConfiguration: badgeConfiguration) }
-		translateBadgeSymbol = badge
-		translateBadge.isHidden = translateBadge.image == nil || !translateButton.isEnabled
-		translateButton.accessibilityLabel = Babel2Localization.text(label)
-		translateButton.accessibilityValue = value
-	}
-
 	required init?(coder: NSCoder) { nil }
 
-	/// 已读 = 实心圆，未读 = 空心圈（用户 2026-09-25 决定，与 Reeder/旧版相反）；
-	/// 按钮的无障碍说明描述的是「点了会怎样」。
+	/// 已读 = 实心圆，未读 = 空心圈（用户 2026-09-25 决定）；无障碍说明描述「点了会怎样」。
 	func setRead(_ read: Bool) {
 		isRead = read
-		Self.setSymbol(read ? "circle.fill" : "circle", on: readButton)
+		readIconName = read ? "Babel2ReaderReadStateFilled" : "Babel2ReaderReadState"
+		Self.setIcon(readIconName, on: readButton)
 		readButton.accessibilityLabel = Babel2Localization.text(read ? .markUnread : .markRead)
 		readButton.accessibilityValue = read ? "read" : "unread"
 	}
 
 	func setStarred(_ starred: Bool) {
 		isStarred = starred
-		Self.setSymbol(starred ? "star.fill" : "star", on: starButton)
+		starIconName = starred ? "Babel2ReaderStarFilled" : "Babel2ReaderStar"
+		Self.setIcon(starIconName, on: starButton)
 		starButton.accessibilityLabel = Babel2Localization.text(starred ? .unstar : .star)
 		starButton.accessibilityValue = starred ? "starred" : "unstarred"
+	}
+
+	/// 页面还没准备好（正文未排版、文章对象未取回）时翻译开关不可点。
+	func setTranslationAvailable(_ available: Bool) {
+		translationToggle.isEnabled = available
+	}
+
+	func setTranslationState(_ state: TranslationButtonState) {
+		translationToggle.setState(state)
 	}
 
 	@objc private func readTapped() { onToggleRead?() }
@@ -162,17 +117,17 @@ final class Babel2ReaderToolbarView: UIView {
 
 	private static func makeButton(identifier: String) -> UIButton {
 		let button = UIButton(type: .system)
-		button.tintColor = BabelPalette.ink
+		button.tintColor = BabelPalette.mutedInk
 		button.accessibilityIdentifier = identifier
 		button.translatesAutoresizingMaskIntoConstraints = false
 		return button
 	}
 
-	private static func setSymbol(_ name: String, on button: UIButton) {
-		let configuration = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
-		let image = UIImage(systemName: name, withConfiguration: configuration)
+	/// 设计稿图标（24pt 模板图），正常态为次要灰；不可点时用更浅的中性灰，不用主题色。
+	private static func setIcon(_ name: String, on button: UIButton) {
+		let image = UIImage(named: name)?.withRenderingMode(.alwaysTemplate)
+		assert(image != nil, "missing reader icon asset \(name)")
 		button.setImage(image, for: .normal)
-		// 占位按钮的灰色：用中性浅灰，不用主题色
 		button.setImage(image?.withTintColor(BabelPalette.tertiaryInk, renderingMode: .alwaysOriginal), for: .disabled)
 	}
 }

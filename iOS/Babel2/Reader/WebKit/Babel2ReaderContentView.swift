@@ -283,18 +283,19 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		"""
 	}
 
-	/// 排版数值来自 Figma Drafts/BATCH-01-SPEC.md「04 · Reader」：
-	/// 左右边距约 20pt，正文约 19pt、行高约 30pt；链接加粗 + 中性下划线（不用绿色）；
+	/// 排版数值按 Figma 04A「Article Content」(ADR-018)：左右边距 20pt，正文 19pt / 行高 30pt、
+	/// 次要灰 #787878；段距 20pt；引用块竖线 2pt（距正文左缘 8pt）、文字距竖线 18pt、引用内段距 8pt；
+	/// 小标题与链接用主墨色；链接加粗 + 中性下划线（不用绿色）；
 	/// 横图（脚本判定后加 babel2-bleed）贴满屏幕两边、直角；文字和图注保留边距。
 	private static let css = """
 	html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 	html, body { margin: 0; padding: 0; overflow-x: hidden; }
-	body { background: var(--bg); color: var(--ink); font: 19px/30px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
+	body { background: var(--bg); color: var(--muted); font: 19px/30px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
 	#babel2-title { display: none; }
 	#babel2-article { padding: 0 20px 48px; }
 	#babel2-article > :first-child { margin-top: 0; }
-	p { margin: 0 0 18px; }
-	h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.3; margin: 28px 0 12px; }
+	p { margin: 0 0 20px; }
+	h1, h2, h3, h4, h5, h6 { color: var(--ink); font-weight: 700; line-height: 1.3; margin: 28px 0 12px; }
 	h1 { font-size: 23px; } h2 { font-size: 21px; } h3 { font-size: 20px; } h4, h5, h6 { font-size: 19px; }
 	a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--tertiary); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 	img, video { display: block; max-width: 100%; height: auto; margin: 22px auto; border-radius: 0; }
@@ -303,10 +304,12 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	figure { margin: 22px 0; }
 	figure img, figure video { margin-top: 0; margin-bottom: 0; }
 	figcaption { font-size: 14px; line-height: 20px; color: var(--muted); margin-top: 8px; }
-	blockquote { margin: 0 0 18px; padding-left: 16px; border-left: 3px solid var(--hairline); color: var(--muted); }
+	blockquote { margin: 20px 0 27px 8px; padding-left: 18px; border-left: 2px solid var(--hairline); color: var(--muted); }
+	blockquote p { margin: 0 0 8px; }
+	blockquote > :last-child { margin-bottom: 0; }
 	pre { overflow-x: auto; font: 14px/20px ui-monospace, Menlo, monospace; background: var(--raised); padding: 12px; margin: 0 0 18px; }
 	code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85em; }
-	ul, ol { padding-left: 24px; margin: 0 0 18px; }
+	ul, ol { padding-left: 24px; margin: 0 0 20px; }
 	li { margin-bottom: 6px; }
 	hr { border: 0; border-top: 1px solid var(--hairline); margin: 28px 0; }
 	table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 15px; line-height: 22px; margin: 0 0 18px; }

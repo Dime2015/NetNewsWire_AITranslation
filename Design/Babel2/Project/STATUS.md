@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 阅读页对齐 Figma（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 起因：用户指出阅读页控件、图标、尺寸与 Figma 差距大；接上 Figma 连接后逐项对照 04A(22:38)/04B(117:263)/04D3(143:444)/Translation Toggle(43:19)/Reader Toolbar(21:5)/Compact Header(143:73)。决定见 ADR-018（用户“都按建议来”）。
+- 已改：① 图标换设计稿矢量（Close/More/ReadState/Star/Next 新导出进 `iOS/Babel2/Assets.xcassets`；阅读模式复用逐字节一致的既有 `BabelReaderReadingMode`；已读/星标实心态由同一轮廓填充派生，来源见 `FIGMA-READER-ICONS.md`），图标色改次要灰 #787878。② 顶栏：✕(x=32)/•••更多菜单(x=201，内含「打开原文」，无原文地址时禁用)/系统分享(x=370)，中心 y=22；不放「标签」。③ 标题区：日期 11pt 半粗字距 0.3；标题 34pt 粗体行高 38 字距 −1；署名两行「作者 / 订阅源」11pt 字距 0.25 行高 15；上 26、间距 13/9、下 60。④ 正文次要灰、段距 20、引用块竖线 2pt(左移 8)+文字距 18、引用内段距 8；小标题/链接主墨色。⑤ 底栏：0.5pt 分隔线、24pt 图标、翻译改 Figma 文字开关「原 翻译 / 译 生成中 / 译 原文 / 原 重试」（取消缓存角标）。⑥ 紧凑栏：副标题「订阅源 · 作者」、行间 2、圆环半径 22 / 底圈 2 / 弧 2.5、占位底色为分隔线灰 + 24pt 首字母、0.5pt 分隔线、内容垂直居中 42.75。⑦ **栏隐藏改为 Figma 04D3**：顶部按钮行整行收进状态栏底色后面，紧凑栏上移 44pt 贴状态栏（推翻 Slice 4 第 3 步方案 A；MOTION-CONTRACT §10 相应句已修订）。⑧ Babel2Core `ArticleSnapshot` 增可选 `author`，集成层取第一个有名字的作者。
+- 未照稿（有意）：紧凑栏副标题末尾「↗」暂不显示（点击来源在内置浏览器步接通）；顶栏右上用系统分享符号（合同规定为普通分享，设计稿只有“分享长图”图标）；底栏第 4 格暂仍为阅读模式（ADR-016 后续改长图）。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/figma-r2.xcresult` 98/98（新增：Figma 文字开关六态、顶栏三按钮位置与图标资源/署名两行/紧凑栏副标题/正文次要灰；栏隐藏时紧凑栏上移 44）；Babel2UI package 32/32。r1 97/98 为测试自身假设浅色模式（模拟器为深色，108 即深色次要灰），已改为按当前外观比较。
+- 2026-09-25 用户按 6 项清单对照 Figma 04A/04B/04D3 真机验收通过（含深色、••• 菜单打开原文、栏隐藏时紧凑栏上移）。口头确认。
+
 ## Reader Slice 5 第 1 步：翻译（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 方案（用户确认“按建议来”）：整套既有翻译引擎（`Shared/Translation/` 的 TranslationController、OpenAICompatibleTranslator、缓存、断点续翻、`translation.js` 的分块/流式/骨架色条）**一行不改**原样复用；Babel2 阅读页实现 `NNWArticlePageHost` 接口搭桥。设置页仍在 Slice 6，暂沿用手机里旧版已存的 API key/模型。

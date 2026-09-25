@@ -30,6 +30,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private var chromeState: MotionReaderChromeState = .expanded
 	private let toolbar = Babel2ReaderToolbarView()
 	private var topButtons = [UIButton]()
+	private var topBar: UIView?
+	private var moreButton: UIButton?
+	private let feedAuthor: String?
 	private var barVisibility = Babel2ReaderBarVisibility()
 	private var barAnimator: UIViewPropertyAnimator?
 	private var barAnimationStart: CGFloat = 0
@@ -90,10 +93,11 @@ final class Babel2ArticleViewController: UIViewController {
 		self.article = article
 		self.environment = environment
 		self.feedTitle = feedTitle
+		self.feedAuthor = article.author
 		self.motionRecorder = motionRecorder
 		isRead = article.isRead
 		isStarred = article.isStarred
-		compactHeader = Babel2ReaderCompactHeaderView(feedTitle: feedTitle, articleTitle: article.title, iconData: feedIconData)
+		compactHeader = Babel2ReaderCompactHeaderView(feedTitle: feedTitle, author: article.author, articleTitle: article.title, iconData: feedIconData)
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 	}
@@ -251,14 +255,7 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 标题显示：nil = 原文标题；否则显示译文标题。大标题高度变了要重新让出正文空间。
 	func applyDisplayedTitle(_ translated: String?) {
 		let text = translated ?? article.title
-		let paragraph = NSMutableParagraphStyle()
-		paragraph.minimumLineHeight = 40
-		paragraph.maximumLineHeight = 40
-		titleLabel.attributedText = NSAttributedString(string: text, attributes: [
-			.font: UIFont.systemFont(ofSize: 34, weight: .bold),
-			.foregroundColor: BabelPalette.ink,
-			.paragraphStyle: paragraph
-		])
+		titleLabel.attributedText = Self.titleText(text)
 		compactHeader.setArticleTitle(text)
 		lastHeaderWidth = 0
 		view.setNeedsLayout()
@@ -270,35 +267,45 @@ final class Babel2ArticleViewController: UIViewController {
 
 	// MARK: - 顶栏
 
+	/// 顶栏按 Figma「Navigation Bar / Reader」(18:15)：58pt，图标 24pt、次要灰，中心 y = 22。
+	/// 左 ✕ 关闭（x=32）/ 正中 ••• 更多菜单（x=201）/ 右 系统分享（x=370）。
+	/// 设计稿的「标签」按钮不放（无此功能，ADR-018）；「打开原文」在更多菜单里。
 	private func configureTopBar() -> UIView {
 		let bar = UIView()
 		bar.backgroundColor = BabelPalette.background
 		bar.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(bar)
 
-		let back = makeBarButton(symbol: "chevron.left", key: .back, identifier: "babel2.article.back", action: #selector(backTapped))
-		let original = makeBarButton(symbol: "safari", key: .openOriginal, identifier: "babel2.article.open-original", action: #selector(originalTapped))
-		original.isHidden = article.url == nil
-		let share = makeBarButton(symbol: "square.and.arrow.up", key: .share, identifier: "babel2.article.share", action: #selector(shareTapped))
-		[back, original, share].forEach(bar.addSubview)
-		topButtons = [back, original, share]
+		let close = makeBarButton(image: UIImage(named: "Babel2ReaderClose"), key: .back, identifier: "babel2.article.back")
+		close.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+		let more = makeBarButton(image: UIImage(named: "Babel2ReaderMore"), key: .more, identifier: "babel2.article.more")
+		more.menu = makeMoreMenu()
+		more.showsMenuAsPrimaryAction = true
+		more.isEnabled = more.menu?.children.isEmpty == false
+		// 顶栏右上是普通系统分享（合同最新决定），设计稿无对应图标，用系统分享符号按同一灰度与视觉尺寸
+		let shareImage = UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .medium))
+		let share = makeBarButton(image: shareImage, key: .share, identifier: "babel2.article.share")
+		share.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+		[close, more, share].forEach(bar.addSubview)
+		topButtons = [close, more, share]
+		moreButton = more
 
-		// 按钮中心位置对应 402pt 设计稿的 x = 32（返回）/ 330（原文）/ 370（分享）
 		NSLayoutConstraint.activate([
 			bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			bar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
 			bar.heightAnchor.constraint(equalToConstant: 58),
-			back.centerXAnchor.constraint(equalTo: bar.leadingAnchor, constant: 32),
-			share.centerXAnchor.constraint(equalTo: bar.trailingAnchor, constant: -32),
-			original.centerXAnchor.constraint(equalTo: bar.trailingAnchor, constant: -76)
-		] + [back, original, share].flatMap { button in [
-			button.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+			close.centerXAnchor.constraint(equalTo: bar.leadingAnchor, constant: 32),
+			more.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
+			share.centerXAnchor.constraint(equalTo: bar.trailingAnchor, constant: -32)
+		] + [close, more, share].flatMap { button in [
+			button.centerYAnchor.constraint(equalTo: bar.topAnchor, constant: 22),
 			button.widthAnchor.constraint(equalToConstant: 44),
 			button.heightAnchor.constraint(equalToConstant: 44)
 		] })
 
-		// 状态栏区域也保持不透明（合同：正文不得透到状态栏下面）
+		// 状态栏区域也保持不透明（合同：正文不得透到状态栏下面）。它压在顶栏之上，
+		// 栏隐藏时顶栏向上收进它后面。
 		let statusBackdrop = UIView()
 		statusBackdrop.backgroundColor = BabelPalette.background
 		statusBackdrop.translatesAutoresizingMaskIntoConstraints = false
@@ -309,20 +316,39 @@ final class Babel2ArticleViewController: UIViewController {
 			statusBackdrop.topAnchor.constraint(equalTo: view.topAnchor),
 			statusBackdrop.bottomAnchor.constraint(equalTo: bar.topAnchor)
 		])
+		topBar = bar
 		return bar
 	}
 
-	private func makeBarButton(symbol: String, key: Babel2LocalizationKey, identifier: String, action: Selector) -> UIButton {
+	/// 「•••」更多菜单：本步只有「打开原文」（没有原文地址时菜单为空、按钮变灰）；
+	/// 下一步加入「阅读模式」（ADR-016）。
+	private func makeMoreMenu() -> UIMenu {
+		var actions = [UIMenuElement]()
+		if article.url != nil {
+			actions.append(UIAction(
+				title: Babel2Localization.text(.openOriginal),
+				image: UIImage(systemName: "safari"),
+				identifier: UIAction.Identifier("babel2.article.open-original")
+			) { [weak self] _ in self?.originalTapped() })
+		}
+		return UIMenu(children: actions)
+	}
+
+	private func makeBarButton(image: UIImage?, key: Babel2LocalizationKey, identifier: String) -> UIButton {
 		let button = UIButton(type: .system)
-		let configuration = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
-		button.setImage(UIImage(systemName: symbol, withConfiguration: configuration), for: .normal)
-		button.tintColor = BabelPalette.ink
+		button.setImage(image?.withRenderingMode(.alwaysTemplate), for: .normal)
+		button.tintColor = BabelPalette.mutedInk
 		button.accessibilityLabel = Babel2Localization.text(key)
 		button.accessibilityIdentifier = identifier
-		button.addTarget(self, action: action, for: .touchUpInside)
 		button.translatesAutoresizingMaskIntoConstraints = false
 		return button
 	}
+
+	/// 仅供自动化测试：更多菜单里有没有「打开原文」，以及直接触发它。
+	var moreMenuHasOpenOriginal: Bool {
+		moreButton?.menu?.children.contains { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.open-original" } ?? false
+	}
+	func openOriginalFromMenuForTesting() { originalTapped() }
 
 	@objc private func backTapped() { _ = (navigationController as? Babel2NavigationController)?.popBabel2(animated: true) }
 
@@ -360,51 +386,73 @@ final class Babel2ArticleViewController: UIViewController {
 
 	/// 标题区：日期（小号大写、浅灰）→ 标题（34pt 粗体）→ 订阅源名（小号大写、浅灰）。
 	/// 数值来自 Figma Drafts/BATCH-01-SPEC.md「04 · Reader」。
+	/// 标题区按 Figma 04A「Article Content」：日期 11pt 半粗（字距 0.3）→ 13pt → 标题 34pt 粗体
+	/// （行高 38、字距 -1）→ 9pt → 署名两行「作者 / 订阅源」11pt 半粗（字距 0.25、行高 15）；
+	/// 顶部留 26pt，署名下方 60pt 开始正文。
 	private func configureHeader() {
 		headerView.backgroundColor = BabelPalette.background
 		headerView.accessibilityIdentifier = "babel2.article.header"
 
-		dateLabel.text = article.publishedAt.map(Self.formatDate)
+		dateLabel.attributedText = article.publishedAt.map { Self.metadata(Self.formatDate($0), kern: 0.3) }
 		dateLabel.isHidden = article.publishedAt == nil
-		dateLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-		dateLabel.textColor = BabelPalette.tertiaryInk
 		dateLabel.numberOfLines = 1
 		dateLabel.accessibilityIdentifier = "babel2.article.date"
 
-		let paragraph = NSMutableParagraphStyle()
-		paragraph.minimumLineHeight = 40
-		paragraph.maximumLineHeight = 40
-		titleLabel.attributedText = NSAttributedString(string: article.title, attributes: [
-			.font: UIFont.systemFont(ofSize: 34, weight: .bold),
-			.foregroundColor: BabelPalette.ink,
-			.paragraphStyle: paragraph
-		])
 		titleLabel.numberOfLines = 0
 		titleLabel.accessibilityIdentifier = "babel2.article.title"
 		titleLabel.accessibilityTraits = .header
+		titleLabel.attributedText = Self.titleText(article.title)
 
-		let trimmedFeedTitle = feedTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-		bylineLabel.text = trimmedFeedTitle.uppercased()
-		bylineLabel.isHidden = trimmedFeedTitle.isEmpty
-		bylineLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-		bylineLabel.textColor = BabelPalette.tertiaryInk
-		bylineLabel.numberOfLines = 2
+		let bylineLines = [feedAuthor, feedTitle]
+			.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { !$0.isEmpty }
+			.map { $0.uppercased() }
+		bylineLabel.attributedText = Self.metadata(bylineLines.joined(separator: "\n"), kern: 0.25)
+		bylineLabel.isHidden = bylineLines.isEmpty
+		bylineLabel.numberOfLines = 0
 		bylineLabel.accessibilityIdentifier = "babel2.article.byline"
 
 		let stack = UIStackView(arrangedSubviews: [dateLabel, titleLabel, bylineLabel])
 		stack.axis = .vertical
 		stack.alignment = .fill
-		stack.spacing = 10
+		stack.setCustomSpacing(13, after: dateLabel)
+		stack.setCustomSpacing(9, after: titleLabel)
 		stack.translatesAutoresizingMaskIntoConstraints = false
 		headerView.addSubview(stack)
 		NSLayoutConstraint.activate([
 			stack.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
 			stack.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
-			stack.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 8),
-			stack.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -24)
+			stack.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 26),
+			stack.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -60)
 		])
 		// 标题区挂在正文滚动区里、位于正文上方（负坐标），跟正文一起滚动
 		contentView.scrollView.addSubview(headerView)
+	}
+
+	/// 日期 / 署名：11pt 半粗、浅灰、行高 15。
+	private static func metadata(_ text: String, kern: CGFloat) -> NSAttributedString {
+		let paragraph = NSMutableParagraphStyle()
+		paragraph.minimumLineHeight = 15
+		paragraph.maximumLineHeight = 15
+		return NSAttributedString(string: text, attributes: [
+			.font: UIFont.systemFont(ofSize: 11, weight: .semibold),
+			.foregroundColor: BabelPalette.tertiaryInk,
+			.kern: kern,
+			.paragraphStyle: paragraph
+		])
+	}
+
+	/// 大标题：34pt 粗体、主墨色、行高 38、字距 -1。
+	private static func titleText(_ text: String) -> NSAttributedString {
+		let paragraph = NSMutableParagraphStyle()
+		paragraph.minimumLineHeight = 38
+		paragraph.maximumLineHeight = 38
+		return NSAttributedString(string: text, attributes: [
+			.font: UIFont.systemFont(ofSize: 34, weight: .bold),
+			.foregroundColor: BabelPalette.ink,
+			.kern: -1,
+			.paragraphStyle: paragraph
+		])
 	}
 
 	/// 宽度变化时（首次布局、旋转）重新计算标题区高度，并把正文往下让出同样的高度。
@@ -668,13 +716,15 @@ final class Babel2ArticleViewController: UIViewController {
 		animator.startAnimation()
 	}
 
-	/// 按 barP 画出顶栏按钮与底栏：0 = 显示，1 = 隐藏。
-	/// 顶栏只让按钮淡出并上移 8pt，底色保留；紧凑栏不动；底栏整条向下滑出并淡出。
+	/// 按 barP 画出顶栏与底栏：0 = 显示，1 = 隐藏（Figma 04D3，ADR-018 推翻原方案 A）。
+	/// 顶部按钮行整行向上收进状态栏底色后面（按钮同时淡出），紧凑栏随之上移 44pt
+	/// （= 顶栏 58 − 重叠 14）贴到状态栏正下方；底栏整条向下滑出并淡出。
 	private func applyBars(_ barP: CGFloat) {
 		let hidden = barP >= 0.5
+		topBar?.transform = CGAffineTransform(translationX: 0, y: -58 * barP)
+		compactHeader.transform = CGAffineTransform(translationX: 0, y: -44 * barP)
 		for button in topButtons {
 			button.alpha = 1 - barP
-			button.transform = CGAffineTransform(translationX: 0, y: -8 * barP)
 			button.isUserInteractionEnabled = !hidden
 		}
 		toolbar.alpha = 1 - barP

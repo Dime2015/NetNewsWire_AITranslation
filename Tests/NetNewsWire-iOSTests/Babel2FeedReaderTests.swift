@@ -146,10 +146,9 @@ final class Babel2FeedReaderTests: XCTestCase {
 		feedViewController.tableView(feedTableView, didSelectRowAt: IndexPath(row: 0, section: 0))
 		let articleViewController = try XCTUnwrap(navigationController.topViewController as? Babel2ArticleViewController)
 		articleViewController.loadViewIfNeeded()
-		let openButton = try XCTUnwrap(descendant(of: articleViewController.view, matching: UIButton.self) { button in
-			button.accessibilityIdentifier == "babel2.article.open-original"
-		})
-		openButton.sendActions(for: .touchUpInside)
+		// 「打开原文」在顶栏正中的「•••」更多菜单里（ADR-018）
+		XCTAssertTrue(articleViewController.moreMenuHasOpenOriginal)
+		articleViewController.openOriginalFromMenuForTesting()
 		XCTAssertEqual(openedURL, article.url)
 
 		let bodyOnlyArticle = ArticleSnapshot(
@@ -161,9 +160,9 @@ final class Babel2FeedReaderTests: XCTestCase {
 		)
 		let bodyOnlyViewController = Babel2ArticleViewController(article: bodyOnlyArticle, environment: environment)
 		bodyOnlyViewController.loadViewIfNeeded()
-		let buttons = bodyOnlyViewController.view.allSubviews.compactMap { $0 as? UIButton }
-		let bodyOnlyOpenButton = try XCTUnwrap(buttons.first { $0.accessibilityIdentifier == "babel2.article.open-original" })
-		XCTAssertTrue(bodyOnlyOpenButton.isHidden)
+		XCTAssertFalse(bodyOnlyViewController.moreMenuHasOpenOriginal)
+		let moreButton = try XCTUnwrap(descendant(of: bodyOnlyViewController.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.article.more" })
+		XCTAssertFalse(moreButton.isEnabled, "empty more menu is disabled")
 	}
 
 	// MARK: - 文章列表随状态变化原地刷新（2026-09-24）
@@ -287,7 +286,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let window1 = hostInWindow(withoutArticle)
 		await waitForReaderRender(withoutArticle)
 		try await Task.sleep(for: .milliseconds(200))
-		XCTAssertFalse(withoutArticle.toolbarView.translateButton.isEnabled)
+		XCTAssertFalse(withoutArticle.toolbarView.translationToggle.isEnabled)
 		XCTAssertFalse(withoutArticle.isTranslationReadyForTesting)
 		window1.isHidden = true
 
@@ -297,36 +296,65 @@ final class Babel2FeedReaderTests: XCTestCase {
 		defer { window2.isHidden = true }
 		await waitForReaderRender(withArticle)
 		await waitUntil { withArticle.isTranslationReadyForTesting }
-		XCTAssertTrue(withArticle.toolbarView.translateButton.isEnabled)
-		XCTAssertEqual(withArticle.toolbarView.translateButton.accessibilityValue, "original")
+		XCTAssertTrue(withArticle.toolbarView.translationToggle.isEnabled)
+		XCTAssertEqual(withArticle.toolbarView.translationToggle.accessibilityValue, "original")
 	}
 
-	func testTranslateButtonStatesAreNeutralAndWorkingStaysTappable() {
+	func testTranslationToggleMatchesFigmaTextStates() {
 		let toolbar = Babel2ReaderToolbarView()
 		toolbar.setTranslationAvailable(true)
-		let expected: [(TranslationButtonState, String, String)] = [
-			(.original, "original", Babel2Localization.text(.translate)),
-			(.cachedAvailable, "cached", Babel2Localization.text(.translate)),
-			(.partialCacheAvailable, "partial", Babel2Localization.text(.translate)),
-			(.working, "working", Babel2Localization.text(.cancelTranslation)),
-			(.translated, "translated", Babel2Localization.text(.showOriginal)),
-			(.failed, "failed", Babel2Localization.text(.translate))
+		// Figma Translation Toggle：原文「原 翻译」、翻译中「译 生成中」、已译「译 原文」；失败「原 重试」
+		let expected: [(TranslationButtonState, String, String, String, String)] = [
+			(.original, "原", "翻译", "original", Babel2Localization.text(.translate)),
+			(.cachedAvailable, "原", "翻译", "cached", Babel2Localization.text(.translate)),
+			(.partialCacheAvailable, "原", "翻译", "partial", Babel2Localization.text(.translate)),
+			(.working, "译", "生成中", "working", Babel2Localization.text(.cancelTranslation)),
+			(.translated, "译", "原文", "translated", Babel2Localization.text(.showOriginal)),
+			(.failed, "原", "重试", "failed", Babel2Localization.text(.translate))
 		]
-		for (state, value, label) in expected {
+		let toggle = toolbar.translationToggle
+		for (state, main, caption, value, label) in expected {
 			toolbar.setTranslationState(state)
-			XCTAssertEqual(toolbar.translateButton.accessibilityValue, value)
-			XCTAssertEqual(toolbar.translateButton.accessibilityLabel, label)
-			XCTAssertTrue(toolbar.translateButton.isEnabled, "\(value) stays tappable (working = cancel)")
+			XCTAssertEqual(toggle.displayedText.main, main)
+			XCTAssertEqual(toggle.displayedText.caption, caption)
+			XCTAssertEqual(toggle.accessibilityValue, value)
+			XCTAssertEqual(toggle.accessibilityLabel, label)
+			XCTAssertTrue(toggle.isEnabled, "\(value) stays tappable (working = cancel)")
 		}
-		// 「已翻译」与「有完整缓存」角标必须一眼可分：单独的勾 vs 实心点
-		toolbar.setTranslationState(.translated)
-		XCTAssertEqual(toolbar.translateBadgeSymbol, "checkmark")
-		toolbar.setTranslationState(.cachedAvailable)
-		XCTAssertEqual(toolbar.translateBadgeSymbol, "circle.fill")
-		toolbar.setTranslationState(.partialCacheAvailable)
-		XCTAssertEqual(toolbar.translateBadgeSymbol, "circle")
-		toolbar.setTranslationState(.original)
-		XCTAssertNil(toolbar.translateBadgeSymbol)
+	}
+
+	func testReaderChromeUsesFigmaGeometryAndIcons() async throws {
+		let viewController = makeReader(body: "<p>Body</p>", author: "John Gruber")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		// 顶栏：✕ / ••• / 分享，中心 x = 32 / 201 / 370，中心 y 距顶栏顶 22
+		let buttons = viewController.topBarButtons
+		XCTAssertEqual(buttons.map(\.accessibilityIdentifier), ["babel2.article.back", "babel2.article.more", "babel2.article.share"])
+		let centers = buttons.map { $0.superview!.convert($0.center, to: nil) }
+		let barTop = try XCTUnwrap(buttons.first?.superview).convert(CGPoint.zero, to: nil).y
+		for (center, expectedX) in zip(centers, [32, 201, 370] as [CGFloat]) {
+			XCTAssertEqual(center.x, expectedX, accuracy: 0.5)
+			XCTAssertEqual(center.y - barTop, 22, accuracy: 0.5)
+		}
+		// 底栏：设计稿图标资源、翻译开关 58×44
+		let toolbar = viewController.toolbarView
+		XCTAssertEqual(toolbar.starIconName, "Babel2ReaderStar")
+		XCTAssertNotNil(toolbar.readButton.image(for: .normal))
+		XCTAssertEqual(toolbar.translationToggle.bounds.size, CGSize(width: 58, height: 44))
+		// 署名两行：作者 / 订阅源（大写）
+		let byline = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.byline" })
+		XCTAssertEqual(byline.text, "JOHN GRUBER\nFEED")
+		let subtitle = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.compact-subtitle" })
+		XCTAssertEqual(subtitle.text, "FEED · JOHN GRUBER")
+		// 正文为次要灰（设计稿 #787878），不是主墨色
+		await waitForReaderRender(viewController)
+		let color = await viewController.readerContentView.evaluateForTesting(
+			"return getComputedStyle(document.querySelector('#babel2-article p')).color;"
+		) as? String
+		// 与当前外观（浅色 #787878 / 深色 #6C6C6C）下的次要灰一致
+		var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+		BabelPalette.mutedInk.resolvedColor(with: viewController.view.traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
+		XCTAssertEqual(color, "rgb(\(Int((r * 255).rounded())), \(Int((g * 255).rounded())), \(Int((b * 255).rounded())))")
 	}
 
 	// MARK: - 阅读页（Slice 4 第 1 步）
@@ -624,7 +652,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
 		XCTAssertEqual(toolbar.placeholderButtons.count, 2)
 		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
-		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.translateButton]).map { $0.center.x }
+		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.translationToggle]).map { $0.center.x }
 		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
 			XCTAssertEqual(actual, expected, accuracy: 0.5)
 		}
@@ -683,7 +711,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(viewController.barVisibilityProgress, 1)
 		XCTAssertTrue(viewController.topBarButtons.allSatisfy { $0.alpha == 0 })
 		XCTAssertEqual(viewController.toolbarView.transform.ty, 72, accuracy: 0.5)
-		// 紧凑栏始终固定在原位
+		// Figma 04D3：顶部按钮行收起，紧凑栏上移 44pt 贴到状态栏下（ADR-018）
+		XCTAssertEqual(viewController.compactHeaderView.transform.ty, -44, accuracy: 0.5)
 		XCTAssertEqual(viewController.compactHeaderView.pCollapse, 1)
 		// 往上滑：先 8pt 不动，越过 12pt 后显示回来
 		scroll(by: -8)
@@ -1361,7 +1390,8 @@ private func makeReader(
 	actionHandler: any ActionHandling = NoopActionHandler(),
 	isRead: Bool = false,
 	isStarred: Bool = false,
-	hostArticle: AnyObject? = nil
+	hostArticle: AnyObject? = nil,
+	author: String? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -1371,7 +1401,8 @@ private func makeReader(
 		url: URL(string: "https://example.com/post"),
 		feedID: feedID,
 		isRead: isRead,
-		isStarred: isStarred
+		isStarred: isStarred,
+		author: author
 	)
 	return Babel2ArticleViewController(
 		article: article,

@@ -146,8 +146,11 @@ final class Babel2FeedReaderUITests: XCTestCase {
 					return
 				}
 				attachState(app, name: "reader")
-				let originalButton = app.buttons["babel2.article.open-original"]
-				guard waitForExistence(originalButton, timeout: 1), originalButton.isEnabled else {
+				// 「打开原文」在顶栏「•••」更多菜单里（ADR-018）：先点更多，再点菜单项
+				let moreButton = app.buttons["babel2.article.more"]
+				if waitForExistence(moreButton, timeout: 1), moreButton.isEnabled { moreButton.tap() }
+				let originalButton = app.buttons.matching(NSPredicate(format: "label IN %@", ["Open Original", "打开原文"])).firstMatch
+				guard waitForExistence(originalButton, timeout: 3), originalButton.isEnabled else {
 					guard tapAndWait(app.buttons["babel2.article.back"], app: app, timeout: 10), waitForExistence(articlesTable, timeout: 10) else {
 						fail("HANDOFF_FAILURE", "could not continue article URL search")
 						return

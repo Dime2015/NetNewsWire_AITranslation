@@ -24,6 +24,8 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 	public let imageURL: URL?
 	public let isRead: Bool
 	public let isStarred: Bool
+	/// 作者名（阅读页署名第一行；没有则为 nil）。2026-09-25 为对齐 Figma 04A 加入。
+	public let author: String?
 
 	public init(
 		id: ID,
@@ -36,7 +38,8 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 		publishedAt: Date? = nil,
 		imageURL: URL? = nil,
 		isRead: Bool = false,
-		isStarred: Bool = false
+		isStarred: Bool = false,
+		author: String? = nil
 	) {
 		self.id = id
 		self.title = title
@@ -49,6 +52,7 @@ public struct ArticleSnapshot: Identifiable, Hashable, Sendable {
 		self.imageURL = imageURL
 		self.isRead = isRead
 		self.isStarred = isStarred
+		self.author = author
 	}
 }
 

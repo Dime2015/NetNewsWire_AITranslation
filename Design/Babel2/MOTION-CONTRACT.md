@@ -428,8 +428,13 @@ or reading-mode state.
 
 ## 10. Reader toolbar hide/show
 
-The pinned compact identity is independent from top/bottom control visibility. Hiding
-bars must never move or animate the pinned identity.
+The pinned compact identity keeps its content, scale, and progress independent from
+top/bottom control visibility. Amended 2026-09-25 (ADR-018, user-approved, matches Figma
+`04D3` 143:444): when the top control row hides, the compact identity translates up by the
+hidden row's visible height (58 pt row − 14 pt overlap = 44 pt) to sit directly below the
+status bar, driven by the same `barP`; it never fades, rescales, or changes content while
+bars change. The earlier sentence “Hiding bars must never move or animate the pinned
+identity” contradicted the Figma frames and is superseded.
 
 ### State machine
 

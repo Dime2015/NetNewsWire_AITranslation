@@ -255,8 +255,18 @@ final class Babel2LiveDataProvider: DataProviding {
 			publishedAt: article.datePublished ?? article.dateModified ?? article.status.dateArrived,
 			imageURL: article.imageURL,
 			isRead: article.status.read,
-			isStarred: article.status.starred
+			isStarred: article.status.starred,
+			author: Self.authorName(article)
 		)
+	}
+
+	/// 取第一个有名字的作者（按名字排序，保证每次结果一致）。
+	private static func authorName(_ article: Article) -> String? {
+		article.authors?
+			.compactMap { $0.name?.trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { !$0.isEmpty }
+			.sorted()
+			.first
 	}
 
 	private func folderID(for folder: Folder) -> FolderSnapshot.ID {

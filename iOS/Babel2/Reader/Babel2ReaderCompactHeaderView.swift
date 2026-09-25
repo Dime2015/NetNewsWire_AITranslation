@@ -1,6 +1,8 @@
 import UIKit
 
-/// 阅读页的「紧凑标题栏」：顶栏下方 86pt，左边是进度圆环 + 订阅源图标，右边是订阅源名和一行标题。
+/// 阅读页的「紧凑标题栏」，按 Figma「Reader Compact Header」(143:73)：86pt 高，
+/// 左 20pt 起 48pt 进度圆环（内含 42pt 圆形订阅源图标），间隔 12pt 后是两行文字：
+/// 「订阅源 · 作者」13pt 常规次要灰 + 一行标题 16pt 半粗主墨色，行间 2pt；底部 0.5pt 分隔线。
 ///
 /// 它不自己做动画，只接收两个进度值并立刻画出来：
 /// - `pCollapse`（0→1）：底色、图标、圆环、文字一起从透明变清楚，文字从下方 12pt 滑到位
@@ -19,11 +21,11 @@ final class Babel2ReaderCompactHeaderView: UIView {
 	private(set) var pCollapse: CGFloat = 0
 	private(set) var pReading: CGFloat = 0
 
-	init(feedTitle: String?, articleTitle: String, iconData: Data?) {
+	init(feedTitle: String?, author: String? = nil, articleTitle: String, iconData: Data?) {
 		super.init(frame: .zero)
 		accessibilityIdentifier = "babel2.article.compact-header"
 		isAccessibilityElement = true
-		accessibilityLabel = [feedTitle, articleTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+		accessibilityLabel = [feedTitle, author, articleTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
 		isUserInteractionEnabled = false
 
 		backgroundView.backgroundColor = BabelPalette.background
@@ -37,7 +39,13 @@ final class Babel2ReaderCompactHeaderView: UIView {
 		ringView.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(ringView)
 
-		sourceLabel.text = feedTitle
+		// 设计稿在这一行末尾有「↗」（打开来源）；在内置浏览器那一步接通点击前先不显示，以免误导
+		let subtitle = [feedTitle, author]
+			.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { !$0.isEmpty }
+			.joined(separator: " · ")
+			.uppercased()
+		sourceLabel.text = subtitle
 		sourceLabel.font = .systemFont(ofSize: 13, weight: .regular)
 		sourceLabel.textColor = BabelPalette.mutedInk
 		sourceLabel.lineBreakMode = .byTruncatingTail
@@ -48,12 +56,13 @@ final class Babel2ReaderCompactHeaderView: UIView {
 		titleLabel.accessibilityIdentifier = "babel2.article.compact-title"
 		let textStack = UIStackView(arrangedSubviews: [sourceLabel, titleLabel])
 		textStack.axis = .vertical
-		textStack.spacing = 5
+		textStack.spacing = 2
 		textStack.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(textStack)
-		sourceLabel.isHidden = (feedTitle ?? "").isEmpty
+		sourceLabel.isHidden = subtitle.isEmpty
+		sourceLabel.accessibilityIdentifier = "babel2.article.compact-subtitle"
 
-		// 顶部 14pt 与顶栏重叠（合同：两行的空白内边距重叠 14pt），内容在下方 72pt 里居中
+		// 内容在 85.5pt 内容区里垂直居中（上下各 15pt 内边距）；栏显示时顶部 14pt 与顶栏重叠
 		NSLayoutConstraint.activate([
 			backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
 			backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -62,9 +71,9 @@ final class Babel2ReaderCompactHeaderView: UIView {
 			separator.leadingAnchor.constraint(equalTo: leadingAnchor),
 			separator.trailingAnchor.constraint(equalTo: trailingAnchor),
 			separator.bottomAnchor.constraint(equalTo: bottomAnchor),
-			separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+			separator.heightAnchor.constraint(equalToConstant: 0.5),
 			ringView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-			ringView.centerYAnchor.constraint(equalTo: topAnchor, constant: 14 + 36),
+			ringView.centerYAnchor.constraint(equalTo: topAnchor, constant: 42.75),
 			ringView.widthAnchor.constraint(equalToConstant: 48),
 			ringView.heightAnchor.constraint(equalToConstant: 48),
 			textStack.leadingAnchor.constraint(equalTo: ringView.trailingAnchor, constant: 12),
@@ -129,18 +138,20 @@ final class Babel2ReaderProgressRingView: UIView {
 			shape.fillColor = UIColor.clear.cgColor
 			layer.addSublayer(shape)
 		}
+		// Figma Progress Ring：底圈 2pt、进度弧 2.5pt 圆头，半径 22
 		trackLayer.lineWidth = 2
-		progressLayer.lineWidth = 3
+		progressLayer.lineWidth = 2.5
 		progressLayer.lineCap = .round
 		progressLayer.strokeEnd = 0
 
 		imageView.contentMode = .scaleAspectFill
 		imageView.clipsToBounds = true
 		imageView.layer.cornerRadius = 21
-		fallbackLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+		// 无图标时：浅灰占位底（设计稿 placeholder = 分隔线同色）+ 24pt 半粗首字母
+		fallbackLabel.font = .systemFont(ofSize: 24, weight: .semibold)
 		fallbackLabel.textAlignment = .center
 		fallbackLabel.textColor = BabelPalette.mutedInk
-		fallbackLabel.backgroundColor = BabelPalette.raisedBackground
+		fallbackLabel.backgroundColor = BabelPalette.hairline
 		fallbackLabel.clipsToBounds = true
 		fallbackLabel.layer.cornerRadius = 21
 		for view in [imageView, fallbackLabel] {
@@ -175,7 +186,7 @@ final class Babel2ReaderProgressRingView: UIView {
 		// 从 12 点方向（-90°）开始顺时针一整圈
 		let path = UIBezierPath(
 			arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
-			radius: 22.5,
+			radius: 22,
 			startAngle: -.pi / 2,
 			endAngle: .pi * 1.5,
 			clockwise: true
