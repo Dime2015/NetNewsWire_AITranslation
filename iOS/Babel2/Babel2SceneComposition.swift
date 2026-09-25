@@ -8,34 +8,37 @@ enum Babel2SceneComposition {
 		environment: AppEnvironment? = nil,
 		restoration: Babel2NavigationRestoration? = nil,
 		localizationBundle: Bundle = .main,
-		openURL: @escaping (URL) -> Void = { UIApplication.shared.open($0) }
+		openURL: @escaping (URL) -> Void = { UIApplication.shared.open($0) },
+		settingsService: Babel2SettingsService? = nil
 	) -> Babel2NavigationController {
 		// A production scene always gets the live adapter graph. Preview/test
 		// callers can still inject deterministic collaborators explicitly.
 		let resolvedEnvironment = environment ?? Babel2AppAssembly.makeLiveEnvironment()
 		let root = Babel2RootViewController(environment: resolvedEnvironment, localizationBundle: localizationBundle)
 		let navigationController = Babel2NavigationController(rootViewController: root)
+		// 设置页（Slice 6）：接到现有存储的正式实现；测试可注入假的实现
+		let resolvedSettings = settingsService ?? Babel2LiveSettingsService()
 		navigationController.routeFactory = { route in
-			makePlaceholder(route: route, environment: resolvedEnvironment, localizationBundle: localizationBundle)
+			makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings)
 		}
+		// 配色模式应用到整个窗口；设置里改了立即重新应用
+		navigationController.interfaceStyleProvider = { resolvedSettings.appearance.interfaceStyle }
+		let appearanceObserver = NotificationCenter.default.addObserver(forName: .babel2AppearanceDidChange, object: nil, queue: .main) { [weak navigationController] _ in
+			MainActor.assumeIsolated { navigationController?.applyInterfaceStyle() }
+		}
+		navigationController.onTearDown = { NotificationCenter.default.removeObserver(appearanceObserver) }
 
-		// Keep the root action seam explicit until Settings and subscription
-		// discovery routes are implemented; no legacy controller is involved.
 		root.onSettingsRequested = { [weak navigationController] in
 			guard let navigationController else { return }
-			guard let settings = Babel2SceneComposition.makePlaceholder(
-				route: .settings,
-				environment: resolvedEnvironment,
-				localizationBundle: localizationBundle
-			) else { return }
-			navigationController.pushBabel2(settings, animated: true)
+			navigationController.pushBabel2(Babel2SettingsHomeViewController(service: resolvedSettings), animated: true)
 		}
 		root.onAddRequested = { [weak navigationController] in
 			guard let navigationController else { return }
-			guard let addSubscription = Babel2SceneComposition.makePlaceholder(
-				route: .addSubscription,
+			guard let addSubscription = Babel2SceneComposition.makeRoute(
+				.addSubscription,
 				environment: resolvedEnvironment,
-				localizationBundle: localizationBundle
+				localizationBundle: localizationBundle,
+				settings: resolvedSettings
 			) else { return }
 			navigationController.pushBabel2(addSubscription, animated: true)
 		}
@@ -53,7 +56,8 @@ enum Babel2SceneComposition {
 				heroImage: Babel2FeedHeroImageSource(
 					cached: { Babel2LiveFeedHeroImage.cached(feed.id) },
 					fetch: { onImage in Babel2LiveFeedHeroImage.fetch(feed.id, onImage: onImage) }
-				)
+				),
+				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead }
 			)
 			feedViewController.onScopeChanged = { [weak root] scope in
 				root?.applyScope(scope)
@@ -70,7 +74,8 @@ enum Babel2SceneComposition {
 						isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },
 						setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
 					),
-					makeBrowser: { url in Babel2BrowserViewController(url: url, openExternally: openURL) }
+					// 设置「打开链接」选系统浏览器时不建内置浏览器：链接与原文交给系统打开（Slice 6）
+					makeBrowser: resolvedSettings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil
 				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)
@@ -98,18 +103,26 @@ enum Babel2SceneComposition {
 
 		if let restoration {
 			navigationController.applyRestoration(restoration) { route in
-				makePlaceholder(route: route, environment: resolvedEnvironment, localizationBundle: localizationBundle)
+				makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings)
 			}
 		}
 		return navigationController
 	}
 
-	private static func makePlaceholder(
-		route: Babel2RouteState,
+	/// 路由恢复与路由工厂：设置 → 设置首页；添加订阅仍是占位页。
+	private static func makeRoute(
+		_ route: Babel2RouteState,
 		environment: AppEnvironment,
-		localizationBundle: Bundle
+		localizationBundle: Bundle,
+		settings: Babel2SettingsService
 	) -> UIViewController? {
-		guard route == .settings || route == .addSubscription else { return nil }
-		return Babel2PlaceholderViewController(route: route, environment: environment, localizationBundle: localizationBundle)
+		switch route {
+		case .settings:
+			return Babel2SettingsHomeViewController(service: settings)
+		case .addSubscription:
+			return Babel2PlaceholderViewController(route: route, environment: environment, localizationBundle: localizationBundle)
+		default:
+			return nil
+		}
 	}
 }

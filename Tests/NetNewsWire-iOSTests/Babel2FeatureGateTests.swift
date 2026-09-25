@@ -750,6 +750,32 @@ final class Babel2FeatureGateTests: XCTestCase {
 		XCTAssertEqual(popMotion.motionState, .idle)
 	}
 
+	/// 2026-09-25 用户报告：设置页右滑返回时当前页整页变暗、屏幕闪一下。
+	/// 修正后：当前页不加遮罩，只有左边缘投影（合同 0.18 × (1 − p)）；暗色盖在上一页上并随滑开变淡。
+	func testPopDimsPreviousPageNotCurrentPage() throws {
+		let navigation = Babel2SceneComposition.makeRoot()
+		navigation.loadViewIfNeeded()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let previous = UIViewController()
+		let current = UIViewController()
+		let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+		previous.view.frame = container.bounds
+		current.view.frame = container.bounds
+		container.addSubview(current.view)
+		let context = FakeTransitionContext(container: container, from: current, to: previous)
+
+		popMotion.startInteractiveTransition(context)
+		func blackOverlay(in view: UIView) -> UIView? {
+			view.subviews.first { $0.backgroundColor == .black }
+		}
+		XCTAssertNil(blackOverlay(in: current.view), "the page being popped is not dimmed")
+		let dim = try XCTUnwrap(blackOverlay(in: previous.view), "the previous page carries the dim")
+		XCTAssertEqual(dim.alpha, 0.18, accuracy: 0.001)
+		XCTAssertEqual(current.view.layer.shadowOpacity, 0.18, accuracy: 0.001, "left-edge shadow per contract")
+		XCTAssertNotNil(current.view.layer.shadowPath)
+		XCTAssertTrue(previous.view.isDescendant(of: container), "previous page inserted under the current one")
+	}
+
 	func testBeginPopStartsTrackingWithTwoRoutesOnStack() throws {
 		let navigation = makeNavigationWithTwoRoutes()
 		let popMotion = try XCTUnwrap(navigation.popMotion)
@@ -947,3 +973,34 @@ private func projectSource(named relativePath: String) throws -> String {
 		.deletingLastPathComponent()
 	return try String(contentsOf: projectRoot.appendingPathComponent(relativePath), encoding: .utf8)
 }
+
+/// 返回转场的假上下文：无头测试里 UIKit 不会调用转场代理（LESSONS 27），直接把它交给动画对象验证布置。
+private final class FakeTransitionContext: NSObject, UIViewControllerContextTransitioning {
+	let containerView: UIView
+	private let from: UIViewController
+	private let to: UIViewController
+	init(container: UIView, from: UIViewController, to: UIViewController) {
+		self.containerView = container
+		self.from = from
+		self.to = to
+	}
+	var isAnimated: Bool { true }
+	var isInteractive: Bool { true }
+	var transitionWasCancelled: Bool { false }
+	var presentationStyle: UIModalPresentationStyle { .none }
+	func updateInteractiveTransition(_ percentComplete: CGFloat) {}
+	func finishInteractiveTransition() {}
+	func cancelInteractiveTransition() {}
+	func pauseInteractiveTransition() {}
+	func completeTransition(_ didComplete: Bool) {}
+	func viewController(forKey key: UITransitionContextViewControllerKey) -> UIViewController? {
+		key == .from ? from : to
+	}
+	func view(forKey key: UITransitionContextViewKey) -> UIView? {
+		key == .from ? from.view : to.view
+	}
+	var targetTransform: CGAffineTransform { .identity }
+	func initialFrame(for vc: UIViewController) -> CGRect { containerView.bounds }
+	func finalFrame(for vc: UIViewController) -> CGRect { containerView.bounds }
+}
+

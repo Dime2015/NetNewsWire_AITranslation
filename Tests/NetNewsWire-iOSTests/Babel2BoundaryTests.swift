@@ -165,7 +165,10 @@ import Babel2UI
 				// The single designated bridge into the real account singleton
 				// (ADR-001: reuse account/sync/article services, don't reimplement
 				// them). No other Babel2 file may reference this singleton.
-				traceOnlyTokens = ["AccountManager.shared"]
+				// Slice 6 (2026-09-25, user-approved): the same file is also the
+				// single designated bridge into the legacy AppDefaults store for
+				// the Babel 2.0 Settings screens. No other Babel2 file may use it.
+				traceOnlyTokens = ["AccountManager.shared", "AppDefaults.shared"]
 			default:
 				traceOnlyTokens = []
 			}

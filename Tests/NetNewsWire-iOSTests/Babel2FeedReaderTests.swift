@@ -214,6 +214,219 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(hero.hasArtForTesting)
 	}
 
+	// MARK: - 设置页（Slice 6，Figma 110:300 等）
+
+	/// 首页齿轮进入设置首页（路由恢复为 home → settings）；8 个类别都能进入对应页面。
+	func testSettingsHomeFromGearAndEveryCategoryOpens() throws {
+		let service = FakeSettingsService()
+		let navigation = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: FakeDataProvider()), settingsService: service)
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		let root = try XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
+		root.loadViewIfNeeded()
+		let gear = try XCTUnwrap(descendant(of: root.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.settings" })
+		gear.sendActions(for: .touchUpInside)
+		XCTAssertTrue(navigation.topViewController is Babel2SettingsHomeViewController)
+		XCTAssertEqual(navigation.restorationValue().routes, [.home, .settings])
+
+		// 测试窗口不挂屏幕场景，带动画的推入永远不结束、之后的推入会被忽略（见 STATUS 内置浏览器一节）：
+		// 每个类别用一个新的导航栈验证。
+		let expected: [(String, UIViewController.Type)] = [
+			("babel2.settings.accounts", Babel2SettingsAccountsViewController.self),
+			("babel2.settings.subscriptions", Babel2SettingsSubscriptionsViewController.self),
+			("babel2.settings.timeline", Babel2SettingsTimelineViewController.self),
+			("babel2.settings.reader", Babel2SettingsReaderViewController.self),
+			("babel2.settings.translation", Babel2SettingsTranslationViewController.self),
+			("babel2.settings.appearance", Babel2SettingsAppearanceViewController.self),
+			("babel2.settings.notifications", Babel2SettingsNotificationsViewController.self),
+			("babel2.settings.support", Babel2SettingsSupportViewController.self)
+		]
+		for (identifier, type) in expected {
+			let home = Babel2SettingsHomeViewController(service: service)
+			let stack = Babel2NavigationController(rootViewController: home)
+			let categoryWindow = hostInWindow(stack)
+			defer { categoryWindow.isHidden = true }
+			let row = try XCTUnwrap(descendant(of: home.view, matching: Babel2SettingsRowControl.self) { $0.accessibilityIdentifier == identifier }, identifier)
+			row.sendActions(for: .touchUpInside)
+			let top = try XCTUnwrap(stack.topViewController)
+			XCTAssertTrue(Swift.type(of: top) == type, "\(identifier) opens \(type), got \(Swift.type(of: top))")
+			top.loadViewIfNeeded()
+		}
+	}
+
+	/// 弹出单选菜单：右边对齐内容区、在触发行下方；选完立即生效、行上的值更新、菜单关闭。开关立即生效。
+	func testSettingsSelectPopoverAndToggleApplyImmediately() throws {
+		let service = FakeSettingsService()
+		let page = Babel2SettingsTimelineViewController(service: service)
+		let window = hostInWindow(page)
+		defer { window.isHidden = true }
+		page.view.layoutIfNeeded()
+		let sort = try XCTUnwrap(descendant(of: page.view, matching: Babel2SettingsSelectRow.self) { $0.accessibilityIdentifier == "babel2.settings.timeline.sort" })
+		XCTAssertEqual(sort.valueLabel.text, Babel2SettingsText.t("Newest First"))
+		sort.sendActions(for: .touchUpInside)
+		let popover = try XCTUnwrap(page.presentedPopoverForTesting)
+		XCTAssertEqual(popover.optionControlsForTesting.count, 2)
+		XCTAssertTrue(popover.optionControlsForTesting[0].accessibilityTraits.contains(.selected))
+		XCTAssertEqual(popover.cardFrameForTesting.maxX, page.view.bounds.width - 20, accuracy: 0.5, "right edge aligns with content")
+		XCTAssertEqual(popover.cardFrameForTesting.width, 272)
+		XCTAssertGreaterThan(popover.cardFrameForTesting.minY, sort.convert(sort.bounds, to: page.view).maxY)
+		popover.selectForTesting(1)
+		XCTAssertFalse(service.sortNewestFirst, "applies immediately")
+		XCTAssertEqual(sort.valueLabel.text, Babel2SettingsText.t("Oldest First"))
+		XCTAssertNil(page.presentedPopoverForTesting, "popover dismissed")
+
+		let confirm = try XCTUnwrap(descendant(of: page.view, matching: Babel2SettingsSwitch.self))
+		XCTAssertTrue(confirm.isOn)
+		confirm.toggleForTesting()
+		XCTAssertFalse(service.confirmMarkAllRead)
+		XCTAssertGreaterThanOrEqual(confirm.bounds.width, 44, "switch hit target is at least 44pt")
+	}
+
+	/// 编辑页：取消丢弃改动，保存才写入。
+	func testSettingsEditorCancelDiscardsAndSaveWrites() throws {
+		let service = FakeSettingsService()
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+
+		let cancelled = Babel2SettingsDiscoveryKeysViewController(service: service)
+		navigation.pushBabel2(cancelled, animated: false)
+		cancelled.loadViewIfNeeded()
+		cancelled.fieldsForTesting[2].textField.text = "new-key"
+		cancelled.leadingTapped()
+		XCTAssertNil(service.youTubeAPIKey, "cancel keeps the old value")
+
+		let saved = Babel2SettingsDiscoveryKeysViewController(service: service)
+		navigation.pushBabel2(saved, animated: false)
+		saved.loadViewIfNeeded()
+		saved.fieldsForTesting[0].textField.text = "  id  "
+		saved.fieldsForTesting[2].textField.text = "new-key"
+		saved.saveTapped()
+		XCTAssertEqual(service.redditClientID, "id", "trimmed")
+		XCTAssertEqual(service.youTubeAPIKey, "new-key")
+
+		let api = Babel2SettingsTranslationAPIViewController(service: service)
+		navigation.pushBabel2(api, animated: false)
+		api.loadViewIfNeeded()
+		api.keyFieldForTesting.textField.text = "sk-test"
+		api.saveTapped()
+		XCTAssertEqual(service.translationAPIKey, "sk-test")
+	}
+
+	/// 翻译模型：热门前 10 按热度；每个服务商恰好 3 个（不足 3 个的不列）；选择在保存后才生效。
+	func testTranslationModelRankingAndEditor() throws {
+		var models = [Babel2TranslationModel]()
+		for vendor in 0..<12 {
+			for index in 0..<(vendor == 11 ? 2 : 4) {
+				models.append(Babel2TranslationModel(id: "v\(vendor)/m\(index)", name: "V\(vendor) M\(index)", vendor: "v\(vendor)",
+					popularity: Double(100 - vendor * 5 - index), created: 0))
+			}
+		}
+		let top = Babel2TranslationModelRanking.top(models)
+		XCTAssertEqual(top.count, 10)
+		XCTAssertEqual(top.first?.id, "v0/m0")
+		XCTAssertEqual(top.map(\.popularity), top.map(\.popularity).sorted(by: >))
+		let groups = Babel2TranslationModelRanking.vendorGroups(models)
+		XCTAssertEqual(groups.count, 10, "at most 10 vendors")
+		XCTAssertTrue(groups.allSatisfy { $0.models.count == 3 }, "exactly 3 per vendor")
+		XCTAssertFalse(groups.contains { $0.vendor == "v11" }, "vendors with fewer than 3 models are left out")
+		XCTAssertEqual(groups.first?.vendor, "v0")
+
+		let service = FakeSettingsService()
+		service.models = models
+		service.translationModelID = "v0/m0"
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		let editor = Babel2SettingsTranslationModelViewController(service: service)
+		navigation.pushBabel2(editor, animated: false)
+		editor.loadViewIfNeeded()
+		XCTAssertNotNil(descendant(of: editor.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.settings.translation-model.refresh" }, "refresh button on top")
+		editor.chooseForTesting("v3/m1")
+		XCTAssertEqual(service.translationModelID, "v0/m0", "not applied before save")
+		editor.saveTapped()
+		XCTAssertEqual(service.translationModelID, "v3/m1")
+	}
+
+	/// 账户详情：默认本地账户不显示删除；其它账户可删除。没有 iCloud 账户时不显示 iCloud 存储统计。
+	func testSettingsAccountDeleteAndSupportRows() throws {
+		let service = FakeSettingsService()
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		let local = Babel2SettingsAccountDetailViewController(service: service, account: service.accounts[0])
+		navigation.pushBabel2(local, animated: false)
+		local.loadViewIfNeeded()
+		XCTAssertNil(descendant(of: local.view, matching: Babel2SettingsActionRow.self) { $0.accessibilityIdentifier == "babel2.settings.account-detail.delete" })
+		navigation.popBabel2(animated: false)
+
+		let feedbin = Babel2SettingsAccountDetailViewController(service: service, account: service.accounts[1])
+		navigation.pushBabel2(feedbin, animated: false)
+		feedbin.loadViewIfNeeded()
+		XCTAssertNotNil(descendant(of: feedbin.view, matching: Babel2SettingsActionRow.self) { $0.accessibilityIdentifier == "babel2.settings.account-detail.delete" })
+		feedbin.performDelete()
+		XCTAssertEqual(service.deletedAccountIDs, ["feedbin"])
+
+		let support = Babel2SettingsSupportViewController(service: service)
+		support.loadViewIfNeeded()
+		XCTAssertNil(descendant(of: support.view, matching: Babel2SettingsRowControl.self) { $0.accessibilityIdentifier == "babel2.settings.support.iCloudStats" })
+		XCTAssertNotNil(descendant(of: support.view, matching: Babel2SettingsRowControl.self) { $0.accessibilityIdentifier == "babel2.settings.support.errorLog" })
+	}
+
+	/// 设置「全部标为已读前确认」关掉后，点底栏按钮直接标记，不弹确认。
+	func testMarkAllReadSkipsConfirmationWhenDisabled() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let list = ["a", "b"].map { ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: $0), title: $0, url: nil, feedID: feedID) }
+		let handler = RecordingActionHandler()
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list]), actionHandler: handler),
+			confirmMarkAllRead: { false })
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 2)
+		let readAll = try XCTUnwrap(descendant(of: controller.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feed.read-all" })
+		readAll.sendActions(for: .touchUpInside)
+		for _ in 0..<150 {
+			if await !handler.actions.isEmpty { break }
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		let actions = await handler.actions
+		XCTAssertEqual(actions, [.markFeedRead(feedID)])
+		XCTAssertNil(controller.pendingMarkAllReadCountForTesting, "no confirmation shown")
+	}
+
+	/// 设置页用到的每一条文案都在文案表里、且有中英文。
+	func testSettingsStringsAreBilingual() throws {
+		let projectRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+		let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: projectRoot.appendingPathComponent("iOS/Babel2/Resources/Babel2Localizable.xcstrings"))) as! [String: Any]
+		let strings = catalog["strings"] as! [String: Any]
+		let sources = ["iOS/Babel2/Settings/Babel2SettingsPages.swift", "iOS/Babel2/Settings/Babel2SettingsAccountPages.swift",
+			"iOS/Babel2/Settings/Babel2SettingsEditors.swift", "iOS/Babel2/Settings/Babel2SettingsComponents.swift",
+			"iOS/Babel2Integration/Babel2LiveSettingsService.swift"]
+		// 直接写在 Babel2SettingsText.t("…") / f("…") 里的键
+		let pattern = try NSRegularExpression(pattern: #"Babel2SettingsText\.[tf]\("([^"]+)""#)
+		var keys = Set<String>()
+		for source in sources {
+			let text = try String(contentsOf: projectRoot.appendingPathComponent(source), encoding: .utf8)
+			for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+				keys.insert(String(text[Range(match.range(at: 1), in: text)!]))
+			}
+		}
+		var checked = 0
+		for key in keys {
+			let localizations = (strings[key] as? [String: Any])?["localizations"] as? [String: Any]
+			XCTAssertNotNil(localizations?["en"], "missing en for \(key)")
+			XCTAssertNotNil(localizations?["zh-Hans"], "missing zh for \(key)")
+			checked += 1
+		}
+		XCTAssertGreaterThan(checked, 80)
+		for key in Babel2SettingsHomeViewController.Category.allCases.flatMap({ [$0.titleKey, $0.detailKey] }) + ["Refresh Model List", "Refreshing…", "Set", "Not Set", "Back", "Close", "Cancel", "Save"] {
+			let localizations = (strings[key] as? [String: Any])?["localizations"] as? [String: Any]
+			XCTAssertNotNil(localizations?["zh-Hans"], "missing zh for \(key)")
+		}
+	}
+
 	// MARK: - 顶部大图收缩（ADR-027 第 3 步，MOTION-CONTRACT §11）
 
 	/// 一行标题（有无缩略图）的行不被撑高、标题标签不被拉伸，图标与第一行字对齐（2026-09-25 用户截图：
@@ -2412,4 +2625,56 @@ private final class CapturingTranslationProtocol: URLProtocol {
 	}
 
 	override func stopLoading() {}
+}
+
+/// 设置页测试用的假服务：全部存内存，记录删除与保存。
+@MainActor
+private final class FakeSettingsService: Babel2SettingsService {
+	var sortNewestFirst = true
+	var confirmMarkAllRead = true
+	var openLinksInApp = true
+	var appearance: Babel2AppearanceMode = .automatic
+	var accentOptions = [Babel2AccentOption(id: "orange", name: "Orange", color: .orange), Babel2AccentOption(id: "indigo", name: "Indigo", color: .blue)]
+	var accentID = "orange"
+	var languageOptions = [Babel2LanguageOption(code: nil, name: "System"), Babel2LanguageOption(code: "en", name: "English")]
+	var languageCode: String?
+	var accounts = [
+		Babel2AccountSummary(id: "local", name: "On My iPhone", kind: .local, isDefault: true),
+		Babel2AccountSummary(id: "feedbin", name: "Feedbin", kind: .web, isDefault: false)
+	]
+	var syncUnreadArticleContent = true
+	var deletedAccountIDs = [String]()
+	func deleteAccount(_ id: String) { deletedAccountIDs.append(id) }
+	var addableAccountKinds = Babel2AddAccountKind.allCases
+	func presentAddAccount(_ kind: Babel2AddAccountKind, from host: UIViewController, completion: @escaping () -> Void) {}
+	func importOPML(into accountID: String, from host: UIViewController) {}
+	func exportOPML(from accountID: String, host: UIViewController) {}
+	var redditClientID: String?
+	var redditClientSecret: String?
+	var youTubeAPIKey: String?
+	func saveDiscoveryKeys(redditClientID: String, redditClientSecret: String, youTubeAPIKey: String) {
+		self.redditClientID = redditClientID.isEmpty ? nil : redditClientID
+		self.redditClientSecret = redditClientSecret.isEmpty ? nil : redditClientSecret
+		self.youTubeAPIKey = youTubeAPIKey.isEmpty ? nil : youTubeAPIKey
+	}
+	var translationModelID = "deepseek/deepseek-v4-flash"
+	func translationModelDisplayName(_ id: String) -> String { id }
+	var translationAPIKey: String?
+	var translationBaseURL = "https://openrouter.ai/api/v1"
+	var translationDefaultBaseURL = "https://openrouter.ai/api/v1"
+	func saveTranslationAPI(apiKey: String, baseURL: String) {
+		translationAPIKey = apiKey.isEmpty ? nil : apiKey
+		translationBaseURL = baseURL.isEmpty ? translationDefaultBaseURL : baseURL
+	}
+	func testTranslationConnection(apiKey: String, baseURL: String) async -> Babel2ConnectionTestResult { .success(reply: "ok") }
+	var models = [Babel2TranslationModel]()
+	func cachedTranslationModels() -> [Babel2TranslationModel] { models }
+	func refreshTranslationModels() async throws -> [Babel2TranslationModel] { models }
+	func vendorLogo(_ vendor: String, traits: UITraitCollection) -> UIImage? { nil }
+	func vendorDisplayName(_ vendor: String) -> String { vendor }
+	func openSystemNotificationSettings() {}
+	var hasICloudAccount = false
+	func makeDiagnosticsPage(_ kind: Babel2DiagnosticsKind) -> UIViewController? { UIViewController() }
+	func openHelp(_ kind: Babel2HelpKind) {}
+	func makeAboutPage() -> UIViewController { UIViewController() }
 }

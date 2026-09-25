@@ -32,8 +32,22 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 		popMotion = Babel2NavigationPopMotion(navigationController: self)
 	}
 
+	/// 拆除时由装配层做的清理（例如移除通知观察）。
+	var onTearDown: (() -> Void)?
+
+	/// 设置里的配色模式（自动 / 浅色 / 深色）：由装配层提供，应用到整个窗口（含弹出的页面）。Slice 6。
+	var interfaceStyleProvider: (() -> UIUserInterfaceStyle)? {
+		didSet { applyInterfaceStyle() }
+	}
+
+	func applyInterfaceStyle() {
+		guard let interfaceStyleProvider, let window = viewIfLoaded?.window else { return }
+		window.overrideUserInterfaceStyle = interfaceStyleProvider()
+	}
+
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
+		applyInterfaceStyle()
 		guard !didAppearAsContainer,
 			viewIfLoaded?.window != nil,
 			view.bounds.width > 0,
@@ -97,6 +111,9 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 			root.cancelContentFirstFramePresentation()
 		}
 		routeFactory = nil
+		interfaceStyleProvider = nil
+		onTearDown?()
+		onTearDown = nil
 		setViewControllers([], animated: false)
 	}
 

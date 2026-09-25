@@ -142,9 +142,11 @@ final class Babel2LiveDataProvider: DataProviding {
 		lhs.nameForDisplay.localizedCaseInsensitiveCompare(rhs.nameForDisplay) == .orderedAscending
 	}
 
+	/// 文章顺序：设置里的「未读文章排序」（默认最新优先，Slice 6 接通）。
 	private func articleComesFirst(_ lhs: ArticleSnapshot, _ rhs: ArticleSnapshot) -> Bool {
 		switch (lhs.publishedAt, rhs.publishedAt) {
-		case let (.some(left), .some(right)) where left != right: return left > right
+		case let (.some(left), .some(right)) where left != right:
+			return Babel2LiveAppDefaults.sortNewestFirst ? left > right : left < right
 		case (.some, .none): return true
 		case (.none, .some): return false
 		default: break
@@ -507,3 +509,104 @@ extension Notification.Name {
 	static let babel2TitleTranslationDidChange = Notification.Name("Babel2TitleTranslationDidChange")
 	static let babel2SettingsDidChange = Notification.Name("Babel2SettingsDidChange")
 }
+
+/// 旧设置存储（AppDefaults）的唯一接入点（Slice 6，2026-09-25 用户同意：边界测试对本文件单独放行 AppDefaults.shared，
+/// 与 AccountManager.shared 同一写法）。Babel 2.0 其它文件一律经这里读写，不直接碰旧存储。
+@MainActor
+enum Babel2LiveAppDefaults {
+	/// 未读文章排序：true = 最新优先（旧值 orderedDescending）。
+	static var sortNewestFirst: Bool {
+		get { AppDefaults.shared.timelineSortDirection != .orderedAscending }
+		set { AppDefaults.shared.timelineSortDirection = newValue ? .orderedDescending : .orderedAscending }
+	}
+
+	static var confirmMarkAllRead: Bool {
+		get { AppDefaults.shared.confirmMarkAllAsRead }
+		set { AppDefaults.shared.confirmMarkAllAsRead = newValue }
+	}
+
+	/// 链接在 Babel 内置浏览器打开（旧设置存的是反义的「用系统浏览器」）。
+	static var openLinksInApp: Bool {
+		get { !AppDefaults.shared.useSystemBrowser }
+		set { AppDefaults.shared.useSystemBrowser = !newValue }
+	}
+
+	/// 配色模式：0 自动 / 1 浅色 / 2 深色（与旧设置同值）。
+	static var colorPaletteRawValue: Int {
+		get { AppDefaults.userInterfaceColorPalette.rawValue }
+		set { AppDefaults.userInterfaceColorPalette = UserInterfaceColorPalette(rawValue: newValue) ?? .automatic }
+	}
+
+	/// 开发版不允许添加 iCloud / Feedly / Inoreader 账户（与现有「新增账户」页同一规则）。
+	static var isDeveloperBuild: Bool { AppDefaults.shared.isDeveloperBuild }
+}
+
+/// 设置页的账户操作（Slice 6）：账户单例只能在本文件里使用（边界测试放行点），设置页经这里读写。
+@MainActor
+enum Babel2LiveAccounts {
+	static func summaries() -> [Babel2AccountSummary] {
+		let manager = AccountManager.shared
+		return manager.sortedAccounts.map { account in
+			Babel2AccountSummary(id: account.accountID, name: account.nameForDisplay, kind: kind(of: account.type), isDefault: account === manager.defaultAccount)
+		}
+	}
+
+	private static func kind(of type: AccountType) -> Babel2AccountSummary.Kind {
+		switch type {
+		case .onMyMac: return .local
+		case .cloudKit: return .iCloud
+		case .freshRSS: return .selfHosted
+		default: return .web
+		}
+	}
+
+	static var syncUnreadArticleContent: Bool {
+		get { AccountManager.shared.syncArticleContentForUnreadArticles }
+		set { AccountManager.shared.syncArticleContentForUnreadArticles = newValue }
+	}
+
+	static func delete(_ id: String) {
+		let manager = AccountManager.shared
+		guard let account = manager.existingAccount(accountID: id), account !== manager.defaultAccount else { return }
+		manager.deleteAccount(account)
+	}
+
+	static var hasICloudAccount: Bool {
+		AccountManager.shared.accounts.contains { $0.type == .cloudKit }
+	}
+
+	/// 可新增的账户类型：已有 iCloud 账户时不能再加；开发版不能加 iCloud / Feedly / Inoreader（与现有新增账户页同一规则）。
+	static func addableKinds(isDeveloperBuild: Bool) -> [Babel2AddAccountKind] {
+		Babel2AddAccountKind.allCases.filter { kind in
+			switch kind {
+			case .iCloud: return !isDeveloperBuild && !hasICloudAccount
+			case .feedly, .inoreader: return !isDeveloperBuild
+			default: return true
+			}
+		}
+	}
+
+	/// 导出：返回（账户名, OPML 文本）。
+	static func exportOPML(_ id: String) -> (String, String)? {
+		guard let account = AccountManager.shared.existingAccount(accountID: id) else { return nil }
+		return (account.nameForDisplay, OPMLExporter.OPMLString(with: account, title: account.nameForDisplay))
+	}
+
+	/// 导入：失败时回调错误说明（成功回调 nil）。
+	static func importOPML(_ url: URL, into id: String, completion: @escaping @MainActor (String?) -> Void) {
+		guard let account = AccountManager.shared.existingAccount(accountID: id) else {
+			completion(nil)
+			return
+		}
+		account.importOPML(url) { result in
+			Task { @MainActor in
+				if case .failure(let error) = result {
+					completion(error.localizedDescription)
+				} else {
+					completion(nil)
+				}
+			}
+		}
+	}
+}
+

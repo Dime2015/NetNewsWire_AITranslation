@@ -139,10 +139,14 @@ final class Babel2NavigationPopMotion: NSObject {
 		let didComplete = outcome == .finished
 		let capturedContext = transitionContext
 		let capturedShadow = shadowView
+		let capturedFromView = fromView
 		let delay = result == .started ? duration : 0
 		DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
 			capturedContext?.completeTransition(didComplete)
 			capturedShadow?.removeFromSuperview()
+			// 取消时当前页留在屏幕上：去掉左边缘投影，恢复原样
+			capturedFromView?.layer.shadowOpacity = 0
+			capturedFromView?.layer.shadowPath = nil
 		}
 		transitionContext = nil
 		fromView = nil
@@ -165,12 +169,22 @@ final class Babel2NavigationPopMotion: NSObject {
 		container.insertSubview(toVC.view, belowSubview: fromVC.view)
 		containerWidth = max(container.bounds.width, 1)
 
-		let shadow = UIView(frame: fromVC.view.bounds)
+		// 2026-09-25 修正（用户报告设置页右滑返回时当前页变暗、屏幕闪一下）：
+		// 以前把黑色遮罩盖在「当前页」上，手势一开始当前页整页突然变暗 18%，看起来像闪烁。
+		// 合同的 shadowOpacity 指当前页左边缘的投影；按系统返回手势的通行做法：
+		// 当前页只加左边缘投影，暗色遮罩改盖在「上一页」上（一开始被当前页挡住，不会闪），随滑开逐渐变亮。
+		let shadow = UIView(frame: toVC.view.bounds)
 		shadow.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 		shadow.backgroundColor = .black
 		shadow.alpha = 0
 		shadow.isUserInteractionEnabled = false
-		fromVC.view.addSubview(shadow)
+		toVC.view.addSubview(shadow)
+		let edge = fromVC.view.layer
+		edge.shadowColor = UIColor.black.cgColor
+		edge.shadowRadius = 8
+		edge.shadowOffset = CGSize(width: -2, height: 0)
+		edge.shadowOpacity = 0
+		edge.shadowPath = UIBezierPath(rect: CGRect(x: 0, y: 0, width: 8, height: fromVC.view.bounds.height)).cgPath
 
 		fromView = fromVC.view
 		toView = toVC.view
@@ -184,6 +198,8 @@ final class Babel2NavigationPopMotion: NSObject {
 		let width = containerWidth
 		fromView.transform = CGAffineTransform(translationX: width * p, y: 0)
 		toView.transform = CGAffineTransform(translationX: -0.22 * width * (1 - p), y: 0)
+		// 合同：shadowOpacity = 0.18 × (1 − p)。当前页左边缘投影与上一页的暗色同步变淡
+		fromView.layer.shadowOpacity = Float(0.18 * (1 - p))
 		shadowView?.alpha = 0.18 * (1 - p)
 		if activeToken != nil {
 			transitionContext?.updateInteractiveTransition(p)

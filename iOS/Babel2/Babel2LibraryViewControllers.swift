@@ -66,7 +66,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let titleTranslation: Babel2TitleTranslationSetting?
 	private var titleTranslationTimeout: Task<Void, Never>?
 
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil) {
+	/// 设置「全部标为已读前确认」（Slice 6）；关掉时点底栏按钮直接标记。
+	private let shouldConfirmMarkAllRead: @MainActor () -> Bool
+
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }) {
+		self.shouldConfirmMarkAllRead = confirmMarkAllRead
 		self.feed = feed
 		self.scope = scope
 		self.environment = environment
@@ -246,7 +250,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		Task { @MainActor [weak self] in
 			let count = (try? await provider.feedArticlesSnapshot(for: feedID, scope: .unread).count) ?? 0
 			guard let self, count > 0 else { return }
-			self.confirmMarkAllRead(count: count)
+			if self.shouldConfirmMarkAllRead() {
+				self.confirmMarkAllRead(count: count)
+			} else {
+				self.performMarkAllRead()
+			}
 		}
 	}
 

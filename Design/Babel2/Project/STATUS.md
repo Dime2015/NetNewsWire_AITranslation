@@ -24,7 +24,21 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 文章列表顶部大图滚动收缩（Slice 3 第 3 步，ADR-027 / MOTION-CONTRACT §11；2026-09-25，用户真机验收通过，已提交并推送）
+## 设置页（Slice 6，ADR-028；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 入口：首页左上角齿轮（x=32，与右上「+」对称）→ 设置首页（沿用恢复标识 babel2.settings）。
+- 新目录 `iOS/Babel2/Settings/`：Style（Figma 数值与颜色）、Components（导航栏 Root/Back/Editor、分组标题、Disclosure/Value/Select/Toggle/Action/Choice 行、文本框、38×22 开关〔开=强调色，ADR-008〕、Thick Glass 弹出单选菜单〔宽 272、圆角 22、顶边=触发行下沿+39〕）、Service（页面唯一依赖的接口 + 模型排行纯计算）、Pages（首页 8 类 + 文章列表/阅读器/翻译/外观与语言/通知/支持与诊断）、AccountPages（账户与同步/账户详情/新增账户/订阅与发现）、Editors（订阅发现 API、翻译 API Key、翻译模型：取消/保存）。
+- 接入层：新文件 `Babel2LiveSettingsService.swift`（翻译、发现服务、强调色、语言、诊断/关于以底部卡片弹出〔保留旧页面右上角按钮〕、新增账户与 OPML 导入用不可见子页面作宿主）；`Babel2LiveDataAdapters.swift` 新增 `Babel2LiveAppDefaults`（排序/已读确认/打开链接/配色模式/开发版判断）与 `Babel2LiveAccounts`（账户列表/删除/同步内容/可添加类型/OPML）。边界测试对该文件增加 `AppDefaults.shared` 精确例外（用户同意）。
+- 功能接通：文章排序（接入层排序比较）、全部已读前确认（列表页注入）、打开链接（系统浏览器时不建内置浏览器）、配色模式（导航控制器把窗口 overrideUserInterfaceStyle，改了立即重应用）——配色模式此前整个 app 都不生效。
+- 按用户同意不放：分组方式、刷新时清除已读、启用 JavaScript、全屏文章、文章主题、添加 Babel 新闻源、配色模式子页（61）、账户详情的「新文章通知」。
+- 图标：Figma 下载 7 个矢量图标（返回/关闭〔取消同图〕/保存/箭头/下箭头/勾/「译」）；首页其余 7 类用系统图标（用户选 A）。文案 +120 条中英文（xcstrings 按原有大小写不敏感顺序排列，原有行全部保留）。
+- 验证（独立 DerivedData）：测试 +7（齿轮进入与路由恢复、8 类别各自进入、弹出菜单位置/立即生效/关闭、开关立即生效与 44pt 点击区、编辑页取消不存/保存写入、模型排行 Top10 + 每家 3 个 + 编辑页保存才生效、默认账户不可删/删除调用、无 iCloud 不显示 iCloud 统计、关闭确认后直接标记、设置文案全部中英文）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/set-full.xcresult` 135/135；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/set-ui.xcresult` 1/1。
+- 过程记录：类别路由测试最初失败——测试窗口不挂屏幕场景时带动画的推入永不结束，其后推入被忽略（与内置浏览器一节同一限制），改为每个类别用新导航栈验证；非产品问题。
+- 未能自动验证：全部视觉观感、弹出菜单毛玻璃与阴影、真实新增账户流程、OPML 导入导出、日志/关于卡片、界面语言重启提示、配色模式切换整个 app、强调色影响开关与进度环、翻译模型真实刷新——列入真机清单。
+- 已知限制：排序改了之后，已打开的文章列表不会立刻重排（原地刷新只更新状态），返回首页再进入即按新顺序。
+- 追加修复（用户报告）：右滑返回时当前页整页变暗、屏幕闪一下。原因：`Babel2NavigationPopMotion` 把合同的 shadowOpacity 实现成了盖在**当前页**上的整页黑色遮罩（手势一开始即 0.18，所有页面的返回都受影响，设置页纯色背景最明显）。修正：当前页只加左边缘投影（0.18 × (1 − p)），暗色遮罩改盖在上一页上、随滑开变淡；取消时清除投影。测试 +1（假转场上下文验证布置；反向验证：旧代码下该测试失败）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/pop-full.xcresult` 136/136。
+
+## 文章列表顶部大图滚动收缩（Slice 3 第 3 步，ADR-027 / MOTION-CONTRACT §11；2026-09-25，用户真机验收通过，已提交并推送 `f02d83329`）
 
 - 新增 `iOS/Babel2/Babel2FeedHeroMotion.swift`（纯计算）：pHero = clamp((offsetY − rest) / 70)；松手预计停在半路时改停最近一端（< 35 回展开、≥ 35 收到窄栏）；各层透明度映射（大图与图 1−p、大标题 1−1.6p、窄栏底 p、窄栏图标与名字 (p−0.4)/0.6）。
 - 结构：列表铺满全屏、压在最下层，`contentInset.top` 固定 99（系统再加安全区）+ 70pt 透明 tableHeaderView 垫片，只设一次；大图叠其上、不接收触摸，滚动时整体平移 −70p 并淡出；最上层 `Babel2FeedCompactBar`（安全区 + 99pt，Figma 03C：26pt 圆形小图标 x=20 / 名字 17pt 半粗 x=56 / 底部细线；无图标时首字母圆），纸色底随 p 变不透明，返回按钮在这一层全程不动，除返回外触摸穿透给列表。大标题与窄栏标题为交叉淡入淡出（不做位置形变，用户要求少纠结细节）。未加性能打点。

@@ -177,6 +177,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private let localizationBundle: Bundle
 	private let titleLabel = UILabel()
 	private let addButton = UIButton(type: .system)
+	/// 左上角设置入口（Slice 6，2026-09-25 用户同意；与右上角「+」左右对称）。
+	private let settingsButton = UIButton(type: .system)
 	private let syncArrow = UIButton(type: .system)
 	private let syncGlyph = BabelSyncGlyphView()
 	private let syncSubtitleLabel = UILabel()
@@ -401,6 +403,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		addButton.accessibilityIdentifier = Babel2LocalizationKey.add.accessibilityIdentifier
 		addButton.configuration = .plain()
 		addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+		settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)), for: .normal)
+		settingsButton.tintColor = BabelPalette.mutedInk
+		settingsButton.accessibilityLabel = Babel2Localization.text(.settings, bundle: localizationBundle)
+		settingsButton.accessibilityIdentifier = Babel2LocalizationKey.settings.accessibilityIdentifier
+		settingsButton.configuration = .plain()
+		settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
 		configureScopeControls()
 		syncArrow.configuration = .plain()
 		syncArrow.accessibilityLabel = Babel2Localization.text(.syncing, bundle: localizationBundle)
@@ -434,6 +442,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 		view.addSubview(titleLabel)
 		view.addSubview(addButton)
+		view.addSubview(settingsButton)
 		view.addSubview(syncArrow)
 		view.addSubview(syncSubtitleLabel)
 		view.addSubview(bottomBar)
@@ -456,7 +465,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func installLayout() {
-		for item in [titleLabel, addButton, syncArrow, syncSubtitleLabel, bottomBar, scopeStack] {
+		for item in [titleLabel, addButton, settingsButton, syncArrow, syncSubtitleLabel, bottomBar, scopeStack] {
 			item.translatesAutoresizingMaskIntoConstraints = false
 		}
 		for surface in scopeSurfaces.values {
@@ -468,6 +477,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			addButton.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 81),
 			addButton.widthAnchor.constraint(equalToConstant: 44),
 			addButton.heightAnchor.constraint(equalToConstant: 44),
+			settingsButton.centerXAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+			settingsButton.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 81),
+			settingsButton.widthAnchor.constraint(equalToConstant: 44),
+			settingsButton.heightAnchor.constraint(equalToConstant: 44),
 			syncArrow.centerXAnchor.constraint(equalTo: view.leadingAnchor, constant: 201),
 			syncArrow.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 81),
 			syncArrow.widthAnchor.constraint(equalToConstant: 44),
