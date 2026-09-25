@@ -1,5 +1,18 @@
 # Babel 2.0 接手说明
 
+## ★ 下一会话从这里开始（2026-09-25 更新）
+
+**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～025、LESSONS.md 第 30～38 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+
+**用户指定的下一任务：长图小改善**（均在 Babel2 阅读页的「生成长图」，ADR-025）
+1. 把长图末尾的「分享自 <品牌名>」签名（页脚：app 图标 + 文字）移到长图**顶部**。
+2. 签名里的 app 图标换成 Babel 2.0 最新图标（`iOS/Babel2/Assets.xcassets/AppIcon.appiconset` 的 Light/Dark/Mono；按长图深浅色选对应版本——先核实旧代码现在画的是哪个图标）。
+3. 在分享面板里「存储图像」成功时给出提示（可用 `UIActivityViewController.completionWithItemsHandler`，`activityType == .saveToCameraRoll` 且 completed；提示样式沿用署名下方状态字或与用户确认）。
+- 相关代码：页脚绘制在 `iOS/Article/ArticleLongImageExporter.swift` 的 `renderLongImage`（旧版 fork 代码，ADR-025 时承诺“零改动”——改动前需向用户说明并取得同意）；Babel2 侧入口在 `iOS/Babel2/Reader/Babel2ArticleViewController.swift` 的 `generateLongImage` / `makeLongImage` / `presentShare`。
+- 流程照旧：先读代码交书面方案 → 用户确认 → 写代码 → 相关测试组 → 交付前全量测试（-collect-test-diagnostics never）→ 真机验收清单 → 用户说提交才提交推送。
+
+**之后的候选**：Slice 3 其余（文章列表顶部大图 hero、列表搜索）、Slice 6（设置页：API key/模型、主题色等）、Reader 翻页手势（ADR-016 暂缓）。
+
 ## 当前接手点（2026-09-08，最新）
 
 1. 先读 [STATUS.md](STATUS.md) 顶部：本地 `HEAD` 为 `ca1fa1ae46932f04569ffdd0e0bda318de467e0d`；root 已执行 `git fetch origin codex/reeder-classic-rebuild`，fetch 后 `origin` 与 `FETCH_HEAD` 均为 `7567f685cd85012c7774c658959f3a66386940d6`，ahead 2 / behind 0。
@@ -38,6 +51,8 @@
 21. **2026-09-25 最后**：文章列表底栏已推送（`b2736717e`）。首页底栏改用共享档位组件，用户真机回归验收通过，已提交并推送。下一任务：文章列表标题翻译开关（接旧版标题批量翻译 NNWTitleTranslationController），之后 Slice 5 第 5 步生成长图；动手前先交书面方案。
 
 22. **2026-09-25 最新**：首页底栏修复已推送（`9355f8f6d`）。「文章列表标题翻译开关」用户真机验收通过，已提交并推送。标题翻译请求已补上「不要思考」，用户确认明显变快，已提交并推送。下一任务：Slice 5 第 5 步「生成长图」（••• 菜单里，ADR-020），动手前先读旧版 ArticleLongImageExporter 与 Figma，交书面方案。
+
+23. **2026-09-25 收尾**：Slice 5 第 5 步「生成长图」用户真机验收通过，已提交并推送；**Slice 5 全部完成**。今后迭代中只跑相关测试组、交付前再跑全量（用户反馈测试太慢，见 LESSONS 38）。
 
 ## 历史交接记录（audit-only historical reference）
 

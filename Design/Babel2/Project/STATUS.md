@@ -24,6 +24,15 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 5 第 5 步：生成长图（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-025 实现：••• 菜单「生成长图」可点；临时标题区 + 滚动补偿；复用旧导出器；完成弹系统分享面板。
+- 文件：`Reader/Babel2ArticleViewController.swift`（菜单、生成流程、分享）、`Reader/WebKit/Babel2ReaderContentView.swift`（临时标题区样式与插入/移除）、`Babel2Localization.swift` + xcstrings（+2 键）、测试（+1）。旧导出器与截图脚本零改动。
+- 过程中的错误：第一版用定格截图盖住正文区，全量测试在长图测试上卡死 8 分钟以上；逐步探针定位——准备/等图/单独导出均正常，卡在被遮住的网页不再绘制——改为滚动补偿后该测试 2.8 秒通过。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/longimage-r2.xcresult` 115/115（含真实导出：长图高大于宽、临时标题区已移除、无残留视图、状态字已隐藏）。
+- 2026-09-25 用户真机验收通过。**Slice 5 全部完成**（翻译、阅读模式、内置浏览器、下一篇、生成长图）。
+- 用户已提出下一会话的长图改善（见 HANDOFF 顶部）：页脚「分享自」签名移到长图顶部；签名里的 app 图标换成 Babel 2.0 新图标；保存到相册成功时给提示。
+
 ## 标题翻译请求关闭思考（2026-09-25，用户真机确认明显变快，已提交并推送）
 
 - 起因：用户反馈标题翻译慢。查证：`NNWTitleBatchTranslator` 请求未带正文翻译已有的 `reasoning: {effort: "none", exclude: true}`（2026-08-08 只加在正文那边）。

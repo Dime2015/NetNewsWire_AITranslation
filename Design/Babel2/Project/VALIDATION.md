@@ -9,6 +9,10 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 Reader Slice 5 第 5 步：生成长图（r2；用户真机验收通过，已提交）
+
+r1（定格截图遮挡版）：全量运行卡在 `testLongImageIncludesTitleAreaAndCleansUp` 8 分钟以上，手动终止；单测探针显示 prepare=true、pending=0、单独 `pdf()` 可返回 6016 字节。改为滚动补偿后该测试单独 2.843 秒通过；r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/longimage-r2.xcresult` `result=Passed`、`totalTestCount=115`、`passedTests=115`。
+
 ## 2026-09-25 标题翻译请求关闭思考（r1；用户真机确认明显变快，已提交）
 
 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/reasoning-r1.xcresult` `result=Passed`、`totalTestCount=114`、`passedTests=114`（新增 `testTitleTranslationRequestDisablesReasoningOnOpenRouter`，URLProtocol 拦截真实请求体）。macOS：工作区 build 因用户未提交的 pbxproj 签名设置被 lint 拦截（`DEVELOPMENT_TEAM ... should be in an xcconfig file`）；以 HEAD + 本文件的临时 worktree 编译 `NetNewsWire` scheme Debug 成功，worktree 已删除。

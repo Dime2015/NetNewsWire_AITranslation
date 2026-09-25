@@ -169,6 +169,42 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(actions, [.markFeedRead(feedID)], "one batch action for the whole feed")
 	}
 
+	// MARK: - 生成长图（Slice 5 第 5 步，ADR-025）
+
+
+	func testLongImageIncludesTitleAreaAndCleansUp() async throws {
+		let paragraphs = (1...30).map { "<p>Paragraph \($0) of a long enough article body.</p>" }.joined()
+		let viewController = makeReader(body: paragraphs, author: "Jane Doe")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		// 菜单里的「生成长图」可点（不再是灰色占位）
+		XCTAssertTrue(viewController.moreMenuItemIdentifiers.contains("babel2.article.long-image"))
+		XCTAssertFalse(viewController.isGeneratingLongImage)
+
+		// 临时标题区：用当前显示的标题/署名，纯文本写入
+		await viewController.readerContentView.insertSnapshotHeader(date: "SEP 25", title: "Reader", byline: "JANE DOE\nFEED")
+		let headerText = await viewController.readerContentView.evaluateForTesting(
+			"const h = document.getElementById('babel2-snapshot-header'); return h ? h.innerText : null;"
+		) as? String
+		XCTAssertEqual(headerText?.contains("Reader"), true)
+		XCTAssertEqual(headerText?.contains("JANE DOE"), true)
+		await viewController.readerContentView.removeSnapshotHeader()
+
+		// 真实导出：得到一张竖长图；结束后临时标题区、定格截图、状态字都清掉
+		let subviewCount = viewController.view.subviews.count
+		let image = try await viewController.makeLongImage()
+		XCTAssertGreaterThan(image.size.height, image.size.width, "a tall long image")
+		XCTAssertGreaterThan(image.size.width, 300)
+		let leftover = await viewController.readerContentView.evaluateForTesting(
+			"return document.getElementById('babel2-snapshot-header') === null;"
+		) as? Bool
+		XCTAssertEqual(leftover, true, "temporary title area removed")
+		XCTAssertEqual(viewController.view.subviews.count, subviewCount, "no leftover views")
+		XCTAssertNil(viewController.statusTextForTesting)
+		XCTAssertFalse(viewController.isGeneratingLongImage)
+	}
+
 	// MARK: - 下一篇（Slice 5 第 4 步）
 
 	func testNextArticleFollowsListOrderAndSkipsReadInUnreadScope() async throws {

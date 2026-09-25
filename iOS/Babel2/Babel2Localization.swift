@@ -46,6 +46,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case markAllRead = "Mark All as Read"
 	case markAllReadConfirm = "Mark %d articles as read?"
 	case cancel = "Cancel"
+	case generatingLongImage = "Generating long image…"
+	case unableToGenerateLongImage = "Unable to generate long image"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -87,6 +89,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .unableToLoadPage: return "babel2.browser.error"
 		case .markAllRead, .markAllReadConfirm: return "babel2.feed.read-all"
 		case .cancel: return "babel2.cancel"
+		case .generatingLongImage, .unableToGenerateLongImage: return "babel2.article.status"
 		}
 	}
 }

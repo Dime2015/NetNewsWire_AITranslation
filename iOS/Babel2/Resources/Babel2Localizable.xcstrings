@@ -154,6 +154,23 @@
         }
       }
     },
+    "Generating long image…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generating long image…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成长图…"
+          }
+        }
+      }
+    },
     "Go Back" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -660,6 +677,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法获取全文"
+          }
+        }
+      }
+    },
+    "Unable to generate long image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to generate long image"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法生成长图"
           }
         }
       }

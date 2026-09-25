@@ -133,6 +133,49 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		}
 	}
 
+	// MARK: - 长图用的临时标题区（ADR-025）
+
+	/// 长图导出只截网页；阅读页的日期/标题/署名是原生控件、不在网页里。
+	/// 生成长图前临时在正文上方放一份同样样式的标题区（纯文本写入，不拼接 HTML），截完移除。
+	func insertSnapshotHeader(date: String?, title: String, byline: String?) async {
+		_ = try? await webView.callAsyncJavaScript(
+			"""
+			const old = document.getElementById('babel2-snapshot-header');
+			if (old) { old.remove(); }
+			const root = document.getElementById('babel2-article');
+			if (!root) { return false; }
+			const header = document.createElement('header');
+			header.id = 'babel2-snapshot-header';
+			const add = (className, text) => {
+				if (!text) { return; }
+				const p = document.createElement('p');
+				p.className = className;
+				p.textContent = text;
+				header.appendChild(p);
+			};
+			add('babel2-snap-date', date);
+			add('babel2-snap-title', title);
+			add('babel2-snap-byline', byline);
+			root.parentNode.insertBefore(header, root);
+			// 同一瞬间往下滚同样高度：屏幕上看到的内容不动，用户看不到页面跳动
+			window.scrollBy(0, header.getBoundingClientRect().height);
+			return true;
+			""",
+			arguments: ["date": date ?? "", "title": title, "byline": byline ?? ""],
+			in: nil,
+			contentWorld: .defaultClient
+		)
+	}
+
+	func removeSnapshotHeader() async {
+		_ = try? await webView.callAsyncJavaScript(
+			"const h = document.getElementById('babel2-snapshot-header'); if (h) { const height = h.getBoundingClientRect().height; h.remove(); window.scrollBy(0, -height); } return true;",
+			arguments: [:],
+			in: nil,
+			contentWorld: .defaultClient
+		)
+	}
+
 	/// 仅供自动化测试：读出正文容器里的纯文字。
 	func articleTextForTesting() async -> String? {
 		try? await webView.callAsyncJavaScript(
@@ -292,6 +335,10 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	html, body { margin: 0; padding: 0; overflow-x: hidden; }
 	body { background: var(--bg); color: var(--muted); font: 19px/30px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
 	#babel2-title { display: none; }
+	#babel2-snapshot-header { padding: 26px 20px 60px; }
+	#babel2-snapshot-header .babel2-snap-date { font: 600 11px/15px -apple-system, system-ui, sans-serif; letter-spacing: 0.3px; color: var(--tertiary); margin: 0 0 13px; }
+	#babel2-snapshot-header .babel2-snap-title { font: 700 34px/38px -apple-system, system-ui, sans-serif; letter-spacing: -1px; color: var(--ink); margin: 0 0 9px; }
+	#babel2-snapshot-header .babel2-snap-byline { font: 600 11px/15px -apple-system, system-ui, sans-serif; letter-spacing: 0.25px; color: var(--tertiary); margin: 0; white-space: pre-line; }
 	#babel2-article { padding: 0 20px 48px; }
 	#babel2-article > :first-child { margin-top: 0; }
 	p { margin: 0 0 20px; }

@@ -405,6 +405,63 @@ final class Babel2ArticleViewController: UIViewController {
 		moreButton?.isEnabled = moreButton?.menu?.children.isEmpty == false
 	}
 
+	// MARK: - 生成长图（ADR-025）
+
+	private(set) var isGeneratingLongImage = false
+
+	/// ••• 菜单「生成长图」：生成后直接弹出系统分享面板（面板里有「存储图像」）。
+	func generateLongImage() {
+		guard !isGeneratingLongImage else { return }
+		Task { @MainActor [weak self] in
+			guard let self else { return }
+			do {
+				let image = try await self.makeLongImage()
+				self.presentShare(for: image)
+			} catch {
+				self.showStatus(error.localizedDescription.isEmpty ? Babel2Localization.text(.unableToGenerateLongImage) : error.localizedDescription, autoHide: true)
+			}
+		}
+	}
+
+	/// 生成长图的完整过程（不含分享）：
+	/// 1. 署名下方显示「正在生成长图…」
+	/// 2. 在网页顶部临时放一份和原生标题区同样的日期/标题（当前显示的，含译文）/署名；
+	///    同一瞬间把网页往下滚同样的高度，屏幕上看到的内容不动（不能用定格截图盖住网页：
+	///    被完全盖住的网页系统不再绘制，导出会一直等下去——2026-09-25 实测卡死）
+	/// 3. 原样复用旧版 ArticleLongImageExporter：加载全部图片 → 整页导出 → 拼长图 + 页脚
+	/// 4. 无论成败都移除临时标题区（同样同一瞬间滚回去）
+	func makeLongImage() async throws -> UIImage {
+		isGeneratingLongImage = true
+		refreshMoreMenu()
+		showStatus(Babel2Localization.text(.generatingLongImage), autoHide: false)
+		defer {
+			isGeneratingLongImage = false
+			refreshMoreMenu()
+		}
+		await contentView.insertSnapshotHeader(
+			date: dateLabel.isHidden ? nil : dateLabel.text,
+			title: titleLabel.attributedText?.string ?? article.title,
+			byline: bylineLabel.isHidden ? nil : bylineLabel.text
+		)
+		do {
+			let image = try await ArticleLongImageExporter.export(from: self)
+			await contentView.removeSnapshotHeader()
+			hideStatus()
+			return image
+		} catch {
+			await contentView.removeSnapshotHeader()
+			hideStatus()
+			throw error
+		}
+	}
+
+	private func presentShare(for image: UIImage) {
+		let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+		activity.popoverPresentationController?.sourceView = moreButton ?? view
+		activity.popoverPresentationController?.sourceRect = moreButton?.bounds ?? view.bounds
+		present(activity, animated: true)
+	}
+
 	/// 仅供自动化测试观察。
 	var statusTextForTesting: String? { statusLabel.isHidden ? nil : statusLabel.text }
 	var isFetchingFullTextForTesting: Bool { fullTextTask != nil }
@@ -536,8 +593,8 @@ final class Babel2ArticleViewController: UIViewController {
 			title: Babel2Localization.text(.longImage),
 			image: UIImage(named: "BabelReaderShareLongImage"),
 			identifier: UIAction.Identifier("babel2.article.long-image"),
-			attributes: .disabled
-		) { _ in })
+			attributes: isGeneratingLongImage ? .disabled : []
+		) { [weak self] _ in self?.generateLongImage() })
 		return UIMenu(children: actions)
 	}
 
