@@ -235,7 +235,9 @@ final class Babel2LiveDataProvider: DataProviding {
 	private func makeArticleSnapshot(_ article: Article) -> ArticleSnapshot {
 		let body = article.contentHTML ?? article.contentText ?? article.summary ?? ""
 		let title = article.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-		let summary = article.summary ?? article.contentText ?? ""
+		// 列表摘要：正文开头几句（上游时间线同一个函数：去标签、约 300 字、按文章缓存）。
+		// 以前只读 summary 字段，很多源不提供它，标题下就是空的（2026-09-25 用户）。
+		let summary = Self.listSummary(for: article)
 		let originalTitle = title?.isEmpty == false ? title! : "Untitled"
 		// Cache-only title translation for Timeline. Never enqueue AI work here.
 		var translatedTitle: String? = nil
@@ -259,11 +261,45 @@ final class Babel2LiveDataProvider: DataProviding {
 			url: article.preferredURL,
 			feedID: FeedSnapshot.ID(accountID: article.accountID, feedID: article.feedID),
 			publishedAt: article.datePublished ?? article.dateModified ?? article.status.dateArrived,
-			imageURL: article.imageURL,
+			imageURL: Self.thumbnailURL(for: article),
 			isRead: article.status.read,
 			isStarred: article.status.starred,
 			author: Self.authorName(article)
 		)
+	}
+
+	/// 列表缩略图地址：文章自带的图片地址（只有 JSON Feed 有）；没有就取正文里第一张像样的配图。
+	/// 普通 RSS/Atom 文章自带地址永远是空的，不补这一步列表几乎看不到缩略图（2026-09-25）。
+	/// 取图复用 1.x 的 ArticleThumbnail：只读扫描正文开头、用上游 HTMLScanner、结果按文章缓存。
+	static func thumbnailURL(for article: Article) -> URL? {
+		if let url = article.imageURL {
+			return url
+		}
+		return ArticleThumbnail.shared.firstImageURL(for: article).flatMap(URL.init(string:))
+	}
+
+	static func listSummary(for article: Article) -> String {
+		ArticleStringFormatter.shared.truncatedSummary(article)
+	}
+
+	/// 仅供自动化测试：在 app 内构造一篇文章再取列表摘要。
+	static func listSummaryForTesting(html: String?, summary: String?) -> String {
+		let id = UUID().uuidString
+		let article = Article(accountID: "test", articleID: id, feedID: "test", uniqueID: id, title: nil, contentHTML: html,
+			contentText: nil, markdown: nil, url: nil, externalURL: nil, summary: summary, imageURL: nil,
+			datePublished: nil, dateModified: nil, authors: nil,
+			status: ArticleStatus(articleID: id, read: false, starred: false, dateArrived: Date()))
+		return listSummary(for: article)
+	}
+
+	/// 仅供自动化测试：在 app 内构造一篇文章再取缩略图地址（测试目标不链接 Articles 模块）。
+	static func thumbnailURLForTesting(html: String?, imageURL: String?, link: String?) -> URL? {
+		let id = UUID().uuidString
+		let article = Article(accountID: "test", articleID: id, feedID: "test", uniqueID: id, title: nil, contentHTML: html,
+			contentText: nil, markdown: nil, url: link, externalURL: nil, summary: nil, imageURL: imageURL,
+			datePublished: nil, dateModified: nil, authors: nil,
+			status: ArticleStatus(articleID: id, read: false, starred: false, dateArrived: Date()))
+		return thumbnailURL(for: article)
 	}
 
 	/// 取第一个有名字的作者（按名字排序，保证每次结果一致）。

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UIKit
 import Babel2Core
 
@@ -27,6 +28,10 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let countLabel = UILabel()
 	private let retryButton = UIButton(type: .system)
 	private var articles = [ArticleSnapshot]()
+	/// 按天分段（Reeder 式日期分组，2026-09-25）：每段是 articles 里连续的一截，不改文章顺序。
+	private var daySections = [Babel2DaySection]()
+	/// 订阅源图标只解码一次，所有行共用。
+	private lazy var feedIconImage: UIImage? = feed.iconData.flatMap(UIImage.init(data:))
 	private var loadTask: Task<Void, Never>?
 	private var loadGeneration = UUID()
 	private var loadState: LoadState = .loading
@@ -112,7 +117,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			for (index, article) in self.articles.enumerated() {
 				guard let updated = freshByID[article.id], updated != article else { continue }
 				self.articles[index] = updated
-				changedRows.append(IndexPath(row: index, section: 0))
+				if let indexPath = self.indexPath(forArticleAt: index) { changedRows.append(indexPath) }
 			}
 			let visible = Set(self.tableView.indexPathsForVisibleRows ?? [])
 			let visibleChanged = changedRows.filter { visible.contains($0) }
@@ -126,6 +131,26 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 仅供自动化测试观察。
 	var articlesForTesting: [ArticleSnapshot] { articles }
+	var daySectionTitlesForTesting: [String?] { daySections.map(\.title) }
+
+	// MARK: - 按天分段
+
+	/// 文章换了一批（加载完成 / 出错清空）后重新分段。
+	private func rebuildDaySections() {
+		daySections = Babel2DaySection.make(for: articles.map(\.publishedAt))
+	}
+
+	private func articleIndex(for indexPath: IndexPath) -> Int? {
+		guard indexPath.section < daySections.count else { return nil }
+		let range = daySections[indexPath.section].range
+		let index = range.lowerBound + indexPath.row
+		return range.contains(index) ? index : nil
+	}
+
+	private func indexPath(forArticleAt index: Int) -> IndexPath? {
+		guard let section = daySections.firstIndex(where: { $0.range.contains(index) }) else { return nil }
+		return IndexPath(row: index - daySections[section].range.lowerBound, section: section)
+	}
 
 	// MARK: - 底栏（Figma Feed Toolbar，ADR-023）
 
@@ -250,7 +275,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 只翻屏幕上看得到、还没有译文的标题（用户选的省钱方式）；滚动停下、列表加载完成时也会调用。
 	private func requestVisibleTitleTranslations() {
 		guard let titleTranslation, titleTranslation.isEnabled() else { return }
-		let visible = (tableView.indexPathsForVisibleRows ?? []).compactMap { $0.row < articles.count ? articles[$0.row] : nil }
+		let visible = (tableView.indexPathsForVisibleRows ?? []).compactMap { articleIndex(for: $0).map { articles[$0] } }
 		let missing = visible.filter { $0.translatedTitle == nil && Self.mayNeedTranslation($0.title) }
 		guard !missing.isEmpty else {
 			titleTranslationToggle.setState(.translated)
@@ -307,8 +332,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 翻到某一篇后，让列表滚到它、保证返回时它在屏幕上（只做最小滚动）。
 	func revealArticle(_ id: ArticleSnapshot.ID) {
-		guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
-		tableView.scrollToRow(at: IndexPath(row: index, section: 0), at: .none, animated: false)
+		guard let index = articles.firstIndex(where: { $0.id == id }), let indexPath = indexPath(forArticleAt: index) else { return }
+		tableView.scrollToRow(at: indexPath, at: .none, animated: false)
 	}
 
 	private func cancelLoading() {
@@ -322,6 +347,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let generation = loadGeneration
 		loadTask?.cancel()
 		articles.removeAll(keepingCapacity: true)
+		rebuildDaySections()
 		tableView.reloadData()
 		countLabel.text = nil
 		countLabel.accessibilityValue = nil
@@ -343,6 +369,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 					self.feed.id == feedID,
 					self.scope == scope else { return }
 				self.articles = snapshot
+				self.rebuildDaySections()
 				self.countLabel.text = self.articles.count.formatted()
 				self.countLabel.accessibilityValue = String(self.articles.count)
 				self.countLabel.isHidden = false
@@ -358,6 +385,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 					self.feed.id == feedID,
 					self.scope == scope else { return }
 				self.articles.removeAll(keepingCapacity: true)
+				self.rebuildDaySections()
 				self.tableView.reloadData()
 				self.countLabel.text = nil
 				self.countLabel.accessibilityValue = nil
@@ -455,7 +483,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		tableView.backgroundColor = BabelPalette.background
 		tableView.separatorStyle = .none
 		tableView.rowHeight = UITableView.automaticDimension
-		tableView.estimatedRowHeight = 118
+		tableView.estimatedRowHeight = 100
+		tableView.sectionHeaderTopPadding = 0
+		tableView.sectionHeaderHeight = UITableView.automaticDimension
+		tableView.estimatedSectionHeaderHeight = Babel2DayHeaderView.height
+		tableView.register(Babel2DayHeaderView.self, forHeaderFooterViewReuseIdentifier: Babel2DayHeaderView.reuseIdentifier)
 		tableView.dataSource = self
 		tableView.delegate = self
 		tableView.register(Babel2ArticleCell.self, forCellReuseIdentifier: Babel2ArticleCell.reuseIdentifier)
@@ -499,43 +531,164 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	@objc private func backTapped() { _ = (navigationController as? Babel2NavigationController)?.popBabel2(animated: true) }
 
-	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { articles.count }
+	func numberOfSections(in tableView: UITableView) -> Int { daySections.count }
+
+	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+		section < daySections.count ? daySections[section].range.count : 0
+	}
+
+	/// 日期段标题：今天 / 昨天 / 具体日期（跟随手机语言），滚动时吸在顶部。没有日期的那一段不显示标题。
+	func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+		guard section < daySections.count, let title = daySections[section].title else { return nil }
+		let header = tableView.dequeueReusableHeaderFooterView(withIdentifier: Babel2DayHeaderView.reuseIdentifier) as? Babel2DayHeaderView
+		header?.configure(title: title)
+		header?.setPinned(false)
+		return header
+	}
+
+	func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+		guard section < daySections.count, daySections[section].title != nil else { return 0 }
+		return Babel2DayHeaderView.height
+	}
+
+	/// 段标题吸在顶部时，下方显示一根细线（与参考截图一致）；在原位时不显示。
+	func scrollViewDidScroll(_ scrollView: UIScrollView) {
+		guard scrollView === tableView else { return }
+		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
+		for section in 0..<daySections.count {
+			guard let header = tableView.headerView(forSection: section) as? Babel2DayHeaderView else { continue }
+			let naturalTop = tableView.rect(forSection: section).minY
+			header.setPinned(naturalTop < pinnedTop - 0.5 && header.frame.minY > naturalTop + 0.5)
+		}
+	}
 
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tableView.dequeueReusableCell(withIdentifier: Babel2ArticleCell.reuseIdentifier, for: indexPath) as! Babel2ArticleCell
-		let article = articles[indexPath.row]
-		cell.configure(article: article, imageProvider: environment.imageProvider)
+		guard let index = articleIndex(for: indexPath) else { return cell }
+		let article = articles[index]
+		cell.configure(article: article, feedTitle: feed.title, feedIcon: feedIconImage, imageProvider: environment.imageProvider)
 		cell.accessibilityIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 		return cell
 	}
 
 	func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
 		tableView.deselectRow(at: indexPath, animated: true)
-		onSelectArticle?(articles[indexPath.row])
+		guard let index = articleIndex(for: indexPath) else { return }
+		onSelectArticle?(articles[index])
 	}
 }
 
+/// 按天分的一段：articles 里连续的一截（不改顺序）。title 为 nil 表示这些文章没有日期、不显示段标题。
+struct Babel2DaySection: Equatable {
+	let title: String?
+	let range: Range<Int>
+
+	/// 相邻、同一天的文章归为一段；日期文字跟随手机语言（英文按参考截图全大写）。
+	static func make(for dates: [Date?], calendar: Calendar = .current, now: Date = Date()) -> [Babel2DaySection] {
+		var sections = [Babel2DaySection]()
+		var start = 0
+		while start < dates.count {
+			let day = dates[start].map { calendar.startOfDay(for: $0) }
+			var end = start + 1
+			while end < dates.count, dates[end].map({ calendar.startOfDay(for: $0) }) == day { end += 1 }
+			sections.append(Babel2DaySection(title: day.map { title(for: $0, calendar: calendar, now: now) }, range: start..<end))
+			start = end
+		}
+		return sections
+	}
+
+	/// 今天 / 昨天 用系统的相对说法，其余为完整日期（如 Wednesday, September 23, 2026 / 2026年9月23日 星期三）。
+	static func title(for day: Date, calendar: Calendar = .current, now: Date = Date()) -> String {
+		let formatter = DateFormatter()
+		formatter.calendar = calendar
+		formatter.timeZone = calendar.timeZone
+		formatter.dateStyle = .full
+		formatter.timeStyle = .none
+		formatter.doesRelativeDateFormatting = true
+		let text = formatter.string(from: day)
+		return text.uppercased(with: formatter.locale)
+	}
+}
+
+/// 日期段标题：14pt 中等粗细、墨色，与文字列左对齐（49pt）；吸顶时下方出现细线。
+private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
+	static let reuseIdentifier = "Babel2DayHeaderView"
+	static let height: CGFloat = 46
+
+	private let label = UILabel()
+	private let hairline = UIView()
+
+	override init(reuseIdentifier: String?) {
+		super.init(reuseIdentifier: reuseIdentifier)
+		var background = UIBackgroundConfiguration.clear()
+		background.backgroundColor = BabelPalette.background
+		backgroundConfiguration = background
+		label.font = .systemFont(ofSize: 14, weight: .medium)
+		label.textColor = BabelPalette.ink
+		label.accessibilityIdentifier = "babel2.feed.day-header"
+		label.accessibilityTraits = .header
+		label.translatesAutoresizingMaskIntoConstraints = false
+		hairline.backgroundColor = BabelPalette.hairline
+		hairline.isHidden = true
+		hairline.translatesAutoresizingMaskIntoConstraints = false
+		contentView.addSubview(label)
+		contentView.addSubview(hairline)
+		NSLayoutConstraint.activate([
+			label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 49),
+			label.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -20),
+			label.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+			hairline.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
+			hairline.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
+			hairline.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+			hairline.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+		])
+	}
+
+	required init?(coder: NSCoder) { nil }
+
+	func configure(title: String) {
+		label.attributedText = NSAttributedString(string: title, attributes: [
+			.font: UIFont.systemFont(ofSize: 14, weight: .medium),
+			.foregroundColor: BabelPalette.ink,
+			.kern: 0.3
+		])
+	}
+
+	func setPinned(_ pinned: Bool) {
+		hairline.isHidden = !pinned
+	}
+
+	var isPinnedForTesting: Bool { !hairline.isHidden }
+}
+
+/// 文章行（Reeder 式，2026-09-25 用户给参考截图）：
+/// 左列 24pt 来源图标（与标题第一行居中）；文字列从 49pt 起：
+/// 第一行 来源名（12pt 大写浅灰）…… 时间（13pt，贴右边缘）；
+/// 标题 17pt 最多 2 行（未读加粗、已读常规）；摘要 17pt 浅灰 1 行；
+/// 缩略图 70pt 在时间下方、顶部与标题齐平，文字在它左边折行。行间无分隔线，只靠留白。
 private final class Babel2ArticleCell: UITableViewCell {
 	static let reuseIdentifier = "Babel2ArticleCell"
 	private static let thumbSide: CGFloat = 70
+	private static let iconSide: CGFloat = 24
+	private static let textLeading: CGFloat = 49
+	private static let titleLineHeight: CGFloat = 22
+	/// 标题字体（17pt 半粗）的大写字母高度，用来找第一行字的视觉中线。
+	static let titleCapHeight = UIFont.systemFont(ofSize: 17, weight: .semibold).capHeight
 
+	private let feedIconView = UIImageView()
+	private let feedInitialLabel = UILabel()
+	private let feedLabel = UILabel()
 	private let dateLabel = UILabel()
 	private let titleLabel = UILabel()
-	private let translationLabel = UILabel()
 	private let summaryLabel = UILabel()
 	private let thumbnailView = UIImageView()
 	private var imageLoadTask: Task<Void, Never>?
 	private var configuredArticleID: ArticleSnapshot.ID?
 
 	private var titleToThumb: NSLayoutConstraint!
-	private var dateToThumb: NSLayoutConstraint!
 	private var titleToTrailing: NSLayoutConstraint!
-	private var dateToTrailing: NSLayoutConstraint!
-	private var translationTopFromTitle: NSLayoutConstraint!
-	private var translationTopFromTitleCollapsed: NSLayoutConstraint!
-	private var summaryTopFromTranslation: NSLayoutConstraint!
-	private var summaryTopFromTitle: NSLayoutConstraint!
-	private var translationHeight: NSLayoutConstraint!
+	private var summaryToThumb: NSLayoutConstraint!
+	private var summaryToTrailing: NSLayoutConstraint!
 
 	override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
 		super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -543,74 +696,90 @@ private final class Babel2ArticleCell: UITableViewCell {
 		contentView.backgroundColor = .clear
 		selectionStyle = .default
 
-		thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+		// 来源图标：24pt 圆角 5；没有图标时显示首字母方块（Figma 占位样式）
+		feedIconView.contentMode = .scaleAspectFill
+		feedIconView.clipsToBounds = true
+		feedIconView.layer.cornerRadius = 5
+		feedIconView.layer.cornerCurve = .continuous
+		feedIconView.accessibilityIdentifier = "babel2.article.feed-icon"
+		feedInitialLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+		feedInitialLabel.textColor = BabelPalette.mutedInk
+		feedInitialLabel.textAlignment = .center
+
+		// Figma「Article Row / Thumbnail」：70pt 见方、圆角 5、未加载时浅灰占位
 		thumbnailView.contentMode = .scaleAspectFill
 		thumbnailView.clipsToBounds = true
-		thumbnailView.layer.cornerRadius = 10
+		thumbnailView.layer.cornerRadius = 5
 		thumbnailView.layer.cornerCurve = .continuous
-		thumbnailView.backgroundColor = BabelPalette.raisedBackground
+		thumbnailView.backgroundColor = Self.placeholderColor
+		thumbnailView.accessibilityIdentifier = "babel2.article.thumbnail"
 		thumbnailView.isHidden = true
-		contentView.addSubview(thumbnailView)
 
-		for label in [dateLabel, titleLabel, translationLabel, summaryLabel] {
-			label.translatesAutoresizingMaskIntoConstraints = false
-			contentView.addSubview(label)
+		for view in [feedIconView, feedLabel, dateLabel, titleLabel, summaryLabel, thumbnailView] as [UIView] {
+			view.translatesAutoresizingMaskIntoConstraints = false
+			contentView.addSubview(view)
 		}
+		feedInitialLabel.translatesAutoresizingMaskIntoConstraints = false
+		feedIconView.addSubview(feedInitialLabel)
 
-		dateLabel.font = .systemFont(ofSize: 12, weight: .regular)
-		dateLabel.textColor = BabelPalette.tertiaryInk
+		feedLabel.numberOfLines = 1
+		feedLabel.lineBreakMode = .byTruncatingTail
+		feedLabel.accessibilityIdentifier = "babel2.article.feed"
+		feedLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
 		dateLabel.textAlignment = .right
+		dateLabel.accessibilityIdentifier = "babel2.article.date"
 		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-		dateLabel.setContentHuggingPriority(.required, for: .vertical)
+		dateLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-		titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 2
-
-		translationLabel.font = .systemFont(ofSize: 12, weight: .regular)
-		translationLabel.textColor = BabelPalette.mutedInk
-		translationLabel.numberOfLines = 1
-		translationLabel.isHidden = true
-
-		summaryLabel.font = .systemFont(ofSize: 14, weight: .regular)
-		summaryLabel.textColor = BabelPalette.mutedInk
-		summaryLabel.numberOfLines = 2
+		titleLabel.accessibilityIdentifier = "babel2.article.title"
+		summaryLabel.numberOfLines = 1
+		summaryLabel.accessibilityIdentifier = "babel2.article.summary"
 
 		titleToThumb = titleLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
-		dateToThumb = dateLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
 		titleToTrailing = titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
-		dateToTrailing = dateLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+		summaryToThumb = summaryLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
+		summaryToTrailing = summaryLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
 
-		translationTopFromTitle = translationLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4)
-		translationTopFromTitleCollapsed = translationLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 0)
-		summaryTopFromTranslation = summaryLabel.topAnchor.constraint(equalTo: translationLabel.bottomAnchor, constant: 4)
-		summaryTopFromTitle = summaryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4)
-		translationHeight = translationLabel.heightAnchor.constraint(equalToConstant: 0)
+		// 行高由内容决定：文字底 / 缩略图底，取较低者再留 14pt
+		let textBottom = contentView.bottomAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 14)
+		textBottom.priority = .defaultHigh
 
 		NSLayoutConstraint.activate([
-			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-			thumbnailView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-			thumbnailView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -12),
-			thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbSide),
-			thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbSide),
+			feedLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.textLeading),
+			feedLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+			feedLabel.trailingAnchor.constraint(lessThanOrEqualTo: dateLabel.leadingAnchor, constant: -8),
 
-			dateLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-			dateLabel.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 20),
-			dateToTrailing,
+			// 时间：第一行最右，贴屏幕边缘（有没有缩略图都一样）
+			dateLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+			dateLabel.firstBaselineAnchor.constraint(equalTo: feedLabel.firstBaselineAnchor),
 
-			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+			titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.textLeading),
+			titleLabel.topAnchor.constraint(equalTo: feedLabel.bottomAnchor, constant: 4),
 			titleToTrailing,
-			titleLabel.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 6),
-
-			translationLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-			translationLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-			translationHeight,
-			translationTopFromTitleCollapsed,
 
 			summaryLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-			summaryLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-			summaryTopFromTitle,
-			summaryLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
+			summaryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+			summaryToTrailing,
+
+			// 来源图标与标题第一行的字对齐：图标中心 = 第一行基线往上半个大写字母高度（字的视觉中线），
+			// 不用行框中心——字在行框里偏下，按行框居中会显得图标偏高（用户 2026-09-25）
+			feedIconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+			feedIconView.centerYAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor, constant: -Self.titleCapHeight / 2),
+			feedIconView.widthAnchor.constraint(equalToConstant: Self.iconSide),
+			feedIconView.heightAnchor.constraint(equalToConstant: Self.iconSide),
+			feedInitialLabel.centerXAnchor.constraint(equalTo: feedIconView.centerXAnchor),
+			feedInitialLabel.centerYAnchor.constraint(equalTo: feedIconView.centerYAnchor),
+
+			// 缩略图：时间下方，顶部与标题齐平
+			thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+			thumbnailView.topAnchor.constraint(equalTo: titleLabel.topAnchor, constant: 3),
+			thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbSide),
+			thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbSide),
+			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: thumbnailView.bottomAnchor, constant: 14),
+			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: summaryLabel.bottomAnchor, constant: 14),
+			textBottom
 		])
 	}
 
@@ -623,29 +792,34 @@ private final class Babel2ArticleCell: UITableViewCell {
 		configuredArticleID = nil
 		thumbnailView.image = nil
 		setThumbVisible(false)
-		setTranslationVisible(false)
-		summaryLabel.text = nil
-		titleLabel.text = nil
-		dateLabel.text = nil
+		summaryLabel.attributedText = nil
+		titleLabel.attributedText = nil
+		dateLabel.attributedText = nil
 	}
 
-	func configure(article: ArticleSnapshot, imageProvider: any ImageProviding) {
+	func configure(article: ArticleSnapshot, feedTitle: String, feedIcon: UIImage?, imageProvider: any ImageProviding) {
 		configuredArticleID = article.id
+		// 开了标题翻译时直接显示译文（不再在标题下加「英文 → 简体中文」提示行，2026-09-25）
 		let displayTitle = article.translatedTitle ?? article.title
-		titleLabel.text = displayTitle
-		titleLabel.font = .systemFont(ofSize: 17, weight: article.isRead ? .regular : .semibold)
-		titleLabel.textColor = BabelPalette.ink
+		titleLabel.attributedText = Self.text(displayTitle, font: .systemFont(ofSize: 17, weight: article.isRead ? .regular : .semibold),
+			color: BabelPalette.ink, lineHeight: Self.titleLineHeight, truncates: true)
 		contentView.alpha = 1
 
-		let hasTranslation = !(article.translatedTitle ?? "").isEmpty
-		setTranslationVisible(hasTranslation)
+		feedLabel.attributedText = Self.text(feedTitle.uppercased(), font: .systemFont(ofSize: 12, weight: .regular),
+			color: BabelPalette.tertiaryInk, lineHeight: 15, kern: 0.3)
+		feedIconView.image = feedIcon
+		feedIconView.backgroundColor = feedIcon == nil ? Self.placeholderColor : .clear
+		feedInitialLabel.text = feedIcon == nil ? feedTitle.first.map { String($0).uppercased() } : nil
 
 		let plainSummary = Self.plainSummary(article.summary)
-		summaryLabel.text = plainSummary
-		summaryLabel.isHidden = plainSummary.isEmpty
+		summaryLabel.attributedText = plainSummary.isEmpty ? nil : Self.text(plainSummary, font: .systemFont(ofSize: 17, weight: .regular),
+			color: BabelPalette.tertiaryInk, lineHeight: Self.titleLineHeight, truncates: true)
 
-		dateLabel.text = article.publishedAt.map(Self.formatDate) ?? ""
-		accessibilityLabel = [displayTitle, plainSummary].filter { !$0.isEmpty }.joined(separator: ". ")
+		// 已按天分组，每行只显示时刻
+		let time = article.publishedAt.map { Self.timeFormatter.string(from: $0) } ?? ""
+		dateLabel.attributedText = Self.text(time, font: .monospacedDigitSystemFont(ofSize: 13, weight: .regular),
+			color: BabelPalette.ink, lineHeight: 15)
+		accessibilityLabel = [feedTitle, displayTitle, plainSummary, time].filter { !$0.isEmpty }.joined(separator: ". ")
 
 		imageLoadTask?.cancel()
 		imageLoadTask = nil
@@ -656,43 +830,82 @@ private final class Babel2ArticleCell: UITableViewCell {
 			return
 		}
 		setThumbVisible(true)
+		// 缩好的小图在内存里有就直接用（来回滚动不重新下载、不闪）
+		if let cached = Self.thumbnailCache.object(forKey: imageURL as NSURL) {
+			showThumbnail(cached)
+			return
+		}
+		thumbnailView.backgroundColor = Self.placeholderColor
 		let articleID = article.id
+		let maxPixels = Self.thumbSide * max(traitCollection.displayScale, 1)
 		imageLoadTask = Task { @MainActor [weak self] in
-			guard let self else { return }
-			do {
-				let data = try await imageProvider.imageData(for: imageURL)
-				guard !Task.isCancelled, self.configuredArticleID == articleID else { return }
-				if let data, let image = UIImage(data: data) {
-					self.thumbnailView.image = image
-					self.thumbnailView.backgroundColor = .clear
-				} else {
-					self.thumbnailView.image = nil
-					self.thumbnailView.backgroundColor = BabelPalette.raisedBackground
-				}
-			} catch {
-				guard !Task.isCancelled, self.configuredArticleID == articleID else { return }
+			let data = try? await imageProvider.imageData(for: imageURL)
+			// 原图常见 2000px 以上：按缩略图尺寸缩小后再解码，放到后台做，不卡滚动、不占大块内存
+			let image: UIImage? = await Task.detached(priority: .utility) {
+				data.flatMap { Self.downsampledImage(from: $0, maxPixels: maxPixels) }
+			}.value
+			guard let self, !Task.isCancelled, self.configuredArticleID == articleID else { return }
+			if let image {
+				Self.thumbnailCache.setObject(image, forKey: imageURL as NSURL)
+				self.showThumbnail(image)
+			} else {
+				// 下载或解码失败：保持浅灰占位，版面不变
 				self.thumbnailView.image = nil
-				self.thumbnailView.backgroundColor = BabelPalette.raisedBackground
+				self.thumbnailView.backgroundColor = Self.placeholderColor
 			}
 		}
+	}
+
+	private func showThumbnail(_ image: UIImage) {
+		thumbnailView.image = image
+		thumbnailView.backgroundColor = .clear
 	}
 
 	private func setThumbVisible(_ visible: Bool) {
 		thumbnailView.isHidden = !visible
 		titleToThumb.isActive = visible
-		dateToThumb.isActive = visible
+		summaryToThumb.isActive = visible
 		titleToTrailing.isActive = !visible
-		dateToTrailing.isActive = !visible
+		summaryToTrailing.isActive = !visible
 	}
 
-	private func setTranslationVisible(_ visible: Bool) {
-		translationLabel.text = visible ? "英文 → 简体中文" : nil
-		translationLabel.isHidden = !visible
-		translationTopFromTitle.isActive = visible
-		translationTopFromTitleCollapsed.isActive = !visible
-		summaryTopFromTranslation.isActive = visible
-		summaryTopFromTitle.isActive = !visible
-		translationHeight.constant = visible ? 16 : 0
+	/// 固定行高的文字（行距稳定，图标与缩略图才能按「第一行」对齐）。
+	private static func text(_ string: String, font: UIFont, color: UIColor, lineHeight: CGFloat, kern: CGFloat = 0, truncates: Bool = false) -> NSAttributedString {
+		let paragraph = NSMutableParagraphStyle()
+		paragraph.minimumLineHeight = lineHeight
+		paragraph.maximumLineHeight = lineHeight
+		if truncates { paragraph.lineBreakMode = .byTruncatingTail }
+		return NSAttributedString(string: string, attributes: [
+			.font: font,
+			.foregroundColor: color,
+			.kern: kern,
+			.paragraphStyle: paragraph,
+			.baselineOffset: (lineHeight - font.lineHeight) / 4
+		])
+	}
+
+	/// 未加载 / 加载失败时的占位色（Figma color/background/placeholder）。
+	private static let placeholderColor = BabelPalette.hairline
+
+	/// 缩好的缩略图（按图片地址）。系统内存紧张时会自动清掉一部分。
+	private static let thumbnailCache: NSCache<NSURL, UIImage> = {
+		let cache = NSCache<NSURL, UIImage>()
+		cache.countLimit = 300
+		return cache
+	}()
+
+	/// 只把图片解码到「最长边 maxPixels」的大小（不先解码整张原图）。
+	nonisolated static func downsampledImage(from data: Data, maxPixels: CGFloat) -> UIImage? {
+		let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+		guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+		let options = [
+			kCGImageSourceCreateThumbnailFromImageAlways: true,
+			kCGImageSourceCreateThumbnailWithTransform: true,
+			kCGImageSourceShouldCacheImmediately: true,
+			kCGImageSourceThumbnailMaxPixelSize: max(1, Int(maxPixels))
+		] as CFDictionary
+		guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+		return UIImage(cgImage: cgImage)
 	}
 
 	private static func plainSummary(_ raw: String) -> String {
@@ -709,20 +922,6 @@ private final class Babel2ArticleCell: UITableViewCell {
 		if s == "Comments" { return "" }
 		return s
 	}
-
-	private static func formatDate(_ date: Date) -> String {
-		if Calendar.current.isDateInToday(date) {
-			return timeFormatter.string(from: date)
-		}
-		return dateFormatter.string(from: date)
-	}
-
-	private static let dateFormatter: DateFormatter = {
-		let formatter = DateFormatter()
-		formatter.dateStyle = .medium
-		formatter.timeStyle = .none
-		return formatter
-	}()
 
 	private static let timeFormatter: DateFormatter = {
 		let formatter = DateFormatter()

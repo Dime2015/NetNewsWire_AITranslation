@@ -24,6 +24,18 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表缩略图 + Reeder 式文章行与按天分组（Slice 3 第 1 步；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 起因：Babel 2.0 数据接入层只传文章自带图片地址（`article.imageURL`），普通 RSS/Atom 永远为空，列表几乎不显示缩略图。
+- 改动：`Babel2LiveDataAdapters.swift` 新增 `thumbnailURL(for:)`——自带地址优先，否则复用 1.x `ArticleThumbnail.firstImageURL`（只读扫描正文开头、上游 HTMLScanner、跳过追踪像素、相对地址补全、按文章缓存；1.x 文件零改动）；列表行缩略图按 Figma 改为圆角 5、上边距 15、占位色 hairline；解码改为按缩略图尺寸缩小（ImageIO，最长边 70pt×屏幕倍率），后台解码 + 内存缓存（NSCache 300 张），失败保持占位。
+- 测试：+4（正文取首图/跳过 1×1 像素/相对地址补全、JSON Feed 自带地址优先、无图与 data: 图为空、缩略图尺寸与缩小解码与失败占位）。测试目标不链接 Articles 且新测试文件需改工程文件登记，故测试放进已登记的 Babel2FeedReaderTests，并在接入层加 `thumbnailURLForTesting`。另把两个按 Task.yield 次数等待的测试辅助函数改为按真实时间（最多 3 秒）——首轮全量中 `testErrorIsDistinctFromEmptyAndRetryReloads` 偶发超时（单独连跑 3 次均通过，LESSONS 32 同类）。
+- 验证：反向验证——关掉缩小解码后测试失败（2400px > 210px）。取图耗时（模拟器）：约 3 KB 正文 0.2 ms/篇，约 100 KB 正文 10 ms/篇，每篇只扫一次。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/thumb-full2.xcresult`、`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/thumb-full3.xcresult` 均 121/121。
+- 追加（用户反馈）：有缩略图时日期被挤到缩略图左边；改为日期始终贴第一行最右边，缩略图移到日期下方、顶部与标题第一行对齐（偏离 Figma：设计稿时间在缩略图左侧）。测试补断言（日期右边缘 = 屏宽 − 20、缩略图在日期下方）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/date-full.xcresult` 121/121。
+- 追加（用户给 Reeder 参考截图，“先按你的建议做”）：文章行重排——左列 24pt 来源图标（与标题第一行居中，无图标时首字母方块）；文字列 49pt 起：第一行大写来源名（12pt 浅灰）+ 时刻（13pt 等宽数字，贴右边缘）；标题 17pt 最多 2 行（未读半粗/已读常规）；摘要 17pt 浅灰 1 行；缩略图 70pt 在时间下方与标题齐平；行间无分隔线。去掉「英文 → 简体中文」提示行。列表按天分段（相邻同日文章为一段、不改顺序），段标题 14pt 中等墨色、跟随手机语言（今天/昨天/完整日期，拉丁文字全大写），吸顶时下方显示细线。点开、原地刷新、翻译可见标题、滚到某篇均改为按分段换算；下一篇逻辑不变（按原列表顺序跨段）。测试 +2（分段规则、行布局与跨段点开）；等列表行数的辅助函数改为数全部段。
+- **验证事故（已纠正）**：从「日期贴右边」那次起，本机 xcodebuild 在共享 DerivedData 下只编译不链接，测试跑的是 15:20 的旧程序——那次报告的「121/121 通过」与本轮首次的「54 项 / 121 项通过」均未覆盖新代码（LESSONS 41）。改用独立 `-derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/dd` 从头编译后：文章列表测试组 56 项中 55 过、1 项为阅读页栏显隐测试偶发失败（单独 5 次 4 过；在未含本次改动的已提交版本上 5 次全过；该测试只用阅读页、不经过列表，记 NOTES 待办）；全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/rows-full2.xcresult` 123/123，并核对 app 产物时间与新代码字符串。
+- 追加（用户验收后两处修正）：① 来源图标改为对准标题第一行字的视觉中线（第一行基线往上半个大写字母高度），原先按行框中心显得偏高；② 列表摘要改用上游 `ArticleStringFormatter.truncatedSummary`（正文去标签、约 300 字、缓存），原先只读 summary 字段，很多源标题下为空。测试 +1（摘要退回正文开头）、行布局测试补图标对齐断言。全量（独立 DerivedData）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/sum-full.xcresult` 124/124，已核对 `Ld`。
+- 下一步：第 2 步顶部大图静态样子、第 3 步滚动收缩（设计决定见 ADR-027）。
+
 ## 长图三项改善 + 超长文章修复（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-026：①「分享自 Babel」签名（图标 + 文字）从长图末尾移到**顶部**（签名条 → 细线 → 日期/标题/署名 → 正文）；② 签名图标换成 Babel 2.0 新图标（新资源 `Babel2ShareSignatureIcon`，由 AppIcon 的浅/深两张缩到 240px，按长图深浅色自动取）；③ 分享面板「存储图像」成功后，底栏上方浮出小胶囊「已存储到相册」约 2 秒（取消、分享给别的 app、保存失败都不提示）。

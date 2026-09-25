@@ -169,6 +169,166 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(actions, [.markFeedRead(feedID)], "one batch action for the whole feed")
 	}
 
+	// MARK: - 列表缩略图（2026-09-25）
+
+	// MARK: - Reeder 式文章行与按天分组（2026-09-25）
+
+	func testDaySectionsGroupConsecutiveArticlesByDay() {
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+		let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 25, hour: 15))!
+		let today1 = calendar.date(byAdding: .hour, value: -1, to: now)!
+		let today2 = calendar.date(byAdding: .hour, value: -5, to: now)!
+		let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
+		let older = calendar.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 20))!
+		let sections = Babel2DaySection.make(for: [today1, today2, yesterday, older, nil, nil], calendar: calendar, now: now)
+		XCTAssertEqual(sections.map(\.range), [0..<2, 2..<3, 3..<4, 4..<6])
+		XCTAssertNil(sections[3].title, "articles without a date get no header")
+		XCTAssertEqual(sections[0].title, sections[0].title?.uppercased(), "Latin titles are uppercased like the reference")
+		XCTAssertNotEqual(sections[0].title, sections[1].title)
+		XCTAssertNotEqual(sections[1].title, sections[2].title)
+	}
+
+	/// 按天分段后：点第二段的文章打开的是它本身；下一篇仍按列表顺序跨段；第一行显示大写来源名 + 贴右边的时刻；
+	/// 没有订阅源图标时显示首字母方块；摘要只有 1 行；不再有「英文 → 简体中文」提示行。
+	func testFeedListGroupsByDayAndRowsFollowReaderLayout() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		func article(_ id: String, daysAgo: Int, translated: String? = nil) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: "Title \(id)",
+				translatedTitle: translated, summary: String(repeating: "A long summary sentence. ", count: 20), url: nil, feedID: feedID,
+				publishedAt: Calendar.current.date(byAdding: .day, value: -daysAgo, to: now))
+		}
+		let list = [article("a", daysAgo: 0, translated: "标题 a"), article("b", daysAgo: 0), article("c", daysAgo: 3)]
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Marginal Revolution"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])))
+		var opened: ArticleSnapshot?
+		controller.onSelectArticle = { opened = $0 }
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+		tableView.layoutIfNeeded()
+
+		XCTAssertEqual(tableView.numberOfSections, 2)
+		XCTAssertEqual(tableView.numberOfRows(inSection: 0), 2)
+		XCTAssertEqual(controller.daySectionTitlesForTesting.count, 2)
+		XCTAssertNotNil(tableView.headerView(forSection: 0), "day header is shown")
+
+		controller.tableView(tableView, didSelectRowAt: IndexPath(row: 0, section: 1))
+		XCTAssertEqual(opened?.id.articleID, "c", "row in the second day opens that article")
+		XCTAssertEqual(controller.nextArticle(after: list[1].id)?.id.articleID, "c", "next article crosses day sections")
+
+		let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 0, section: 0)))
+		let labels = cell.contentView.subviews.compactMap { $0 as? UILabel }
+		func label(_ id: String) throws -> UILabel { try XCTUnwrap(labels.first { $0.accessibilityIdentifier == id }) }
+		XCTAssertEqual(try label("babel2.article.feed").text, "MARGINAL REVOLUTION")
+		XCTAssertEqual(try label("babel2.article.title").text, "标题 a", "translated title replaces the original")
+		XCTAssertEqual(try label("babel2.article.summary").numberOfLines, 1)
+		XCTAssertFalse(labels.contains { $0.text == "英文 → 简体中文" }, "no translation hint line")
+		let date = try label("babel2.article.date")
+		XCTAssertEqual(date.convert(date.bounds, to: cell.contentView).maxX, cell.contentView.bounds.width - 20, accuracy: 0.5)
+		let icon = try XCTUnwrap(descendant(of: cell, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.feed-icon" })
+		XCTAssertEqual(icon.bounds.size, CGSize(width: 24, height: 24))
+		XCTAssertEqual(icon.convert(icon.bounds, to: cell.contentView).minX, 20, accuracy: 0.5)
+		XCTAssertEqual(try label("babel2.article.title").convert(try label("babel2.article.title").bounds, to: cell.contentView).minX, 49, accuracy: 0.5)
+		XCTAssertTrue(descendant(of: icon, matching: UILabel.self)?.text == "M", "no feed icon → initial letter tile")
+		// 图标中心对准标题第一行字的视觉中线（基线往上半个大写字母高度）
+		let title = try label("babel2.article.title")
+		let probe = UIView()
+		probe.translatesAutoresizingMaskIntoConstraints = false
+		cell.contentView.addSubview(probe)
+		NSLayoutConstraint.activate([probe.topAnchor.constraint(equalTo: title.firstBaselineAnchor), probe.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor)])
+		cell.contentView.layoutIfNeeded()
+		let firstBaseline = probe.frame.minY
+		probe.removeFromSuperview()
+		let capHeight = UIFont.systemFont(ofSize: 17, weight: .semibold).capHeight
+		XCTAssertEqual(icon.convert(icon.bounds, to: cell.contentView).midY, firstBaseline - capHeight / 2, accuracy: 1)
+	}
+
+	// 数据接入层：普通 RSS 文章没有自带图片地址，要从正文里取第一张像样的配图。
+	/// 没有单独摘要字段的文章：标题下显示正文开头几句（去掉标签）。
+	func testListSummaryFallsBackToOpeningSentencesOfBody() {
+		let text = Babel2LiveDataProvider.listSummaryForTesting(
+			html: #"<p><img src="https://e.com/a.jpg">Believing that <b>AI</b> will be incorrigible leads to bad policy.</p><p>Second paragraph.</p>"#,
+			summary: nil)
+		XCTAssertTrue(text.hasPrefix("Believing that AI will be incorrigible leads to bad policy."), text)
+		XCTAssertFalse(text.contains("<"), "no HTML tags")
+	}
+
+	func testRSSArticleUsesFirstUsefulImageFromBody() {
+		// 1×1 追踪像素跳过；相对地址按文章链接补全
+		let html = #"<p><img src="https://t.example.com/p.gif" width="1" height="1"></p><p>Hi</p><img src="/images/cover.jpg"><img src="https://example.com/second.jpg">"#
+		let url = Babel2LiveDataProvider.thumbnailURLForTesting(html: html, imageURL: nil, link: "https://example.com/posts/1")
+		XCTAssertEqual(url?.absoluteString, "https://example.com/images/cover.jpg")
+	}
+
+	func testJSONFeedImageURLWins() {
+		let url = Babel2LiveDataProvider.thumbnailURLForTesting(html: #"<img src="https://example.com/body.jpg">"#, imageURL: "https://example.com/declared.jpg", link: nil)
+		XCTAssertEqual(url?.absoluteString, "https://example.com/declared.jpg")
+	}
+
+	func testArticleWithoutImagesHasNoThumbnail() {
+		XCTAssertNil(Babel2LiveDataProvider.thumbnailURLForTesting(html: "<p>Only words.</p>", imageURL: nil, link: nil))
+		XCTAssertNil(Babel2LiveDataProvider.thumbnailURLForTesting(html: #"<img src="data:image/png;base64,AAAA">"#, imageURL: nil, link: nil))
+	}
+
+	/// 有图片地址的文章显示 70pt、圆角 5 的缩略图，且按缩略图尺寸缩小解码（不把 2000px 原图整张放进内存）；
+	/// 下载失败保持浅灰占位；没有图片地址的文章不留缩略图位置。
+	func testArticleThumbnailsAreDownsampledAndFailuresKeepPlaceholder() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, image: String?) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id, url: nil,
+				feedID: feedID, imageURL: image.flatMap(URL.init(string:)))
+		}
+		let list = [
+			article("with-image", image: "https://example.com/big.png"),
+			article("broken", image: "https://example.com/broken.png"),
+			article("no-image", image: nil)
+		]
+		let controller = Babel2FeedViewController(
+			feed: makeFeed(id: feedID, title: "Feed"),
+			scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list]), imageProvider: LargeImageProvider(size: CGSize(width: 2400, height: 1600)))
+		)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+		tableView.layoutIfNeeded()
+
+		func thumbnail(row: Int) throws -> UIImageView {
+			let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: row, section: 0)))
+			return try XCTUnwrap(descendant(of: cell, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.thumbnail" })
+		}
+		let loaded = try thumbnail(row: 0)
+		for _ in 0..<100 where loaded.image == nil { try await Task.sleep(for: .milliseconds(20)) }
+		let image = try XCTUnwrap(loaded.image, "thumbnail loaded")
+		XCTAssertFalse(loaded.isHidden)
+		XCTAssertEqual(loaded.bounds.size, CGSize(width: 70, height: 70))
+		XCTAssertEqual(loaded.layer.cornerRadius, 5)
+		let pixelWidth = CGFloat(image.cgImage?.width ?? 0), pixelHeight = CGFloat(image.cgImage?.height ?? 0)
+		XCTAssertLessThanOrEqual(max(pixelWidth, pixelHeight), 70 * max(controller.traitCollection.displayScale, 1), "decoded at thumbnail size, not 2400px")
+		XCTAssertGreaterThan(pixelWidth, 0)
+
+		// 日期贴屏幕右边缘（不被挤到缩略图左边），缩略图在日期下方
+		let firstCell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 0, section: 0)))
+		let date = try XCTUnwrap(descendant(of: firstCell, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.date" })
+		let dateFrame = date.convert(date.bounds, to: firstCell.contentView)
+		let thumbFrame = loaded.convert(loaded.bounds, to: firstCell.contentView)
+		XCTAssertEqual(dateFrame.maxX, firstCell.contentView.bounds.width - 20, accuracy: 0.5, "date hugs the right edge")
+		XCTAssertEqual(thumbFrame.maxX, firstCell.contentView.bounds.width - 20, accuracy: 0.5)
+		XCTAssertGreaterThanOrEqual(thumbFrame.minY, dateFrame.maxY, "thumbnail sits below the date")
+
+		let broken = try thumbnail(row: 1)
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertFalse(broken.isHidden, "failed download keeps the placeholder slot")
+		XCTAssertNil(broken.image)
+		XCTAssertNotEqual(broken.backgroundColor, .clear)
+
+		XCTAssertTrue(try thumbnail(row: 2).isHidden, "no image → text uses the full width")
+	}
+
 	// MARK: - 生成长图（Slice 5 第 5 步，ADR-025）
 
 
@@ -1802,18 +1962,35 @@ private struct NoopImageProvider: ImageProviding {
 	func imageData(for url: URL) async throws -> Data? { nil }
 }
 
+/// 返回一张指定尺寸的 PNG（模拟原图很大的文章配图）；地址含 "broken" 时下载失败。
+private struct LargeImageProvider: ImageProviding {
+	let size: CGSize
+	func imageData(for url: URL) async throws -> Data? {
+		if url.absoluteString.contains("broken") { return nil }
+		return await MainActor.run {
+			let format = UIGraphicsImageRendererFormat()
+			format.scale = 1
+			return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+				UIColor.systemTeal.setFill()
+				context.fill(CGRect(origin: .zero, size: size))
+			}
+		}
+	}
+}
+
 @MainActor
 private func makeEnvironment(
 	provider: any DataProviding,
 	renderer: any ArticleRendering = RecordingRenderer(),
-	actionHandler: any ActionHandling = NoopActionHandler()
+	actionHandler: any ActionHandling = NoopActionHandler(),
+	imageProvider: any ImageProviding = NoopImageProvider()
 ) -> AppEnvironment {
 	Babel2AppAssembly.makeEnvironment(
 		dataProvider: provider,
 		actionHandler: actionHandler,
 		settingsProvider: NoopSettingsProvider(),
 		articleRenderer: renderer,
-		imageProvider: NoopImageProvider()
+		imageProvider: imageProvider
 	)
 }
 
@@ -1843,9 +2020,13 @@ private func makeArticle(
 
 @MainActor
 private func waitForRows(in tableView: UITableView, count: Int) async {
-	for _ in 0..<100 {
-		if tableView.numberOfRows(inSection: 0) == count { return }
-		await Task.yield()
+	// 按真实时间等（最多约 3 秒）：按 Task.yield 次数等，在全量测试负载下会偶发超时（LESSONS 32）
+	let deadline = Date().addingTimeInterval(3)
+	while Date() < deadline {
+		// 文章列表按天分段后行数分散在多段里：数全部段的行数
+		let total = (0..<tableView.numberOfSections).reduce(0) { $0 + tableView.numberOfRows(inSection: $1) }
+		if total == count { return }
+		try? await Task.sleep(for: .milliseconds(10))
 	}
 	XCTFail("Timed out waiting for \(count) feed rows")
 }
@@ -1856,9 +2037,11 @@ private func waitForRootState(_ root: Babel2RootViewController, scope: Babel2Fee
 		XCTFail("Missing root feed table")
 		return
 	}
-	for _ in 0..<200 {
+	// 按真实时间等（最多约 3 秒），理由同上（2026-09-25 全量测试中偶发超时）
+	let deadline = Date().addingTimeInterval(3)
+	while Date() < deadline {
 		if tableView.accessibilityValue == state && tableView.numberOfRows(inSection: 0) == rows { return }
-		await Task.yield()
+		try? await Task.sleep(for: .milliseconds(10))
 	}
 	XCTFail("Timed out waiting for root \(scope.rawValue) state \(state) with \(rows) rows")
 }
