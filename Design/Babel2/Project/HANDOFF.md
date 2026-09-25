@@ -6,7 +6,7 @@
 
 **用户指定的下一任务：长图小改善**（均在 Babel2 阅读页的「生成长图」，ADR-025）
 1. 把长图末尾的「分享自 <品牌名>」签名（页脚：app 图标 + 文字）移到长图**顶部**。
-2. 签名里的 app 图标换成 Babel 2.0 最新图标（`iOS/Babel2/Assets.xcassets/AppIcon.appiconset` 的 Light/Dark/Mono；按长图深浅色选对应版本——先核实旧代码现在画的是哪个图标）。
+2. 签名里的 app 图标换成 Babel 2.0 最新图标（`iOS/Babel2/Assets.xcassets/AppIcon.appiconset` 的 Light/Dark/Mono；按长图深浅色选对应版本）。已核实：旧代码画的是资源 `ShareFooterIcon`（`ArticleLongImageExporter.swift` 约第 172 行 `UIImage(named: "ShareFooterIcon")`），是 1.x 的旧图。
 3. 在分享面板里「存储图像」成功时给出提示（可用 `UIActivityViewController.completionWithItemsHandler`，`activityType == .saveToCameraRoll` 且 completed；提示样式沿用署名下方状态字或与用户确认）。
 - 相关代码：页脚绘制在 `iOS/Article/ArticleLongImageExporter.swift` 的 `renderLongImage`（旧版 fork 代码，ADR-025 时承诺“零改动”——改动前需向用户说明并取得同意）；Babel2 侧入口在 `iOS/Babel2/Reader/Babel2ArticleViewController.swift` 的 `generateLongImage` / `makeLongImage` / `presentShare`。
 - 流程照旧：先读代码交书面方案 → 用户确认 → 写代码 → 相关测试组 → 交付前全量测试（-collect-test-diagnostics never）→ 真机验收清单 → 用户说提交才提交推送。
