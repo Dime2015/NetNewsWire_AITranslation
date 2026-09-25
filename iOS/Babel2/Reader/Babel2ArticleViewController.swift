@@ -50,6 +50,13 @@ final class Babel2ArticleViewController: UIViewController {
 	private(set) var translationHostArticle: AnyObject?
 	private let hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)?
 	private var isTranslationPrepared = false
+	/// 阅读模式（全文）：开着时正文显示的是从原网页提取的全文。
+	private(set) var isReaderModeOn = false
+	private var fullTextHTML: String?
+	private var fullTextTask: Task<Void, Never>?
+	private let fullTextProvider: @MainActor (URL, UIView) async throws -> String
+	private let statusLabel = UILabel()
+	private var statusHideTask: Task<Void, Never>?
 	/// 复用的翻译引擎：分块、流式、缓存、断点续翻、骨架色条都在里面，这里只接按钮和标题。
 	private lazy var translation: TranslationController = {
 		let controller = TranslationController(currentWebViewController: { [weak self] in self })
@@ -87,9 +94,13 @@ final class Babel2ArticleViewController: UIViewController {
 		feedTitle: String? = nil,
 		feedIconData: Data? = nil,
 		motionRecorder: any Babel2MotionRecording = Babel2OSLogMotionRecorder(),
-		hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)? = nil
+		hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)? = nil,
+		fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { url, host in
+			try await Babel2FullTextFetcher.fetch(url: url, hostView: host)
+		}
 	) {
 		self.hostArticleProvider = hostArticleProvider
+		self.fullTextProvider = fullTextProvider
 		self.article = article
 		self.environment = environment
 		self.feedTitle = feedTitle
@@ -125,6 +136,10 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 		startRendering()
 		resolveTranslationHostArticle()
+		// 这篇上次是开着阅读模式离开的：自动再取一次全文（ADR-019，按单篇文章记忆）
+		if article.url != nil, ArticleReadingStateStore.state(for: readingStateKey).readerMode {
+			startFullTextFetch()
+		}
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -152,6 +167,8 @@ final class Babel2ArticleViewController: UIViewController {
 	override func viewDidDisappear(_ animated: Bool) {
 		super.viewDidDisappear(animated)
 		if isMovingFromParent {
+			fullTextTask?.cancel()
+			statusHideTask?.cancel()
 			// 离开页面：取消还在飞的翻译请求（不再花钱，也不会写到别的页面上）
 			if isTranslationPrepared { translation.resetForNewArticle() }
 			cancelRendering()
@@ -164,7 +181,9 @@ final class Babel2ArticleViewController: UIViewController {
 
 	// MARK: - 正文加载
 
-	private func startRendering() {
+	/// - fullText: 非 nil 时直接排版这段全文（阅读模式），不再向数据层要原文。
+	/// - scrollToTop: 排版完成后回到顶部（切换阅读模式时；两版正文无法按位置对应，1.x 经验）。
+	private func startRendering(fullText: String? = nil, scrollToTop: Bool = false) {
 		cancelRendering()
 		hideMessage()
 		// 重新排版 = 网页里没有译文了，翻译按钮回到初始并等待重新就绪
@@ -184,16 +203,24 @@ final class Babel2ArticleViewController: UIViewController {
 				}
 			}
 			do {
-				let rendered = try await renderer.render(article)
-				// 过期保护：页面已关闭、已重试、或渲染结果不属于这篇文章 → 丢弃
+				let body: String
+				if let fullText {
+					body = fullText
+				} else {
+					let rendered = try await renderer.render(article)
+					// 过期保护：渲染结果不属于这篇文章 → 丢弃
+					guard rendered.articleID == articleID else { return }
+					body = rendered.body
+				}
+				// 过期保护：页面已关闭、已重试 → 丢弃
 				guard !Task.isCancelled,
 					let self,
 					self.renderGeneration == generation,
-					self.article.id == articleID,
-					rendered.articleID == articleID else { return }
-				let result = await self.contentView.render(body: rendered.body, baseURL: article.url, title: article.title)
+					self.article.id == articleID else { return }
+				let result = await self.contentView.render(body: body, baseURL: article.url, title: article.title)
 				guard !Task.isCancelled, self.renderGeneration == generation else { return }
 				self.lastRenderResult = result
+				if scrollToTop { self.scrollToTop() }
 				if let result {
 					if result.isEmpty {
 						self.showMessage(Babel2Localization.text(.noArticleContent), allowsRetry: false)
@@ -219,7 +246,100 @@ final class Babel2ArticleViewController: UIViewController {
 		renderTask = nil
 	}
 
-	@objc private func retryTapped() { startRendering() }
+	@objc private func retryTapped() { startRendering(fullText: isReaderModeOn ? fullTextHTML : nil) }
+
+	// MARK: - 阅读模式（全文）
+
+	/// 与翻译引擎相同的单篇文章键（ArticleReadingStateStore 里同时存着「阅读模式」「译文」两个记忆）。
+	private var readingStateKey: String { article.id.accountID + "|" + article.id.articleID }
+
+	/// ••• 菜单里点「阅读模式」：开 → 取全文；关 → 回到订阅源自带的正文。
+	func toggleReaderMode() {
+		if isReaderModeOn || fullTextTask != nil {
+			fullTextTask?.cancel()
+			fullTextTask = nil
+			hideStatus()
+			let wasOn = isReaderModeOn
+			isReaderModeOn = false
+			ArticleReadingStateStore.setReaderMode(false, for: readingStateKey)
+			refreshMoreMenu()
+			if wasOn { startRendering(fullText: nil, scrollToTop: true) }
+		} else {
+			startFullTextFetch()
+		}
+	}
+
+	private func startFullTextFetch() {
+		guard let url = article.url, fullTextTask == nil else { return }
+		showStatus(Babel2Localization.text(.fetchingFullText), autoHide: false)
+		let provider = fullTextProvider
+		let host: UIView = view
+		fullTextTask = Task { @MainActor [weak self] in
+			do {
+				let html = try await provider(url, host)
+				guard !Task.isCancelled, let self else { return }
+				self.fullTextTask = nil
+				self.fullTextHTML = html
+				self.isReaderModeOn = true
+				ArticleReadingStateStore.setReaderMode(true, for: self.readingStateKey)
+				self.refreshMoreMenu()
+				self.hideStatus()
+				self.startRendering(fullText: html, scrollToTop: true)
+			} catch {
+				guard !Task.isCancelled, let self else { return }
+				self.fullTextTask = nil
+				self.isReaderModeOn = false
+				ArticleReadingStateStore.setReaderMode(false, for: self.readingStateKey)
+				self.refreshMoreMenu()
+				self.showStatus(Babel2Localization.text(.unableToFetchFullText), autoHide: true)
+			}
+		}
+		refreshMoreMenu()
+	}
+
+	private func scrollToTop() {
+		let scrollView = contentView.scrollView
+		scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: false)
+	}
+
+	/// 署名下方的一行浅灰状态字（不挡正文、不用系统转圈，ADR-019）。
+	private func showStatus(_ text: String, autoHide: Bool) {
+		statusHideTask?.cancel()
+		statusLabel.attributedText = Self.metadata(text, kern: 0.25)
+		statusLabel.isHidden = false
+		relayoutHeader()
+		guard autoHide else { return }
+		statusHideTask = Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .seconds(3))
+			guard !Task.isCancelled else { return }
+			self?.hideStatus()
+		}
+	}
+
+	private func hideStatus() {
+		statusHideTask?.cancel()
+		statusHideTask = nil
+		guard !statusLabel.isHidden else { return }
+		statusLabel.isHidden = true
+		relayoutHeader()
+	}
+
+	private func relayoutHeader() {
+		lastHeaderWidth = 0
+		view.setNeedsLayout()
+	}
+
+	private func refreshMoreMenu() {
+		moreButton?.menu = makeMoreMenu()
+		moreButton?.isEnabled = moreButton?.menu?.children.isEmpty == false
+	}
+
+	/// 仅供自动化测试观察。
+	var statusTextForTesting: String? { statusLabel.isHidden ? nil : statusLabel.text }
+	var isFetchingFullTextForTesting: Bool { fullTextTask != nil }
+	var moreMenuReaderModeState: UIMenuElement.State? {
+		(moreButton?.menu?.children.first { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.reading-mode" } as? UIAction)?.state
+	}
 
 	// MARK: - 翻译
 
@@ -257,8 +377,7 @@ final class Babel2ArticleViewController: UIViewController {
 		let text = translated ?? article.title
 		titleLabel.attributedText = Self.titleText(text)
 		compactHeader.setArticleTitle(text)
-		lastHeaderWidth = 0
-		view.setNeedsLayout()
+		relayoutHeader()
 	}
 
 	/// 仅供自动化测试观察。
@@ -320,11 +439,17 @@ final class Babel2ArticleViewController: UIViewController {
 		return bar
 	}
 
-	/// 「•••」更多菜单：本步只有「打开原文」（没有原文地址时菜单为空、按钮变灰）；
-	/// 下一步加入「阅读模式」（ADR-016）。
+	/// 「•••」更多菜单：阅读模式（带勾表示开着）+ 打开原文；没有原文地址时两项都没有、按钮变灰。
 	private func makeMoreMenu() -> UIMenu {
 		var actions = [UIMenuElement]()
 		if article.url != nil {
+			let readerMode = UIAction(
+				title: Babel2Localization.text(.readingMode),
+				image: UIImage(named: "BabelReaderReadingMode"),
+				identifier: UIAction.Identifier("babel2.article.reading-mode"),
+				state: isReaderModeOn ? .on : .off
+			) { [weak self] _ in self?.toggleReaderMode() }
+			actions.append(readerMode)
 			actions.append(UIAction(
 				title: Babel2Localization.text(.openOriginal),
 				image: UIImage(systemName: "safari"),
@@ -412,11 +537,16 @@ final class Babel2ArticleViewController: UIViewController {
 		bylineLabel.numberOfLines = 0
 		bylineLabel.accessibilityIdentifier = "babel2.article.byline"
 
-		let stack = UIStackView(arrangedSubviews: [dateLabel, titleLabel, bylineLabel])
+		statusLabel.isHidden = true
+		statusLabel.numberOfLines = 1
+		statusLabel.accessibilityIdentifier = "babel2.article.status"
+
+		let stack = UIStackView(arrangedSubviews: [dateLabel, titleLabel, bylineLabel, statusLabel])
 		stack.axis = .vertical
 		stack.alignment = .fill
 		stack.setCustomSpacing(13, after: dateLabel)
 		stack.setCustomSpacing(9, after: titleLabel)
+		stack.setCustomSpacing(8, after: bylineLabel)
 		stack.translatesAutoresizingMaskIntoConstraints = false
 		headerView.addSubview(stack)
 		NSLayoutConstraint.activate([

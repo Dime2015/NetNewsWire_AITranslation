@@ -86,6 +86,23 @@
         }
       }
     },
+    "Fetching full text…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching full text…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在获取全文…"
+          }
+        }
+      }
+    },
     "Folders" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -116,6 +133,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载…"
+          }
+        }
+      }
+    },
+    "Long Image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Long Image"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成长图"
           }
         }
       }
@@ -473,6 +507,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "翻译失败"
+          }
+        }
+      }
+    },
+    "Unable to fetch full text" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to fetch full text"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法获取全文"
           }
         }
       }

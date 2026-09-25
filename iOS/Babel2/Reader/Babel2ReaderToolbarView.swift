@@ -3,11 +3,11 @@ import UIKit
 /// 阅读页底栏：按 Figma「Reader Toolbar」(21:5) 对齐（ADR-018）。
 ///
 /// - 72pt 高、贴屏幕最底（含 Home 指示条区域），顶部 0.5pt 分隔线
-/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
+/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 长图，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
+///   （第 4 格按 ADR-016 由「阅读模式」改为「长图」，阅读模式在顶栏 ••• 菜单里）
 /// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 362
 /// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
-/// 已接通：已读、星标、翻译；「下一篇」「阅读模式」仍是占位（灰色不可点）。
-/// （按 ADR-016，后续第 4 格改为「长图」，阅读模式移入顶栏「更多」菜单。）
+/// 已接通：已读、星标、翻译；「下一篇」「长图」仍是占位（灰色不可点）。
 @MainActor
 final class Babel2ReaderToolbarView: UIView {
 	static let height: CGFloat = 72
@@ -33,16 +33,16 @@ final class Babel2ReaderToolbarView: UIView {
 		readButton = Self.makeButton(identifier: "babel2.article.toolbar.read")
 		starButton = Self.makeButton(identifier: "babel2.article.toolbar.star")
 		let next = Self.makeButton(identifier: "babel2.article.toolbar.next")
-		let readingMode = Self.makeButton(identifier: "babel2.article.toolbar.reading-mode")
-		placeholderButtons = [next, readingMode]
+		let longImage = Self.makeButton(identifier: "babel2.article.toolbar.long-image")
+		placeholderButtons = [next, longImage]
 		super.init(frame: frame)
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
 
 		Self.setIcon("Babel2ReaderNext", on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
-		Self.setIcon("BabelReaderReadingMode", on: readingMode)
-		readingMode.accessibilityLabel = Babel2Localization.text(.readingMode)
+		Self.setIcon("BabelReaderShareLongImage", on: longImage)
+		longImage.accessibilityLabel = Babel2Localization.text(.longImage)
 		placeholderButtons.forEach { $0.isEnabled = false }
 
 		readButton.addTarget(self, action: #selector(readTapped), for: .touchUpInside)

@@ -6,6 +6,87 @@ import Babel2UI
 
 @MainActor
 final class Babel2FeedReaderTests: XCTestCase {
+	/// 阅读页测试用固定文章编号；「按单篇文章记忆」存在 UserDefaults 里，每个测试前后清掉。
+	override func setUp() async throws {
+		try await super.setUp()
+		ArticleReadingStateStore.setReaderMode(false, for: "account|reader-article")
+		ArticleReadingStateStore.setTranslated(false, for: "account|reader-article")
+	}
+
+	override func tearDown() async throws {
+		ArticleReadingStateStore.setReaderMode(false, for: "account|reader-article")
+		ArticleReadingStateStore.setTranslated(false, for: "account|reader-article")
+		try await super.tearDown()
+	}
+
+	// MARK: - 阅读模式（Slice 5 第 2 步）
+
+	func testReaderModeSwapsToFullTextRemembersAndReturnsToOriginal() async throws {
+		var requested = [URL]()
+		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { url, _ in
+			requested.append(url)
+			return "<p>The complete article text.</p><p>Second paragraph.</p>"
+		})
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		XCTAssertEqual(viewController.moreMenuReaderModeState, .off)
+		let scrollView = viewController.readerContentView.scrollView
+		scrollView.contentOffset.y += 5
+
+		viewController.toggleReaderMode()
+		await waitUntil { viewController.isReaderModeOn }
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 30 }
+		let fullText = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertTrue(fullText?.contains("The complete article text.") == true)
+		XCTAssertEqual(requested, [URL(string: "https://example.com/post")!])
+		XCTAssertEqual(viewController.moreMenuReaderModeState, .on)
+		XCTAssertNil(viewController.statusTextForTesting)
+		XCTAssertEqual(scrollView.contentOffset.y, -scrollView.adjustedContentInset.top, accuracy: 0.5, "switching scrolls to top")
+		XCTAssertTrue(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
+
+		// 关掉：回到订阅源自带的正文，并忘掉记忆
+		viewController.toggleReaderMode()
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 99 < 30 }
+		let original = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertEqual(original, "Summary only.")
+		XCTAssertFalse(viewController.isReaderModeOn)
+		XCTAssertFalse(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
+	}
+
+	func testReaderModeFailureKeepsOriginalAndShowsStatus() async throws {
+		struct Blocked: Error {}
+		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
+			try await Task.sleep(for: .milliseconds(200))
+			throw Blocked()
+		})
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		viewController.toggleReaderMode()
+		// 获取中：署名下方一行状态字，正文照常
+		XCTAssertEqual(viewController.statusTextForTesting, Babel2Localization.text(.fetchingFullText))
+		await waitUntil { !viewController.isFetchingFullTextForTesting }
+		XCTAssertEqual(viewController.statusTextForTesting, Babel2Localization.text(.unableToFetchFullText))
+		XCTAssertFalse(viewController.isReaderModeOn)
+		let text = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertEqual(text, "Summary only.")
+		XCTAssertFalse(ArticleReadingStateStore.state(for: "account|reader-article").readerMode)
+	}
+
+	func testReaderModeIsRestoredWhenReopeningTheArticle() async throws {
+		ArticleReadingStateStore.setReaderMode(true, for: "account|reader-article")
+		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
+			"<p>Remembered full text for this article.</p>"
+		})
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitUntil { viewController.isReaderModeOn }
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 30 }
+		let text = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertEqual(text, "Remembered full text for this article.")
+	}
+
 	func testFeedLoadsOnlyRequestedFeedAndPassesSnapshotToReader() async throws {
 		let accountAFeed = FeedSnapshot.ID(accountID: "account-a", feedID: "shared-feed")
 		let accountBFeed = FeedSnapshot.ID(accountID: "account-b", feedID: "shared-feed")
@@ -161,6 +242,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let bodyOnlyViewController = Babel2ArticleViewController(article: bodyOnlyArticle, environment: environment)
 		bodyOnlyViewController.loadViewIfNeeded()
 		XCTAssertFalse(bodyOnlyViewController.moreMenuHasOpenOriginal)
+		XCTAssertNil(bodyOnlyViewController.moreMenuReaderModeState, "no reading mode without an original URL")
 		let moreButton = try XCTUnwrap(descendant(of: bodyOnlyViewController.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.article.more" })
 		XCTAssertFalse(moreButton.isEnabled, "empty more menu is disabled")
 	}
@@ -1391,7 +1473,8 @@ private func makeReader(
 	isRead: Bool = false,
 	isStarred: Bool = false,
 	hostArticle: AnyObject? = nil,
-	author: String? = nil
+	author: String? = nil,
+	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() }
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -1409,7 +1492,8 @@ private func makeReader(
 		environment: makeEnvironment(provider: FakeDataProvider(), actionHandler: actionHandler),
 		feedTitle: "Feed",
 		motionRecorder: motionRecorder,
-		hostArticleProvider: { _ in hostArticle }
+		hostArticleProvider: { _ in hostArticle },
+		fullTextProvider: fullTextProvider
 	)
 }
 

@@ -34,6 +34,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case cancelTranslation = "Cancel Translation"
 	case translationFailed = "Translation Failed"
 	case more = "More"
+	case fetchingFullText = "Fetching full text…"
+	case unableToFetchFullText = "Unable to fetch full text"
+	case longImage = "Long Image"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -65,6 +68,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .translate, .showOriginal, .cancelTranslation: return "babel2.article.toolbar.translate"
 		case .translationFailed: return "babel2.article.translation-error"
 		case .more: return "babel2.article.more"
+		case .fetchingFullText, .unableToFetchFullText: return "babel2.article.status"
+		case .longImage: return "babel2.article.toolbar.long-image"
 		}
 	}
 }

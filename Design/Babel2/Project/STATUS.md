@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 5 第 2 步：阅读模式（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 按 ADR-019 实现：••• 菜单「阅读模式」开关（勾选态）→ `Babel2FullTextFetcher`（包装未改动的 ReaderViewExtractor）取全文 → 以全文重新排版并回到顶部；关闭则回到原正文。署名下方状态字「正在获取全文… / 无法获取全文」。按单篇记忆，再次打开自动取全文。切换时翻译回到原文并在新正文排好后重新就绪。底栏第 4 格改为「长图」占位（既有 `BabelReaderShareLongImage`，与 Figma 105:45 导出 SVG 逐字节一致）。Figma 无阅读模式状态画面，仅图标。
+- 文件：新增 `Reader/Babel2FullTextFetcher.swift`；修改 `Reader/Babel2ArticleViewController.swift`、`Reader/Babel2ReaderToolbarView.swift`、`Babel2Localization.swift` + xcstrings（+3 键）、测试（+3，另在 setUp/tearDown 清理测试文章的单篇记忆）。未改 Shared/ReaderView、翻译引擎、数据层、禁区。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/readermode-r1.xcresult` 101/101。临时探针：真实提取器经包装抓取 gnu.org 长文成功（29,206 字符，4.3 秒），探针已删除。
+- 2026-09-25 用户按 8 项清单真机验收通过。用户随即提出：阅读模式对某些源很常用，放在 ••• 菜单操作成本高——入口位置待重新决定（见 HANDOFF）。
+
 ## 阅读页对齐 Figma（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 起因：用户指出阅读页控件、图标、尺寸与 Figma 差距大；接上 Figma 连接后逐项对照 04A(22:38)/04B(117:263)/04D3(143:444)/Translation Toggle(43:19)/Reader Toolbar(21:5)/Compact Header(143:73)。决定见 ADR-018（用户“都按建议来”）。
