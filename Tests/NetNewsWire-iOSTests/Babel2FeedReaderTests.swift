@@ -242,6 +242,93 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(weight ?? -1, UIFont.Weight.regular.rawValue, accuracy: 0.01, "row changed while covered must repaint on return")
 	}
 
+	// MARK: - 阅读页翻译（Slice 5 第 1 步）
+
+	func testTranslationBridgeReadsBodyAndHiddenTitleAndAppliesTranslation() async throws {
+		let viewController = makeReader(body: "<h1>Inner heading</h1><p>Hello world.</p><p>Second paragraph.</p>")
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+
+		// 翻译引擎读到的正文是我们的正文容器；标题来自隐藏标题元素，而不是正文里的 h1
+		let body = try await viewController.nnwTranslationReadBody()
+		XCTAssertEqual(body, "<h1>Inner heading</h1><p>Hello world.</p><p>Second paragraph.</p>")
+		let title = try await viewController.nnwTranslationReadTitle()
+		XCTAssertEqual(title, "Reader")
+
+		// 标题译文：同步到原生大标题与紧凑栏
+		let titleApplied = try await viewController.nnwTranslationApplyTitle("读者")
+		XCTAssertTrue(titleApplied)
+		let nativeTitle = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.title" })
+		XCTAssertEqual(nativeTitle.attributedText?.string, "读者")
+		let compactTitle = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.compact-title" })
+		XCTAssertEqual(compactTitle.text, "读者")
+		// 正文里的 h1 没被当成标题改掉
+		let bodyAfterTitle = try await viewController.nnwTranslationReadBody()
+		XCTAssertTrue(bodyAfterTitle?.contains("Inner heading") == true)
+
+		// 正文译文替换，再切回原文
+		let applied = try await viewController.nnwTranslationApply("<p>你好世界。</p>")
+		XCTAssertTrue(applied)
+		let translatedText = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertEqual(translatedText, "你好世界。")
+		let showing = try await viewController.nnwTranslationIsShowingTranslation()
+		XCTAssertTrue(showing)
+		let restored = try await viewController.nnwTranslationRestore()
+		XCTAssertTrue(restored)
+		let originalText = await viewController.readerContentView.articleTextForTesting()
+		XCTAssertTrue(originalText?.contains("Hello world.") == true)
+		XCTAssertEqual(nativeTitle.attributedText?.string, "Reader", "restore returns the native title to the original")
+	}
+
+	func testTranslateButtonEnablesOnlyWhenPageAndArticleAreReady() async throws {
+		// 取不到文章对象：正文排好了按钮也保持不可点
+		let withoutArticle = makeReader(body: "<p>Body</p>")
+		let window1 = hostInWindow(withoutArticle)
+		await waitForReaderRender(withoutArticle)
+		try await Task.sleep(for: .milliseconds(200))
+		XCTAssertFalse(withoutArticle.toolbarView.translateButton.isEnabled)
+		XCTAssertFalse(withoutArticle.isTranslationReadyForTesting)
+		window1.isHidden = true
+
+		// 取得到：正文排好后可点，初始为「原文」状态
+		let withArticle = makeReader(body: "<p>Body</p>", hostArticle: NSObject())
+		let window2 = hostInWindow(withArticle)
+		defer { window2.isHidden = true }
+		await waitForReaderRender(withArticle)
+		await waitUntil { withArticle.isTranslationReadyForTesting }
+		XCTAssertTrue(withArticle.toolbarView.translateButton.isEnabled)
+		XCTAssertEqual(withArticle.toolbarView.translateButton.accessibilityValue, "original")
+	}
+
+	func testTranslateButtonStatesAreNeutralAndWorkingStaysTappable() {
+		let toolbar = Babel2ReaderToolbarView()
+		toolbar.setTranslationAvailable(true)
+		let expected: [(TranslationButtonState, String, String)] = [
+			(.original, "original", Babel2Localization.text(.translate)),
+			(.cachedAvailable, "cached", Babel2Localization.text(.translate)),
+			(.partialCacheAvailable, "partial", Babel2Localization.text(.translate)),
+			(.working, "working", Babel2Localization.text(.cancelTranslation)),
+			(.translated, "translated", Babel2Localization.text(.showOriginal)),
+			(.failed, "failed", Babel2Localization.text(.translate))
+		]
+		for (state, value, label) in expected {
+			toolbar.setTranslationState(state)
+			XCTAssertEqual(toolbar.translateButton.accessibilityValue, value)
+			XCTAssertEqual(toolbar.translateButton.accessibilityLabel, label)
+			XCTAssertTrue(toolbar.translateButton.isEnabled, "\(value) stays tappable (working = cancel)")
+		}
+		// 「已翻译」与「有完整缓存」角标必须一眼可分：单独的勾 vs 实心点
+		toolbar.setTranslationState(.translated)
+		XCTAssertEqual(toolbar.translateBadgeSymbol, "checkmark")
+		toolbar.setTranslationState(.cachedAvailable)
+		XCTAssertEqual(toolbar.translateBadgeSymbol, "circle.fill")
+		toolbar.setTranslationState(.partialCacheAvailable)
+		XCTAssertEqual(toolbar.translateBadgeSymbol, "circle")
+		toolbar.setTranslationState(.original)
+		XCTAssertNil(toolbar.translateBadgeSymbol)
+	}
+
 	// MARK: - 阅读页（Slice 4 第 1 步）
 
 	func testReaderHeaderIsVisibleBeforeBodyRenders() async throws {
@@ -535,9 +622,9 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(toolbar.frame.height, 72)
 		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
 		XCTAssertTrue(toolbar.placeholderButtons.allSatisfy { !$0.isEnabled })
-		XCTAssertEqual(toolbar.placeholderButtons.count, 3)
+		XCTAssertEqual(toolbar.placeholderButtons.count, 2)
 		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
-		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons).map { $0.center.x }
+		let centers = ([toolbar.readButton, toolbar.starButton] + toolbar.placeholderButtons + [toolbar.translateButton]).map { $0.center.x }
 		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
 			XCTAssertEqual(actual, expected, accuracy: 0.5)
 		}
@@ -1273,7 +1360,8 @@ private func makeReader(
 	motionRecorder: any Babel2MotionRecording = Babel2NullMotionRecorder(),
 	actionHandler: any ActionHandling = NoopActionHandler(),
 	isRead: Bool = false,
-	isStarred: Bool = false
+	isStarred: Bool = false,
+	hostArticle: AnyObject? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -1289,7 +1377,8 @@ private func makeReader(
 		article: article,
 		environment: makeEnvironment(provider: FakeDataProvider(), actionHandler: actionHandler),
 		feedTitle: "Feed",
-		motionRecorder: motionRecorder
+		motionRecorder: motionRecorder,
+		hostArticleProvider: { _ in hostArticle }
 	)
 }
 

@@ -9,6 +9,13 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 Reader Slice 5 第 1 步：翻译（r3；用户真机验收通过，已提交）
+
+r3（修正「已翻译」角标与实心点混淆）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/translate-r3.xcresult` `result=Passed`、`totalTestCount=97`、`passedTests=97`。
+
+
+基线：`HEAD` = `fc5827f6b` + 未提交改动。r1 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/translate-r1.xcresult` 96/97（边界测试：注释含「WebKit」字样）；r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/translate-r2.xcresult` `result=Passed`、`totalTestCount=97`、`passedTests=97`。CSP 探针：注入真实 translation.js 后 `typeof window.nnwTranslation == object`，readBody 返回两段正文原样。真实联网翻译未在模拟器验证。
+
 ## 2026-09-25 已读图标反转 + 打开文章自动标已读（r1；用户真机验收通过，已提交）
 
 基线：`HEAD` = `2897962e9` + 未提交改动。`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/autoread-r1.xcresult`：`result=Passed`、`totalTestCount=94`、`passedTests=94`。UI Driver 未重跑（它现在会把模拟器中一篇真实文章标为已读）。

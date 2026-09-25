@@ -43,6 +43,21 @@ final class Babel2ArticleViewController: UIViewController {
 	private var isStatusRequestInFlight = false
 	/// 本次打开是否已经自动标过已读（只标一次；之后手动标回未读不会被再次改掉）。
 	private var didAutoMarkRead = false
+	/// 翻译引擎需要的原始文章对象（类型刻意不写明，只在网页控件专用目录里的宿主扩展中还原）。
+	private(set) var translationHostArticle: AnyObject?
+	private let hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)?
+	private var isTranslationPrepared = false
+	/// 复用的翻译引擎：分块、流式、缓存、断点续翻、骨架色条都在里面，这里只接按钮和标题。
+	private lazy var translation: TranslationController = {
+		let controller = TranslationController(currentWebViewController: { [weak self] in self })
+		controller.stateDidChange = { [weak self] state in
+			self?.toolbar.setTranslationState(state)
+		}
+		controller.presentError = { [weak self] message in
+			self?.presentTranslationError(message)
+		}
+		return controller
+	}()
 	private let contentView = Babel2ReaderContentView()
 	private let headerView = UIView()
 	private let dateLabel = UILabel()
@@ -68,8 +83,10 @@ final class Babel2ArticleViewController: UIViewController {
 		environment: AppEnvironment,
 		feedTitle: String? = nil,
 		feedIconData: Data? = nil,
-		motionRecorder: any Babel2MotionRecording = Babel2OSLogMotionRecorder()
+		motionRecorder: any Babel2MotionRecording = Babel2OSLogMotionRecorder(),
+		hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)? = nil
 	) {
+		self.hostArticleProvider = hostArticleProvider
 		self.article = article
 		self.environment = environment
 		self.feedTitle = feedTitle
@@ -103,6 +120,7 @@ final class Babel2ArticleViewController: UIViewController {
 			self?.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
 		}
 		startRendering()
+		resolveTranslationHostArticle()
 	}
 
 	override func viewDidAppear(_ animated: Bool) {
@@ -130,6 +148,8 @@ final class Babel2ArticleViewController: UIViewController {
 	override func viewDidDisappear(_ animated: Bool) {
 		super.viewDidDisappear(animated)
 		if isMovingFromParent {
+			// 离开页面：取消还在飞的翻译请求（不再花钱，也不会写到别的页面上）
+			if isTranslationPrepared { translation.resetForNewArticle() }
 			cancelRendering()
 			settleTimer?.invalidate()
 			barAnimator?.stopAnimation(true)
@@ -143,6 +163,11 @@ final class Babel2ArticleViewController: UIViewController {
 	private func startRendering() {
 		cancelRendering()
 		hideMessage()
+		// 重新排版 = 网页里没有译文了，翻译按钮回到初始并等待重新就绪
+		if isTranslationPrepared { translation.resetForNewArticle() }
+		isTranslationPrepared = false
+		toolbar.setTranslationAvailable(false)
+		applyDisplayedTitle(nil)
 		let generation = UUID()
 		renderGeneration = generation
 		let renderer = environment.articleRenderer
@@ -162,12 +187,14 @@ final class Babel2ArticleViewController: UIViewController {
 					self.renderGeneration == generation,
 					self.article.id == articleID,
 					rendered.articleID == articleID else { return }
-				let result = await self.contentView.render(body: rendered.body, baseURL: article.url)
+				let result = await self.contentView.render(body: rendered.body, baseURL: article.url, title: article.title)
 				guard !Task.isCancelled, self.renderGeneration == generation else { return }
 				self.lastRenderResult = result
 				if let result {
 					if result.isEmpty {
 						self.showMessage(Babel2Localization.text(.noArticleContent), allowsRetry: false)
+					} else {
+						self.prepareTranslationIfReady()
 					}
 				} else {
 					self.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
@@ -189,6 +216,57 @@ final class Babel2ArticleViewController: UIViewController {
 	}
 
 	@objc private func retryTapped() { startRendering() }
+
+	// MARK: - 翻译
+
+	private func resolveTranslationHostArticle() {
+		guard let hostArticleProvider else { return }
+		let articleID = article.id
+		Task { @MainActor [weak self] in
+			let resolved = await hostArticleProvider(articleID)
+			guard let self, self.article.id == articleID else { return }
+			self.translationHostArticle = resolved
+			self.prepareTranslationIfReady()
+		}
+	}
+
+	/// 正文已排版、文章对象已取回，两者都齐了才启用翻译；
+	/// 若这篇上次是以译文状态离开的、且有缓存，引擎会自动把译文放回来。
+	private func prepareTranslationIfReady() {
+		guard !isTranslationPrepared,
+			translationHostArticle != nil,
+			let result = lastRenderResult, !result.isEmpty else { return }
+		isTranslationPrepared = true
+		toolbar.setTranslationAvailable(true)
+		translation.resetForNewArticle()
+		translation.autoApplyTranslationFromCacheIfNeeded()
+	}
+
+	private func presentTranslationError(_ message: String) {
+		let alert = UIAlertController(title: Babel2Localization.text(.translationFailed), message: message, preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.ok), style: .default))
+		present(alert, animated: true)
+	}
+
+	/// 标题显示：nil = 原文标题；否则显示译文标题。大标题高度变了要重新让出正文空间。
+	func applyDisplayedTitle(_ translated: String?) {
+		let text = translated ?? article.title
+		let paragraph = NSMutableParagraphStyle()
+		paragraph.minimumLineHeight = 40
+		paragraph.maximumLineHeight = 40
+		titleLabel.attributedText = NSAttributedString(string: text, attributes: [
+			.font: UIFont.systemFont(ofSize: 34, weight: .bold),
+			.foregroundColor: BabelPalette.ink,
+			.paragraphStyle: paragraph
+		])
+		compactHeader.setArticleTitle(text)
+		lastHeaderWidth = 0
+		view.setNeedsLayout()
+	}
+
+	/// 仅供自动化测试观察。
+	var translationController: TranslationController { translation }
+	var isTranslationReadyForTesting: Bool { isTranslationPrepared }
 
 	// MARK: - 顶栏
 
@@ -447,6 +525,7 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.setRead(isRead)
 		toolbar.setStarred(isStarred)
 		toolbar.onToggleRead = { [weak self] in self?.toggleRead() }
+		toolbar.onTranslate = { [weak self] in self?.translation.toggle() }
 		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
 		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）
 		contentView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanChanged(_:)))

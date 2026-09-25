@@ -78,6 +78,11 @@ final class Babel2ReaderCompactHeaderView: UIView {
 
 	var textLayer: UIView { titleLabel.superview ?? titleLabel }
 
+	/// 标题译文就位 / 切回原文时同步紧凑栏标题。
+	func setArticleTitle(_ title: String) {
+		titleLabel.text = title
+	}
+
 	/// 按进度立刻重画，不带任何隐式动画。
 	func apply(pCollapse: CGFloat, pReading: CGFloat) {
 		self.pCollapse = pCollapse

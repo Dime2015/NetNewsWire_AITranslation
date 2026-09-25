@@ -24,6 +24,17 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## Reader Slice 5 第 1 步：翻译（2026-09-25，用户真机验收通过，已提交并推送）
+
+- 方案（用户确认“按建议来”）：整套既有翻译引擎（`Shared/Translation/` 的 TranslationController、OpenAICompatibleTranslator、缓存、断点续翻、`translation.js` 的分块/流式/骨架色条）**一行不改**原样复用；Babel2 阅读页实现 `NNWArticlePageHost` 接口搭桥。设置页仍在 Slice 6，暂沿用手机里旧版已存的 API key/模型。
+- 实现：`Reader/WebKit/Babel2ArticlePageHost.swift` 让阅读页成为宿主（文章对象 + 网页控件 + 标题回调）；外壳页加隐藏 `h1.articleTitle`（渲染时写入原标题）供引擎读写，避免误改正文里的 h1，正文容器 `<article>` 命中 translation.js 既有兜底选择器；标题译文同步到原生大标题与紧凑栏；底栏第 5 格翻译按钮启用（原文/完整缓存实心点/未完成缓存空心圈/翻译中变淡且可点=取消/已译小勾/失败感叹号，均中性色，无系统转圈）；错误弹窗；离开页面或重新排版时取消在飞请求；再次打开曾以译文离开的文章自动恢复译文（引擎既有逻辑）。
+- 风险验证：外壳页 CSP（禁止页面脚本）**不拦截** app 原生注入的 translation.js——探针测试注入后 `window.nnwTranslation` 可用且 readBody 返回正文，已改为正式测试。
+- 文件：新增 `Reader/WebKit/Babel2ArticlePageHost.swift`；修改 `Reader/Babel2ArticleViewController.swift`、`Reader/Babel2ReaderToolbarView.swift`、`Reader/Babel2ReaderCompactHeaderView.swift`、`Reader/WebKit/Babel2ReaderContentView.swift`、`Babel2SceneComposition.swift`、`Babel2Localization.swift` + xcstrings（+3 键）、`Babel2Integration/Babel2LiveDataAdapters.swift`（新增 `Babel2LiveArticleLookup`，见 ADR-017）、测试。`Shared/Translation/` 零改动。
+- 验证：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/translate-r2.xcresult` 97/97（+3：桥接读正文/隐藏标题/标题与正文替换与还原；按钮就绪条件；六态中性且翻译中可点）。r1 1 项失败为边界测试——中文注释里写了含「WebKit」的目录名被字面匹配判违规，已改措辞（LESSONS 30 追记）。未在模拟器发起真实翻译（模拟器无 API key）。
+- 首轮真机（2026-09-25）：基本通过；反馈“已译完的文章点按钮回到原文后，按钮始终是实心点”。原因：我把「已翻译」角标画成 `checkmark.circle.fill`，9pt 下看起来就是实心点，与「有完整缓存」的实心点无法区分（引擎状态本身正确：已译=勾 → 切回原文=有缓存实心点）。修复：改为旧版定稿的单独小勾（`checkmark` 10pt heavy），圆点 7pt，角标垫背景色晕圈；测试补“勾/实心点/空心圈/无角标”四者可分。r3 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/translate-r3.xcresult` 97/97。
+- 2026-09-25 用户真机复验通过（已译=小勾 → 原文=实心点 → 秒开中文=小勾）。
+- 用户同时指出：阅读页控件、图标、尺寸与 Figma 差距大。原因：本会话此前无 Figma 连接，只按 BATCH-01-SPEC 文字数值与系统图标实现；另我未查资源库，漏用已从设计稿导出的 `BabelReaderReadingMode` / `BabelReaderShareLongImage` 等图标（疏漏）。用户已接上 Figma 连接，下一步插入「阅读页对齐 Figma」小步骤，再继续 Slice 5。
+
 ## 已读图标反转 + 打开文章自动标已读（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 用户决定：①底栏已读图标改为 实心圆 = 已读、空心圈 = 未读（与 Reeder/旧版相反）；②打开文章即标为已读。

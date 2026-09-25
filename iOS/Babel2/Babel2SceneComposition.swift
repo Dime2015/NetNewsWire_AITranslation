@@ -48,7 +48,8 @@ enum Babel2SceneComposition {
 					article: article,
 					environment: resolvedEnvironment,
 					feedTitle: feed.title,
-					feedIconData: feed.iconData
+					feedIconData: feed.iconData,
+					hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) }
 				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)

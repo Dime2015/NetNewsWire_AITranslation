@@ -308,6 +308,23 @@ final class Babel2LiveActionHandler: ActionHandling {
 	}
 }
 
+/// 翻译引擎（Shared/Translation）需要原始 Article 对象：缓存键用 articleID/accountID，
+/// 标题与原文链接也从它取。Babel2 页面只拿快照，唯一的例外就是阅读页做翻译时，
+/// 经这里按快照编号取回对象（见 DECISIONS ADR-017）。返回类型刻意不暴露 Article，
+/// 只有阅读页网页控件专用目录里的页面宿主扩展会把它还原成 Article。
+@MainActor
+enum Babel2LiveArticleLookup {
+	static func article(for id: ArticleSnapshot.ID) async -> AnyObject? {
+		guard let account = AccountManager.shared.existingAccount(accountID: id.accountID),
+			let feed = account.existingFeed(withFeedID: id.feedID),
+			feed.accountID == id.accountID else { return nil }
+		let articles = await account.fetchArticlesAsync(.articleIDs([id.articleID]))
+		return articles.first {
+			$0.accountID == id.accountID && $0.feedID == id.feedID && $0.articleID == id.articleID
+		}
+	}
+}
+
 /// A concrete settings boundary. The initial value is intentionally in-memory;
 /// the settings screen can later replace this provider with its persisted
 /// store without making the library or reader depend on UIKit defaults.

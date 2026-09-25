@@ -40,6 +40,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 
 	private let webView: WKWebView
 	var scrollView: UIScrollView { webView.scrollView }
+	/// 给翻译桥（同目录的页面宿主扩展）用：翻译引擎要直接对这个网页控件执行脚本。
+	var pageWebView: WKWebView { webView }
 	/// 用户点了正文里的链接，交给外面决定怎么打开。
 	var onLinkActivated: ((URL) -> Void)?
 	/// 网页内容进程意外退出（系统内存紧张时会发生），外面应显示错误并允许重试。
@@ -98,7 +100,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	required init?(coder: NSCoder) { nil }
 
 	/// 把文章原文排进页面。返回 nil 表示失败（外壳页没加载成功或脚本出错）。
-	func render(body: String, baseURL: URL?) async -> RenderResult? {
+	/// - title: 写进隐藏标题元素，只给翻译引擎读写（用户看到的是原生标题）。
+	func render(body: String, baseURL: URL?, title: String = "") async -> RenderResult? {
 		renderState = .loadingShell
 		articleHeight = nil
 		guard await loadShellIfNeeded(baseURL: baseURL) else {
@@ -109,7 +112,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		do {
 			let raw = try await webView.callAsyncJavaScript(
 				Self.renderScript,
-				arguments: ["body": body],
+				arguments: ["body": body, "title": title],
 				in: nil,
 				contentWorld: .defaultClient
 			)
@@ -275,7 +278,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		\(css)
 		</style>
 		</head>
-		<body><article id="babel2-article"></article></body>
+		<body><h1 class="articleTitle" id="babel2-title" hidden></h1><article id="babel2-article"></article></body>
 		</html>
 		"""
 	}
@@ -287,6 +290,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 	html, body { margin: 0; padding: 0; overflow-x: hidden; }
 	body { background: var(--bg); color: var(--ink); font: 19px/30px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
+	#babel2-title { display: none; }
 	#babel2-article { padding: 0 20px 48px; }
 	#babel2-article > :first-child { margin-top: 0; }
 	p { margin: 0 0 18px; }
@@ -316,6 +320,9 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	private static let renderScript = """
 	const root = document.getElementById('babel2-article');
 	if (!root) { return null; }
+	// 隐藏标题：翻译引擎按 .articleTitle 找标题读写，避免误改正文里的 h1
+	const titleElement = document.getElementById('babel2-title');
+	if (titleElement) { titleElement.textContent = title; }
 	const parsed = new DOMParser().parseFromString('<!doctype html><body></body>', 'text/html');
 	const looksLikeHTML = /<[a-zA-Z!\\/]/.test(body);
 	if (looksLikeHTML) {

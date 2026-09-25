@@ -30,6 +30,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case nextArticle = "Next Article"
 	case readingMode = "Reading Mode"
 	case translate = "Translate"
+	case showOriginal = "Show Original"
+	case cancelTranslation = "Cancel Translation"
+	case translationFailed = "Translation Failed"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -58,7 +61,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .star, .unstar: return "babel2.article.toolbar.star"
 		case .nextArticle: return "babel2.article.toolbar.next"
 		case .readingMode: return "babel2.article.toolbar.reading-mode"
-		case .translate: return "babel2.article.toolbar.translate"
+		case .translate, .showOriginal, .cancelTranslation: return "babel2.article.toolbar.translate"
+		case .translationFailed: return "babel2.article.translation-error"
 		}
 	}
 }
