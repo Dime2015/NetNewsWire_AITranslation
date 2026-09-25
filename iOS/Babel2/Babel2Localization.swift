@@ -50,6 +50,10 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case unableToGenerateLongImage = "Unable to generate long image"
 	case savedToPhotos = "Saved to Photos"
 	case articleCount = "%d articles"
+	case search = "Search"
+	case searchFeedPlaceholder = "Search %@"
+	case noSearchResults = "No articles match “%@”"
+	case searchFailed = "Search failed"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -94,6 +98,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .generatingLongImage, .unableToGenerateLongImage: return "babel2.article.status"
 		case .savedToPhotos: return "babel2.article.toast"
 		case .articleCount: return "babel2.feed.count"
+		case .search, .searchFeedPlaceholder: return "babel2.feed.search"
+		case .noSearchResults, .searchFailed: return "babel2.feed.articles.state"
 		}
 	}
 }

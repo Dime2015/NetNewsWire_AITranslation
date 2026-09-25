@@ -54,6 +54,22 @@ public protocol DataProviding: Sendable {
 	func librarySnapshot(for scope: Babel2FeedScope) async throws -> LibrarySnapshot
 	func feedArticlesSnapshot(for id: FeedSnapshot.ID, scope: Babel2FeedScope) async throws -> [ArticleSnapshot]
 	func articleSnapshot(for id: ArticleSnapshot.ID) async throws -> ArticleSnapshot?
+	/// 在一个订阅源的全部文章里搜索（不分未读 / 星标档位）。结果按列表顺序排列。
+	func searchFeedArticles(_ id: FeedSnapshot.ID, query: String) async throws -> [ArticleSnapshot]
+}
+
+extension DataProviding {
+	/// 默认实现：在该源全部文章的标题、译文标题、摘要里做不区分大小写的包含匹配。
+	/// 正式实现（接入层）改用数据库全文搜索，覆盖正文。
+	public func searchFeedArticles(_ id: FeedSnapshot.ID, query: String) async throws -> [ArticleSnapshot] {
+		let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else { return [] }
+		return try await feedArticlesSnapshot(for: id, scope: .all).filter { article in
+			[article.title, article.translatedTitle ?? "", article.summary].contains {
+				$0.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+			}
+		}
+	}
 }
 
 public protocol ActionHandling: Sendable {

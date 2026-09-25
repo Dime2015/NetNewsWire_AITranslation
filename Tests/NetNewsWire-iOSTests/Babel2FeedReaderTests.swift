@@ -214,6 +214,74 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(hero.hasArtForTesting)
 	}
 
+	// MARK: - 列表搜索（2026-09-25）
+
+	/// 放大镜原地进入搜索：窄栏换成搜索框、底栏隐藏；按全部文章（不分档）搜索、结果替换列表；
+	/// 无结果显示说明；下一篇按结果顺序；取消恢复原列表、底栏与滚动位置。
+	func testFeedSearchInPlaceAndCancelRestores() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		func article(_ id: String, _ title: String, read: Bool) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: title, url: nil, feedID: feedID, isRead: read)
+		}
+		let list = (1...30).map { article("n\($0)", "Filler \($0)", read: false) }
+			+ [article("a", "Treasury Trading", read: true), article("b", "Treasury Bills", read: false)]
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])))
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		// 假数据提供者不按档位过滤：列表是全部 32 篇
+		await waitForRows(in: tableView, count: 32)
+		tableView.layoutIfNeeded()
+		tableView.contentOffset.y = -tableView.adjustedContentInset.top + 300
+		let offsetBefore = tableView.contentOffset.y
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		XCTAssertFalse(compact.searchButton.isHidden, "search button is available")
+
+		controller.beginSearchForTesting()
+		XCTAssertTrue(controller.isSearching)
+		XCTAssertTrue(compact.isSearching)
+		XCTAssertFalse(compact.searchField.isHidden)
+		XCTAssertEqual(compact.backdropAlphaForTesting, 1, "compact bar fully opaque while searching")
+		let toolbar = try XCTUnwrap(descendant(of: controller.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feed.read-all" })
+		XCTAssertTrue(toolbar.isHidden || toolbar.superview?.isHidden == true, "bottom toolbar hidden while searching")
+
+		controller.searchForTesting("treasury")
+		await waitForRows(in: tableView, count: 2)
+		XCTAssertEqual(Set(controller.articlesForTesting.map(\.id.articleID)), ["a", "b"], "matches include the read article (search ignores the scope)")
+		let first = controller.articlesForTesting[0]
+		XCTAssertEqual(controller.nextArticle(after: first.id)?.id.articleID ?? "none",
+			controller.articlesForTesting.count > 1 && !controller.articlesForTesting[1].isRead ? controller.articlesForTesting[1].id.articleID : "none",
+			"next article follows the result order")
+
+		// 搜索时松手不做大图补完：拖了 20pt 松手，目标位置保持不变（修复「下滑失灵」）
+		var target = CGPoint(x: 0, y: -tableView.adjustedContentInset.top + 20)
+		controller.scrollViewWillEndDragging(tableView, withVelocity: .zero, targetContentOffset: &target)
+		XCTAssertEqual(target.y, -tableView.adjustedContentInset.top + 20, accuracy: 0.5, "no hero snapping while searching")
+		// 放大镜：搜索框里、但不在输入框内部的那个图片（输入框的 × 也是图片）
+		let glass = try XCTUnwrap(descendant(of: compact.searchField, matching: UIImageView.self) { !$0.isDescendant(of: compact.searchField.textField) })
+		compact.layoutIfNeeded()
+		// 16×16（允许像素对齐的误差），宽高比接近 1：不再被横向拉长
+		XCTAssertEqual(glass.bounds.width, 16, accuracy: 0.5)
+		XCTAssertEqual(glass.bounds.height, 16, accuracy: 0.5)
+		XCTAssertEqual(glass.bounds.width / max(glass.bounds.height, 1), 1, accuracy: 0.05, "magnifier keeps its proportions")
+		XCTAssertEqual(compact.searchField.textField.clearButtonMode, .always)
+
+		controller.searchForTesting("zzz-no-match")
+		await waitForRows(in: tableView, count: 0)
+		let state = try XCTUnwrap(descendant(of: controller.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed.articles.state" })
+		XCTAssertFalse(state.isHidden)
+		XCTAssertEqual(state.text, String(format: Babel2Localization.text(.noSearchResults), "zzz-no-match"))
+
+		controller.endSearch()
+		XCTAssertFalse(controller.isSearching)
+		XCTAssertFalse(compact.isSearching)
+		XCTAssertTrue(compact.searchField.isHidden)
+		XCTAssertEqual(controller.articlesForTesting.count, 32, "original list restored")
+		XCTAssertEqual(tableView.contentOffset.y, offsetBefore, accuracy: 1, "scroll position restored")
+		XCTAssertFalse(toolbar.isHidden || toolbar.superview?.isHidden == true)
+	}
+
 	// MARK: - 设置页（Slice 6，Figma 110:300 等）
 
 	/// 首页齿轮进入设置首页（路由恢复为 home → settings）；8 个类别都能进入对应页面。

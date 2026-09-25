@@ -450,6 +450,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		heroView = hero
 		let compact = Babel2FeedCompactBar(title: feed.title, icon: feedIconImage)
 		compact.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+		compact.searchButton.addTarget(self, action: #selector(searchTapped), for: .touchUpInside)
+		compact.searchField.onChange = { [weak self] query in self?.searchQueryChanged(query) }
+		compact.searchField.onCancel = { [weak self] in self?.endSearch() }
 		compact.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(compact)
 		compactBar = compact
@@ -482,6 +485,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		tableView.separatorStyle = .none
 		tableView.rowHeight = UITableView.automaticDimension
 		tableView.estimatedRowHeight = 100
+		// 搜索时拖动结果列表即收起键盘；键盘弹出时列表底部让出键盘高度，被挡住的结果也能滑上来
+		tableView.keyboardDismissMode = .onDrag
+		NotificationCenter.default.addObserver(self, selector: #selector(keyboardFrameChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 		tableView.sectionHeaderTopPadding = 0
 		tableView.sectionHeaderHeight = UITableView.automaticDimension
 		tableView.estimatedSectionHeaderHeight = Babel2DayHeaderView.height
@@ -567,10 +573,122 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
+	// MARK: - 列表搜索（2026-09-25）
+
+	/// 搜索中：原地把列表换成搜索结果（交互合同：在当前源原地搜索，取消恢复原列表与滚动位置）。
+	private(set) var isSearching = false
+	private var articlesBeforeSearch = [ArticleSnapshot]()
+	private var offsetBeforeSearch: CGFloat = 0
+	private var searchTask: Task<Void, Never>?
+	/// 仅供自动化测试观察。
+	var searchFieldForTesting: Babel2FeedSearchField? { compactBar?.searchField }
+
+	@objc private func searchTapped() {
+		guard !isSearching, let compactBar else { return }
+		isSearching = true
+		articlesBeforeSearch = articles
+		offsetBeforeSearch = tableView.contentOffset.y
+		// 大图收成窄栏、第二行换成搜索框；列表顶上 70pt 垫片暂时去掉，结果紧贴窄栏
+		heroView?.apply(progress: 1)
+		compactBar.setSearching(true)
+		setSpacerHeight(0)
+		bottomToolbar.isHidden = true
+		tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+		compactBar.searchField.textField.becomeFirstResponder()
+	}
+
+	/// 边打边搜：停止输入约 0.25 秒后搜索；空搜索框显示原列表。旧的搜索会被取消，只显示最新一次的结果。
+	private func searchQueryChanged(_ query: String) {
+		searchTask?.cancel()
+		let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			showSearchResults(articlesBeforeSearch, query: nil)
+			return
+		}
+		let provider = environment.dataProvider
+		let feedID = feed.id
+		searchTask = Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .milliseconds(250))
+			guard !Task.isCancelled else { return }
+			do {
+				let results = try await provider.searchFeedArticles(feedID, query: trimmed)
+				guard !Task.isCancelled, let self, self.isSearching else { return }
+				self.showSearchResults(results, query: trimmed)
+			} catch {
+				guard !Task.isCancelled, let self, self.isSearching, !(error is CancellationError) else { return }
+				self.articles = []
+				self.rebuildDaySections()
+				self.tableView.reloadData()
+				self.setState(.empty)
+				self.emptyLabel.text = Babel2Localization.text(.searchFailed)
+			}
+		}
+	}
+
+	private func showSearchResults(_ results: [ArticleSnapshot], query: String?) {
+		articles = results
+		rebuildDaySections()
+		tableView.reloadData()
+		tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+		if results.isEmpty, let query {
+			setState(.empty)
+			emptyLabel.text = String(format: Babel2Localization.text(.noSearchResults), query)
+		} else {
+			setState(results.isEmpty ? .empty : .loaded)
+		}
+		DispatchQueue.main.async { [weak self] in self?.requestVisibleTitleTranslations() }
+	}
+
+	/// 取消搜索：恢复原来的列表、档位、滚动位置与大图；并补一次状态刷新（搜索期间读过的文章变细）。
+	func endSearch() {
+		guard isSearching else { return }
+		searchTask?.cancel()
+		searchTask = nil
+		isSearching = false
+		compactBar?.setSearching(false)
+		bottomToolbar.isHidden = false
+		articles = articlesBeforeSearch
+		rebuildDaySections()
+		tableView.reloadData()
+		setState(articles.isEmpty ? .empty : .loaded)
+		setSpacerHeight(Babel2FeedHeroMotion.collapseDistance)
+		tableView.layoutIfNeeded()
+		tableView.setContentOffset(CGPoint(x: 0, y: offsetBeforeSearch), animated: false)
+		heroProgress = -1
+		updateHeroProgress()
+		refreshStatusesInPlace()
+	}
+
+	/// 键盘与列表重叠的高度让出来（只在键盘变化时改一次底部边距，滚动中不改）。
+	@objc private func keyboardFrameChanged(_ notification: Notification) {
+		guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, tableView.window != nil else { return }
+		let keyboardTop = tableView.convert(frame, from: nil).minY
+		let overlap = max(0, tableView.bounds.maxY - keyboardTop)
+		tableView.contentInset.bottom = overlap
+		tableView.verticalScrollIndicatorInsets.bottom = overlap
+	}
+
+	/// 仅供自动化测试：直接输入搜索词（不等键盘）。
+	func searchForTesting(_ query: String) {
+		compactBar?.searchField.textField.text = query
+		searchQueryChanged(query)
+	}
+
+	func beginSearchForTesting() { searchTapped() }
+
+	/// 列表最上面的垫片（静止时「窄栏 + 垫片」= 大图 169pt）。只在进入 / 退出搜索时改，滚动中不改。
+	private func setSpacerHeight(_ height: CGFloat) {
+		let spacer = UIView(frame: CGRect(x: 0, y: 0, width: tableView.bounds.width, height: height))
+		spacer.backgroundColor = .clear
+		tableView.tableHeaderView = spacer
+	}
+
 	// MARK: - 顶部大图收缩（ADR-027 第 3 步）
 
 	/// 按滚动位置更新大图与窄栏（只改平移与透明度）。
 	private func updateHeroProgress() {
+		// 搜索时窄栏固定为完全收缩的样子，不随滚动变化
+		guard !isSearching else { return }
 		let progress = Babel2FeedHeroMotion.progress(offsetY: tableView.contentOffset.y, restOffset: -tableView.adjustedContentInset.top)
 		guard progress != heroProgress else { return }
 		heroProgress = progress
@@ -580,7 +698,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 松手后预计停在半路：改停到最近的一端（不到一半弹回展开，过半收到窄栏）。
 	func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-		guard scrollView === tableView else { return }
+		// 搜索时没有大图，不做补完——否则在结果里拖一小段一松手就被拉回顶部（2026-09-25 用户报告「下滑失灵」）
+		guard scrollView === tableView, !isSearching else { return }
 		targetContentOffset.pointee.y = Babel2FeedHeroMotion.settledTargetOffset(
 			proposed: targetContentOffset.pointee.y,
 			restOffset: -tableView.adjustedContentInset.top

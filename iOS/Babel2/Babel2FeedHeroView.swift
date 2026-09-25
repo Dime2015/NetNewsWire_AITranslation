@@ -137,9 +137,13 @@ final class Babel2FeedHeroView: UIView {
 /// 收缩后的窄栏（Figma 03C「Feed Hero / Compact Sticky」，ADR-027 保留「小图标 + 名字」）：
 /// 从屏幕最顶端到安全区下方 99pt；纸色底随收缩进度变为完全不透明；
 /// 第二行 26pt 圆形小图标（x=20）+ 订阅源名 17pt 半粗（x=56）在后半程淡入；底部细线。
-/// 返回按钮在这一层、全程不动。除返回按钮外不拦截触摸（拖动照样滚动列表）。
+/// 返回按钮与右上角放大镜（Figma 搜索位 x=330）在这一层、全程不动。除这些控件外不拦截触摸（拖动照样滚动列表）。
+/// 搜索时第二行换成搜索框 +「取消」，纸色底完全不透明。
 final class Babel2FeedCompactBar: UIView {
 	let backButton = UIButton(type: .system)
+	let searchButton = UIButton(type: .system)
+	let searchField: Babel2FeedSearchField
+	private(set) var isSearching = false
 	let titleLabel = UILabel()
 	private let backdrop = UIView()
 	private let iconView = UIImageView()
@@ -149,6 +153,10 @@ final class Babel2FeedCompactBar: UIView {
 	var backdropAlphaForTesting: CGFloat { backdrop.alpha }
 
 	init(title: String, icon: UIImage?) {
+		searchField = Babel2FeedSearchField(
+			placeholder: String(format: Babel2Localization.text(.searchFeedPlaceholder), title),
+			cancelTitle: Babel2Localization.text(.cancel)
+		)
 		super.init(frame: .zero)
 		backgroundColor = .clear
 
@@ -190,7 +198,15 @@ final class Babel2FeedCompactBar: UIView {
 		hairline.alpha = 0
 		hairline.translatesAutoresizingMaskIntoConstraints = false
 
-		[backButton, iconView, titleLabel, hairline].forEach(addSubview)
+		searchButton.setImage(UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)), for: .normal)
+		searchButton.tintColor = BabelPalette.ink
+		searchButton.accessibilityLabel = Babel2Localization.text(.search)
+		searchButton.accessibilityIdentifier = "babel2.feed.search"
+		searchButton.translatesAutoresizingMaskIntoConstraints = false
+		searchField.isHidden = true
+		searchField.translatesAutoresizingMaskIntoConstraints = false
+
+		[backButton, searchButton, iconView, titleLabel, hairline, searchField].forEach(addSubview)
 		let safeTop = safeAreaLayoutGuide.topAnchor
 		NSLayoutConstraint.activate([
 			backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -202,6 +218,14 @@ final class Babel2FeedCompactBar: UIView {
 			backButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
 			backButton.widthAnchor.constraint(equalToConstant: 44),
 			backButton.heightAnchor.constraint(equalToConstant: 44),
+			searchButton.centerXAnchor.constraint(equalTo: trailingAnchor, constant: -72),
+			searchButton.centerYAnchor.constraint(equalTo: safeTop, constant: 22),
+			searchButton.widthAnchor.constraint(equalToConstant: 44),
+			searchButton.heightAnchor.constraint(equalToConstant: 44),
+			searchField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+			searchField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+			searchField.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+			searchField.heightAnchor.constraint(equalToConstant: 44),
 
 			iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
 			iconView.topAnchor.constraint(equalTo: safeTop, constant: 54),
@@ -223,6 +247,21 @@ final class Babel2FeedCompactBar: UIView {
 
 	required init?(coder: NSCoder) { nil }
 
+	/// 进入 / 退出搜索：第二行在「小图标 + 名字」与搜索框之间切换；搜索时放大镜隐藏。
+	func setSearching(_ searching: Bool) {
+		isSearching = searching
+		searchField.isHidden = !searching
+		searchButton.isHidden = searching
+		iconView.isHidden = searching
+		titleLabel.isHidden = searching
+		if searching {
+			apply(progress: 1)
+		} else {
+			searchField.clear()
+			searchField.textField.resignFirstResponder()
+		}
+	}
+
 	/// 按收缩进度更新透明度（不重新排版）。
 	func apply(progress: CGFloat) {
 		backdrop.alpha = Babel2FeedHeroMotion.compactBackgroundAlpha(progress)
@@ -232,8 +271,10 @@ final class Babel2FeedCompactBar: UIView {
 		titleLabel.alpha = contentAlpha
 	}
 
-	/// 只有返回按钮接收触摸；其余位置交给下面的列表（从顶部开始拖也能滚动）。
+	/// 只有返回、放大镜、搜索框接收触摸；其余位置交给下面的列表（从顶部开始拖也能滚动）。
+	/// 搜索时整条窄栏都接收（它是完全不透明的顶栏）。
 	override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-		backButton.frame.insetBy(dx: -4, dy: -4).contains(point)
+		if isSearching { return bounds.contains(point) }
+		return [backButton, searchButton].contains { !$0.isHidden && $0.frame.insetBy(dx: -4, dy: -4).contains(point) }
 	}
 }

@@ -24,7 +24,17 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 设置页（Slice 6，ADR-028；2026-09-25，用户真机验收通过，已提交并推送）
+## 文章列表搜索（Slice 3，ADR-029；2026-09-25，用户真机验收通过，已提交并推送）
+
+- 入口：窄栏层右上角放大镜（Figma 搜索位 x=330，全程不动）。点按原地进入搜索：大图收成窄栏、第二行换成搜索框 +「取消」（新文件 `Babel2FeedSearch.swift`；Figma 无搜索界面稿，样式按设置页输入框近似，用户同意）、列表顶 70pt 垫片暂时去掉、底栏隐藏、键盘弹出。
+- 搜索：停止输入 0.25 秒后搜；空搜索框显示原列表；旧搜索取消只显示最新结果；结果沿用文章行与按天分组；无结果显示「没有找到与「xxx」相关的文章」，出错显示「搜索失败」；拖动结果收起键盘。下一篇按结果顺序；点结果进阅读页返回仍在结果里。
+- 取消：恢复原列表、底栏、滚动位置与大图进度，并补一次状态原地刷新。
+- 数据：`DataProviding.searchFeedArticles`（Core 默认实现：标题/译文标题/摘要包含匹配）；接入层正式实现在该源**全部文章**（不分档）里合并两路：数据库全文搜索（标题 + 正文）+ 标题/译文标题/摘要包含匹配（全文搜索按空格分词，中文整句常搜不到）。
+- 验证：测试 +1（进入搜索窄栏与底栏状态、结果不分档、无结果说明、取消恢复列表/底栏/滚动位置）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/srch-full.xcresult` 137/137；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/srch-ui.xcresult` 1/1。
+- 未能自动验证：真实数据库全文搜索（需要真实账户数据）、中文搜索、键盘交互与观感——真机验收。
+- 追加修复（用户真机反馈三点）：① 放大镜被输入框横向拉长变形——未定尺寸，改为固定 16×16、按比例显示；② 搜索结果列表「下滑失灵」——排查（模拟器探针：触摸确实落在列表、内容足够长、代码设滚动正常）后确认是大图的「松手补完」在搜索时仍生效，拖一小段松手即被拉回顶部，搜索时关闭补完；并在键盘弹出时列表底部让出键盘高度；③ 搜索框 × 改为有字即常驻（.always）。测试补断言（搜索时拖 20pt 松手目标不变、放大镜 16×16 且宽高比≈1、× 常驻）；反向验证：去掉搜索判断后断言失败（被拉回 -153）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/srch-full2.xcresult` 137/137。
+
+## 设置页（Slice 6，ADR-028；2026-09-25，用户真机验收通过，已提交并推送 `1908f1f02`）
 
 - 入口：首页左上角齿轮（x=32，与右上「+」对称）→ 设置首页（沿用恢复标识 babel2.settings）。
 - 新目录 `iOS/Babel2/Settings/`：Style（Figma 数值与颜色）、Components（导航栏 Root/Back/Editor、分组标题、Disclosure/Value/Select/Toggle/Action/Choice 行、文本框、38×22 开关〔开=强调色，ADR-008〕、Thick Glass 弹出单选菜单〔宽 272、圆角 22、顶边=触发行下沿+39〕）、Service（页面唯一依赖的接口 + 模型排行纯计算）、Pages（首页 8 类 + 文章列表/阅读器/翻译/外观与语言/通知/支持与诊断）、AccountPages（账户与同步/账户详情/新增账户/订阅与发现）、Editors（订阅发现 API、翻译 API Key、翻译模型：取消/保存）。

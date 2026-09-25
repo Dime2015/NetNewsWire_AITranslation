@@ -177,6 +177,40 @@ final class Babel2LiveDataProvider: DataProviding {
 			.sorted(by: articleComesFirst)
 	}
 
+	nonisolated func searchFeedArticles(_ id: FeedSnapshot.ID, query: String) async throws -> [ArticleSnapshot] {
+		try await makeFeedSearchResults(for: id, query: query)
+	}
+
+	/// 列表搜索（2026-09-25）：在该源全部文章里搜，不分档位。两路合并：
+	/// ① 数据库全文搜索（标题 + 正文）；② 标题 / 译文标题 / 摘要的包含匹配——
+	/// 全文搜索按空格分词，中文整句往往搜不到，②补上中文与译文标题。
+	private func makeFeedSearchResults(for id: FeedSnapshot.ID, query: String) async throws -> [ArticleSnapshot] {
+		let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty,
+			let account = AccountManager.shared.existingAccount(accountID: id.accountID),
+			let feed = account.existingFeed(withFeedID: id.feedID),
+			feed.accountID == id.accountID else { return [] }
+		let all = try await fetchArticles(for: account, feed: feed, scope: .all)
+		try Task.checkCancellation()
+		let fullText = await account.fetchArticlesAsync(.searchWithArticleIDs(trimmed, Set(all.map(\.articleID))))
+		try Task.checkCancellation()
+		let fullTextIDs = Set(fullText.map(\.articleID))
+		return all
+			.filter { $0.accountID == id.accountID && $0.feedID == id.feedID }
+			.map { article in
+				let snapshot = makeArticleSnapshot(article)
+				articleCache[snapshot.id] = snapshot
+				return snapshot
+			}
+			.filter { snapshot in
+				fullTextIDs.contains(snapshot.id.articleID)
+					|| [snapshot.title, snapshot.translatedTitle ?? "", snapshot.summary].contains {
+						$0.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+					}
+			}
+			.sorted(by: articleComesFirst)
+	}
+
 	nonisolated func articleSnapshot(for id: ArticleSnapshot.ID) async throws -> ArticleSnapshot? {
 		try await makeArticleSnapshot(for: id)
 	}
