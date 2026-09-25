@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Account
 import Articles
 import Images
@@ -398,7 +399,7 @@ enum Babel2LiveFeedReaderSetting {
 		feed(id)?.readerViewAlwaysEnabled = on
 	}
 
-	private static func feed(_ id: FeedSnapshot.ID) -> Feed? {
+	fileprivate static func feed(_ id: FeedSnapshot.ID) -> Feed? {
 		guard let account = AccountManager.shared.existingAccount(accountID: id.accountID),
 			let feed = account.existingFeed(withFeedID: id.feedID),
 			feed.accountID == id.accountID else { return nil }
@@ -410,6 +411,26 @@ enum Babel2LiveFeedReaderSetting {
 /// （NNWTitleTranslationController：攒批 ≤12 条一次请求、缓存、失败静默；开关按订阅源存在
 /// NNWTitleTranslationStore，与 1.x 同一份，1.x 开过的源继续生效）。这里只做三件事：读写开关、
 /// 把屏幕上的文章交给引擎排队、启动时唤醒引擎（它会在后台更新拉回新文章时提前翻，每次最多 50 条）。
+/// 文章列表页顶部大图：订阅源高清图标（复用 1.x FeedHeroIconLoader：多来源候选、只收 ≥180px、磁盘缓存、
+/// 元数据晚到时再升级；1.x 文件零改动）。ADR-027。
+@MainActor
+enum Babel2LiveFeedHeroImage {
+	static func cached(_ id: FeedSnapshot.ID) -> UIImage? {
+		guard let feed = Babel2LiveFeedReaderSetting.feed(id),
+			let image = FeedHeroIconLoader.shared.cachedHero(for: feed),
+			FeedHeroIconLoader.isUsableAsHero(image) else { return nil }
+		return image
+	}
+
+	static func fetch(_ id: FeedSnapshot.ID, onImage: @escaping @MainActor (UIImage) -> Void) {
+		guard let feed = Babel2LiveFeedReaderSetting.feed(id) else { return }
+		FeedHeroIconLoader.shared.fetchHeroIfNeeded(for: feed) { image in
+			guard FeedHeroIconLoader.isUsableAsHero(image) else { return }
+			onImage(image)
+		}
+	}
+}
+
 @MainActor
 enum Babel2LiveTitleTranslation {
 	/// 唤醒引擎单例：它在初始化时开始监听「新文章下载完成」做提前翻译。

@@ -11,6 +11,14 @@ struct Babel2TitleTranslationSetting {
 	let request: @MainActor ([ArticleSnapshot.ID]) -> Void
 }
 
+/// 文章列表页顶部大图的图片来源（订阅源高清图标；读取与下载由装配层注入，页面不碰账户数据）。ADR-027。
+struct Babel2FeedHeroImageSource {
+	/// 已有缓存（内存 / 磁盘），不触发网络；没有返回 nil。
+	let cached: @MainActor () -> UIImage?
+	/// 需要时去抓；抓到更好的一张时回调（可能不回调）。
+	let fetch: @MainActor (@escaping @MainActor (UIImage) -> Void) -> Void
+}
+
 @MainActor
 final class Babel2FeedViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 	private enum LoadState: String {
@@ -45,15 +53,20 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let readAllButton = UIButton(type: .system)
 	private let titleTranslationToggle = Babel2TranslationToggle()
 	private weak var headerTitleLabel: UILabel?
+	private weak var heroView: Babel2FeedHeroView?
+	private let heroImage: Babel2FeedHeroImageSource?
+	/// 仅供自动化测试观察。
+	var heroViewForTesting: Babel2FeedHeroView? { heroView }
 
 	private let titleTranslation: Babel2TitleTranslationSetting?
 	private var titleTranslationTimeout: Task<Void, Never>?
 
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil) {
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil) {
 		self.feed = feed
 		self.scope = scope
 		self.environment = environment
 		self.titleTranslation = titleTranslation
+		self.heroImage = heroImage
 		super.init(nibName: nil, bundle: nil)
 		restorationIdentifier = "babel2.feed.\(feed.id.accountID).\(feed.id.feedID)"
 		// 已读/星标等状态变化（阅读页操作、后台同步）时，原地刷新每一行的状态
@@ -349,9 +362,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		articles.removeAll(keepingCapacity: true)
 		rebuildDaySections()
 		tableView.reloadData()
-		countLabel.text = nil
-		countLabel.accessibilityValue = nil
-		countLabel.isHidden = true
+		setCount(nil)
 		setState(.loading)
 		let provider = environment.dataProvider
 		let feedID = feed.id
@@ -370,9 +381,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 					self.scope == scope else { return }
 				self.articles = snapshot
 				self.rebuildDaySections()
-				self.countLabel.text = self.articles.count.formatted()
-				self.countLabel.accessibilityValue = String(self.articles.count)
-				self.countLabel.isHidden = false
+				self.setCount(self.articles.count)
 				self.tableView.reloadData()
 				self.setState(self.articles.isEmpty ? .empty : .loaded)
 				// 列表排好后再看哪些行在屏幕上
@@ -387,9 +396,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				self.articles.removeAll(keepingCapacity: true)
 				self.rebuildDaySections()
 				self.tableView.reloadData()
-				self.countLabel.text = nil
-				self.countLabel.accessibilityValue = nil
-				self.countLabel.isHidden = true
+				self.setCount(nil)
 				self.setState(.error)
 			}
 		}
@@ -418,65 +425,34 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
+	/// 顶部大图（ADR-027 第 2 步）：从屏幕最顶端铺到安全区下方 169pt；返回 / 标题 / 「N 篇」都在里面。
 	private func configureHeader() {
-		let header = UIView()
-		header.backgroundColor = BabelPalette.background
-		header.translatesAutoresizingMaskIntoConstraints = false
-		view.addSubview(header)
-
-		let back = UIButton(type: .system)
-		back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-		back.tintColor = BabelPalette.ink
-		back.accessibilityLabel = "Back"
-		back.accessibilityIdentifier = "babel2.feed.back"
-		back.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-		back.translatesAutoresizingMaskIntoConstraints = false
-		header.addSubview(back)
-
-		let titleLabel = UILabel()
-		titleLabel.text = feed.title
-		titleLabel.accessibilityValue = scope.rawValue
-		headerTitleLabel = titleLabel
-		titleLabel.accessibilityIdentifier = "babel2.feed.title"
-		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-		titleLabel.textColor = BabelPalette.ink
-		titleLabel.lineBreakMode = .byTruncatingTail
-		titleLabel.translatesAutoresizingMaskIntoConstraints = false
-		header.addSubview(titleLabel)
-
-		countLabel.text = feed.articleCount.map { $0.formatted() }
-		countLabel.accessibilityValue = feed.articleCount.map(String.init)
-		countLabel.isHidden = feed.articleCount == nil
-		countLabel.accessibilityIdentifier = "babel2.feed.count"
-		countLabel.font = .systemFont(ofSize: 13, weight: .regular)
-		countLabel.textColor = BabelPalette.tertiaryInk
-		countLabel.translatesAutoresizingMaskIntoConstraints = false
-		header.addSubview(countLabel)
-
-		let line = UIView()
-		line.backgroundColor = BabelPalette.hairline
-		line.translatesAutoresizingMaskIntoConstraints = false
-		header.addSubview(line)
-
+		setCount(feed.articleCount)
+		let hero = Babel2FeedHeroView(title: feed.title, countLabel: countLabel)
+		hero.titleLabel.accessibilityValue = scope.rawValue
+		headerTitleLabel = hero.titleLabel
+		hero.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+		hero.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(hero)
+		heroView = hero
 		NSLayoutConstraint.activate([
-			header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-			header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-			header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-			header.heightAnchor.constraint(equalToConstant: 64),
-			back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 10),
-			back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-			back.widthAnchor.constraint(equalToConstant: 44),
-			back.heightAnchor.constraint(equalToConstant: 44),
-			titleLabel.leadingAnchor.constraint(equalTo: back.trailingAnchor, constant: 6),
-			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -8),
-			titleLabel.centerYAnchor.constraint(equalTo: back.centerYAnchor),
-			countLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
-			countLabel.centerYAnchor.constraint(equalTo: back.centerYAnchor),
-			line.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-			line.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-			line.bottomAnchor.constraint(equalTo: header.bottomAnchor),
-			line.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+			hero.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			hero.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			hero.topAnchor.constraint(equalTo: view.topAnchor),
+			hero.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight)
 		])
+		// 头图：有缓存立即铺上（不动画）；再请求一次，抓到更好的图时淡入替换
+		if let heroImage {
+			hero.setArt(heroImage.cached(), animated: false)
+			heroImage.fetch { [weak hero] image in hero?.setArt(image, animated: true) }
+		}
+	}
+
+	/// 文章数：屏幕上显示「N 篇」；辅助功能值保持纯数字（UI 自动测试按它核对行数）。
+	private func setCount(_ count: Int?) {
+		countLabel.text = count.map { String(format: Babel2Localization.text(.articleCount), $0) }
+		countLabel.accessibilityValue = count.map(String.init)
+		countLabel.isHidden = count == nil
 	}
 
 	private func configureTable() {
@@ -516,7 +492,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		NSLayoutConstraint.activate([
 			tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-			tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 64),
+			tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight),
 			tableView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
 			emptyLabel.centerXAnchor.constraint(equalTo: tableView.centerXAnchor),
 			emptyLabel.centerYAnchor.constraint(equalTo: tableView.centerYAnchor, constant: -20),

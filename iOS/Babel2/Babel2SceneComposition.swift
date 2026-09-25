@@ -49,6 +49,10 @@ enum Babel2SceneComposition {
 					isEnabled: { Babel2LiveTitleTranslation.isEnabled(feed.id) },
 					setEnabled: { Babel2LiveTitleTranslation.setEnabled($0, for: feed.id) },
 					request: { ids in Task { await Babel2LiveTitleTranslation.request(ids) } }
+				),
+				heroImage: Babel2FeedHeroImageSource(
+					cached: { Babel2LiveFeedHeroImage.cached(feed.id) },
+					fetch: { onImage in Babel2LiveFeedHeroImage.fetch(feed.id, onImage: onImage) }
 				)
 			)
 			feedViewController.onScopeChanged = { [weak root] scope in

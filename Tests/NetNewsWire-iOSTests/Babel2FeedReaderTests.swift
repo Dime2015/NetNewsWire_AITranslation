@@ -171,6 +171,48 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 	// MARK: - 列表缩略图（2026-09-25）
 
+	// MARK: - 顶部大图（ADR-027 第 2 步）
+
+	/// 大图从屏幕最顶端铺到安全区下方 169pt，列表紧接其下；有订阅源高清图标时铺上清晰底图，
+	/// 抓到更好的图时替换；标题、返回在大图里；文章数显示「N 篇」但辅助功能值仍是纯数字。
+	func testFeedHeroShowsArtTitleAndCount() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let list = (1...3).map { ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "\($0)"), title: "T\($0)", url: nil, feedID: feedID) }
+		let art = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512)).image { context in
+			UIColor.systemOrange.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 512, height: 512))
+		}
+		var deliver: ((UIImage) -> Void)?
+		let controller = Babel2FeedViewController(
+			feed: makeFeed(id: feedID, title: "Marginal Revolution"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])),
+			heroImage: Babel2FeedHeroImageSource(cached: { nil }, fetch: { deliver = $0 })
+		)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 3)
+		controller.view.layoutIfNeeded()
+
+		let hero = try XCTUnwrap(controller.heroViewForTesting)
+		XCTAssertEqual(hero.frame.minY, 0, "hero starts at the very top (under the status bar)")
+		XCTAssertEqual(hero.frame.maxY, controller.view.safeAreaInsets.top + 169, accuracy: 0.5)
+		XCTAssertEqual(tableView.frame.minY, hero.frame.maxY, accuracy: 0.5, "list starts right below the hero, no gap")
+		XCTAssertFalse(hero.hasArtForTesting, "no cached art yet → plain paper")
+		XCTAssertEqual(hero.titleLabel.text, "Marginal Revolution")
+		XCTAssertTrue(hero.backButton.isDescendant(of: hero))
+
+		let count = try XCTUnwrap(descendant(of: hero, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed.count" })
+		XCTAssertEqual(count.accessibilityValue, "3", "UI driver reads the plain number")
+		XCTAssertEqual(count.text, String(format: Babel2Localization.text(.articleCount), 3))
+
+		// 抓到图后淡入底图
+		let fetch = try XCTUnwrap(deliver, "hero asked for a better image")
+		fetch(art)
+		for _ in 0..<150 where !hero.hasArtForTesting { try await Task.sleep(for: .milliseconds(20)) }
+		XCTAssertTrue(hero.hasArtForTesting)
+	}
+
 	// MARK: - Reeder 式文章行与按天分组（2026-09-25）
 
 	func testDaySectionsGroupConsecutiveArticlesByDay() {

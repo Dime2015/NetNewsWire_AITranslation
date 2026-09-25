@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 文章列表顶部大图（Slice 3 第 2 步，ADR-027；2026-09-25，样式 E 用户真机验收通过，已提交并推送）
+
+- 新增 `iOS/Babel2/Babel2FeedHeroView.swift`：从屏幕最顶端铺到安全区下方 169pt；订阅源高清图标后台一次性缩到 240px 并高斯模糊（σ 12，边缘夹紧）、不透明度 0.55 作氛围底，CAGradientLayer 渐隐为纸色（0/0.25/0.92/1 @ 0/45/80/100%，随深浅色更新）；标题 28pt 粗体墨色（单行，过长缩到 0.75）、下接「N 篇」13pt；只放返回（沿用 babel2.feed.back / title / count 标识）；无高清图标时同版式纯纸色；图晚到时淡入。这一步不随滚动收缩。
+- 接入：`Babel2FeedHeroImageSource`（列表页注入，cached/fetch）；接入层 `Babel2LiveFeedHeroImage` 调 1.x `FeedHeroIconLoader`（只用 isUsableAsHero 的图，1.x 文件零改动；`Babel2LiveFeedReaderSetting.feed` 由 private 改 fileprivate 以复用查找）；`Babel2SceneComposition` 注入；文案 +1 键（%d articles / %d 篇），辅助功能值仍为纯数字（UI Driver 依赖）。
+- 验证（独立 DerivedData，核对 Ld）：测试 +1（大图从 y=0 到安全区+169、列表紧接无缝、无图为纯纸色、抓到图后铺上底图、标题/返回在大图内、「N 篇」与纯数字辅助功能值）；全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/hero-full.xcresult` 125/125；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/hero-ui.xcresult` 1/1。
+- 未能自动验证：真实图标虚化后的观感、深色、状态栏文字在各种底图上的对比——列入真机清单。
+- **改为样式 E（用户 2026-09-25）**：用户反馈 A 的「虚化 + 0.55 不透明 + 大面积渐隐」遮得太重、几乎看不出图（“买椟还珠”）。改为：图不虚化、完全不透明、铺满，只在下部渐隐（纸色 0/0/0.85/1 @ 0/55/80/100%），标题落在渐隐区；去掉 CoreImage 模糊，改为后台 `byPreparingForDisplay` 解码后淡入。已告知用户 E 的已知风险：多数源的图是 180–512px 方形 logo，铺满会放大发虚并裁掉上下；深色图在渐隐中段标题对比可能下降；状态栏与返回箭头在深色图上可能看不清。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/heroE-full.xcresult` 125/125。
+
 ## 文章列表缩略图 + Reeder 式文章行与按天分组（Slice 3 第 1 步；2026-09-25，用户真机验收通过，已提交并推送）
 
 - 起因：Babel 2.0 数据接入层只传文章自带图片地址（`article.imageURL`），普通 RSS/Atom 永远为空，列表几乎不显示缩略图。

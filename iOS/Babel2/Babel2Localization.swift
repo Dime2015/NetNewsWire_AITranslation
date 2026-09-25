@@ -49,6 +49,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case generatingLongImage = "Generating long image…"
 	case unableToGenerateLongImage = "Unable to generate long image"
 	case savedToPhotos = "Saved to Photos"
+	case articleCount = "%d articles"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -92,6 +93,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .cancel: return "babel2.cancel"
 		case .generatingLongImage, .unableToGenerateLongImage: return "babel2.article.status"
 		case .savedToPhotos: return "babel2.article.toast"
+		case .articleCount: return "babel2.feed.count"
 		}
 	}
 }
