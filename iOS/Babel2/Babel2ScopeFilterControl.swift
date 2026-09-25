@@ -4,8 +4,8 @@ import Babel2Core
 /// 星标 / 未读 / 全部 三档切换条（Figma「Feed Toolbar」22:35 与 Filter Pill 28:44）。
 ///
 /// 外观与首页底栏完全一致（图标、胶囊宽度 90 / 78 / 68、选中文字 10pt 半粗、0.18 秒胶囊滑动），
-/// 数值照抄 `Babel2RootViewController.configureScopeControls`。首页暂未改用本组件——
-/// 它已验收，改动有风险；以后统一（待办见 STATUS「文章列表底栏」）。
+/// 首页与订阅源文章列表页共用本组件（2026-09-25 起；首页原先的手写实现在真机上切回「未读」
+/// 时胶囊会错位，用户选择统一到本组件）。
 ///
 /// 它铺满整条底栏宽度，三个按钮中心按 402pt 画布的 x = 104 / 201 / 290.5 比例定位。
 @MainActor
@@ -20,10 +20,16 @@ final class Babel2ScopeFilterControl: UIView {
 	var onSelect: ((Babel2FeedScope) -> Void)?
 	private var animator: UIViewPropertyAnimator?
 
-	init(selectedScope: Babel2FeedScope) {
+	/// - identifierPrefix: 按钮无障碍标识前缀（首页沿用原来的 "babel2.scope"，测试与 UI 驱动不用改）
+	init(
+		selectedScope: Babel2FeedScope,
+		identifierPrefix: String = "babel2.feed.scope",
+		controlIdentifier: String = "babel2.feed.scope.controls",
+		localizationBundle: Bundle = .main
+	) {
 		self.selectedScope = selectedScope
 		super.init(frame: .zero)
-		accessibilityIdentifier = "babel2.feed.scope.controls"
+		accessibilityIdentifier = controlIdentifier
 		selectionPill.backgroundColor = BabelPalette.raisedBackground.withAlphaComponent(0.62)
 		selectionPill.layer.cornerRadius = 13
 		selectionPill.isUserInteractionEnabled = false
@@ -39,8 +45,8 @@ final class Babel2ScopeFilterControl: UIView {
 				return transformed
 			}
 			button.tintColor = BabelPalette.mutedInk
-			button.accessibilityIdentifier = "babel2.feed.scope.\(scope.rawValue)"
-			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey)
+			button.accessibilityIdentifier = "\(identifierPrefix).\(scope.rawValue)"
+			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
 			button.addAction(UIAction { [weak self] _ in self?.tapped(scope) }, for: .touchUpInside)
 			button.translatesAutoresizingMaskIntoConstraints = false
 			addSubview(button)

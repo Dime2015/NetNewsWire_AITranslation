@@ -1278,6 +1278,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		starred.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(starred)
+		await waitUntil { root.isScopeTransitionSettledForTesting }
 
 		let libraryEvents = recorder.events.filter { $0.name == .libraryFilter }
 		XCTAssertEqual(libraryEvents.count, 2, "expected exactly one begin and one end for a single uninterrupted transition")
@@ -1320,12 +1321,15 @@ final class Babel2FeedReaderTests: XCTestCase {
 		starred.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .starred, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(starred)
+		await waitUntil { root.isScopeTransitionSettledForTesting }
 		all.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(all)
+		await waitUntil { root.isScopeTransitionSettledForTesting }
 		unread.sendActions(for: .touchUpInside)
 		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(unread)
+		await waitUntil { root.isScopeTransitionSettledForTesting }
 		recorder.clear()
 
 		// unread -> starred (begins, animator running) -> all (interrupts
@@ -1336,6 +1340,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		await waitForRootState(root, scope: .all, state: "loaded", rows: 1)
 		await waitForSelectedScopeButton(all)
+		await waitUntil { root.isScopeTransitionSettledForTesting }
 
 		let libraryEvents = recorder.events.filter { $0.name == .libraryFilter }
 		XCTAssertEqual(libraryEvents.count, 4)

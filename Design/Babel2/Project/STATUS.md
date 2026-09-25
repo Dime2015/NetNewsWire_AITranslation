@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 首页底栏改用共享档位组件（2026-09-25，用户真机回归验收通过，已提交并推送）
+
+- 起因：用户报告首页选别的档再选回「未读」时胶囊变窄、圆点压在 UNREAD 上；列表页（`Babel2ScopeFilterControl`）无此问题。模拟器测试不播放动画，复现不了（LESSONS 36）。用户选方案 A：首页改用同一组件。
+- 改动：`Babel2RootViewController` 删除手写的三按钮 + 胶囊（配置、图标、胶囊动画与打断采样中与胶囊相关的部分），改用 `Babel2ScopeFilterControl`（沿用 babel2.scope.* 标识与本地化 bundle）；列表内容的滑动淡入、计数、pFilter 打点、打断处理不变。按钮「选中」样式现在一点即变（原先等动画结束才变）。组件新增标识前缀/本地化 bundle 参数。测试：两项打点测试改为等待新增的 `isScopeTransitionSettledForTesting`（原来用按钮选中作为“切换结束”信号，语义已变）。
+- 验证：r1 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/homefilter-r1.xcresult` 109/111（两项打点测试的等待信号问题，见上）；r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/homefilter-r2.xcresult` 111/111；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/homefilter-ui-r1.xcresult` 1/1（真实数据依次切三档并检查选中）。
+- 技术待办「首页与列表页档位重复实现」随之消除。
+- 2026-09-25 用户按 5 项清单真机回归验收通过：切回「未读」不再错位、快速连点、冷启动按钮位置未回归、列表切档返回首页同步、深色。口头确认。
+
 ## 文章列表底栏（2026-09-25，用户真机验收通过，已提交并推送）
 
 - 按 ADR-023 实现：文章列表页 72pt 底栏（全部标为已读 / 三档 / 标题译占位）；原地切档回顶并同步首页；全部标为已读先确认再批量标记。

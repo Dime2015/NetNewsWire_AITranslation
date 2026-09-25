@@ -181,9 +181,14 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private let syncGlyph = BabelSyncGlyphView()
 	private let syncSubtitleLabel = UILabel()
 	private let bottomBar = UIView()
-	private let scopeStack = UIView()
-	private let selectionPill = UIView()
-	private var scopeButtons = [Babel2FeedScope: UIButton]()
+	/// 底部三档：与订阅源文章列表页共用同一组件（2026-09-25 修复切回「未读」时胶囊错位，用户选方案 A）。
+	/// 按钮沿用原无障碍标识 babel2.scope.*；按钮外观与胶囊由组件负责，本页只负责切换列表内容。
+	private lazy var scopeStack = Babel2ScopeFilterControl(
+		selectedScope: selectedScope,
+		identifierPrefix: "babel2.scope",
+		controlIdentifier: "babel2.scope.controls",
+		localizationBundle: localizationBundle
+	)
 	private var scopeSurfaces = [Babel2FeedScope: ScopeSurface]()
 	private var libraryTasks = [Babel2FeedScope: Task<Void, Never>]()
 	private var scopeTransitionAnimator: UIViewPropertyAnimator?
@@ -442,107 +447,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func configureScopeControls() {
-		scopeStack.accessibilityIdentifier = "babel2.scope.controls"
-		selectionPill.backgroundColor = BabelPalette.raisedBackground.withAlphaComponent(0.62)
-		selectionPill.layer.cornerRadius = 13
-		selectionPill.isUserInteractionEnabled = false
-		selectionPill.accessibilityElementsHidden = true
-		scopeStack.addSubview(selectionPill)
-		for scope in Self.filterDisplayOrder {
-			let button = UIButton(type: .system)
-			button.configuration = .plain()
-			button.configuration?.imagePlacement = .leading
-			button.configuration?.imagePadding = scope == .unread ? 7 : 6
-			button.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
-				var transformed = attributes
-				transformed.font = .systemFont(ofSize: 10, weight: .semibold)
-				transformed.foregroundColor = BabelPalette.mutedInk
-				return transformed
-			}
-			button.tintColor = BabelPalette.mutedInk
-			button.accessibilityIdentifier = "babel2.scope.\(scope.rawValue)"
-			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
-			button.accessibilityTraits.insert(.button)
-			button.addAction(UIAction { [weak self] _ in self?.scopeTapped(scope) }, for: .touchUpInside)
-			button.backgroundColor = .clear
-			button.translatesAutoresizingMaskIntoConstraints = false
-			scopeStack.addSubview(button)
-			scopeButtons[scope] = button
-		}
-
-		// 按 402pt 参考画布的 104/201/290.5 中心比例定位，避免冷启动时
-		// 读取尚未解析的 scopeStack.bounds。
-		let referenceCanvasWidth: CGFloat = 402
-		let referenceCenters: [CGFloat] = [104, 201, 290.5]
-		for (index, scope) in Self.filterDisplayOrder.enumerated() {
-			guard let button = scopeButtons[scope] else { continue }
-			let centerRatio = referenceCenters[index] / (referenceCanvasWidth / 2)
-			let width: CGFloat = scope == .starred ? 90 : (scope == .unread ? 78 : 68)
-			NSLayoutConstraint.activate([
-				button.widthAnchor.constraint(equalToConstant: width),
-				button.heightAnchor.constraint(equalToConstant: 44),
-				button.centerYAnchor.constraint(equalTo: scopeStack.centerYAnchor),
-				NSLayoutConstraint(
-					item: button,
-					attribute: .centerX,
-					relatedBy: .equal,
-					toItem: scopeStack,
-					attribute: .centerX,
-					multiplier: centerRatio,
-					constant: 0
-				)
-			])
-		}
-		updateScopeButtons()
+		scopeStack.onSelect = { [weak self] scope in self?.scopeTapped(scope) }
 	}
 
-	private static func image(for scope: Babel2FeedScope, selected: Bool) -> UIImage? {
-		switch scope {
-		case .starred:
-			let name = selected ? "BabelFilterSelectedStar" : "BabelHomeStar"
-			return UIImage(named: name)?.withRenderingMode(.alwaysTemplate)
-		case .unread:
-			return UIImage(systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
-		case .all:
-			guard let image = UIImage(named: "BabelHomeAll")?.withRenderingMode(.alwaysTemplate) else { return nil }
-			return selected ? resizedTemplateImage(image, to: CGSize(width: 15, height: 15)) : image
-		}
-	}
-
-	private static func resizedTemplateImage(_ image: UIImage, to size: CGSize) -> UIImage {
-		let renderer = UIGraphicsImageRenderer(size: size)
-		return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }.withRenderingMode(.alwaysTemplate)
-	}
-
+	/// 让组件显示当前的档位意图（切换期间以用户最后一次点的为准）。
 	private func updateScopeButtons() {
-		for (scope, button) in scopeButtons {
-			let isSelected = scope == displayedScope
-			button.accessibilityValue = isSelected ? "Selected" : "Not selected"
-			button.accessibilityTraits = isSelected ? [.button, .selected] : [.button]
-			button.backgroundColor = .clear
-			button.tintColor = BabelPalette.mutedInk
-			button.contentHorizontalAlignment = isSelected ? .leading : .center
-			var configuration = button.configuration ?? .plain()
-			configuration.image = Self.image(for: scope, selected: isSelected)
-			configuration.title = isSelected ? scope.localizationKey.rawValue.uppercased() : nil
-			configuration.imagePlacement = .leading
-			configuration.imagePadding = scope == .unread ? 7 : 6
-			configuration.contentInsets = NSDirectionalEdgeInsets(
-				top: 0,
-				leading: isSelected ? (scope == .starred ? 10 : (scope == .unread ? 8 : 9)) : 0,
-				bottom: 0,
-				trailing: 0
-			)
-			button.configuration = configuration
-		}
-		if let button = scopeButtons[displayedScope] {
-			selectionPill.frame = selectionPillFrame(for: button)
-			selectionPill.layer.cornerRadius = min(selectionPill.bounds.height, 26) / 2
-		}
-	}
-
-	private func selectionPillFrame(for button: UIButton) -> CGRect {
-		button.frame.insetBy(dx: 0, dy: 9)
+		scopeStack.setSelectedScope(selectedScope, animated: false)
 	}
 
 	private func installLayout() {
@@ -761,8 +671,15 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		syncGlyph.setSyncing(true)
 	}
 
+	/// 仅供自动化测试：切换动画已结束、显示的档位就是最后点的档位。
+	/// （按钮的「选中」样式现在一点就变，不能再当作「切换结束」的信号。）
+	var isScopeTransitionSettledForTesting: Bool {
+		scopeTransitionAnimator == nil && displayedScope == selectedScope
+	}
+
 	/// 档位是全局的：在订阅源文章列表里切了档位，返回首页时首页也换到同一档（ADR-023）。
 	func applyScope(_ scope: Babel2FeedScope) {
+		scopeStack.setSelectedScope(scope, animated: false)
 		scopeTapped(scope)
 	}
 
@@ -810,10 +727,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				surface.transform = presentation.affineTransform()
 			}
 		}
-		if let presentation = selectionPill.layer.presentation() {
-			selectionPill.frame = presentation.frame
-			selectionPill.transform = .identity
-		}
 		scopeTransitionToken = UUID()
 		presentationNeedsSettlement = true
 		animator.stopAnimation(true)
@@ -821,7 +734,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		for surface in surfaces {
 			surface.layer.removeAllAnimations()
 		}
-		selectionPill.layer.removeAllAnimations()
 		applyActiveSurface(displayedScope)
 	}
 
@@ -835,9 +747,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 		let token = UUID()
 		scopeTransitionToken = token
-		let sourceButton = scopeButtons[displayedScope]
-		let destinationButton = scopeButtons[target]
-		if let sourceButton, let destinationButton {
+		do {
 			let fromScope = displayedScope
 			filterMotionSequence &+= 1
 			let motionToken = MotionInteractionToken(interaction: .libraryFilter, sequence: filterMotionSequence)
@@ -845,11 +755,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			filterMotionFromScope = fromScope
 			filterMotionToScope = target
 			recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .zero, phase: .begin)
-			if !presentationNeedsSettlement {
-				selectionPill.frame = selectionPillFrame(for: sourceButton)
-				selectionPill.transform = .identity
-			}
-			let targetPillFrame = selectionPillFrame(for: destinationButton)
 			let direction: CGFloat = scopeIndex(target) >= scopeIndex(displayedScope) ? 1 : -1
 			let offset: CGFloat = 12 * direction
 			if !presentationNeedsSettlement {
@@ -871,8 +776,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 						surface.transform = CGAffineTransform(translationX: 12 * side, y: 0)
 					}
 				}
-				self.selectionPill.frame = targetPillFrame
-				self.selectionPill.transform = .identity
 			}
 			scopeTransitionAnimator = animator
 			animator.addCompletion { [weak self, weak animator] _ in
@@ -883,8 +786,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				self.scopeTransitionAnimator = nil
 				self.displayedScope = target
 				self.presentationNeedsSettlement = false
-				self.selectionPill.frame = targetPillFrame
-				self.selectionPill.transform = .identity
 				for surface in self.scopeSurfaces.values {
 					surface.alpha = surface.scope == target ? 1 : 0
 					surface.transform = .identity

@@ -9,6 +9,10 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-25 首页底栏改用共享档位组件（r2；用户真机回归验收通过，已提交）
+
+基线：`HEAD` = `b2736717e` + 未提交改动。r1 109/111：两项打点测试以按钮选中作为“切换结束”信号，组件改为点击即选中后提前检查，只看到 begin；改为等待 `isScopeTransitionSettledForTesting` 后 r2 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/homefilter-r2.xcresult` `result=Passed`、`totalTestCount=111`、`passedTests=111`。UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/homefilter-ui-r1.xcresult` 1/1。原始错位只在真机动画中出现，模拟器无法复现，修复效果待用户真机确认。
+
 ## 2026-09-25 文章列表底栏（r1；用户真机验收通过，已提交）
 
 基线：`HEAD` = `eb076c0e0` + 未提交改动。`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/feedbar-r1.xcresult` `result=Passed`、`totalTestCount=111`、`passedTests=111`；`swift test --package-path Modules/Babel2UI` 32/32；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/04491fb8-8378-43c8-b159-d9cf837e3e85/scratchpad/feedbar-ui-r1.xcresult` 1/1。新增：经真实装配切档→按新档重新请求（unread→all）、首页 selectedScope 同步为 all、标题译占位不可点；全部标为已读先得到计数 2、确认前无操作、确认后仅一次 markFeedRead。真实批量标记（markArticles 一组）未在模拟器单独验证。
