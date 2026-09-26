@@ -3,16 +3,15 @@ import Babel2Core
 
 /// 星标 / 未读 / 全部 三档切换条（Figma「Feed Toolbar」22:35 与 Filter Pill 28:44）。
 ///
-/// 外观与首页底栏完全一致（图标、胶囊宽度 90 / 78 / 68、选中文字 10pt 半粗、0.18 秒胶囊滑动），
+/// 外观与首页底栏完全一致（图标、胶囊宽度 90 / 78 / 68、选中文字 10pt 半粗、0.22 秒先快后缓的胶囊滑动，ADR-034），
 /// 首页与订阅源文章列表页共用本组件（2026-09-25 起；首页原先的手写实现在真机上切回「未读」
 /// 时胶囊会错位，用户选择统一到本组件）。
 ///
-/// 它铺满整条底栏宽度，三个按钮中心按 402pt 画布的 x = 104 / 201 / 290.5 比例定位。
+/// 它铺满整条底栏宽度，三个按钮中心按 402pt 画布的 x = 116.5 / 201 / 285.5 比例定位（ADR-033 等距底栏）。
 @MainActor
 final class Babel2ScopeFilterControl: UIView {
 	static let displayOrder: [Babel2FeedScope] = [.starred, .unread, .all]
-	private static let referenceCenters: [CGFloat] = [104, 201, 290.5]
-	private static let referenceWidth: CGFloat = 402
+	private static let referenceCenters = Babel2BarLayout.scopeSlots
 
 	private let selectionPill = UIView()
 	private(set) var buttons = [Babel2FeedScope: UIButton]()
@@ -50,17 +49,14 @@ final class Babel2ScopeFilterControl: UIView {
 			button.addAction(UIAction { [weak self] _ in self?.tapped(scope) }, for: .touchUpInside)
 			button.translatesAutoresizingMaskIntoConstraints = false
 			addSubview(button)
+			Babel2Motion.addPressFeedback(to: button)
 			buttons[scope] = button
 			let width: CGFloat = scope == .starred ? 90 : (scope == .unread ? 78 : 68)
 			NSLayoutConstraint.activate([
 				button.widthAnchor.constraint(equalToConstant: width),
 				button.heightAnchor.constraint(equalToConstant: 44),
-				button.centerYAnchor.constraint(equalTo: topAnchor, constant: 24),
-				NSLayoutConstraint(
-					item: button, attribute: .centerX, relatedBy: .equal,
-					toItem: self, attribute: .trailing,
-					multiplier: Self.referenceCenters[index] / Self.referenceWidth, constant: 0
-				)
+				button.centerYAnchor.constraint(equalTo: topAnchor, constant: Babel2BarLayout.centerY),
+				Babel2BarLayout.centerX(button, in: self, slot: Self.referenceCenters[index])
 			])
 		}
 		updateButtons()
@@ -68,10 +64,21 @@ final class Babel2ScopeFilterControl: UIView {
 
 	required init?(coder: NSCoder) { nil }
 
+	/// 仅供自动化测试：选中胶囊的（目标）位置。
+	var selectionPillFrameForTesting: CGRect { selectionPill.frame }
+
+	/// 胶囊按按钮的「原始」大小定位：按下时按钮会缩到 94%（ADR-034 按压反馈），frame 会跟着变小，
+	/// 所以用 center + bounds（不受缩放影响），胶囊始终是原来的大小。
+	private static func pillFrame(for button: UIButton) -> CGRect {
+		let size = button.bounds.size
+		return CGRect(x: button.center.x - size.width / 2, y: button.center.y - size.height / 2,
+			width: size.width, height: size.height).insetBy(dx: 0, dy: 9)
+	}
+
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		if animator == nil, let button = buttons[selectedScope] {
-			selectionPill.frame = button.frame.insetBy(dx: 0, dy: 9)
+			selectionPill.frame = Self.pillFrame(for: button)
 		}
 	}
 
@@ -94,13 +101,20 @@ final class Babel2ScopeFilterControl: UIView {
 		animator = nil
 		guard let button = buttons[selectedScope] else { return }
 		layoutIfNeeded()
-		let target = button.frame.insetBy(dx: 0, dy: 9)
+		let target = Self.pillFrame(for: button)
 		guard animated, window != nil else {
 			selectionPill.frame = target
 			return
 		}
-		let animator = UIViewPropertyAnimator(duration: 0.18, curve: .linear) { [weak self] in
+		// 减弱动态效果：胶囊不滑动，直接到位后淡入
+		if Babel2Motion.reduceMotion {
+			selectionPill.frame = target
+			selectionPill.alpha = 0
+		}
+		// 统一动效（ADR-034）：0.22 秒、先快后缓
+		let animator = UIViewPropertyAnimator(duration: Babel2Motion.standard, curve: .easeOut) { [weak self] in
 			self?.selectionPill.frame = target
+			self?.selectionPill.alpha = 1
 		}
 		animator.addCompletion { [weak self] _ in self?.animator = nil }
 		self.animator = animator

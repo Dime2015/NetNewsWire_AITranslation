@@ -27,7 +27,7 @@ final class Babel2FeedSearchField: UIView, UITextFieldDelegate {
 		glass.translatesAutoresizingMaskIntoConstraints = false
 
 		textField.placeholder = placeholder
-		textField.font = .systemFont(ofSize: 16, weight: .regular)
+		textField.font = Babel2Type.searchField
 		textField.textColor = BabelPalette.ink
 		textField.returnKeyType = .search
 		// 框里有字时 × 一直显示（不只在输入时），收起键盘后也能一键清空
@@ -41,7 +41,7 @@ final class Babel2FeedSearchField: UIView, UITextFieldDelegate {
 		textField.translatesAutoresizingMaskIntoConstraints = false
 
 		cancelButton.setTitle(cancelTitle, for: .normal)
-		cancelButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
+		cancelButton.titleLabel?.font = Babel2Type.searchField
 		cancelButton.tintColor = BabelPalette.ink
 		cancelButton.accessibilityIdentifier = "babel2.feed.search.cancel"
 		cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)

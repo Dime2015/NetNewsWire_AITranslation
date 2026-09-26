@@ -239,16 +239,30 @@ final class Babel2ArticleViewController: UIViewController {
 		if isTranslationPrepared { translation.resetForNewArticle() }
 		isTranslationPrepared = false
 		toolbar.setTranslationAvailable(false)
+		// 重新排版已经显示过的正文（切换阅读模式等）：旧画面拍一张盖在原位，排好后淡出（ADR-034），
+		// 不出现空白一闪。第一次排版不需要。
+		var fadeCover: UIView?
+		if contentView.window != nil, lastRenderResult != nil,
+			let cover = contentView.snapshotView(afterScreenUpdates: false) {
+			cover.frame = contentView.frame
+			cover.isUserInteractionEnabled = false
+			contentView.superview?.insertSubview(cover, aboveSubview: contentView)
+			fadeCover = cover
+		}
 		applyDisplayedTitle(nil)
 		let generation = UUID()
 		renderGeneration = generation
 		let renderer = environment.articleRenderer
 		let article = self.article
 		let articleID = article.id
-		renderTask = Task { @MainActor [weak self, renderer, article, articleID, generation] in
+		renderTask = Task { @MainActor [weak self, renderer, article, articleID, generation, fadeCover] in
 			defer {
 				if let self, self.renderGeneration == generation {
 					self.renderTask = nil
+				}
+				// 不管成功、失败还是被新的排版取代，盖板都淡出移除
+				if let fadeCover {
+					Babel2Motion.animate(Babel2Motion.standard, { fadeCover.alpha = 0 }, completion: { _ in fadeCover.removeFromSuperview() })
 				}
 			}
 			do {
@@ -404,8 +418,15 @@ final class Babel2ArticleViewController: UIViewController {
 	}
 
 	private func refreshMoreMenu() {
-		moreButton?.menu = makeMoreMenu()
-		moreButton?.isEnabled = moreButton?.menu?.children.isEmpty == false
+		moreButton?.isEnabled = !makeMoreItems().isEmpty
+	}
+
+	/// 「•••」：全 app 统一的毛玻璃菜单（2026-09-25 用户要求），每次打开按当前状态生成。
+	@objc private func moreTapped() {
+		guard let moreButton else { return }
+		let items = makeMoreItems()
+		guard !items.isEmpty else { return }
+		Babel2GlassMenu.present(sections: [items], from: moreButton, in: view)
 	}
 
 	// MARK: - 生成长图（ADR-025）
@@ -514,12 +535,17 @@ final class Babel2ArticleViewController: UIViewController {
 		toastView = capsule
 		UIAccessibility.post(notification: .announcement, argument: text)
 
+		// 从下方上浮 8pt 并淡入，离开时原地淡出（ADR-034）
 		capsule.alpha = 0
-		UIView.animate(withDuration: 0.2) { capsule.alpha = 1 }
+		capsule.transform = CGAffineTransform(translationX: 0, y: Babel2Motion.offset(8))
+		Babel2Motion.animate(Babel2Motion.standard) {
+			capsule.alpha = 1
+			capsule.transform = .identity
+		}
 		toastHideTask = Task { @MainActor [weak self, weak capsule] in
 			try? await Task.sleep(for: .seconds(2))
 			guard !Task.isCancelled, let capsule else { return }
-			UIView.animate(withDuration: 0.3, animations: { capsule.alpha = 0 }, completion: { _ in
+			Babel2Motion.animate(Babel2Motion.standard, { capsule.alpha = 0 }, completion: { _ in
 				capsule.removeFromSuperview()
 				if self?.toastView === capsule { self?.toastView = nil }
 			})
@@ -535,11 +561,12 @@ final class Babel2ArticleViewController: UIViewController {
 	var statusTextForTesting: String? { statusLabel.isHidden ? nil : statusLabel.text }
 	var isFetchingFullTextForTesting: Bool { fullTextTask != nil }
 	var moreMenuItemIdentifiers: [String] {
-		moreButton?.menu?.children.compactMap { ($0 as? UIAction)?.identifier.rawValue } ?? []
+		makeMoreItems().map(\.identifier)
 	}
 	var moreMenuFeedAlwaysReaderModeState: UIMenuElement.State? {
-		(moreButton?.menu?.children.first { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.feed-always-reading-mode" } as? UIAction)?.state
+		makeMoreItems().first { $0.identifier == "babel2.article.feed-always-reading-mode" }.map { $0.isOn == true ? .on : .off }
 	}
+	func presentMoreMenuForTesting() { moreTapped() }
 
 	// MARK: - 翻译
 
@@ -575,7 +602,10 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 标题显示：nil = 原文标题；否则显示译文标题。大标题高度变了要重新让出正文空间。
 	func applyDisplayedTitle(_ translated: String?) {
 		let text = translated ?? article.title
-		titleLabel.attributedText = Self.titleText(text)
+		// 译文标题到达 / 切回原文：交叉淡入（ADR-034）；字没变就不动
+		if titleLabel.attributedText?.string != text {
+			Babel2Motion.crossfade(titleLabel) { self.titleLabel.attributedText = Self.titleText(text) }
+		}
 		compactHeader.setArticleTitle(text)
 		relayoutHeader()
 	}
@@ -586,7 +616,7 @@ final class Babel2ArticleViewController: UIViewController {
 
 	// MARK: - 顶栏
 
-	/// 顶栏按 Figma「Navigation Bar / Reader」(18:15)：58pt，图标 24pt、次要灰，中心 y = 22。
+	/// 顶栏按 Figma「Navigation Bar / Reader」(18:15)：58pt，图标次要灰（ADR-033 起 19pt），中心 y = 22。
 	/// 左 ✕ 关闭（x=32）/ 正中 ••• 更多菜单（x=201）/ 右 系统分享（x=370）。
 	/// 设计稿的「标签」按钮不放（无此功能，ADR-018）；「打开原文」在更多菜单里。
 	private func configureTopBar() -> UIView {
@@ -595,14 +625,13 @@ final class Babel2ArticleViewController: UIViewController {
 		bar.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(bar)
 
-		let close = makeBarButton(image: UIImage(named: "Babel2ReaderClose"), key: .back, identifier: "babel2.article.back")
+		let close = makeBarButton(image: Babel2Type.icon(UIImage(named: "Babel2ReaderClose"), side: Babel2Type.readerTopIcon), key: .back, identifier: "babel2.article.back")
 		close.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-		let more = makeBarButton(image: UIImage(named: "Babel2ReaderMore"), key: .more, identifier: "babel2.article.more")
-		more.menu = makeMoreMenu()
-		more.showsMenuAsPrimaryAction = true
-		more.isEnabled = more.menu?.children.isEmpty == false
+		let more = makeBarButton(image: Babel2Type.icon(UIImage(named: "Babel2ReaderMore"), side: Babel2Type.readerTopIcon), key: .more, identifier: "babel2.article.more")
+		more.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
+		more.isEnabled = !makeMoreItems().isEmpty
 		// 顶栏右上是普通系统分享（合同最新决定），设计稿无对应图标，用系统分享符号按同一灰度与视觉尺寸
-		let shareImage = UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .medium))
+		let shareImage = UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.readerTopSymbol, weight: .medium))
 		let share = makeBarButton(image: shareImage, key: .share, identifier: "babel2.article.share")
 		share.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
 		[close, more, share].forEach(bar.addSubview)
@@ -641,30 +670,19 @@ final class Babel2ArticleViewController: UIViewController {
 
 	/// 「•••」更多菜单（ADR-020）：此订阅源总是用阅读模式（带勾）/ 打开原文 / 生成长图（Slice 5 第 5 步前为灰色）。
 	/// 阅读模式本身的开关在底栏第 4 格。没有原文地址时前两项不出现。
-	private func makeMoreMenu() -> UIMenu {
-		var actions = [UIMenuElement]()
+	private func makeMoreItems() -> [Babel2MenuItem] {
+		var items = [Babel2MenuItem]()
 		if article.url != nil, feedReaderModeSetting != nil {
-			actions.append(UIAction(
-				title: Babel2Localization.text(.feedAlwaysReadingMode),
-				image: UIImage(named: "BabelReaderReadingMode"),
-				identifier: UIAction.Identifier("babel2.article.feed-always-reading-mode"),
-				state: isFeedAlwaysReaderMode ? .on : .off
-			) { [weak self] _ in self?.toggleFeedAlwaysReaderMode() })
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(named: "BabelReaderReadingMode"),
+				identifier: "babel2.article.feed-always-reading-mode", isOn: isFeedAlwaysReaderMode) { [weak self] in self?.toggleFeedAlwaysReaderMode() })
 		}
 		if article.url != nil {
-			actions.append(UIAction(
-				title: Babel2Localization.text(.openOriginal),
-				image: UIImage(systemName: "safari"),
-				identifier: UIAction.Identifier("babel2.article.open-original")
-			) { [weak self] _ in self?.originalTapped() })
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.openOriginal), image: UIImage(systemName: "safari"),
+				identifier: "babel2.article.open-original") { [weak self] in self?.originalTapped() })
 		}
-		actions.append(UIAction(
-			title: Babel2Localization.text(.longImage),
-			image: UIImage(named: "BabelReaderShareLongImage"),
-			identifier: UIAction.Identifier("babel2.article.long-image"),
-			attributes: isGeneratingLongImage ? .disabled : []
-		) { [weak self] _ in self?.generateLongImage() })
-		return UIMenu(children: actions)
+		items.append(Babel2MenuItem(title: Babel2Localization.text(.longImage), image: UIImage(named: "BabelReaderShareLongImage"),
+			identifier: "babel2.article.long-image", isEnabled: !isGeneratingLongImage) { [weak self] in self?.generateLongImage() })
+		return items
 	}
 
 	private func makeBarButton(image: UIImage?, key: Babel2LocalizationKey, identifier: String) -> UIButton {
@@ -674,12 +692,13 @@ final class Babel2ArticleViewController: UIViewController {
 		button.accessibilityLabel = Babel2Localization.text(key)
 		button.accessibilityIdentifier = identifier
 		button.translatesAutoresizingMaskIntoConstraints = false
+		Babel2Motion.addPressFeedback(to: button)
 		return button
 	}
 
 	/// 仅供自动化测试：更多菜单里有没有「打开原文」，以及直接触发它。
 	var moreMenuHasOpenOriginal: Bool {
-		moreButton?.menu?.children.contains { ($0 as? UIAction)?.identifier.rawValue == "babel2.article.open-original" } ?? false
+		makeMoreItems().contains { $0.identifier == "babel2.article.open-original" }
 	}
 	func openOriginalFromMenuForTesting() { originalTapped() }
 
@@ -813,15 +832,15 @@ final class Babel2ArticleViewController: UIViewController {
 		])
 	}
 
-	/// 大标题：34pt 粗体、主墨色、行高 38、字距 -1。
+	/// 大标题：27pt 半粗、主墨色、行高 33、字距 -0.4（ADR-033，原 34 粗体 / 38 / -1）。
 	private static func titleText(_ text: String) -> NSAttributedString {
 		let paragraph = NSMutableParagraphStyle()
-		paragraph.minimumLineHeight = 38
-		paragraph.maximumLineHeight = 38
+		paragraph.minimumLineHeight = Babel2Type.readerTitleLineHeight
+		paragraph.maximumLineHeight = Babel2Type.readerTitleLineHeight
 		return NSAttributedString(string: text, attributes: [
-			.font: UIFont.systemFont(ofSize: 34, weight: .bold),
+			.font: Babel2Type.readerTitle,
 			.foregroundColor: BabelPalette.ink,
-			.kern: -1,
+			.kern: Babel2Type.readerTitleKern,
 			.paragraphStyle: paragraph
 		])
 	}

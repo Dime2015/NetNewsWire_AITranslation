@@ -4,7 +4,7 @@ import WebKit
 /// Babel 2.0 内置浏览器（Slice 5 第 3 步，ADR-021）。
 ///
 /// 设计稿没有浏览器画面，版式沿用阅读页（用户 2026-09-25 同意）：
-/// - 顶栏 58pt：左 ✕ 回到文章（x=32，中心 y=22）；中间两行 = 网页标题（15pt 半粗）+ 域名（11pt 浅灰）
+/// - 顶栏 58pt：左 ✕ 回到文章（x=32，中心 y=22）；中间两行 = 网页标题（14pt 半粗，ADR-033）+ 域名（11pt 浅灰）
 /// - 顶栏下方 2pt 中性灰加载进度线；加载失败显示原因 + 重试
 /// - 底栏 72pt（0.5pt 分隔线），五格与阅读页同位置：后退 / 前进 / 刷新 / 分享 / 在 Safari 中打开
 /// - 回到文章：左边缘右滑（沿用统一的返回手势）或点 ✕
@@ -98,15 +98,16 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate 
 			view.addSubview($0)
 		}
 		let close = UIButton(type: .system)
-		close.setImage(UIImage(named: "Babel2ReaderClose")?.withRenderingMode(.alwaysTemplate), for: .normal)
+		close.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderClose"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
 		close.tintColor = BabelPalette.mutedInk
 		close.accessibilityLabel = Babel2Localization.text(.back)
 		close.accessibilityIdentifier = "babel2.browser.close"
 		close.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 		close.translatesAutoresizingMaskIntoConstraints = false
+		Babel2Motion.addPressFeedback(to: close)
 		bar.addSubview(close)
 
-		titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+		titleLabel.font = Babel2Type.browserTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.textAlignment = .center
 		titleLabel.lineBreakMode = .byTruncatingTail
@@ -162,8 +163,8 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate 
 			(shareButton, "square.and.arrow.up", .share, "babel2.browser.share", #selector(shareTapped)),
 			(safariButton, "safari", .openInSafari, "babel2.browser.safari", #selector(safariTapped))
 		]
-		// 与阅读页底栏相同的五个中心位置（402pt 画布 x = 32 / 104 / 201 / 290.5 / 362），中心 y = 24
-		let centers: [CGFloat] = [32, 104, 201, 290.5, 362]
+		// 与阅读页底栏相同的五个中心位置（Babel2BarLayout：x = 32 / 116.5 / 201 / 285.5 / 370，中心 y = 24）
+		let centers = Babel2BarLayout.slots
 		var constraints = [
 			toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -176,16 +177,17 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate 
 		]
 		for ((button, symbol, key, identifier, action), center) in zip(items, centers) {
 			// 设计稿无浏览器图标：系统符号，按阅读页图标的灰度与视觉尺寸
-			button.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .medium)), for: .normal)
+			button.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.toolbarSymbol, weight: .medium)), for: .normal)
 			button.tintColor = BabelPalette.mutedInk
 			button.accessibilityLabel = Babel2Localization.text(key)
 			button.accessibilityIdentifier = identifier
 			button.addTarget(self, action: action, for: .touchUpInside)
 			button.translatesAutoresizingMaskIntoConstraints = false
+			Babel2Motion.addPressFeedback(to: button)
 			toolbar.addSubview(button)
 			constraints += [
-				NSLayoutConstraint(item: button, attribute: .centerX, relatedBy: .equal, toItem: toolbar, attribute: .trailing, multiplier: center / 402, constant: 0),
-				button.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: 24),
+				Babel2BarLayout.centerX(button, in: toolbar, slot: center),
+				button.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Babel2BarLayout.centerY),
 				button.widthAnchor.constraint(equalToConstant: 44),
 				button.heightAnchor.constraint(equalToConstant: 44)
 			]

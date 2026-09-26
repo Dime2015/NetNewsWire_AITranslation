@@ -19,6 +19,8 @@ final class Babel2FeedHeroView: UIView {
 	private let countLabel: UILabel
 	private let artView = UIImageView()
 	private let fadeLayer = CAGradientLayer()
+	/// 状态栏那一条从顶端往下的淡纸色渐变：深色图上时间、信号也看得清（2026-09-25 用户截图）。只盖状态栏高度。
+	private let statusScrimLayer = CAGradientLayer()
 	private var artTask: Task<Void, Never>?
 	/// 当前收缩进度（0 展开 … 1 收缩），决定图与大标题的透明度。
 	private var progress: CGFloat = 0
@@ -38,10 +40,11 @@ final class Babel2FeedHeroView: UIView {
 		artView.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(artView)
 		layer.addSublayer(fadeLayer)
+		layer.addSublayer(statusScrimLayer)
 		updateFadeColors()
 
 		titleLabel.text = title
-		titleLabel.font = .systemFont(ofSize: 28, weight: .bold)
+		titleLabel.font = Babel2Type.heroTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 1
 		titleLabel.lineBreakMode = .byTruncatingTail
@@ -88,9 +91,11 @@ final class Babel2FeedHeroView: UIView {
 		CATransaction.begin()
 		CATransaction.setDisableActions(true)
 		fadeLayer.frame = bounds
+		statusScrimLayer.frame = CGRect(x: 0, y: 0, width: bounds.width, height: safeAreaInsets.top + 12)
 		CATransaction.commit()
 		// 渐隐层压在底图之上、文字与按钮之下
 		layer.insertSublayer(fadeLayer, above: artView.layer)
+		layer.insertSublayer(statusScrimLayer, above: fadeLayer)
 	}
 
 	/// 铺上订阅源的图：后台先解码好（不在主线程上解码大图），再淡入。
@@ -104,7 +109,7 @@ final class Babel2FeedHeroView: UIView {
 			self.artView.image = prepared
 			let show = { self.artView.alpha = Self.artAlpha * Babel2FeedHeroMotion.heroContentAlpha(self.progress) }
 			if animated {
-				UIView.animate(withDuration: 0.25, animations: show)
+				Babel2Motion.animate(Babel2Motion.page, show)
 			} else {
 				show()
 			}
@@ -131,6 +136,8 @@ final class Babel2FeedHeroView: UIView {
 		let paper = BabelPalette.background.resolvedColor(with: traitCollection)
 		fadeLayer.colors = [0, 0, 0.85, 1].map { paper.withAlphaComponent($0).cgColor }
 		fadeLayer.locations = [0, 0.55, 0.8, 1]
+		statusScrimLayer.colors = [0.72, 0.4, 0].map { paper.withAlphaComponent($0).cgColor }
+		statusScrimLayer.locations = [0, 0.6, 1]
 	}
 }
 
@@ -144,11 +151,16 @@ final class Babel2FeedCompactBar: UIView {
 	let searchButton = UIButton(type: .system)
 	/// 刷新（Figma 刷新位 x=201）：浅色圆盘 + 逆时针箭头，同步时旋转（复用首页同步图标）。ADR-031。
 	let refreshButton = UIButton(type: .system)
-	private let refreshGlyph = BabelSyncGlyphView()
+	private let refreshGlyph = Babel2SyncSpinner()
 	/// 更多（Figma 更多位 x=370）：点按弹出本订阅源的操作菜单。ADR-031。
 	let moreButton = UIButton(type: .system)
 	let searchField: Babel2FeedSearchField
 	private(set) var isSearching = false
+	/// 返回 / 刷新 / 放大镜 / 更多下面的毛玻璃圆底（直径 36pt）：大图上按钮不会被深色图吞掉（2026-09-25 用户截图）。
+	/// 随收缩进度淡出——收起后窄栏本身是不透明纸色，不需要圆底。
+	private var glassDiscs = [UIView]()
+	/// 仅供自动化测试。
+	var glassDiscAlphaForTesting: CGFloat { glassDiscs.first?.alpha ?? 0 }
 	let titleLabel = UILabel()
 	private let backdrop = UIView()
 	private let iconView = UIImageView()
@@ -170,7 +182,7 @@ final class Babel2FeedCompactBar: UIView {
 		backdrop.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(backdrop)
 
-		backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)), for: .normal)
+		backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.compactBackSymbol, weight: .semibold)), for: .normal)
 		backButton.tintColor = BabelPalette.ink
 		backButton.accessibilityLabel = "Back"
 		backButton.accessibilityIdentifier = "babel2.feed.back"
@@ -192,7 +204,7 @@ final class Babel2FeedCompactBar: UIView {
 		iconView.addSubview(initialLabel)
 
 		titleLabel.text = title
-		titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+		titleLabel.font = Babel2Type.compactTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
 		titleLabel.alpha = 0
@@ -203,7 +215,7 @@ final class Babel2FeedCompactBar: UIView {
 		hairline.alpha = 0
 		hairline.translatesAutoresizingMaskIntoConstraints = false
 
-		searchButton.setImage(UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)), for: .normal)
+		searchButton.setImage(UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.compactSearchSymbol, weight: .medium)), for: .normal)
 		searchButton.tintColor = BabelPalette.ink
 		searchButton.accessibilityLabel = Babel2Localization.text(.search)
 		searchButton.accessibilityIdentifier = "babel2.feed.search"
@@ -217,14 +229,33 @@ final class Babel2FeedCompactBar: UIView {
 		refreshGlyph.translatesAutoresizingMaskIntoConstraints = false
 		refreshButton.addSubview(refreshGlyph)
 		setSyncing(false)
-		moreButton.setImage(UIImage(named: "Babel2ReaderMore"), for: .normal)
+		moreButton.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderMore"), side: Babel2Type.readerTopIcon), for: .normal)
 		moreButton.tintColor = BabelPalette.ink
-		moreButton.showsMenuAsPrimaryAction = true
 		moreButton.accessibilityLabel = Babel2Localization.text(.more)
 		moreButton.accessibilityIdentifier = "babel2.feed.more"
 		moreButton.translatesAutoresizingMaskIntoConstraints = false
+		// 按压反馈（ADR-034）：图标在毛玻璃圆底里轻轻缩一下
+		[backButton, refreshButton, searchButton, moreButton].forEach(Babel2Motion.addPressFeedback)
 
+		// 圆底先加（在按钮下面）
+		for _ in 0..<4 {
+			let disc = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+			disc.isUserInteractionEnabled = false
+			disc.layer.cornerRadius = 18
+			disc.clipsToBounds = true
+			disc.translatesAutoresizingMaskIntoConstraints = false
+			addSubview(disc)
+			glassDiscs.append(disc)
+		}
 		[backButton, searchButton, refreshButton, moreButton, iconView, titleLabel, hairline, searchField].forEach(addSubview)
+		for (disc, button) in zip(glassDiscs, [backButton, refreshButton, searchButton, moreButton]) {
+			NSLayoutConstraint.activate([
+				disc.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+				disc.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+				disc.widthAnchor.constraint(equalToConstant: 36),
+				disc.heightAnchor.constraint(equalToConstant: 36)
+			])
+		}
 		let safeTop = safeAreaLayoutGuide.topAnchor
 		NSLayoutConstraint.activate([
 			backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -284,6 +315,7 @@ final class Babel2FeedCompactBar: UIView {
 		searchButton.isHidden = searching
 		refreshButton.isHidden = searching
 		moreButton.isHidden = searching
+		updateDiscVisibility()
 		iconView.isHidden = searching
 		titleLabel.isHidden = searching
 		if searching {
@@ -294,10 +326,19 @@ final class Babel2FeedCompactBar: UIView {
 		}
 	}
 
+	private var discProgress: CGFloat = 0
+
+	/// 圆底跟着各自的按钮显示 / 隐藏，并随收缩进度淡出。
+	func updateDiscVisibility() {
+		for (disc, button) in zip(glassDiscs, [backButton, refreshButton, searchButton, moreButton]) {
+			disc.isHidden = button.isHidden
+			disc.alpha = 1 - discProgress
+		}
+	}
+
 	/// 同步中：刷新箭头旋转；不同步时静止显示（首页的同一图标不同步时会自己隐藏，这里要一直可见）。
 	func setSyncing(_ syncing: Bool) {
-		refreshGlyph.setSyncing(syncing)
-		refreshGlyph.isHidden = false
+		refreshGlyph.setSpinning(syncing)
 		refreshButton.accessibilityValue = syncing ? Babel2Localization.text(.syncing) : nil
 	}
 
@@ -306,6 +347,8 @@ final class Babel2FeedCompactBar: UIView {
 
 	/// 按收缩进度更新透明度（不重新排版）。
 	func apply(progress: CGFloat) {
+		discProgress = progress
+		updateDiscVisibility()
 		backdrop.alpha = Babel2FeedHeroMotion.compactBackgroundAlpha(progress)
 		hairline.alpha = progress
 		let contentAlpha = Babel2FeedHeroMotion.compactContentAlpha(progress)

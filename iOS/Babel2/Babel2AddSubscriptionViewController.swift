@@ -81,6 +81,8 @@ final class Babel2AddSubscriptionViewController: UIViewController, UITableViewDa
 		super.viewDidLoad()
 		view.backgroundColor = BabelPalette.background
 		let navigation = Babel2SettingsNavigationBar(kind: .back, title: Babel2Localization.text(.addSubscription))
+		// 设置页标题仍是 24pt；这一页不属于设置，跟随全 App 收小一档（ADR-033）
+		navigation.titleLabel.font = .systemFont(ofSize: Babel2Type.addSubscriptionTitle, weight: .semibold)
 		navigation.leadingButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
 		navigation.translatesAutoresizingMaskIntoConstraints = false
 
@@ -99,7 +101,7 @@ final class Babel2AddSubscriptionViewController: UIViewController, UITableViewDa
 		glass.contentMode = .scaleAspectFit
 		glass.translatesAutoresizingMaskIntoConstraints = false
 		searchField.placeholder = Babel2Localization.text(.addSubscriptionPlaceholder)
-		searchField.font = .systemFont(ofSize: 16, weight: .regular)
+		searchField.font = Babel2Type.searchField
 		searchField.textColor = BabelPalette.ink
 		searchField.returnKeyType = .search
 		searchField.clearButtonMode = .always
@@ -124,7 +126,7 @@ final class Babel2AddSubscriptionViewController: UIViewController, UITableViewDa
 		tableView.register(Babel2DiscoveryResultCell.self, forCellReuseIdentifier: Babel2DiscoveryResultCell.reuseIdentifier)
 		tableView.translatesAutoresizingMaskIntoConstraints = false
 
-		statusLabel.font = .systemFont(ofSize: 15, weight: .regular)
+		statusLabel.font = .systemFont(ofSize: 14, weight: .regular)
 		statusLabel.textColor = BabelPalette.mutedInk
 		statusLabel.textAlignment = .center
 		statusLabel.numberOfLines = 0
@@ -337,7 +339,7 @@ final class Babel2AddSubscriptionViewController: UIViewController, UITableViewDa
 			cell.selectionStyle = .none
 			var content = cell.defaultContentConfiguration()
 			content.text = group.statusMessage
-			content.textProperties.font = .systemFont(ofSize: 14, weight: .regular)
+			content.textProperties.font = .systemFont(ofSize: 13, weight: .regular)
 			content.textProperties.color = BabelPalette.mutedInk
 			content.textProperties.numberOfLines = 0
 			content.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 20, bottom: 12, trailing: 20)
@@ -492,10 +494,10 @@ final class Babel2DiscoveryResultCell: UITableViewCell {
 		iconView.layer.cornerRadius = 8
 		iconView.layer.cornerCurve = .continuous
 		iconView.tintColor = BabelPalette.mutedInk
-		titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+		titleLabel.font = Babel2Type.resultTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 2
-		subtitleLabel.font = .systemFont(ofSize: 13, weight: .regular)
+		subtitleLabel.font = Babel2Type.resultSubtitle
 		subtitleLabel.textColor = BabelPalette.tertiaryInk
 		subtitleLabel.numberOfLines = 2
 		actionButton.tintColor = BabelPalette.mutedInk

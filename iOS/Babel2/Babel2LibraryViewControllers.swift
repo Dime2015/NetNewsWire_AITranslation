@@ -60,6 +60,14 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 订阅源图标只解码一次，所有行共用。
 	private lazy var feedIconImage: UIImage? = feed.iconData.flatMap(UIImage.init(data:))
 	private var loadTask: Task<Void, Never>?
+	/// 切档交叉淡入（ADR-034）：旧列表的截图、新列表进场方向、数据迟到时的兜底
+	private var scopeFadeSnapshot: UIView?
+	private var scopeFadeDirection: CGFloat = 1
+	private var scopeFadeFallback: DispatchWorkItem?
+	/// 首屏依次浮现只在第一次有文章时播一次
+	private var hasPlayedEntrance = false
+	/// 加载中的呼吸占位条（替代「加载中…」文字）
+	private let skeleton = Babel2SkeletonView(style: .articleList, accessibilityText: Babel2Localization.text(.loading))
 	private var loadGeneration = UUID()
 	private var loadState: LoadState = .loading
 	private var statusRefreshTimer: Timer?
@@ -172,8 +180,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			let visible = Set(self.tableView.indexPathsForVisibleRows ?? [])
 			let visibleChanged = changedRows.filter { visible.contains($0) }
 			if !visibleChanged.isEmpty {
-				UIView.performWithoutAnimation {
-					self.tableView.reloadRows(at: visibleChanged, with: .none)
+				// 读过后标题变细等：交叉淡入过渡，不瞬间跳（ADR-034）
+				Babel2Motion.crossfade(self.tableView) {
+					UIView.performWithoutAnimation {
+						self.tableView.reloadRows(at: visibleChanged, with: .none)
+					}
 				}
 			}
 		}
@@ -181,6 +192,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 仅供自动化测试观察。
 	var articlesForTesting: [ArticleSnapshot] { articles }
+	var isScopeCrossfadingForTesting: Bool { scopeFadeSnapshot != nil }
+	var isSkeletonShowingForTesting: Bool { skeleton.isShowing }
+	var tableViewForTesting: UITableView { tableView }
 	var daySectionTitlesForTesting: [String?] { daySections.map(\.title) }
 
 	// MARK: - 按天分段
@@ -204,7 +218,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	// MARK: - 底栏（Figma Feed Toolbar，ADR-023）
 
-	/// 72pt 底栏：全部标为已读（x=32）/ 星标·未读·全部（x=104/201/290.5）/ 标题翻译开关（x=362，下一步接通前为灰色）。
+	/// 72pt 底栏：全部标为已读（x=32）/ 星标·未读·全部（x=116.5/201/285.5）/ 标题翻译开关（x=370）。位置见 Babel2BarLayout。
 	private func configureToolbar() {
 		bottomToolbar.backgroundColor = BabelPalette.background
 		bottomToolbar.accessibilityIdentifier = "babel2.feed.toolbar"
@@ -220,7 +234,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		scopeFilter.translatesAutoresizingMaskIntoConstraints = false
 		bottomToolbar.addSubview(scopeFilter)
 
-		readAllButton.setImage(UIImage(named: "Babel2FeedReadAll")?.withRenderingMode(.alwaysTemplate), for: .normal)
+		readAllButton.setImage(Babel2Type.icon(UIImage(named: "Babel2FeedReadAll"), side: Babel2Type.toolbarIcon), for: .normal)
 		readAllButton.tintColor = BabelPalette.mutedInk
 		readAllButton.accessibilityLabel = Babel2Localization.text(.markAllRead)
 		readAllButton.accessibilityIdentifier = "babel2.feed.read-all"
@@ -234,6 +248,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		titleTranslationToggle.accessibilityIdentifier = "babel2.feed.title-translation"
 		titleTranslationToggle.translatesAutoresizingMaskIntoConstraints = false
 		bottomToolbar.addSubview(titleTranslationToggle)
+		[readAllButton, titleTranslationToggle].forEach(Babel2Motion.addPressFeedback)
 
 		NSLayoutConstraint.activate([
 			bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -248,12 +263,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			scopeFilter.trailingAnchor.constraint(equalTo: bottomToolbar.trailingAnchor),
 			scopeFilter.topAnchor.constraint(equalTo: bottomToolbar.topAnchor),
 			scopeFilter.bottomAnchor.constraint(equalTo: bottomToolbar.bottomAnchor),
-			NSLayoutConstraint(item: readAllButton, attribute: .centerX, relatedBy: .equal, toItem: bottomToolbar, attribute: .trailing, multiplier: 32.0 / 402.0, constant: 0),
-			readAllButton.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: 24),
+			Babel2BarLayout.centerX(readAllButton, in: bottomToolbar, slot: Babel2BarLayout.slots[0]),
+			readAllButton.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: Babel2BarLayout.centerY),
 			readAllButton.widthAnchor.constraint(equalToConstant: 44),
 			readAllButton.heightAnchor.constraint(equalToConstant: 44),
-			NSLayoutConstraint(item: titleTranslationToggle, attribute: .centerX, relatedBy: .equal, toItem: bottomToolbar, attribute: .trailing, multiplier: 362.0 / 402.0, constant: 0),
-			titleTranslationToggle.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: 24),
+			Babel2BarLayout.centerX(titleTranslationToggle, in: bottomToolbar, slot: Babel2BarLayout.slots[4]),
+			titleTranslationToggle.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: Babel2BarLayout.centerY),
 			titleTranslationToggle.widthAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.width),
 			titleTranslationToggle.heightAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.height)
 		])
@@ -263,6 +278,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// fromUser = 本页底栏点的，需要同步给首页；外部同步过来的不再回传。
 	func selectScope(_ newScope: Babel2FeedScope, fromUser: Bool) {
 		guard newScope != scope else { return }
+		let order = Babel2ScopeFilterControl.displayOrder
+		let forward = (order.firstIndex(of: newScope) ?? 0) >= (order.firstIndex(of: scope) ?? 0)
+		beginScopeCrossfade(direction: forward ? 1 : -1)
 		scope = newScope
 		scopeFilter.setSelectedScope(newScope, animated: fromUser)
 		headerTitleLabel?.accessibilityValue = newScope.rawValue
@@ -286,19 +304,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 	}
 
+	/// 先确认「将 N 篇文章标为已读？」：全 app 统一的毛玻璃菜单，锚在底栏按钮上方；点空白处即取消。
 	private func confirmMarkAllRead(count: Int) {
-		let sheet = UIAlertController(
-			title: nil,
-			message: String(format: Babel2Localization.text(.markAllReadConfirm), count),
-			preferredStyle: .actionSheet
-		)
-		sheet.addAction(UIAlertAction(title: Babel2Localization.text(.markAllRead), style: .default) { [weak self] _ in
-			self?.performMarkAllRead()
-		})
-		sheet.addAction(UIAlertAction(title: Babel2Localization.text(.cancel), style: .cancel))
-		sheet.popoverPresentationController?.sourceView = readAllButton
-		sheet.popoverPresentationController?.sourceRect = readAllButton.bounds
-		present(sheet, animated: true)
+		Babel2GlassMenu.present(sections: [[
+			Babel2MenuItem(title: Babel2Localization.text(.markAllRead), image: UIImage(named: "Babel2FeedReadAll"),
+				identifier: "babel2.feed.read-all.confirm") { [weak self] in self?.performMarkAllRead() }
+		]], title: String(format: Babel2Localization.text(.markAllReadConfirm), count), from: readAllButton, in: view)
 		pendingMarkAllReadCountForTesting = count
 	}
 
@@ -425,6 +436,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				self.setCount(self.articles.count)
 				self.tableView.reloadData()
 				self.setState(self.articles.isEmpty ? .empty : .loaded)
+				self.presentLoadedContent()
 				// 列表排好后再看哪些行在屏幕上
 				DispatchQueue.main.async { [weak self] in self?.requestVisibleTitleTranslations() }
 			} catch is CancellationError {
@@ -439,18 +451,86 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				self.tableView.reloadData()
 				self.setCount(nil)
 				self.setState(.error)
+				self.finishScopeCrossfade()
 			}
 		}
 	}
 
+	// MARK: - 切档与首屏动效（ADR-034）
+
+	/// 切档：先把旧列表拍一张截图盖在原位，新数据到了再交叉淡入并横向错开 12pt（减弱动态效果时只淡入），
+	/// 不再出现「清空 → 加载中… → 出现」的闪白。不在屏幕上时（例如首页同步过来的切档）不做。
+	private func beginScopeCrossfade(direction: CGFloat) {
+		guard tableView.window != nil else { return }
+		if scopeFadeSnapshot == nil {
+			// 拍不到截图（极少见）就不做这个过渡，照旧直接换，绝不能把列表藏起来却没有东西盖着
+			guard let snapshot = tableView.snapshotView(afterScreenUpdates: false) else { return }
+			snapshot.frame = tableView.frame
+			snapshot.isUserInteractionEnabled = false
+			view.insertSubview(snapshot, aboveSubview: tableView)
+			scopeFadeSnapshot = snapshot
+		}
+		scopeFadeDirection = direction
+		tableView.layer.removeAllAnimations()
+		tableView.alpha = 0
+		tableView.transform = .identity
+		emptyLabel.alpha = 0
+		retryButton.alpha = 0
+		// 数据迟迟不来：0.6 秒后照样淡过去，露出「加载中…」
+		scopeFadeFallback?.cancel()
+		let fallback = DispatchWorkItem { [weak self] in self?.finishScopeCrossfade() }
+		scopeFadeFallback = fallback
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: fallback)
+	}
+
+	private func finishScopeCrossfade() {
+		scopeFadeFallback?.cancel()
+		scopeFadeFallback = nil
+		guard let snapshot = scopeFadeSnapshot else { return }
+		scopeFadeSnapshot = nil
+		skeleton.setShowing(loadState == .loading)
+		tableView.layoutIfNeeded()
+		let shift = Babel2Motion.offset(Babel2Motion.shift) * scopeFadeDirection
+		tableView.transform = CGAffineTransform(translationX: shift, y: 0)
+		Babel2Motion.animate(Babel2Motion.standard, {
+			snapshot.alpha = 0
+			snapshot.transform = CGAffineTransform(translationX: -shift, y: 0)
+			self.tableView.alpha = 1
+			self.tableView.transform = .identity
+			self.emptyLabel.alpha = 1
+			self.retryButton.alpha = 1
+		}, completion: { _ in snapshot.removeFromSuperview() })
+	}
+
+	/// 数据到了：切档中就交叉淡入；第一次有文章就让首屏各行依次浮现（每行间隔 0.02 秒，只播一次）。
+	private func presentLoadedContent() {
+		if scopeFadeSnapshot != nil {
+			hasPlayedEntrance = true
+			finishScopeCrossfade()
+			return
+		}
+		guard !hasPlayedEntrance, !articles.isEmpty, tableView.window != nil else { return }
+		hasPlayedEntrance = true
+		tableView.layoutIfNeeded()
+		let visible = tableView.bounds
+		let headers: [UIView] = (0..<tableView.numberOfSections).compactMap { tableView.headerView(forSection: $0) }
+		let views = (tableView.visibleCells as [UIView] + headers)
+			.filter { $0.frame.intersects(visible) }
+			.sorted { $0.frame.minY < $1.frame.minY }
+		Babel2Motion.staggerIn(views)
+	}
+
 	private func setState(_ state: LoadState) {
 		loadState = state
+		// 切档交叉淡入期间旧列表还盖着，先不出占位条；淡入结束时若仍在加载再出
+		skeleton.setShowing(state == .loading && scopeFadeSnapshot == nil)
 		tableView.accessibilityValue = state.rawValue
 		emptyLabel.accessibilityValue = state.rawValue
 		switch state {
 		case .loading:
+			// 画面上用呼吸的占位条表示加载中（ADR-034）；文字留着给状态核对，但不显示
 			emptyLabel.text = Babel2Localization.text(.loading)
-			emptyLabel.isHidden = false
+			emptyLabel.isHidden = true
 			retryButton.isHidden = true
 		case .loaded:
 			emptyLabel.isHidden = true
@@ -482,10 +562,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		// 刷新与更多（ADR-031）：没有注入操作时不显示，不放点了没反应的按钮
 		compact.refreshButton.isHidden = feedActions == nil
 		compact.moreButton.isHidden = feedActions == nil
+		compact.updateDiscVisibility()
 		compact.refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
-		compact.moreButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
-			completion(self?.makeMoreMenuElements() ?? [])
-		}])
+		compact.moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
 		compact.searchField.onChange = { [weak self] query in self?.searchQueryChanged(query) }
 		compact.searchField.onCancel = { [weak self] in self?.endSearch() }
 		compact.translatesAutoresizingMaskIntoConstraints = false
@@ -570,45 +649,89 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			guard let snapshot = try? await provider.feedArticlesSnapshot(for: feedID, scope: scope),
 				let self, self.loadGeneration == generation, self.scope == scope, !self.isSearching else { return }
 			let offset = self.tableView.contentOffset
+			let before = self.visibleRowPositions()
+			let oldIDs = Set(self.articles.map(\.id))
 			self.articles = snapshot
 			self.rebuildDaySections()
 			self.tableView.reloadData()
 			self.tableView.layoutIfNeeded()
 			self.tableView.setContentOffset(offset, animated: false)
+			self.tableView.layoutIfNeeded()
 			self.setCount(snapshot.count)
 			self.setState(snapshot.isEmpty ? .empty : .loaded)
+			self.animateRowsAfterRefresh(previousPositions: before, previousIDs: oldIDs)
 		}
 	}
 
-	/// 「更多」菜单：每次打开时按当前状态生成（开关的勾永远准确）。
-	private func makeMoreMenuElements() -> [UIMenuElement] {
+	/// 屏幕上每篇文章所在行的顶边位置（刷新前记下，刷新后用来让原有的行平滑让位）。
+	private func visibleRowPositions() -> [ArticleSnapshot.ID: CGFloat] {
+		var positions = [ArticleSnapshot.ID: CGFloat]()
+		for indexPath in tableView.indexPathsForVisibleRows ?? [] {
+			guard let index = articleIndex(for: indexPath), index < articles.count,
+				let cell = tableView.cellForRow(at: indexPath) else { continue }
+			positions[articles[index].id] = cell.frame.minY
+		}
+		return positions
+	}
+
+	/// 刷新后（ADR-034）：原有的行从旧位置平滑移到新位置（往下让出空间），新文章从上方 8pt 淡入滑下。
+	/// 只动 transform 与透明度，列表本身已经一次排好。
+	private func animateRowsAfterRefresh(previousPositions: [ArticleSnapshot.ID: CGFloat], previousIDs: Set<ArticleSnapshot.ID>) {
+		guard tableView.window != nil, !previousPositions.isEmpty else { return }
+		for indexPath in tableView.indexPathsForVisibleRows ?? [] {
+			guard let index = articleIndex(for: indexPath), index < articles.count,
+				let cell = tableView.cellForRow(at: indexPath) else { continue }
+			let id = articles[index].id
+			if let oldY = previousPositions[id] {
+				let delta = oldY - cell.frame.minY
+				guard abs(delta) > 0.5 else { continue }
+				cell.transform = CGAffineTransform(translationX: 0, y: Babel2Motion.offset(delta))
+				Babel2Motion.animate(Babel2Motion.page) { cell.transform = .identity }
+			} else if !previousIDs.contains(id) {
+				cell.alpha = 0
+				cell.transform = CGAffineTransform(translationX: 0, y: -Babel2Motion.offset(8))
+				Babel2Motion.animate(Babel2Motion.page) {
+					cell.alpha = 1
+					cell.transform = .identity
+				}
+			}
+		}
+	}
+
+	/// 「更多」：全 app 统一的毛玻璃菜单（2026-09-25 用户要求），每次打开时按当前状态生成（开关的勾永远准确）。
+	@objc private func moreTapped() {
+		guard let compactBar else { return }
+		Babel2GlassMenu.present(sections: makeMoreMenuSections(), from: compactBar.moreButton, in: view)
+	}
+
+	private func makeMoreMenuSections() -> [[Babel2MenuItem]] {
 		guard let feedActions else { return [] }
-		var top = [UIMenuElement]()
+		var top = [Babel2MenuItem]()
 		if let home = feedActions.homePageURL() {
-			top.append(UIAction(title: Babel2Localization.text(.openWebsite), image: UIImage(systemName: "safari"),
-				identifier: UIAction.Identifier("babel2.feed.more.website")) { _ in feedActions.openURL(home) })
+			top.append(Babel2MenuItem(title: Babel2Localization.text(.openWebsite), image: UIImage(systemName: "safari"),
+				identifier: "babel2.feed.more.website") { feedActions.openURL(home) })
 		}
 		if let address = feedActions.feedURL() {
-			top.append(UIAction(title: Babel2Localization.text(.copyFeedAddress), image: UIImage(systemName: "doc.on.doc"),
-				identifier: UIAction.Identifier("babel2.feed.more.copy")) { _ in UIPasteboard.general.string = address })
+			top.append(Babel2MenuItem(title: Babel2Localization.text(.copyFeedAddress), image: UIImage(systemName: "doc.on.doc"),
+				identifier: "babel2.feed.more.copy") { UIPasteboard.general.string = address })
 		}
-		let readingMode = UIAction(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(systemName: "doc.plaintext"),
-			identifier: UIAction.Identifier("babel2.feed.more.reading-mode"), state: feedActions.isAlwaysReadingMode() ? .on : .off) { _ in
-			feedActions.setAlwaysReadingMode(!feedActions.isAlwaysReadingMode())
-		}
-		let notifications = UIAction(title: Babel2Localization.text(.newArticleNotifications), image: UIImage(systemName: "bell"),
-			identifier: UIAction.Identifier("babel2.feed.more.notifications"), state: feedActions.notificationsEnabled() ? .on : .off) { _ in
-			feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
-		}
-		let rename = UIAction(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
-			identifier: UIAction.Identifier("babel2.feed.more.rename")) { [weak self] _ in self?.presentRename() }
-		let unsubscribe = UIAction(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
-			identifier: UIAction.Identifier("babel2.feed.more.unsubscribe"), attributes: .destructive) { [weak self] _ in self?.confirmUnsubscribe() }
-		return [
-			UIMenu(options: .displayInline, children: top),
-			UIMenu(options: .displayInline, children: [readingMode, notifications]),
-			UIMenu(options: .displayInline, children: [rename, unsubscribe])
+		let toggles = [
+			Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(systemName: "doc.plaintext"),
+				identifier: "babel2.feed.more.reading-mode", isOn: feedActions.isAlwaysReadingMode()) {
+				feedActions.setAlwaysReadingMode(!feedActions.isAlwaysReadingMode())
+			},
+			Babel2MenuItem(title: Babel2Localization.text(.newArticleNotifications), image: UIImage(systemName: "bell"),
+				identifier: "babel2.feed.more.notifications", isOn: feedActions.notificationsEnabled()) {
+				feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
+			}
 		]
+		let manage = [
+			Babel2MenuItem(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
+				identifier: "babel2.feed.more.rename") { [weak self] in self?.presentRename() },
+			Babel2MenuItem(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
+				identifier: "babel2.feed.more.unsubscribe", isDestructive: true) { [weak self] in self?.confirmUnsubscribe() }
+		]
+		return [top, toggles, manage]
 	}
 
 	private func presentRename() {
@@ -665,7 +788,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	/// 仅供自动化测试。
-	var moreMenuElementsForTesting: [UIMenuElement] { makeMoreMenuElements() }
+	var moreMenuSectionsForTesting: [[Babel2MenuItem]] { makeMoreMenuSections() }
 	func refreshForTesting() { refreshTapped() }
 
 	private func configureTable() {
@@ -696,12 +819,21 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		emptyLabel.text = Babel2Localization.text(.noArticles)
 		emptyLabel.accessibilityIdentifier = "babel2.feed.articles.state"
 		emptyLabel.accessibilityValue = LoadState.loading.rawValue
-		emptyLabel.font = .systemFont(ofSize: 17, weight: .regular)
+		emptyLabel.font = .systemFont(ofSize: 15, weight: .regular)
 		emptyLabel.textColor = BabelPalette.mutedInk
 		emptyLabel.textAlignment = .center
 		emptyLabel.isHidden = true
 		emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(emptyLabel)
+		// 占位条：在列表之上、大图之下，从第一行文章的位置开始
+		skeleton.translatesAutoresizingMaskIntoConstraints = false
+		view.insertSubview(skeleton, aboveSubview: tableView)
+		NSLayoutConstraint.activate([
+			skeleton.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			skeleton.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			skeleton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight + Babel2DayHeaderView.height),
+			skeleton.heightAnchor.constraint(equalToConstant: 400)
+		])
 
 		retryButton.configuration = .plain()
 		retryButton.setTitle(Babel2Localization.text(.retry), for: .normal)
@@ -776,13 +908,45 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		isSearching = true
 		articlesBeforeSearch = articles
 		offsetBeforeSearch = tableView.contentOffset.y
-		// 大图收成窄栏、第二行换成搜索框；列表顶上 70pt 垫片暂时去掉，结果紧贴窄栏
-		heroView?.apply(progress: 1)
-		compactBar.setSearching(true)
-		setSpacerHeight(0)
-		bottomToolbar.isHidden = true
-		tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+		// 大图收成窄栏、第二行换成搜索框；列表顶上 70pt 垫片暂时去掉，结果紧贴窄栏。
+		// 整体交叉淡入过去（ADR-034），底栏往下滑出
+		slideToolbar(out: true)
+		Babel2Motion.crossfade(view) {
+			self.heroView?.apply(progress: 1)
+			compactBar.setSearching(true)
+			self.setSpacerHeight(0)
+			self.tableView.setContentOffset(CGPoint(x: 0, y: -self.tableView.adjustedContentInset.top), animated: false)
+		}
 		compactBar.searchField.textField.becomeFirstResponder()
+	}
+
+	/// 底栏滑出 / 滑回（减弱动态效果时只淡出淡入）。隐藏状态立即生效，动画只是视觉过渡。
+	private func slideToolbar(out: Bool) {
+		let distance = Babel2Motion.offset(bottomToolbar.bounds.height)
+		guard bottomToolbar.window != nil else {
+			bottomToolbar.isHidden = out
+			return
+		}
+		if out {
+			// 用一张底栏截图往下滑走，真正的底栏立即隐藏
+			if let ghost = bottomToolbar.snapshotView(afterScreenUpdates: false) {
+				ghost.frame = bottomToolbar.frame
+				view.addSubview(ghost)
+				Babel2Motion.animate(Babel2Motion.standard, {
+					ghost.transform = CGAffineTransform(translationX: 0, y: distance)
+					if distance == 0 { ghost.alpha = 0 }
+				}, completion: { _ in ghost.removeFromSuperview() })
+			}
+			bottomToolbar.isHidden = true
+		} else {
+			bottomToolbar.isHidden = false
+			bottomToolbar.transform = CGAffineTransform(translationX: 0, y: distance)
+			bottomToolbar.alpha = distance == 0 ? 0 : 1
+			Babel2Motion.animate(Babel2Motion.standard) {
+				self.bottomToolbar.transform = .identity
+				self.bottomToolbar.alpha = 1
+			}
+		}
 	}
 
 	/// 边打边搜：停止输入约 0.25 秒后搜索；空搜索框显示原列表。旧的搜索会被取消，只显示最新一次的结果。
@@ -833,17 +997,20 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		searchTask?.cancel()
 		searchTask = nil
 		isSearching = false
-		compactBar?.setSearching(false)
-		bottomToolbar.isHidden = false
-		articles = articlesBeforeSearch
-		rebuildDaySections()
-		tableView.reloadData()
-		setState(articles.isEmpty ? .empty : .loaded)
-		setSpacerHeight(Babel2FeedHeroMotion.collapseDistance)
-		tableView.layoutIfNeeded()
-		tableView.setContentOffset(CGPoint(x: 0, y: offsetBeforeSearch), animated: false)
-		heroProgress = -1
-		updateHeroProgress()
+		// 交叉淡入回原来的列表与大图，底栏从下方滑回（ADR-034）
+		Babel2Motion.crossfade(view) {
+			self.compactBar?.setSearching(false)
+			self.articles = self.articlesBeforeSearch
+			self.rebuildDaySections()
+			self.tableView.reloadData()
+			self.setState(self.articles.isEmpty ? .empty : .loaded)
+			self.setSpacerHeight(Babel2FeedHeroMotion.collapseDistance)
+			self.tableView.layoutIfNeeded()
+			self.tableView.setContentOffset(CGPoint(x: 0, y: self.offsetBeforeSearch), animated: false)
+			self.heroProgress = -1
+			self.updateHeroProgress()
+		}
+		slideToolbar(out: false)
 		refreshStatusesInPlace()
 	}
 
@@ -942,7 +1109,7 @@ struct Babel2DaySection: Equatable {
 	}
 }
 
-/// 日期段标题：14pt 中等粗细、墨色，与文字列左对齐（49pt）；吸顶时下方出现细线。
+/// 日期段标题：12pt 半粗、墨色（ADR-033，原 14 中等），与文字列左对齐（49pt）；吸顶时下方出现细线。
 private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 	static let reuseIdentifier = "Babel2DayHeaderView"
 	static let height: CGFloat = 46
@@ -955,7 +1122,7 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 		var background = UIBackgroundConfiguration.clear()
 		background.backgroundColor = BabelPalette.background
 		backgroundConfiguration = background
-		label.font = .systemFont(ofSize: 14, weight: .medium)
+		label.font = Babel2Type.dayHeader
 		label.textColor = BabelPalette.ink
 		label.accessibilityIdentifier = "babel2.feed.day-header"
 		label.accessibilityTraits = .header
@@ -980,9 +1147,9 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 
 	func configure(title: String) {
 		label.attributedText = NSAttributedString(string: title, attributes: [
-			.font: UIFont.systemFont(ofSize: 14, weight: .medium),
+			.font: Babel2Type.dayHeader,
 			.foregroundColor: BabelPalette.ink,
-			.kern: 0.3
+			.kern: 0.6
 		])
 	}
 
@@ -994,18 +1161,19 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 }
 
 /// 文章行（Reeder 式，2026-09-25 用户给参考截图）：
-/// 左列 24pt 来源图标（与标题第一行居中）；文字列从 49pt 起：
-/// 第一行 来源名（12pt 大写浅灰）…… 时间（13pt，贴右边缘）；
-/// 标题 17pt 最多 2 行（未读加粗、已读常规）；摘要 17pt 浅灰 1 行；
-/// 缩略图 70pt 在时间下方、顶部与标题齐平，文字在它左边折行。行间无分隔线，只靠留白。
+/// 左列来源图标（与标题第一行居中）；文字列从 49pt 起：
+/// 第一行 来源名（大写浅灰）…… 时间（贴右边缘）；
+/// 标题最多 2 行（未读加粗、已读常规）；摘要浅灰 1 行；
+/// 缩略图在时间下方（各尺寸见 Babel2Type「文章列表」，ADR-033 整体收小一档）、顶部与标题齐平，文字在它左边折行。行间无分隔线，只靠留白。
 private final class Babel2ArticleCell: UITableViewCell {
 	static let reuseIdentifier = "Babel2ArticleCell"
-	private static let thumbSide: CGFloat = 70
-	private static let iconSide: CGFloat = 24
+	private static let thumbSide = Babel2Type.rowThumbnail
+	private static let iconSide = Babel2Type.rowIcon
 	private static let textLeading: CGFloat = 49
-	private static let titleLineHeight: CGFloat = 22
-	/// 标题字体（17pt 半粗）的大写字母高度，用来找第一行字的视觉中线。
-	static let titleCapHeight = UIFont.systemFont(ofSize: 17, weight: .semibold).capHeight
+	private static let titleLineHeight = Babel2Type.rowTitleLineHeight
+	private static let rowPadding = Babel2Type.rowPadding
+	/// 标题字体（半粗）的大写字母高度，用来找第一行字的视觉中线。
+	static let titleCapHeight = Babel2Type.rowTitle(read: false).capHeight
 
 	private let feedIconView = UIImageView()
 	private let feedInitialLabel = UILabel()
@@ -1031,17 +1199,17 @@ private final class Babel2ArticleCell: UITableViewCell {
 		contentView.backgroundColor = .clear
 		selectionStyle = .default
 
-		// 来源图标：24pt 圆角 5；没有图标时显示首字母方块（Figma 占位样式）
+		// 来源图标：圆角 5；没有图标时显示首字母方块（Figma 占位样式）
 		feedIconView.contentMode = .scaleAspectFill
 		feedIconView.clipsToBounds = true
 		feedIconView.layer.cornerRadius = 5
 		feedIconView.layer.cornerCurve = .continuous
 		feedIconView.accessibilityIdentifier = "babel2.article.feed-icon"
-		feedInitialLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+		feedInitialLabel.font = .systemFont(ofSize: 11, weight: .semibold)
 		feedInitialLabel.textColor = BabelPalette.mutedInk
 		feedInitialLabel.textAlignment = .center
 
-		// Figma「Article Row / Thumbnail」：70pt 见方、圆角 5、未加载时浅灰占位
+		// Figma「Article Row / Thumbnail」：见方、圆角 5、未加载时浅灰占位
 		thumbnailView.contentMode = .scaleAspectFill
 		thumbnailView.clipsToBounds = true
 		thumbnailView.layer.cornerRadius = 5
@@ -1080,15 +1248,15 @@ private final class Babel2ArticleCell: UITableViewCell {
 		titleToTrailing = titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
 		summaryToThumb = summaryLabel.trailingAnchor.constraint(equalTo: thumbnailView.leadingAnchor, constant: -12)
 		summaryToTrailing = summaryLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
-		bottomBelowThumb = contentView.bottomAnchor.constraint(greaterThanOrEqualTo: thumbnailView.bottomAnchor, constant: 14)
+		bottomBelowThumb = contentView.bottomAnchor.constraint(greaterThanOrEqualTo: thumbnailView.bottomAnchor, constant: Self.rowPadding)
 
-		// 行高由内容决定：文字底 / 缩略图底，取较低者再留 14pt
-		let textBottom = contentView.bottomAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 14)
+		// 行高由内容决定：文字底 / 缩略图底，取较低者再留 rowPadding
+		let textBottom = contentView.bottomAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: Self.rowPadding)
 		textBottom.priority = .defaultHigh
 
 		NSLayoutConstraint.activate([
 			feedLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.textLeading),
-			feedLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+			feedLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowPadding),
 			feedLabel.trailingAnchor.constraint(lessThanOrEqualTo: dateLabel.leadingAnchor, constant: -8),
 
 			// 时间：第一行最右，贴屏幕边缘（有没有缩略图都一样）
@@ -1117,7 +1285,7 @@ private final class Babel2ArticleCell: UITableViewCell {
 			thumbnailView.topAnchor.constraint(equalTo: titleLabel.topAnchor, constant: 3),
 			thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbSide),
 			thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbSide),
-			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: summaryLabel.bottomAnchor, constant: 14),
+			contentView.bottomAnchor.constraint(greaterThanOrEqualTo: summaryLabel.bottomAnchor, constant: Self.rowPadding),
 			textBottom
 		])
 	}
@@ -1140,24 +1308,24 @@ private final class Babel2ArticleCell: UITableViewCell {
 		configuredArticleID = article.id
 		// 开了标题翻译时直接显示译文（不再在标题下加「英文 → 简体中文」提示行，2026-09-25）
 		let displayTitle = article.translatedTitle ?? article.title
-		titleLabel.attributedText = Self.text(displayTitle, font: .systemFont(ofSize: 17, weight: article.isRead ? .regular : .semibold),
+		titleLabel.attributedText = Self.text(displayTitle, font: Babel2Type.rowTitle(read: article.isRead),
 			color: BabelPalette.ink, lineHeight: Self.titleLineHeight, truncates: true)
 		contentView.alpha = 1
 
-		feedLabel.attributedText = Self.text(feedTitle.uppercased(), font: .systemFont(ofSize: 12, weight: .regular),
-			color: BabelPalette.tertiaryInk, lineHeight: 15, kern: 0.3)
+		feedLabel.attributedText = Self.text(feedTitle.uppercased(), font: Babel2Type.rowSource,
+			color: BabelPalette.tertiaryInk, lineHeight: 14, kern: 0.3)
 		feedIconView.image = feedIcon
 		feedIconView.backgroundColor = feedIcon == nil ? Self.placeholderColor : .clear
 		feedInitialLabel.text = feedIcon == nil ? feedTitle.first.map { String($0).uppercased() } : nil
 
 		let plainSummary = Self.plainSummary(article.summary)
-		summaryLabel.attributedText = plainSummary.isEmpty ? nil : Self.text(plainSummary, font: .systemFont(ofSize: 17, weight: .regular),
+		summaryLabel.attributedText = plainSummary.isEmpty ? nil : Self.text(plainSummary, font: Babel2Type.rowSummary,
 			color: BabelPalette.tertiaryInk, lineHeight: Self.titleLineHeight, truncates: true)
 
 		// 已按天分组，每行只显示时刻
 		let time = article.publishedAt.map { Self.timeFormatter.string(from: $0) } ?? ""
-		dateLabel.attributedText = Self.text(time, font: .monospacedDigitSystemFont(ofSize: 13, weight: .regular),
-			color: BabelPalette.ink, lineHeight: 15)
+		dateLabel.attributedText = Self.text(time, font: Babel2Type.rowTime,
+			color: BabelPalette.ink, lineHeight: 14)
 		accessibilityLabel = [feedTitle, displayTitle, plainSummary, time].filter { !$0.isEmpty }.joined(separator: ". ")
 
 		imageLoadTask?.cancel()
@@ -1171,7 +1339,7 @@ private final class Babel2ArticleCell: UITableViewCell {
 		setThumbVisible(true)
 		// 缩好的小图在内存里有就直接用（来回滚动不重新下载、不闪）
 		if let cached = Self.thumbnailCache.object(forKey: imageURL as NSURL) {
-			showThumbnail(cached)
+			showThumbnail(cached, animated: false)
 			return
 		}
 		thumbnailView.backgroundColor = Self.placeholderColor
@@ -1186,7 +1354,7 @@ private final class Babel2ArticleCell: UITableViewCell {
 			guard let self, !Task.isCancelled, self.configuredArticleID == articleID else { return }
 			if let image {
 				Self.thumbnailCache.setObject(image, forKey: imageURL as NSURL)
-				self.showThumbnail(image)
+				self.showThumbnail(image, animated: true)
 			} else {
 				// 下载或解码失败：保持浅灰占位，版面不变
 				self.thumbnailView.image = nil
@@ -1195,9 +1363,17 @@ private final class Babel2ArticleCell: UITableViewCell {
 		}
 	}
 
-	private func showThumbnail(_ image: UIImage) {
-		thumbnailView.image = image
-		thumbnailView.backgroundColor = .clear
+	/// 刚下载好的缩略图从灰色占位交叉淡入（ADR-034，0.22 秒）；内存里已有的直接显示，来回滚动不闪。
+	private func showThumbnail(_ image: UIImage, animated: Bool) {
+		let change = {
+			self.thumbnailView.image = image
+			self.thumbnailView.backgroundColor = .clear
+		}
+		if animated {
+			Babel2Motion.crossfade(thumbnailView, change)
+		} else {
+			change()
+		}
 	}
 
 	private func setThumbVisible(_ visible: Bool) {

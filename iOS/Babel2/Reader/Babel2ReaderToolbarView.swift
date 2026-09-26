@@ -3,16 +3,15 @@ import UIKit
 /// 阅读页底栏：按 Figma「Reader Toolbar」(21:5) 对齐（ADR-018）。
 ///
 /// - 72pt 高、贴屏幕最底（含 Home 指示条区域），顶部 0.5pt 分隔线
-/// - 四个 24pt 设计稿图标：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 104 / 201 / 290.5，中心 y = 24
+/// - 四个设计稿图标（ADR-033 起 21pt）：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 116.5 / 201 / 285.5，中心 y = 24
 ///   （ADR-020：第 4 格回到 Figma 原样的「阅读模式」，长图移入顶栏 ••• 菜单）
-/// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 362
+/// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 370
 /// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
 /// 全部接通：已读、星标、下一篇（没有下一篇时变灰）、阅读模式、翻译。
 @MainActor
 final class Babel2ReaderToolbarView: UIView {
 	static let height: CGFloat = 72
-	private static let slotCenters: [CGFloat] = [32, 104, 201, 290.5, 362]
-	private static let referenceWidth: CGFloat = 402
+	private static let slotCenters = Babel2BarLayout.slots
 
 	let readButton: UIButton
 	let starButton: UIButton
@@ -31,6 +30,8 @@ final class Babel2ReaderToolbarView: UIView {
 	/// 仅供自动化测试：当前已读 / 星标按钮用的资源名。
 	private(set) var readIconName = ""
 	private(set) var starIconName = ""
+	/// 每个按钮当前显示的图标名（换图标时才做交叉淡入）
+	private var iconNames = [ObjectIdentifier: String]()
 	var translationState: TranslationButtonState { translationToggle.translationState }
 
 	override init(frame: CGRect) {
@@ -44,7 +45,7 @@ final class Babel2ReaderToolbarView: UIView {
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
 
-		Self.setIcon("Babel2ReaderNext", on: next)
+		setIcon("Babel2ReaderNext", on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
 		readingModeButton.accessibilityLabel = Babel2Localization.text(.readingMode)
 		readingModeButton.addTarget(self, action: #selector(readingModeTapped), for: .touchUpInside)
@@ -73,16 +74,14 @@ final class Babel2ReaderToolbarView: UIView {
 			addSubview(control)
 			let size = control === translationToggle ? Babel2TranslationToggle.size : CGSize(width: 44, height: 44)
 			NSLayoutConstraint.activate([
-				NSLayoutConstraint(
-					item: control, attribute: .centerX, relatedBy: .equal,
-					toItem: self, attribute: .trailing,
-					multiplier: center / Self.referenceWidth, constant: 0
-				),
-				control.centerYAnchor.constraint(equalTo: topAnchor, constant: 24),
+				Babel2BarLayout.centerX(control, in: self, slot: center),
+				control.centerYAnchor.constraint(equalTo: topAnchor, constant: Babel2BarLayout.centerY),
 				control.widthAnchor.constraint(equalToConstant: size.width),
 				control.heightAnchor.constraint(equalToConstant: size.height)
 			])
 		}
+		// 按压反馈（ADR-034）
+		controls.compactMap { $0 as? UIControl }.forEach(Babel2Motion.addPressFeedback)
 		setRead(false)
 		setStarred(false)
 		setTranslationState(.original)
@@ -92,7 +91,7 @@ final class Babel2ReaderToolbarView: UIView {
 
 	/// 阅读模式按钮：关 = 设计稿图标（次要灰）；开 = 既有的加粗版图标（主墨色）。没有原文地址时不可点。
 	func setReaderMode(_ on: Bool, available: Bool) {
-		Self.setIcon(on ? "BabelReaderReadingModeActive" : "BabelReaderReadingMode", on: readingModeButton)
+		setIcon(on ? "BabelReaderReadingModeActive" : "BabelReaderReadingMode", on: readingModeButton)
 		readingModeButton.tintColor = on ? BabelPalette.ink : BabelPalette.mutedInk
 		readingModeButton.isEnabled = available
 		readingModeButton.accessibilityValue = on ? "on" : "off"
@@ -104,17 +103,23 @@ final class Babel2ReaderToolbarView: UIView {
 	func setRead(_ read: Bool) {
 		isRead = read
 		readIconName = read ? "Babel2ReaderReadStateFilled" : "Babel2ReaderReadState"
-		Self.setIcon(readIconName, on: readButton)
+		setIcon(readIconName, on: readButton)
 		readButton.accessibilityLabel = Babel2Localization.text(read ? .markUnread : .markRead)
 		readButton.accessibilityValue = read ? "read" : "unread"
 	}
 
 	func setStarred(_ starred: Bool) {
+		let lightsUp = starred && !isStarred
 		isStarred = starred
 		starIconName = starred ? "Babel2ReaderStarFilled" : "Babel2ReaderStar"
-		Self.setIcon(starIconName, on: starButton)
+		setIcon(starIconName, on: starButton)
 		starButton.accessibilityLabel = Babel2Localization.text(starred ? .unstar : .star)
 		starButton.accessibilityValue = starred ? "starred" : "unstarred"
+		// 星标点亮时轻轻放大再回原（1.12 → 1，不回弹）；减弱动态效果时只有交叉淡入
+		if lightsUp, starButton.window != nil, !Babel2Motion.reduceMotion, let imageView = starButton.imageView {
+			imageView.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
+			Babel2Motion.animate(Babel2Motion.standard) { imageView.transform = .identity }
+		}
 	}
 
 	/// 页面还没准备好（正文未排版、文章对象未取回）时翻译开关不可点。
@@ -145,11 +150,23 @@ final class Babel2ReaderToolbarView: UIView {
 		return button
 	}
 
-	/// 设计稿图标（24pt 模板图），正常态为次要灰；不可点时用更浅的中性灰，不用主题色。
-	private static func setIcon(_ name: String, on button: UIButton) {
-		let image = UIImage(named: name)?.withRenderingMode(.alwaysTemplate)
+	/// 设计稿图标（模板图，按 Babel2Type.toolbarIcon 重画），正常态为次要灰；不可点时用更浅的中性灰，不用主题色。
+	/// 换图标时交叉淡入（ADR-034，0.22 秒），不再瞬间跳变；同一个图标不重设。
+	private func setIcon(_ name: String, on button: UIButton) {
+		let key = ObjectIdentifier(button)
+		guard iconNames[key] != name else { return }
+		let image = Babel2Type.icon(UIImage(named: name), side: Babel2Type.toolbarIcon)?.withRenderingMode(.alwaysTemplate)
 		assert(image != nil, "missing reader icon asset \(name)")
-		button.setImage(image, for: .normal)
-		button.setImage(image?.withTintColor(BabelPalette.tertiaryInk, renderingMode: .alwaysOriginal), for: .disabled)
+		let isFirstIcon = iconNames[key] == nil
+		iconNames[key] = name
+		let change = {
+			button.setImage(image, for: .normal)
+			button.setImage(image?.withTintColor(BabelPalette.tertiaryInk, renderingMode: .alwaysOriginal), for: .disabled)
+		}
+		if isFirstIcon {
+			change()
+		} else {
+			Babel2Motion.crossfade(button, change)
+		}
 	}
 }

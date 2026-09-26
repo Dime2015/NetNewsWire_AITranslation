@@ -71,9 +71,9 @@ final class Babel2LiveSettingsService: Babel2SettingsService {
 
 	var languageOptions: [Babel2LanguageOption] {
 		AppLanguageController.availableOptions.map { option in
+			// 只写「跟随系统」，不再在括号里带系统语言名（用户 2026-09-25：带上后又长又绕，如「简体中文（日本）」）
 			guard let code = option.code else {
-				let system = AppLanguageController.displayName(for: Locale.preferredLanguages.first ?? "en")
-				return Babel2LanguageOption(code: nil, name: Babel2SettingsText.f("Follow System (%@)", system))
+				return Babel2LanguageOption(code: nil, name: Babel2SettingsText.t("Follow System"))
 			}
 			return Babel2LanguageOption(code: code, name: option.displayName)
 		}

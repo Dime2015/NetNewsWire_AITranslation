@@ -64,7 +64,9 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 	}
 
 	/// 用新页面原地替换栈顶（「下一篇」，ADR-022）：导航层数不变，看多少篇都只需一次返回。
-	/// 动画：旧页面向上滑走、新页面从下方滑上来，约 0.3 秒。
+	/// 动画（ADR-034，比原来整页上滑轻）：旧页上移 24pt 并淡出，新页从下方 40pt 升起，0.32 秒 ease-out。
+	/// 旧页截图连同纸色底板盖在最上面整体淡出，新页在下面升起露出来；中途不透出系统底色。
+	/// 减弱动态效果时没有位移，只交叉淡入。
 	func replaceTopBabel2(with viewController: UIViewController, animated: Bool) {
 		guard viewControllers.count > 1, let current = topViewController else {
 			pushBabel2(viewController, animated: animated)
@@ -76,17 +78,21 @@ final class Babel2NavigationController: UINavigationController, UIGestureRecogni
 		setViewControllers(stack, animated: false)
 		guard let snapshot else { return }
 		view.layoutIfNeeded()
-		let height = view.bounds.height
+		let overlay = UIView(frame: view.bounds)
+		overlay.backgroundColor = BabelPalette.background
+		overlay.isUserInteractionEnabled = false
 		snapshot.frame = current.view.frame
-		view.addSubview(snapshot)
-		viewController.view.transform = CGAffineTransform(translationX: 0, y: height)
-		UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
-			snapshot.transform = CGAffineTransform(translationX: 0, y: -height)
+		overlay.addSubview(snapshot)
+		view.addSubview(overlay)
+		viewController.view.transform = CGAffineTransform(translationX: 0, y: Babel2Motion.offset(40))
+		Babel2Motion.animate(Babel2Motion.page, {
+			snapshot.transform = CGAffineTransform(translationX: 0, y: -Babel2Motion.offset(24))
+			overlay.alpha = 0
 			viewController.view.transform = .identity
-		} completion: { _ in
-			snapshot.removeFromSuperview()
+		}, completion: { _ in
+			overlay.removeFromSuperview()
 			viewController.view.transform = .identity
-		}
+		})
 	}
 
 	@discardableResult

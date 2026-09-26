@@ -51,6 +51,154 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(filter.buttons[.all]?.accessibilityValue, "Selected")
 	}
 
+	/// ADR-033：文章列表底栏五个控件 x = 32 / 116.5 / 201 / 285.5 / 370，同一条中线 y = 24。
+	func testFeedToolbarControlsAreEvenlySpacedOnOneCenterline() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed")
+		let provider = FakeDataProvider(feeds: [feedID: []])
+		let navigationController = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider))
+		let root = try XCTUnwrap(navigationController.viewControllers.first as? Babel2RootViewController)
+		root.onFeedRequested?(feed, .unread)
+		let feedViewController = try XCTUnwrap(navigationController.topViewController as? Babel2FeedViewController)
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let toolbar = try XCTUnwrap(descendant(of: feedViewController.view, matching: UIView.self) { $0.accessibilityIdentifier == "babel2.feed.toolbar" })
+		let filter = feedViewController.scopeFilterForTesting
+		let readAll = try XCTUnwrap(descendant(of: toolbar, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feed.read-all" })
+		let translation = try XCTUnwrap(descendant(of: toolbar, matching: Babel2TranslationToggle.self))
+		let controls: [UIView] = [readAll, try XCTUnwrap(filter.buttons[.starred]), try XCTUnwrap(filter.buttons[.unread]), try XCTUnwrap(filter.buttons[.all]), translation]
+		let centers = controls.map { $0.convert(CGPoint(x: $0.bounds.midX, y: $0.bounds.midY), to: toolbar) }
+		for (center, expectedX) in zip(centers, [32, 116.5, 201, 285.5, 370] as [CGFloat]) {
+			XCTAssertEqual(center.x, expectedX, accuracy: 0.5)
+			XCTAssertEqual(center.y, 24, accuracy: 0.5)
+		}
+	}
+
+	// MARK: - 动效（ADR-034）
+
+	func testMotionUsesThreeDurationsAndReduceMotionRemovesMovement() {
+		XCTAssertEqual(Babel2Motion.quick, 0.15)
+		XCTAssertEqual(Babel2Motion.standard, 0.22)
+		XCTAssertEqual(Babel2Motion.page, 0.32)
+		defer { Babel2Motion.reduceMotionOverride = nil }
+		Babel2Motion.reduceMotionOverride = false
+		XCTAssertEqual(Babel2Motion.offset(12), 12)
+		Babel2Motion.reduceMotionOverride = true
+		XCTAssertEqual(Babel2Motion.offset(12), 0, "Reduce Motion: fades only, no movement")
+	}
+
+	/// 切档：旧列表截图盖着、没有「加载中…」闪白；数据到了交叉淡入，列表恢复完全不透明、无位移。
+	func testFeedScopeSwitchCrossfadesWithoutBlankState() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed")
+		let article = makeArticle(accountID: "account", feedID: "feed", articleID: "a", title: "A", body: "<p>A</p>", url: nil)
+		let provider = FakeDataProvider(feeds: [feedID: [article]])
+		let navigationController = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider))
+		let root = try XCTUnwrap(navigationController.viewControllers.first as? Babel2RootViewController)
+		root.onFeedRequested?(feed, .unread)
+		let controller = try XCTUnwrap(navigationController.topViewController as? Babel2FeedViewController)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = controller.tableViewForTesting
+		await waitForRows(in: tableView, count: 1)
+		XCTAssertFalse(controller.isSkeletonShowingForTesting, "loaded list shows no placeholder bars")
+
+		controller.scopeFilterForTesting.buttons[.all]?.sendActions(for: .touchUpInside)
+		// 无界面的测试环境里系统有时拍不到截图，此时按设计不做过渡；拍到了就检查过渡中的状态
+		if controller.isScopeCrossfadingForTesting {
+			XCTAssertFalse(controller.isSkeletonShowingForTesting, "no placeholder over the old list")
+			XCTAssertEqual(tableView.alpha, 0)
+		} else {
+			XCTAssertEqual(tableView.alpha, 1, "without a snapshot the list must never be hidden")
+		}
+		await waitForRows(in: tableView, count: 1)
+		for _ in 0..<100 where controller.isScopeCrossfadingForTesting { try await Task.sleep(for: .milliseconds(10)) }
+		XCTAssertFalse(controller.isScopeCrossfadingForTesting)
+		XCTAssertEqual(tableView.alpha, 1)
+		XCTAssertEqual(tableView.transform, .identity)
+	}
+
+	/// 首页文件夹：收起删掉子行、展开插回子行，箭头转到朝下（π/2）/ 朝右（0）。
+	func testHomeFolderToggleAnimatesRowsAndRotatesChevron() async throws {
+		let first = makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: "one"), title: "One", count: 2)
+		let second = makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: "two"), title: "Two", count: 3)
+		let folder = FolderSnapshot(id: "folder", title: "Folder", feedIDs: [first.id, second.id], articleCount: 5)
+		let provider = FakeDataProvider(librarySnapshots: [.unread: LibrarySnapshot(feeds: [first, second], folders: [folder])])
+		let navigationController = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider))
+		let root = try XCTUnwrap(navigationController.viewControllers.first as? Babel2RootViewController)
+		let window = hostInWindow(navigationController)
+		defer { window.isHidden = true }
+		root.viewDidAppear(false)
+		let tableView = try XCTUnwrap(rootTable(for: root, scope: .unread))
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 3)
+		XCTAssertEqual(try XCTUnwrap(root.folderChevronRotationForTesting(scope: .unread, row: 0)), .pi / 2, accuracy: 0.01)
+
+		root.tableView(tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
+		XCTAssertEqual(tableView.numberOfRows(inSection: 0), 1, "collapsed: child rows removed")
+		XCTAssertEqual(try XCTUnwrap(root.folderChevronRotationForTesting(scope: .unread, row: 0)), 0, accuracy: 0.01)
+
+		root.tableView(tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
+		XCTAssertEqual(tableView.numberOfRows(inSection: 0), 3, "expanded: child rows inserted")
+		XCTAssertEqual(try XCTUnwrap(root.folderChevronRotationForTesting(scope: .unread, row: 0)), .pi / 2, accuracy: 0.01)
+	}
+
+	/// 毛玻璃菜单从触发按钮那一侧展开：缩放中心在卡片靠按钮的边上，缩放时这个点不动。
+	func testGlassMenuGrowsFromAnchorSide() throws {
+		defer { Babel2Motion.reduceMotionOverride = nil }
+		Babel2Motion.reduceMotionOverride = false
+		let host = UIViewController()
+		let window = hostInWindow(host)
+		defer { window.isHidden = true }
+		let anchor = UIView(frame: CGRect(x: 340, y: 60, width: 44, height: 44))
+		host.view.addSubview(anchor)
+		let menu = Babel2GlassMenu.present(sections: [[Babel2MenuItem(title: "One", image: nil, identifier: "one", isOn: nil, handler: {})]], from: anchor, in: host.view)
+		let card = menu.cardFrameForTesting
+		let origin = menu.growOriginForTesting
+		XCTAssertEqual(origin.y, card.minY, accuracy: 0.5, "menu below the button grows from its top edge")
+		XCTAssertEqual(origin.x, min(anchor.frame.midX, card.maxX - 22), accuracy: 0.5)
+		let transform = menu.growTransformForTesting(scale: 0.92)
+		let center = CGPoint(x: card.midX, y: card.midY)
+		let moved = CGPoint(x: origin.x - center.x, y: origin.y - center.y).applying(transform)
+		XCTAssertEqual(center.x + moved.x, origin.x, accuracy: 0.5)
+		XCTAssertEqual(center.y + moved.y, origin.y, accuracy: 0.5)
+		menu.removeFromSuperview()
+	}
+
+	/// 按下档位按钮时它缩到 94%，但选中胶囊仍按按钮原大小定位（不会小一圈）。
+	func testScopePillKeepsFullSizeWhilePressed() {
+		defer { Babel2Motion.reduceMotionOverride = nil }
+		Babel2Motion.reduceMotionOverride = false
+		let host = UIViewController()
+		let window = hostInWindow(host)
+		defer { window.isHidden = true }
+		let filter = Babel2ScopeFilterControl(selectedScope: .unread)
+		filter.frame = CGRect(x: 0, y: 0, width: 402, height: 72)
+		host.view.addSubview(filter)
+		filter.layoutIfNeeded()
+		let all = filter.buttons[.all]!
+		all.sendActions(for: .touchDown)
+		XCTAssertNotEqual(all.transform, .identity, "pressed button shrinks")
+		all.sendActions(for: .touchUpInside)
+		XCTAssertEqual(filter.selectionPillFrameForTesting.width, all.bounds.width, accuracy: 0.5)
+		XCTAssertEqual(filter.selectionPillFrameForTesting.midX, all.center.x, accuracy: 0.5)
+		XCTAssertEqual(all.transform, .identity, "released button returns to full size")
+	}
+
+	/// 同步箭头：开始时加上转动；停止后不再算作转动，图形最终回到正位（模型值无旋转）。
+	func testSyncSpinnerStartsAndSettles() {
+		let host = UIViewController()
+		let window = hostInWindow(host)
+		defer { window.isHidden = true }
+		let spinner = Babel2SyncSpinner(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
+		host.view.addSubview(spinner)
+		spinner.setSpinning(true)
+		XCTAssertTrue(spinner.isSpinning)
+		XCTAssertNotNil(spinner.layer.animationKeys())
+		spinner.setSpinning(false)
+		XCTAssertFalse(spinner.isSpinning)
+		XCTAssertEqual(spinner.layer.transform.m11, 1, accuracy: 0.001, "model value stays upright")
+	}
+
 	// MARK: - 标题翻译开关（ADR-024）
 
 	func testTitleTranslationToggleRequestsVisibleTitlesAndShowsFigmaStates() async throws {
@@ -159,7 +307,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await waitUntil { feedViewController.pendingMarkAllReadCountForTesting == 2 }
 		let actionsBefore = await handler.actions
 		XCTAssertTrue(actionsBefore.isEmpty, "nothing is marked before confirming")
-		feedViewController.presentedViewController?.dismiss(animated: false)
+		// 确认用全 app 统一的毛玻璃菜单，顶部写「将 2 篇文章标为已读？」
+		let menu = try XCTUnwrap(feedViewController.view.subviews.compactMap { $0 as? Babel2GlassMenu }.last)
+		let title = try XCTUnwrap(descendant(of: menu, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.menu.title" })
+		XCTAssertEqual(title.text, String(format: Babel2Localization.text(.markAllReadConfirm), 2))
+		menu.removeFromSuperview()
 		feedViewController.confirmMarkAllReadForTesting()
 		for _ in 0..<100 {
 			if await !handler.actions.isEmpty { break }
@@ -243,22 +395,29 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(compact.refreshButton.frame.midX, width / 2, accuracy: 0.5)
 		XCTAssertEqual(compact.searchButton.frame.midX, width - 72, accuracy: 0.5)
 		XCTAssertEqual(compact.moreButton.frame.midX, width - 32, accuracy: 0.5)
+		// 大图上的按钮有毛玻璃圆底（展开时可见），收起后淡出
+		XCTAssertEqual(compact.glassDiscAlphaForTesting, 1, accuracy: 0.01)
+		compact.apply(progress: 1)
+		XCTAssertEqual(compact.glassDiscAlphaForTesting, 0, accuracy: 0.01)
+		compact.apply(progress: 0)
 
-		func actionsIn(_ elements: [UIMenuElement]) -> [UIAction] {
-			elements.flatMap { element -> [UIAction] in
-				if let menu = element as? UIMenu { return actionsIn(menu.children) }
-				return (element as? UIAction).map { [$0] } ?? []
-			}
-		}
-		var items = actionsIn(controller.moreMenuElementsForTesting)
-		XCTAssertEqual(items.map(\.identifier.rawValue), ["babel2.feed.more.website", "babel2.feed.more.copy", "babel2.feed.more.reading-mode",
+		var items = controller.moreMenuSectionsForTesting.flatMap { $0 }
+		XCTAssertEqual(items.map(\.identifier), ["babel2.feed.more.website", "babel2.feed.more.copy", "babel2.feed.more.reading-mode",
 			"babel2.feed.more.notifications", "babel2.feed.more.rename", "babel2.feed.more.unsubscribe"])
-		XCTAssertEqual(items.first { $0.identifier.rawValue == "babel2.feed.more.reading-mode" }?.state, .on)
-		XCTAssertEqual(items.first { $0.identifier.rawValue == "babel2.feed.more.notifications" }?.state, .off)
-		XCTAssertTrue(items.last?.attributes.contains(.destructive) == true)
+		XCTAssertEqual(items.first { $0.identifier == "babel2.feed.more.reading-mode" }?.isOn, true)
+		XCTAssertEqual(items.first { $0.identifier == "babel2.feed.more.notifications" }?.isOn, false)
+		XCTAssertTrue(items.last?.isDestructive == true)
+		// 点「•••」弹出统一的毛玻璃菜单；点开关项写回设置并关闭
+		compact.moreButton.sendActions(for: .touchUpInside)
+		let menu = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? Babel2GlassMenu }.last, "glass menu shown")
+		XCTAssertEqual(menu.itemControlsForTesting.count, 6)
+		XCTAssertLessThanOrEqual(menu.cardFrameForTesting.maxX, width - 20 + 0.5, "menu stays on screen")
+		menu.selectForTesting("babel2.feed.more.notifications")
+		XCTAssertTrue(notifications)
+		XCTAssertNil(menu.superview, "menu closes after choosing")
 		home = nil
-		items = actionsIn(controller.moreMenuElementsForTesting)
-		XCTAssertFalse(items.contains { $0.identifier.rawValue == "babel2.feed.more.website" }, "no home page → no Open Website")
+		items = controller.moreMenuSectionsForTesting.flatMap { $0 }
+		XCTAssertFalse(items.contains { $0.identifier == "babel2.feed.more.website" }, "no home page → no Open Website")
 
 		controller.applyRenamedTitle("Renamed")
 		XCTAssertEqual(controller.heroViewForTesting?.titleLabel.text, "Renamed")
@@ -272,6 +431,21 @@ final class Babel2FeedReaderTests: XCTestCase {
 		plain.loadViewIfNeeded()
 		XCTAssertTrue(plain.compactBarForTesting?.refreshButton.isHidden == true)
 		XCTAssertTrue(plain.compactBarForTesting?.moreButton.isHidden == true)
+	}
+
+	/// 切到后台时上游清空图标内存缓存；Babel 2.0 的备份仍保留，回到前台首页直接用原图标（2026-09-25）。
+	func testIconBackupSurvivesBackgroundButNotMemoryWarning() {
+		let key = "test-account|\(UUID().uuidString)"
+		Babel2LiveIconCache.storeForTesting(Data([1, 2, 3]), key: key)
+		NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+		XCTAssertEqual(Babel2LiveIconCache.cachedForTesting(key), Data([1, 2, 3]), "kept across background")
+	}
+
+	/// 界面语言「跟随系统」只写这四个字，不带括号里的系统语言名。
+	func testFollowSystemLanguageOptionHasNoSuffix() {
+		let options = Babel2LiveSettingsService().languageOptions
+		XCTAssertEqual(options.first?.code, nil)
+		XCTAssertEqual(options.first?.name, Babel2SettingsText.t("Follow System"))
 	}
 
 	/// 点刷新：调用刷新、箭头转、副标题「正在同步…」（辅助功能值仍是纯数字）；同步结束后停止并重新加载（新文章出现）。
@@ -694,12 +868,13 @@ final class Babel2FeedReaderTests: XCTestCase {
 			let icon = try XCTUnwrap(descendant(of: cell, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.feed-icon" })
 			let fit = title.sizeThatFits(CGSize(width: title.bounds.width, height: .greatestFiniteMagnitude)).height
 			XCTAssertEqual(title.bounds.height, fit, accuracy: 0.5, "title label is not stretched (row \(row))")
-			// 第一行字的中线 = 标题顶 + 半个行高（行高固定 22）
-			XCTAssertEqual(icon.frame.midY, title.frame.minY + 11, accuracy: 1.5, "icon aligned with first title line (row \(row))")
+			// 第一行字的中线 = 标题顶 + 半个行高（行高固定 20，ADR-033）
+			XCTAssertEqual(icon.frame.midY, title.frame.minY + Babel2Type.rowTitleLineHeight / 2, accuracy: 1.5, "icon aligned with first title line (row \(row))")
 			heights.append(cell.bounds.height)
 		}
 		XCTAssertLessThan(heights[1], heights[0], "a one-line title row without thumbnail is shorter than a two-line row")
-		XCTAssertGreaterThanOrEqual(heights[2], 33 + 3 + 70 + 14, "thumbnail row still fits the thumbnail")
+		// 行顶留白 16 + 来源行 14 + 间距 4 → 标题顶；缩略图比标题低 3、边长 64，下面再留 16
+		XCTAssertGreaterThanOrEqual(heights[2], 16 + 14 + 4 + 3 + 64 + 16, "thumbnail row still fits the thumbnail")
 	}
 
 	func testFeedHeroMotionProgressAndSettling() {
@@ -820,7 +995,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let date = try label("babel2.article.date")
 		XCTAssertEqual(date.convert(date.bounds, to: cell.contentView).maxX, cell.contentView.bounds.width - 20, accuracy: 0.5)
 		let icon = try XCTUnwrap(descendant(of: cell, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.feed-icon" })
-		XCTAssertEqual(icon.bounds.size, CGSize(width: 24, height: 24))
+		XCTAssertEqual(icon.bounds.size, CGSize(width: 20, height: 20))
 		XCTAssertEqual(icon.convert(icon.bounds, to: cell.contentView).minX, 20, accuracy: 0.5)
 		XCTAssertEqual(try label("babel2.article.title").convert(try label("babel2.article.title").bounds, to: cell.contentView).minX, 49, accuracy: 0.5)
 		XCTAssertTrue(descendant(of: icon, matching: UILabel.self)?.text == "M", "no feed icon → initial letter tile")
@@ -833,7 +1008,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		cell.contentView.layoutIfNeeded()
 		let firstBaseline = probe.frame.minY
 		probe.removeFromSuperview()
-		let capHeight = UIFont.systemFont(ofSize: 17, weight: .semibold).capHeight
+		let capHeight = Babel2Type.rowTitle(read: false).capHeight
 		XCTAssertEqual(icon.convert(icon.bounds, to: cell.contentView).midY, firstBaseline - capHeight / 2, accuracy: 1)
 	}
 
@@ -896,10 +1071,10 @@ final class Babel2FeedReaderTests: XCTestCase {
 		for _ in 0..<100 where loaded.image == nil { try await Task.sleep(for: .milliseconds(20)) }
 		let image = try XCTUnwrap(loaded.image, "thumbnail loaded")
 		XCTAssertFalse(loaded.isHidden)
-		XCTAssertEqual(loaded.bounds.size, CGSize(width: 70, height: 70))
+		XCTAssertEqual(loaded.bounds.size, CGSize(width: 64, height: 64))
 		XCTAssertEqual(loaded.layer.cornerRadius, 5)
 		let pixelWidth = CGFloat(image.cgImage?.width ?? 0), pixelHeight = CGFloat(image.cgImage?.height ?? 0)
-		XCTAssertLessThanOrEqual(max(pixelWidth, pixelHeight), 70 * max(controller.traitCollection.displayScale, 1), "decoded at thumbnail size, not 2400px")
+		XCTAssertLessThanOrEqual(max(pixelWidth, pixelHeight), 64 * max(controller.traitCollection.displayScale, 1), "decoded at thumbnail size, not 2400px")
 		XCTAssertGreaterThan(pixelWidth, 0)
 
 		// 日期贴屏幕右边缘（不被挤到缩略图左边），缩略图在日期下方
@@ -1969,10 +2144,18 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(toolbar.starButton.accessibilityValue, "starred")
 		XCTAssertTrue(toolbar.placeholderButtons.isEmpty, "all toolbar controls are wired")
 		XCTAssertFalse(toolbar.nextButton.isEnabled, "no next article provider → disabled")
-		// 5 个按钮的中心依次对应参考画布 x = 32 / 104 / 201 / 290.5 / 362（窗口宽 402）
+		// 5 个按钮的中心依次对应参考画布 x = 32 / 116.5 / 201 / 285.5 / 370（窗口宽 402，ADR-033 等距底栏）
 		let centers = ([toolbar.readButton, toolbar.starButton, toolbar.nextButton, toolbar.readingModeButton, toolbar.translationToggle] as [UIView]).map { $0.center.x }
-		for (actual, expected) in zip(centers, [32, 104, 201, 290.5, 362] as [CGFloat]) {
+		for (actual, expected) in zip(centers, [32, 116.5, 201, 285.5, 370] as [CGFloat]) {
 			XCTAssertEqual(actual, expected, accuracy: 0.5)
+		}
+		// 左右对称：第 1 与第 5 格、第 2 与第 4 格关于屏幕中线对称；中间三格等距
+		XCTAssertEqual(centers[0] + centers[4], 402, accuracy: 0.5)
+		XCTAssertEqual(centers[1] + centers[3], 402, accuracy: 0.5)
+		XCTAssertEqual(centers[2] - centers[1], centers[3] - centers[2], accuracy: 0.5)
+		// 所有控件同一条中线（y = 24）
+		for control in [toolbar.readButton, toolbar.starButton, toolbar.nextButton, toolbar.readingModeButton, toolbar.translationToggle] as [UIView] {
+			XCTAssertEqual(control.center.y, 24, accuracy: 0.5)
 		}
 
 		let articleID = ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")

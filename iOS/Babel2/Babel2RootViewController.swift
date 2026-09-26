@@ -44,6 +44,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		var requestID = UUID()
 		var pendingUpdate: (UUID, SurfaceUpdate)?
 		var onRetry: (() -> Void)?
+		private var skeleton: Babel2SkeletonView!
 
 		init(scope: Babel2FeedScope, localizationBundle: Bundle) {
 			self.scope = scope
@@ -59,12 +60,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			listHeader.addSubview(shortRule)
 
 			summaryTitleLabel.text = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
-			summaryTitleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+			summaryTitleLabel.font = Babel2Type.homeSection
 			summaryTitleLabel.textColor = BabelPalette.ink
 			summaryTitleLabel.translatesAutoresizingMaskIntoConstraints = false
 			listHeader.addSubview(summaryTitleLabel)
 
-			summaryCountLabel.font = .systemFont(ofSize: 20, weight: .regular)
+			summaryCountLabel.font = Babel2Type.homeSectionCount
 			summaryCountLabel.textColor = BabelPalette.tertiaryInk
 			summaryCountLabel.textAlignment = .right
 			summaryCountLabel.isHidden = true
@@ -72,7 +73,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			listHeader.addSubview(summaryCountLabel)
 
 			foldersTitleLabel.text = Babel2Localization.text(.folders, bundle: localizationBundle)
-			foldersTitleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+			foldersTitleLabel.font = Babel2Type.homeSection
 			foldersTitleLabel.textColor = BabelPalette.ink
 			foldersTitleLabel.translatesAutoresizingMaskIntoConstraints = false
 			listHeader.addSubview(foldersTitleLabel)
@@ -127,7 +128,18 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			retryButton.addAction(UIAction { [weak self] _ in self?.onRetry?() }, for: .touchUpInside)
 			addSubview(retryButton)
 
+			// 加载中的呼吸占位条（ADR-034），从第一行订阅源的位置开始
+			skeleton = Babel2SkeletonView(style: .feedList, accessibilityText: Babel2Localization.text(.loading, bundle: localizationBundle))
+			skeleton.translatesAutoresizingMaskIntoConstraints = false
+			insertSubview(skeleton, aboveSubview: tableView)
+			skeleton.setShowing(true)
+			stateLabel.isHidden = true
+
 			NSLayoutConstraint.activate([
+				skeleton.leadingAnchor.constraint(equalTo: leadingAnchor),
+				skeleton.trailingAnchor.constraint(equalTo: trailingAnchor),
+				skeleton.topAnchor.constraint(equalTo: topAnchor, constant: Self.listHeaderHeight),
+				skeleton.heightAnchor.constraint(equalToConstant: 280),
 				tableView.leadingAnchor.constraint(equalTo: leadingAnchor),
 				tableView.trailingAnchor.constraint(equalTo: trailingAnchor),
 				tableView.topAnchor.constraint(equalTo: topAnchor),
@@ -167,7 +179,9 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			tableView.accessibilityValue = state.rawValue
 			stateLabel.accessibilityValue = state.rawValue
 			stateLabel.text = text
-			stateLabel.isHidden = state == .loaded
+			// 加载中画面上只有占位条，不显示文字
+			stateLabel.isHidden = state == .loaded || state == .loading
+			skeleton.setShowing(state == .loading)
 			retryButton.isHidden = state != .error
 			tableView.isUserInteractionEnabled = state == .loaded
 		}
@@ -180,7 +194,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	/// 左上角设置入口（Slice 6，2026-09-25 用户同意；与右上角「+」左右对称）。
 	private let settingsButton = UIButton(type: .system)
 	private let syncArrow = UIButton(type: .system)
-	private let syncGlyph = BabelSyncGlyphView()
+	private let syncGlyph = Babel2SyncSpinner()
 	private let syncSubtitleLabel = UILabel()
 	private let bottomBar = UIView()
 	/// 底部三档：与订阅源文章列表页共用同一组件（2026-09-25 修复切回「未读」时胶囊错位，用户选方案 A）。
@@ -391,25 +405,26 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func configureControls() {
 		titleLabel.text = Babel2Localization.text(.feeds, bundle: localizationBundle)
-		titleLabel.font = .systemFont(ofSize: 36, weight: .semibold)
+		titleLabel.font = Babel2Type.homeTitle
 		titleLabel.adjustsFontForContentSizeCategory = false
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.textAlignment = .center
 		titleLabel.accessibilityIdentifier = Babel2LocalizationKey.feeds.accessibilityIdentifier
 
-		addButton.setImage(UIImage(named: "BabelHomeAdd")?.withRenderingMode(.alwaysTemplate), for: .normal)
+		addButton.setImage(Babel2Type.icon(UIImage(named: "BabelHomeAdd"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
 		addButton.tintColor = BabelPalette.mutedInk
 		addButton.accessibilityLabel = Babel2Localization.text(.add, bundle: localizationBundle)
 		addButton.accessibilityIdentifier = Babel2LocalizationKey.add.accessibilityIdentifier
 		addButton.configuration = .plain()
 		addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
-		settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)), for: .normal)
+		settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.homeSettingsSymbol, weight: .regular)), for: .normal)
 		settingsButton.tintColor = BabelPalette.mutedInk
 		settingsButton.accessibilityLabel = Babel2Localization.text(.settings, bundle: localizationBundle)
 		settingsButton.accessibilityIdentifier = Babel2LocalizationKey.settings.accessibilityIdentifier
 		settingsButton.configuration = .plain()
 		settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
 		configureScopeControls()
+		[addButton, settingsButton].forEach(Babel2Motion.addPressFeedback)
 		syncArrow.configuration = .plain()
 		syncArrow.accessibilityLabel = Babel2Localization.text(.syncing, bundle: localizationBundle)
 		syncArrow.accessibilityIdentifier = "babel2.sync.arrow"
@@ -672,16 +687,40 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private func updateSyncState(_ isSyncing: Bool) {
 		if !isSyncing {
+			// 同步结束：箭头与「正在同步…」用截图淡出（ADR-034），真正的控件立即隐藏
+			if !syncArrow.isHidden, view.window != nil {
+				for source in [syncArrow, syncSubtitleLabel] as [UIView] {
+					guard let ghost = source.snapshotView(afterScreenUpdates: false) else { continue }
+					ghost.frame = source.frame
+					view.addSubview(ghost)
+					Babel2Motion.animate(Babel2Motion.standard, { ghost.alpha = 0 }, completion: { _ in ghost.removeFromSuperview() })
+				}
+			}
 			syncArrow.isHidden = true
 			syncSubtitleLabel.text = nil
 			syncSubtitleLabel.isHidden = true
-			syncGlyph.setSyncing(false)
+			syncGlyph.setSpinning(false)
 			return
 		}
+		let appearing = syncArrow.isHidden
 		syncArrow.isHidden = false
 		syncSubtitleLabel.text = Babel2Localization.text(.syncing, bundle: localizationBundle)
 		syncSubtitleLabel.isHidden = false
-		syncGlyph.setSyncing(true)
+		syncGlyph.setSpinning(true)
+		// 同步开始：箭头与副标题淡入，箭头从静止平缓加速
+		if appearing, view.window != nil {
+			syncArrow.alpha = 0
+			syncSubtitleLabel.alpha = 0
+			Babel2Motion.animate(Babel2Motion.standard) {
+				self.syncArrow.alpha = 1
+				self.syncSubtitleLabel.alpha = 1
+			}
+		}
+	}
+
+	/// 仅供自动化测试：某一档第 row 行（文件夹）箭头的旋转角；该行不在屏幕上时为 nil。
+	func folderChevronRotationForTesting(scope: Babel2FeedScope, row: Int) -> CGFloat? {
+		(scopeSurfaces[scope]?.tableView.cellForRow(at: IndexPath(row: row, section: 0)) as? Babel2LibraryRowCell)?.chevronRotationForTesting
 	}
 
 	/// 仅供自动化测试：切换动画已结束、显示的档位就是最后点的档位。
@@ -769,7 +808,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			filterMotionToScope = target
 			recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .zero, phase: .begin)
 			let direction: CGFloat = scopeIndex(target) >= scopeIndex(displayedScope) ? 1 : -1
-			let offset: CGFloat = 12 * direction
+			let offset: CGFloat = Babel2Motion.offset(Babel2Motion.shift) * direction
 			if !presentationNeedsSettlement {
 				destinationSurface.alpha = 0
 				destinationSurface.transform = CGAffineTransform(translationX: offset, y: 0)
@@ -777,7 +816,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			destinationSurface.accessibilityElementsHidden = true
 			destinationSurface.tableView.isUserInteractionEnabled = false
 			sourceSurface.tableView.isUserInteractionEnabled = false
-			let animator = UIViewPropertyAnimator(duration: 0.18, curve: .linear) { [weak self] in
+			let animator = UIViewPropertyAnimator(duration: Babel2Motion.standard, curve: .easeOut) { [weak self] in
 				guard let self else { return }
 				for surface in self.scopeSurfaces.values {
 					if surface.scope == target {
@@ -786,7 +825,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 					} else {
 						let side: CGFloat = self.scopeIndex(surface.scope) < self.scopeIndex(target) ? -1 : 1
 						surface.alpha = 0
-						surface.transform = CGAffineTransform(translationX: 12 * side, y: 0)
+						surface.transform = CGAffineTransform(translationX: Babel2Motion.offset(Babel2Motion.shift) * side, y: 0)
 					}
 				}
 			}
@@ -898,11 +937,40 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		} else {
 			collapsedFolders.insert(folderID)
 		}
+		let expanding = !collapsedFolders.contains(folderID)
 		for surface in scopeSurfaces.values {
 			guard let snapshot = surface.snapshot else { continue }
-			surface.rows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
-			surface.tableView.reloadData()
+			let oldRows = surface.rows
+			let newRows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
+			// 正在看的那一档：只插入 / 删除这个文件夹的子行并做动画；其它档直接换
+			guard surface.scope == displayedScope, surface.tableView.window != nil,
+				let folderRow = newRows.firstIndex(where: { if case .folder(let folder, _) = $0 { return folder.id == folderID }; return false }),
+				oldRows.count != newRows.count else {
+				surface.rows = newRows
+				surface.tableView.reloadData()
+				continue
+			}
+			animateFolderToggle(in: surface, folderRow: folderRow, oldRows: oldRows, newRows: newRows, expanding: expanding)
 		}
+	}
+
+	/// 文件夹展开 / 收起（ADR-034）：箭头旋转 90°，子行依次淡入浮现（收起时淡出），下面的行平滑让位。
+	private func animateFolderToggle(in surface: ScopeSurface, folderRow: Int, oldRows: [LibraryRow], newRows: [LibraryRow], expanding: Bool) {
+		let tableView = surface.tableView
+		let changed = abs(newRows.count - oldRows.count)
+		let childPaths = (1...changed).map { IndexPath(row: folderRow + $0, section: 0) }
+		(tableView.cellForRow(at: IndexPath(row: folderRow, section: 0)) as? Babel2LibraryRowCell)?.setExpanded(expanding, animated: true)
+		tableView.performBatchUpdates {
+			surface.rows = newRows
+			if expanding {
+				tableView.insertRows(at: childPaths, with: .none)
+			} else {
+				tableView.deleteRows(at: childPaths, with: .fade)
+			}
+		}
+		guard expanding else { return }
+		tableView.layoutIfNeeded()
+		Babel2Motion.staggerIn(childPaths.compactMap { tableView.cellForRow(at: $0) })
 	}
 
 	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -979,7 +1047,7 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		iconView.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(iconView)
 
-		initialsLabel.font = .systemFont(ofSize: 10, weight: .medium)
+		initialsLabel.font = .systemFont(ofSize: 9, weight: .medium)
 		initialsLabel.textColor = BabelPalette.mutedInk
 		initialsLabel.textAlignment = .center
 		initialsLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -991,13 +1059,13 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		chevronView.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(chevronView)
 
-		titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+		titleLabel.font = Babel2Type.homeFeed
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
 		titleLabel.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(titleLabel)
 
-		countLabel.font = .systemFont(ofSize: 17, weight: .regular)
+		countLabel.font = Babel2Type.homeCount
 		countLabel.textColor = BabelPalette.tertiaryInk
 		countLabel.textAlignment = .right
 		countLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -1015,12 +1083,12 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 			chevronView.heightAnchor.constraint(equalToConstant: 18),
 			iconLeadingConstraint,
 			iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			iconView.widthAnchor.constraint(equalToConstant: 24),
-			iconView.heightAnchor.constraint(equalToConstant: 24),
+			iconView.widthAnchor.constraint(equalToConstant: Babel2Type.homeFeedIcon),
+			iconView.heightAnchor.constraint(equalToConstant: Babel2Type.homeFeedIcon),
 			initialsLeadingConstraint,
 			initialsLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-			initialsLabel.widthAnchor.constraint(equalToConstant: 24),
-			initialsLabel.heightAnchor.constraint(equalToConstant: 24),
+			initialsLabel.widthAnchor.constraint(equalToConstant: Babel2Type.homeFeedIcon),
+			initialsLabel.heightAnchor.constraint(equalToConstant: Babel2Type.homeFeedIcon),
 			titleLeadingConstraint,
 			titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -12),
@@ -1046,9 +1114,9 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		toggleFolder = toggle
 		selectionStyle = .default
 		titleLabel.text = title
-		titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+		titleLabel.font = Babel2Type.homeFolder
 		countLabel.text = count?.formatted()
-		countLabel.font = .systemFont(ofSize: 18, weight: .regular)
+		countLabel.font = Babel2Type.homeCount
 		countLabel.isHidden = count == nil
 		iconView.isHidden = true
 		iconView.image = nil
@@ -1056,29 +1124,46 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		initialsLabel.text = nil
 		initialsLabel.textColor = isSelected ? BabelPalette.ink : BabelPalette.mutedInk
 		chevronView.isHidden = false
+		// 箭头统一用向右的图，展开时转 90°（ADR-034：切换时旋转过去，而不是换图）
 		chevronView.image = UIImage(
-			systemName: expanded ? "chevron.down" : "chevron.right",
+			systemName: "chevron.right",
 			withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
 		)
+		setExpanded(expanded, animated: false)
 		titleLeadingConstraint.constant = 56
 		countTrailingConstraint.constant = -20
 		countWidthConstraint.constant = 72
+	}
+
+	/// 仅供自动化测试：箭头当前的旋转角（0 = 朝右，π/2 = 朝下）。
+	var chevronRotationForTesting: CGFloat { atan2(chevronView.transform.b, chevronView.transform.a) }
+
+	/// 文件夹箭头：收起朝右，展开朝下；animated 时 0.22 秒转过去。
+	func setExpanded(_ expanded: Bool, animated: Bool) {
+		let transform = expanded ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
+		if animated {
+			Babel2Motion.animate(Babel2Motion.standard) { self.chevronView.transform = transform }
+		} else {
+			chevronView.layer.removeAllAnimations()
+			chevronView.transform = transform
+		}
 	}
 
 	func configureFeed(title: String, count: Int?, icon: UIImage?, nested: Bool) {
 		toggleFolder = nil
 		selectionStyle = .default
 		titleLabel.text = title
-		titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+		titleLabel.font = Babel2Type.homeFeed
 		countLabel.text = count?.formatted()
-		countLabel.font = .systemFont(ofSize: 17, weight: .regular)
+		countLabel.font = Babel2Type.homeCount
 		countLabel.isHidden = count == nil
 		chevronView.isHidden = true
 		chevronView.image = nil
 		iconView.isHidden = false
 		iconView.image = icon
 		iconView.tintColor = BabelPalette.mutedInk
-		let leading: CGFloat = nested ? 49 : 32
+		// 图标缩小后中心保持原位（ADR-033）：左缘往右挪半个差值
+		let leading: CGFloat = (nested ? 49 : 32) + (24 - Babel2Type.homeFeedIcon) / 2
 		iconLeadingConstraint.constant = leading
 		initialsLeadingConstraint.constant = leading
 		countTrailingConstraint.constant = -18

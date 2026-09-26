@@ -22,15 +22,16 @@ final class Babel2TranslationToggle: UIControl {
 		accessibilityTraits = .button
 		accessibilityIdentifier = "babel2.article.toolbar.translate"
 
-		// 大字：13pt 半粗、次要灰，中心在 x=16，顶 13.5，高 17
+		// 大字：13pt 半粗、次要灰，中心在 x=16，顶 14.5，高 17
+		// （ADR-033：整体下移 1pt，汉字的视觉中心与左边几个图标的中线对齐）
 		mainLabel.font = .systemFont(ofSize: 13, weight: .semibold)
 		mainLabel.textColor = BabelPalette.mutedInk
 		mainLabel.textAlignment = .center
-		mainLabel.frame = CGRect(x: 16 - 9, y: 13.5, width: 18, height: 17)
-		// 小字：7pt 常规、浅灰，左 25，顶 17.5，高 9
+		mainLabel.frame = CGRect(x: 16 - 9, y: 14.5, width: 18, height: 17)
+		// 小字：7pt 常规、浅灰，左 25，顶 18.5，高 9
 		captionLabel.font = .systemFont(ofSize: 7, weight: .regular)
 		captionLabel.textColor = BabelPalette.tertiaryInk
-		captionLabel.frame = CGRect(x: 25, y: 17.5, width: 27, height: 9)
+		captionLabel.frame = CGRect(x: 25, y: 18.5, width: 27, height: 9)
 		[mainLabel, captionLabel].forEach {
 			$0.isUserInteractionEnabled = false
 			addSubview($0)
@@ -63,8 +64,16 @@ final class Babel2TranslationToggle: UIControl {
 		case .failed:
 			main = "原"; caption = "重试"; label = .translate; value = "failed"
 		}
-		mainLabel.text = main
-		captionLabel.text = caption
+		// 字变了才交叉淡入（ADR-034）；首次设置与不在屏幕上时直接换
+		if mainLabel.text != nil, mainLabel.text != main || captionLabel.text != caption {
+			Babel2Motion.crossfade(self) {
+				self.mainLabel.text = main
+				self.captionLabel.text = caption
+			}
+		} else {
+			mainLabel.text = main
+			captionLabel.text = caption
+		}
 		accessibilityLabel = Babel2Localization.text(label)
 		accessibilityValue = value
 	}

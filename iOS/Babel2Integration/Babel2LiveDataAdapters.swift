@@ -262,8 +262,7 @@ final class Babel2LiveDataProvider: DataProviding {
 
 	private func makeFeedSnapshot(accountID: String, feed: Feed, articleCount: Int) -> FeedSnapshot? {
 		guard let url = URL(string: feed.url), url.isHTTPOrHTTPSURL() else { return nil }
-		let iconData = FeedIconDownloader.shared.icon(for: feed)?.image.dataRepresentation()
-			?? FaviconDownloader.shared.faviconAsIcon(for: feed)?.image.dataRepresentation()
+		let iconData = Babel2LiveIconCache.iconData(for: feed, accountID: accountID)
 		return FeedSnapshot(
 			id: FeedSnapshot.ID(accountID: accountID, feedID: feed.feedID),
 			title: feed.nameForDisplay,
@@ -804,5 +803,37 @@ enum Babel2LiveFeedActions {
 		}
 		return nil
 	}
+}
+
+/// 订阅源小图标的备份（2026-09-25，用户反馈切回前台时所有图标都重新加载一次）。
+/// 上游的图标下载器在 app 进后台时清空**内存**缓存（刻意省内存，硬盘缓存仍在），回到前台首页刷新的那一刻
+/// 拿不到图标、先显示空白，等从硬盘读回再逐个补上。这里记住每个源最后一次拿到的图标：
+/// 进后台不清，只在系统报内存紧张时清。上游缓存逻辑一行不改；全部小图标合计约几百 KB。
+@MainActor
+enum Babel2LiveIconCache {
+	private static var icons = [String: Data]()
+	private static var observer: NSObjectProtocol?
+
+	static func iconData(for feed: Feed, accountID: String) -> Data? {
+		installMemoryWarningObserverIfNeeded()
+		let key = "\(accountID)|\(feed.feedID)"
+		if let fresh = FeedIconDownloader.shared.icon(for: feed)?.image.dataRepresentation()
+			?? FaviconDownloader.shared.faviconAsIcon(for: feed)?.image.dataRepresentation() {
+			icons[key] = fresh
+			return fresh
+		}
+		return icons[key]
+	}
+
+	private static func installMemoryWarningObserverIfNeeded() {
+		guard observer == nil else { return }
+		observer = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
+			MainActor.assumeIsolated { icons.removeAll() }
+		}
+	}
+
+	/// 仅供自动化测试。
+	static func storeForTesting(_ data: Data, key: String) { icons[key] = data }
+	static func cachedForTesting(_ key: String) -> Data? { icons[key] }
 }
 

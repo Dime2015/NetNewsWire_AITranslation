@@ -326,40 +326,40 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		"""
 	}
 
-	/// 排版数值按 Figma 04A「Article Content」(ADR-018)：左右边距 20pt，正文 19pt / 行高 30pt、
-	/// 次要灰 #787878；段距 20pt；引用块竖线 2pt（距正文左缘 8pt）、文字距竖线 18pt、引用内段距 8pt；
+	/// 排版数值按 Figma 04A「Article Content」(ADR-018)，ADR-033 整体收小一档：左右边距 20pt，
+	/// 正文 17pt / 行高 28pt（原 19 / 30）、次要灰 #787878；段距 18pt；小标题 20 / 18 / 17；引用块竖线 2pt（距正文左缘 8pt）、文字距竖线 18pt、引用内段距 8pt；
 	/// 小标题与链接用主墨色；链接加粗 + 中性下划线（不用绿色）；
 	/// 横图（脚本判定后加 babel2-bleed）贴满屏幕两边、直角；文字和图注保留边距。
 	private static let css = """
 	html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 	html, body { margin: 0; padding: 0; overflow-x: hidden; }
-	body { background: var(--bg); color: var(--muted); font: 19px/30px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
+	body { background: var(--bg); color: var(--muted); font: 17px/28px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
 	#babel2-title { display: none; }
 	#babel2-snapshot-header { padding: 26px 20px 60px; }
 	#babel2-snapshot-header .babel2-snap-date { font: 600 11px/15px -apple-system, system-ui, sans-serif; letter-spacing: 0.3px; color: var(--tertiary); margin: 0 0 13px; }
-	#babel2-snapshot-header .babel2-snap-title { font: 700 34px/38px -apple-system, system-ui, sans-serif; letter-spacing: -1px; color: var(--ink); margin: 0 0 9px; }
+	#babel2-snapshot-header .babel2-snap-title { font: 600 27px/33px -apple-system, system-ui, sans-serif; letter-spacing: -0.4px; color: var(--ink); margin: 0 0 9px; }
 	#babel2-snapshot-header .babel2-snap-byline { font: 600 11px/15px -apple-system, system-ui, sans-serif; letter-spacing: 0.25px; color: var(--tertiary); margin: 0; white-space: pre-line; }
 	#babel2-article { padding: 0 20px 48px; }
 	#babel2-article > :first-child { margin-top: 0; }
-	p { margin: 0 0 20px; }
+	p { margin: 0 0 18px; }
 	h1, h2, h3, h4, h5, h6 { color: var(--ink); font-weight: 700; line-height: 1.3; margin: 28px 0 12px; }
-	h1 { font-size: 23px; } h2 { font-size: 21px; } h3 { font-size: 20px; } h4, h5, h6 { font-size: 19px; }
+	h1 { font-size: 20px; } h2 { font-size: 18px; } h3 { font-size: 17px; } h4, h5, h6 { font-size: 17px; }
 	a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--tertiary); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 	img, video { display: block; max-width: 100%; height: auto; margin: 22px auto; border-radius: 0; }
 	img.babel2-bleed { width: 100vw; max-width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw); }
 	img.babel2-hidden { display: none; }
 	figure { margin: 22px 0; }
 	figure img, figure video { margin-top: 0; margin-bottom: 0; }
-	figcaption { font-size: 14px; line-height: 20px; color: var(--muted); margin-top: 8px; }
-	blockquote { margin: 20px 0 27px 8px; padding-left: 18px; border-left: 2px solid var(--hairline); color: var(--muted); }
+	figcaption { font-size: 13px; line-height: 19px; color: var(--muted); margin-top: 8px; }
+	blockquote { margin: 18px 0 25px 8px; padding-left: 18px; border-left: 2px solid var(--hairline); color: var(--muted); }
 	blockquote p { margin: 0 0 8px; }
 	blockquote > :last-child { margin-bottom: 0; }
-	pre { overflow-x: auto; font: 14px/20px ui-monospace, Menlo, monospace; background: var(--raised); padding: 12px; margin: 0 0 18px; }
+	pre { overflow-x: auto; font: 13px/19px ui-monospace, Menlo, monospace; background: var(--raised); padding: 12px; margin: 0 0 18px; }
 	code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85em; }
-	ul, ol { padding-left: 24px; margin: 0 0 20px; }
+	ul, ol { padding-left: 24px; margin: 0 0 18px; }
 	li { margin-bottom: 6px; }
 	hr { border: 0; border-top: 1px solid var(--hairline); margin: 28px 0; }
-	table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 15px; line-height: 22px; margin: 0 0 18px; }
+	table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 14px; line-height: 21px; margin: 0 0 18px; }
 	td, th { border: 1px solid var(--hairline); padding: 6px 8px; }
 	iframe { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; border: 0; margin: 22px 0; }
 	"""

@@ -53,11 +53,11 @@ final class Babel2ReaderCompactHeaderView: UIView {
 			.uppercased()
 		if showsSourceLink { subtitle += subtitle.isEmpty ? "↗" : " ↗" }
 		sourceLabel.text = subtitle
-		sourceLabel.font = .systemFont(ofSize: 13, weight: .regular)
+		sourceLabel.font = Babel2Type.readerCompactSource
 		sourceLabel.textColor = BabelPalette.mutedInk
 		sourceLabel.lineBreakMode = .byTruncatingTail
 		titleLabel.text = articleTitle
-		titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+		titleLabel.font = Babel2Type.readerCompactTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.lineBreakMode = .byTruncatingTail
 		titleLabel.accessibilityIdentifier = "babel2.article.compact-title"
@@ -96,7 +96,9 @@ final class Babel2ReaderCompactHeaderView: UIView {
 
 	/// 标题译文就位 / 切回原文时同步紧凑栏标题。
 	func setArticleTitle(_ title: String) {
-		titleLabel.text = title
+		guard titleLabel.text != title else { return }
+		// 译文标题到达时交叉淡入（ADR-034）
+		Babel2Motion.crossfade(titleLabel) { self.titleLabel.text = title }
 	}
 
 	/// 按进度立刻重画，不带任何隐式动画。
