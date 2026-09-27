@@ -3,8 +3,9 @@ import UIKit
 
 /// 阅读页点图片后的查看器（2026-09-27 用户反馈第 3 条，ADR-040）。
 ///
-/// 卡片式：图片从正文里原来的位置放大到屏幕中央，成为一张圆角卡片；背景跟随 app 的浅色 / 深色
+/// 卡片式：图片从正文里原来的位置放大到屏幕中央；背景跟随 app 的浅色 / 深色
 /// （纸色，几乎不透明），不像跳到了另一个页面。
+/// 直角、无描边；横图（宽大于高）贴满屏幕两边，竖图 / 方图四周留白居中（2026-09-27 用户验收时要求，ADR-051）。
 /// - 双指缩放；双击放大 / 还原；放大后可以拖着看
 /// - 点一下、或往下拖（跟手，松手缩回原处）关闭；左上角也有 ✕
 /// - 长按图片：存到相册 / 分享（系统分享面板）
@@ -26,8 +27,7 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 	}
 
 	static let margin: CGFloat = 16
-	static let cornerRadius: CGFloat = 12
-	/// 小图最多放大到原尺寸的 3 倍（再大就糊了）
+	/// 竖图 / 方图的小图最多放大到原尺寸的 3 倍（再大就糊了）；横图不受这个限制，一律贴满两边
 	static let maxUpscale: CGFloat = 3
 	/// 往下拖多远（或多快）松手算关闭
 	static let dismissDistance: CGFloat = 110
@@ -97,10 +97,7 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		imageView.image = source.placeholder
 		imageView.contentMode = .scaleAspectFill
 		imageView.clipsToBounds = true
-		imageView.layer.cornerRadius = Self.cornerRadius
-		imageView.layer.cornerCurve = .continuous
-		imageView.layer.borderWidth = 0.5
-		imageView.layer.borderColor = BabelPalette.hairline.resolvedColor(with: traitCollection).cgColor
+		// 直角、无描边（ADR-051）：贴满两边的横图两侧不会多出一道线
 		imageView.backgroundColor = BabelPalette.raisedBackground
 		imageView.isUserInteractionEnabled = true
 		imageView.isAccessibilityElement = true
@@ -148,7 +145,9 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 
 	// MARK: - 布局
 
-	/// 卡片在屏幕上的位置：按图片比例放进安全区（四周留 16pt），居中；小图最多放大 3 倍。
+	/// 图在屏幕上的位置，竖直方向都在安全区里（上下留 16pt）居中：
+	/// - 横图（宽大于高）：贴满屏幕两边（不管原图多小都放大到整宽；横着拿手机、整宽放不下高度时才按高度缩）
+	/// - 竖图 / 方图：左右也留 16pt，按比例放进去；小图最多放大 3 倍
 	static func fittedFrame(imageSize: CGSize, in bounds: CGRect, safeArea: UIEdgeInsets) -> CGRect {
 		let available = bounds.inset(by: UIEdgeInsets(
 			top: safeArea.top + margin, left: safeArea.left + margin,
@@ -156,10 +155,17 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		guard imageSize.width > 0, imageSize.height > 0, available.width > 0, available.height > 0 else {
 			return CGRect(x: bounds.midX - 60, y: bounds.midY - 60, width: 120, height: 120)
 		}
-		let fit = min(available.width / imageSize.width, available.height / imageSize.height)
-		let scale = min(fit, maxUpscale)
+		let scale: CGFloat
+		let centerX: CGFloat
+		if imageSize.width > imageSize.height {
+			scale = min(bounds.width / imageSize.width, available.height / imageSize.height)
+			centerX = bounds.midX
+		} else {
+			scale = min(available.width / imageSize.width, available.height / imageSize.height, maxUpscale)
+			centerX = available.midX
+		}
 		let size = CGSize(width: (imageSize.width * scale).rounded(), height: (imageSize.height * scale).rounded())
-		return CGRect(x: (available.midX - size.width / 2).rounded(), y: (available.midY - size.height / 2).rounded(), width: size.width, height: size.height)
+		return CGRect(x: (centerX - size.width / 2).rounded(), y: (available.midY - size.height / 2).rounded(), width: size.width, height: size.height)
 	}
 
 	/// 当前图片（没有图时用原位置的比例）应该放成多大、放在哪。
@@ -428,10 +434,8 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		if let origin = originFrameInView, !Babel2Motion.reduceMotion {
 			let startInScroll = scrollView.convert(origin, from: view)
 			imageView.frame = startInScroll
-			imageView.layer.cornerRadius = 0
 			Babel2Motion.animate(Babel2Motion.page, {
 				self.imageView.frame = target
-				self.imageView.layer.cornerRadius = Self.cornerRadius
 				self.backdrop.alpha = 1
 				self.setChromeAlpha(1)
 			})
@@ -472,7 +476,6 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		Babel2Motion.animate(Babel2Motion.standard, {
 			if let origin, !Babel2Motion.reduceMotion {
 				self.imageView.frame = origin
-				self.imageView.layer.cornerRadius = 0
 			} else {
 				self.imageView.alpha = 0
 			}

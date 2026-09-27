@@ -10,6 +10,7 @@
 - 最终全量 `scratchpad/final-full.xcresult` 185/185；UI Driver（Release、真实数据）`scratchpad/final-ui.xcresult` 1/1；Babel2UI package 32/32；pbxproj 签名 diff hash 仍 `c5f5a8cf…`。
 - **用户验收说「提交」后**：按批提交（每批一个提交，提交信息 `[界面]` / `[翻译]` / `[发现]` 前缀按内容），不含 pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行；删除的 `iOS/Babel2/Reader/Babel2TranslationToggle.swift` 要一起提交删除。各批改动文件清单在会话 scratchpad `snapshots/batch{1..5}-files.txt`（累计清单；scratchpad 不在仓库，换会话后以 STATUS 各批「改动」为准）。
 - 已知取舍（验收时留意）：全部档「全部文章 / 外文源」列表只列最近 30 天、入口上是总数；「重复」的源没有一键去重（逐个「移出」）；自定义图标不跟账户同步；翻译此页的阅读页没有已读 / 星标。
+- **验收中用户追加（第二轮，ADR-048～051）已实现，同样待验收**：图片查看器直角 + 横图贴边（ADR-051）；点标题进原文 + 整页往左划进原文；阅读模式横线图标；翻译图标改回系统符号 + 空心 / 实心圆点；思考段过滤（回答「不输出思考过程吧」）。提交时作为第 6 个提交（在五批之后）。全量 190/190、UI Driver 1/1、macOS 干净副本 build 通过。
 
 **待验收：阅读页上拉翻到下一篇（ADR-035）已实现，待用户真机验收（未提交）**
 - 规则与 ∨ 在 `iOS/Babel2/Reader/Babel2ReaderNextPull.swift`（临界点 80pt、∨ 弯曲深度等数字都在这里）。全量 153/153、UI Driver 1/1。详见 STATUS 顶部。

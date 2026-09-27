@@ -473,7 +473,9 @@ enum NNWTitleBatchTranslator {
 	}
 
 	/// 从模型输出里抠出 JSON 数组:容忍代码块围栏和数组前后的废话。
-	private static func parseArray(from raw: String) throws -> [String] {
+	/// 回复开头若是「思考」段(<think>…</think>)先去掉 —— 思考里常有方括号,会把数组抠错(2026-09-27)。
+	private static func parseArray(from reply: String) throws -> [String] {
+		let raw = OpenAICompatibleTranslator.strippingThinking(reply)
 		guard let start = raw.firstIndex(of: "["),
 			  let end = raw.lastIndex(of: "]"),
 			  start < end else {

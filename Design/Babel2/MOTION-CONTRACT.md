@@ -210,10 +210,24 @@ for the configured right-edge region. Browser back uses the same left-edge pop o
 > scroll views. Routes that host arbitrary web content (in-app Browser) remain
 > edge-only. Progress, projection and visuals are identical to the edge pop.
 
+> **Amendment 2026-09-27 (user-requested, ADR-048): full-surface Reader → Browser.**
+> The user asked for the “swipe into the original” gesture to start anywhere on the
+> Reader, mirroring the full-surface pop. The approved shape is the same as ADR-042:
+> a pan recognizer on the Reader that decides only at its first movement. It begins
+> solely for a leftward, horizontally dominant (`|vx| > 1.2 |vy|`) pan that does not
+> start inside a horizontal scroller that can still scroll toward its trailing edge
+> (wide tables/code blocks scroll first), not on a menu, and not while a transition or
+> modal is active. Vertical pans never start it and no descendant `UIScrollView` waits
+> for it (the former `require(toFail:)` from the body scroll view to the right-edge
+> recognizer is removed). It may recognize simultaneously with vertical-only scroll
+> views. Direction keeps it disjoint from pop (rightward). Tapping the article title
+> (or the collapsed compact header) runs the same transition non-interactively.
+> Preparation, progress, projection and visuals are unchanged (§7).
+
 | Gesture | Start region / gate | Can recognize simultaneously with | Must yield to |
 |---|---|---|---|
 | Pop | left edge; `target` edge width `24–32 pt` (`to-tune`). Amendment ADR-042: also anywhere on non-Browser routes with rightward horizontal intent, outside horizontal scrollers that can still scroll | vertical-only scroll views (amendment) | system modal dismissal if present |
-| Reader → Browser | right edge; `target` edge width `24–32 pt` (`to-tune`), link action eligible | vertical scroll before intent lock | pop, text selection, native control tap |
+| Reader → Browser | right edge; `target` edge width `24–32 pt` (`to-tune`), link action eligible. Amendment ADR-048: anywhere on the Reader with leftward horizontal intent, outside horizontal scrollers that can still scroll; title tap runs the same transition | vertical scroll before intent lock; vertical-only scroll views (amendment) | pop, text selection, native control tap |
 | Vertical article pager | full content surface only at scroll boundary; vertical intent lock | chrome observation only | edge pop and right-edge action |
 | WebView/table scroll | ordinary content surface | chrome observer | active edge transition |
 | Tap/menu | control hit target `44 pt` (`reference` from Figma contract) | none while activating | active transition |
@@ -320,6 +334,9 @@ velocity cutoff must be measured against false-commit/false-cancel cases on devi
 
 `idle → rightEdgeArmed → tracking → settlingToEnd (Browser) |
 settlingToStart (Reader) → settled`.
+
+(Amendment ADR-048: `rightEdgeArmed` is armed by a leftward horizontal pan from anywhere
+on the Reader, see §4; a title tap enters `settlingToEnd` directly after preparation.)
 
 The Browser controller, web view configuration, initial chrome, and loading placeholder
 must exist before `tracking`. A cold network load is never part of the finger-following

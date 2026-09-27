@@ -2051,6 +2051,106 @@ final class Babel2FeedReaderTests: XCTestCase {
 		browser.dismiss(animated: false)
 	}
 
+	// MARK: - 整页左滑进原文、点标题进原文（ADR-048）
+
+	/// 整页往左划进原文的开始条件：明显往左横滑才开始；往右 / 竖着 / 进行中 / 在还能往左滚的横向滚动区里都不开始。
+	func testFullSurfaceSwipeToBrowserRules() {
+		XCTAssertTrue(Babel2ReaderBrowserMotion.shouldBegin(velocity: CGPoint(x: -600, y: 100), isBusy: false, startsInHorizontalScroller: false))
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldBegin(velocity: CGPoint(x: 600, y: 0), isBusy: false, startsInHorizontalScroller: false), "rightward = back")
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldBegin(velocity: CGPoint(x: -300, y: 400), isBusy: false, startsInHorizontalScroller: false), "mostly vertical = scroll")
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldBegin(velocity: CGPoint(x: -600, y: 0), isBusy: true, startsInHorizontalScroller: false))
+		XCTAssertFalse(Babel2ReaderBrowserMotion.shouldBegin(velocity: CGPoint(x: -600, y: 0), isBusy: false, startsInHorizontalScroller: true))
+
+		let root = UIView(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+		let wide = UIScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+		wide.contentSize = CGSize(width: 900, height: 100)
+		let cell = UIView(frame: CGRect(x: 0, y: 0, width: 50, height: 50))
+		wide.addSubview(cell)
+		root.addSubview(wide)
+		XCTAssertTrue(Babel2ReaderBrowserMotion.startsInHorizontalScroller(cell, stopAt: root), "a wide table scrolls first")
+		wide.contentOffset = CGPoint(x: 600, y: 0)
+		XCTAssertFalse(Babel2ReaderBrowserMotion.startsInHorizontalScroller(cell, stopAt: root), "scrolled to its end: the swipe opens the original")
+		let tall = UIScrollView(frame: CGRect(x: 0, y: 200, width: 400, height: 400))
+		tall.contentSize = CGSize(width: 400, height: 3000)
+		root.addSubview(tall)
+		XCTAssertFalse(Babel2ReaderBrowserMotion.startsInHorizontalScroller(tall, stopAt: root), "the article body only scrolls vertically")
+	}
+
+	/// 点大标题：和往左划一样，浏览器整页滑进来、成为当前页；标题对读屏说明「打开原文」。
+	func testTappingTitleOpensOriginalLikeTheSwipe() async throws {
+		var made = [StubBrowser]()
+		let reader = makeReader(body: "<p>Body</p>", makeBrowser: { url in
+			let browser = StubBrowser(url: url)
+			made.append(browser)
+			return browser
+		})
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		let window = hostInWindow(navigation)
+		defer { window.isHidden = true }
+		navigation.pushBabel2(reader, animated: false)
+		navigation.view.layoutIfNeeded()
+		await waitForReaderRender(reader)
+		let title = try XCTUnwrap(descendant(of: reader.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.title" })
+		XCTAssertTrue(title.isUserInteractionEnabled)
+		XCTAssertTrue(title.gestureRecognizers?.contains { $0 is UITapGestureRecognizer } ?? false)
+		XCTAssertTrue(title.accessibilityTraits.contains(.link))
+		XCTAssertEqual(title.accessibilityHint, localized(.openOriginal))
+
+		reader.tapTitleForTesting()
+		let browser = try XCTUnwrap(made.last)
+		XCTAssertTrue(browser.didPrepare, "the browser is prepared first, like the swipe")
+		XCTAssertNotNil(browser.view.superview, "both pages slide together")
+		try XCTUnwrap(reader.browserMotionForTesting).finishSettleImmediatelyForTesting()
+		XCTAssertTrue(navigation.topViewController === browser)
+		XCTAssertEqual(browser.url, URL(string: "https://example.com/post"))
+		XCTAssertEqual(reader.view.transform, .identity)
+	}
+
+	// MARK: - 不输出思考过程（ADR-050）
+
+	/// 回复开头的「思考」段（<think>…</think>）去掉，只留正式回复；思考还没写完时什么也不显示；
+	/// 不在开头的、或没有思考段的回复原样不动。
+	func testThinkingAtTheStartOfAReplyIsStripped() {
+		XCTAssertEqual(OpenAICompatibleTranslator.strippingThinking("<think>Hmm [1]</think><p>译文</p>"), "<p>译文</p>")
+		XCTAssertEqual(OpenAICompatibleTranslator.strippingThinking("\n  <thinking>plan</thinking>\n<p>译文</p>"), "\n<p>译文</p>")
+		XCTAssertEqual(OpenAICompatibleTranslator.strippingThinking("<think>still thinking"), "", "nothing to show until the answer starts")
+		XCTAssertEqual(OpenAICompatibleTranslator.strippingThinking("<p>译文</p>"), "<p>译文</p>")
+		XCTAssertEqual(OpenAICompatibleTranslator.strippingThinking("<p>a <think>b</think></p>"), "<p>a <think>b</think></p>", "only a leading block is thinking")
+		XCTAssertEqual(OpenAICompatibleTranslator.cleanUp("<think>x</think>\n```html\n<p>译文</p>\n```", original: "<p>Text</p>"), "<p>译文</p>")
+	}
+
+	/// 真实流程：模型把思考写在回复开头时，正文照样翻完、页面上没有一个思考的字（流式上屏与最终译文都没有）。
+	func testThinkingWrittenIntoTheReplyNeverReachesThePage() async throws {
+		let restore = useFakeTranslationServer(.thinkingFirst)
+		defer { restore() }
+		let viewController = makeReader(body: Self.longArticleBody(paragraphs: 8), hostArticle: NSObject())
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitUntil { viewController.isTranslationReadyForTesting }
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		await waitForTranslation(viewController, toReach: .translated)
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertFalse(text.contains("think"), "no thinking on the page")
+		XCTAssertGreaterThan(Self.cjkRatio(text), 0.9)
+	}
+
+	/// 标题翻译：回复开头的思考里有方括号，也不会把标题数组抠错。
+	func testTitleTranslationIgnoresThinkingBeforeTheArray() async throws {
+		URLProtocol.registerClass(CapturingTranslationProtocol.self)
+		defer {
+			URLProtocol.unregisterClass(CapturingTranslationProtocol.self)
+			CapturingTranslationProtocol.replyContent = "[\"一个标题\"]"
+		}
+		CapturingTranslationProtocol.replyContent = "<think>The user wants [one] title as [JSON].</think>[\"一个标题\"]"
+		let translated = try await NNWTitleBatchTranslator.translate(
+			["A headline"],
+			config: TranslationConfig(baseURL: "https://api.example-provider.com/v1", apiKey: "test"),
+			model: "some/model"
+		)
+		XCTAssertEqual(translated, ["一个标题"])
+	}
+
 	// MARK: - 阅读模式（Slice 5 第 2 步）
 
 	func testReaderModeSwapsToFullTextRemembersAndReturnsToOriginal() async throws {
@@ -2479,8 +2579,12 @@ final class Babel2FeedReaderTests: XCTestCase {
 			(.failed, .idle, "failed", Babel2Localization.text(.translate))
 		]
 		let toggle = toolbar.translationToggle
+		// 1.x 的角标拿回来（2026-09-27 用户）：完整缓存 = 实心小圆点，翻到一半 = 空心小圆点，其它没有角标
+		let badges: [TranslationButtonState: Babel2TranslateIconButton.Badge] = [.cachedAvailable: .solidDot, .partialCacheAvailable: .hollowDot]
 		for (state, phase, value, label) in expected {
 			toolbar.setTranslationState(state)
+			XCTAssertEqual(toggle.badge, badges[state] ?? .none, "\(value) badge")
+			XCTAssertNotNil(toggle.glyphImageForTesting, "the system translate symbol is shown")
 			XCTAssertEqual(toggle.phase, phase)
 			XCTAssertEqual(toggle.accessibilityValue, value)
 			XCTAssertEqual(toggle.accessibilityLabel, label)
@@ -2499,6 +2603,13 @@ final class Babel2FeedReaderTests: XCTestCase {
 		toolbar.setReaderMode(false, available: false)
 		XCTAssertFalse(toolbar.readingModeButton.isEnabled)
 		XCTAssertEqual(toolbar.readingModeButton.chip.alpha, 0)
+		// 阅读模式图标只剩横线（没有纸页外框）：四道，前三道一样长，最后一道略短（2026-09-27 用户）
+		let lengths = Babel2ReaderModeIconButton.lineLengthsForTesting
+		XCTAssertEqual(lengths.count, 4)
+		XCTAssertEqual(Set(lengths.dropLast()).count, 1)
+		XCTAssertLessThan(lengths.last ?? 0, lengths[0])
+		XCTAssertGreaterThan(lengths.last ?? 0, lengths[0] * 0.6, "only slightly shorter")
+		XCTAssertEqual(toolbar.readingModeButton.glyph.layer.sublayers?.count, 4, "no page outline, just the lines")
 	}
 
 	// MARK: - 图片查看器（ADR-040，2026-09-27 用户反馈第 3 条）
@@ -2524,10 +2635,10 @@ final class Babel2FeedReaderTests: XCTestCase {
 		viewer.view.layoutIfNeeded()
 		XCTAssertFalse(viewer.hasOpenLinkButton, "a link to the image file itself is not offered")
 		XCTAssertEqual(viewer.imageView.accessibilityLabel, "A photo")
-		XCTAssertEqual(viewer.imageView.layer.cornerRadius, Babel2ImageViewerViewController.cornerRadius)
+		XCTAssertEqual(viewer.imageView.layer.cornerRadius, 0, "square corners (ADR-051)")
 		let size = viewer.imageView.bounds.size
-		XCTAssertEqual(size.width / size.height, 4.0 / 3.0, accuracy: 0.03, "card keeps the image's shape")
-		XCTAssertLessThanOrEqual(size.width, window.bounds.width - 2 * Babel2ImageViewerViewController.margin + 0.5)
+		XCTAssertEqual(size.width / size.height, 4.0 / 3.0, accuracy: 0.03, "keeps the image's shape")
+		XCTAssertEqual(size.width, window.bounds.width, accuracy: 0.5, "a landscape image runs edge to edge")
 
 		viewer.dismissViewer()
 		await waitUntil { viewController.presentedViewController == nil }
@@ -2543,12 +2654,24 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		let bounds = CGRect(x: 0, y: 0, width: 402, height: 874)
 		let safe = UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0)
+		// 横图贴满屏幕两边（2026-09-27 用户验收时要求，ADR-051），竖直方向在安全区里居中
 		let wide = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 400, height: 300), in: bounds, safeArea: safe)
-		XCTAssertEqual(wide.width, 370, accuracy: 0.5)
-		XCTAssertEqual(wide.midX, 201, accuracy: 0.5)
+		XCTAssertEqual(wide.minX, 0, accuracy: 0.5)
+		XCTAssertEqual(wide.width, 402, accuracy: 0.5, "landscape images run edge to edge")
 		XCTAssertEqual(wide.midY, (62 + 16 + 874 - 34 - 16) / 2, accuracy: 0.5, "centered in the safe area")
+		let smallWide = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 120, height: 80), in: bounds, safeArea: safe)
+		XCTAssertEqual(smallWide.width, 402, accuracy: 0.5, "even small landscape images fill the width")
+		// 竖图 / 方图：左右留 16pt；小图最多放大 3 倍
+		let tall = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 300, height: 600), in: bounds, safeArea: safe)
+		XCTAssertEqual(tall.width, 370, accuracy: 0.5)
+		XCTAssertEqual(tall.midX, 201, accuracy: 0.5)
 		let tiny = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 40, height: 40), in: bounds, safeArea: safe)
-		XCTAssertEqual(tiny.width, 120, accuracy: 0.5, "small images are enlarged at most 3x")
+		XCTAssertEqual(tiny.width, 120, accuracy: 0.5, "small portrait / square images are enlarged at most 3x")
+		// 横着拿手机：整宽放不下高度时按高度缩
+		let sideways = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 1600, height: 900),
+			in: CGRect(x: 0, y: 0, width: 874, height: 402), safeArea: UIEdgeInsets(top: 0, left: 62, bottom: 21, right: 62))
+		XCTAssertEqual(sideways.height, 402 - 21 - 32, accuracy: 0.5)
+		XCTAssertLessThan(sideways.width, 874)
 
 		XCTAssertFalse(Babel2ImageViewerViewController.shouldDismiss(dragDistance: 60, velocity: 200))
 		XCTAssertTrue(Babel2ImageViewerViewController.shouldDismiss(dragDistance: 130, velocity: 0))
@@ -2567,6 +2690,10 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let window = hostInWindow(viewer)
 		defer { window.isHidden = true }
 		viewer.view.layoutIfNeeded()
+		XCTAssertEqual(viewer.imageView.layer.cornerRadius, 0, "square corners")
+		XCTAssertEqual(viewer.imageView.layer.borderWidth, 0, "no card outline")
+		XCTAssertEqual(viewer.imageView.convert(viewer.imageView.bounds, to: viewer.view).width, viewer.view.bounds.width, accuracy: 0.5,
+			"the 4:3 image fills the screen width")
 		XCTAssertTrue(viewer.hasOpenLinkButton, "an image linking to another page offers Open Link")
 		XCTAssertEqual(viewer.maximumZoomScale, 4)
 		viewer.toggleZoom(at: CGPoint(x: viewer.imageView.bounds.midX, y: viewer.imageView.bounds.midY))
@@ -4201,6 +4328,8 @@ private final class StubBrowser: UIViewController, Babel2PreparableRoute {
 /// 拦截翻译请求：记下请求体，回一个合法的标题翻译结果（不联网）。
 private final class CapturingTranslationProtocol: URLProtocol {
 	nonisolated(unsafe) static var lastBody: Data?
+	/// 模型回复的正文（默认是一个合法的标题数组）。
+	nonisolated(unsafe) static var replyContent = "[\"一个标题\"]"
 
 	override class func canInit(with request: URLRequest) -> Bool {
 		request.url?.path.hasSuffix("/chat/completions") == true
@@ -4223,7 +4352,7 @@ private final class CapturingTranslationProtocol: URLProtocol {
 			body = data
 		}
 		Self.lastBody = body
-		let payload = #"{"choices":[{"message":{"content":"[\"一个标题\"]"}}]}"#.data(using: .utf8)!
+		let payload = (try? JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": Self.replyContent]]]])) ?? Data()
 		let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
 		client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
 		client?.urlProtocol(self, didLoad: payload)
@@ -4364,6 +4493,8 @@ private final class FakeTranslationServer: URLProtocol {
 		case normal
 		case dropParagraphs(atLeast: Int)
 		case blankText
+		/// 回复开头先写一段 <think>…</think>（有的服务商把模型的思考直接写在正式回复前面）
+		case thinkingFirst
 	}
 
 	static let host = "fake-llm.babel2.test"
@@ -4407,6 +4538,9 @@ private final class FakeTranslationServer: URLProtocol {
 		if case .dropParagraphs(let limit) = Self.mode, chunk.components(separatedBy: "<p").count - 1 >= limit,
 			let firstClose = translated.range(of: "</p>") {
 			translated = String(translated[..<firstClose.upperBound])
+		}
+		if case .thinkingFirst = Self.mode {
+			translated = "<think>Let me think about [this] first. The reader wants Chinese.</think>\n" + translated
 		}
 		let isStream = json?["stream"] as? Bool == true
 		let data: Data

@@ -187,7 +187,7 @@ final class Babel2ArticleViewController: UIViewController {
 		contentView.onImageTapped = { [weak self] tap in
 			self?.showImage(tap)
 		}
-		compactHeader.onSourceLinkTapped = { [weak self] in self?.originalTapped() }
+		compactHeader.onSourceLinkTapped = { [weak self] in self?.titleTapped() }
 		installBrowserMotion()
 		contentView.onContentProcessTerminated = { [weak self] in
 			self?.cancelRendering()
@@ -902,15 +902,24 @@ final class Babel2ArticleViewController: UIViewController {
 		(navigationController as? Babel2NavigationController)?.pushBabel2(browser, animated: animated)
 	}
 
-	/// 正文右边缘往左滑进入浏览器（只在有原文地址时安装）。
+	/// 往左划进入浏览器（只在有原文地址时安装）。整页任意位置都能划（ADR-048）；
+	/// 正文滚动不等它（不再用「让滚动等边缘手势失败」那一招——整页手势用它会拖慢所有滚动）。
 	private func installBrowserMotion() {
 		guard let url = article.url, let makeBrowser else { return }
 		let motion = Babel2ReaderBrowserMotion(reader: self, makeBrowser: { makeBrowser(url) })
 		motion.onCommit = { [weak self] browser in self?.pushBrowser(browser, animated: false) }
-		// 右边缘起手时，正文滚动让位给边缘手势（只影响从右边缘起手的触摸）
-		contentView.scrollView.panGestureRecognizer.require(toFail: motion.edgeGesture)
 		browserMotion = motion
 	}
+
+	/// 点大标题（或收起后的小标题栏）：打开原文。有内置浏览器时走和往左划一样的整页滑入（ADR-048），
+	/// 否则（设置里选了用系统浏览器）交给系统。
+	@objc private func titleTapped() {
+		if browserMotion?.open() == true { return }
+		originalTapped()
+	}
+
+	/// 仅供自动化测试：点大标题。
+	func tapTitleForTesting() { titleTapped() }
 
 	/// 仅供自动化测试。
 	var browserMotionForTesting: Babel2ReaderBrowserMotion? { browserMotion }
@@ -961,6 +970,13 @@ final class Babel2ArticleViewController: UIViewController {
 		titleLabel.accessibilityIdentifier = "babel2.article.title"
 		titleLabel.accessibilityTraits = .header
 		titleLabel.attributedText = Self.titleText(article.title)
+		// 点大标题 = 打开原文（2026-09-27 用户要求，与往左划进原文同一段画面；ADR-048）
+		if article.url != nil {
+			titleLabel.isUserInteractionEnabled = true
+			titleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(titleTapped)))
+			titleLabel.accessibilityTraits = [.header, .link]
+			titleLabel.accessibilityHint = Babel2Localization.text(.openOriginal)
+		}
 
 		let bylineLines = [feedAuthor, feedTitle]
 			.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }

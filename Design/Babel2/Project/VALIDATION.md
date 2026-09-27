@@ -9,6 +9,22 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-27 验收中追加：图片查看器直角 + 横图贴边（ADR-051；uncommitted worktree，待用户真机验收）
+
+- 定向 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r3t.xcresult` 2/2（`testImageViewerRules`、`testTappingImageOpensCardViewerInsteadOfFollowingItsLink`，均按新规则更新）。
+- 反向验证 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/rev7.xcresult`：横图分支改回旧规则（左右留白、最多放大 3 倍）后两项均失败；恢复后核对已撤回。
+- 全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r3-full.xcresult` 190/190，0 失败 0 跳过。只改了阅读页图片查看器（iOS），UI Driver 不经过查看器，本次未重跑（上一轮 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r2-ui.xcresult` 1/1）。
+- 缺口：真机上横图贴边、竖图留白的观感与缩放手感。
+
+## 2026-09-27 验收中追加（第二轮，ADR-048～050；uncommitted worktree，待用户真机验收）
+
+- 环境同上（iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData，`-collect-test-diagnostics never`）。
+- 定向：新增 5 项 + 更新 1 项及相关旧测试共 10 项 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r2t.xcresult` 10/10。
+- 反向验证 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/rev6.xcresult`：让思考过滤直接返回原文、让点标题什么也不做后，`testTappingTitleOpensOriginalLikeTheSwipe`、`testThinkingAtTheStartOfAReplyIsStripped`、`testThinkingWrittenIntoTheReplyNeverReachesThePage`、`testTitleTranslationIgnoresThinkingBeforeTheArray` 均失败；恢复后核对临时改动已撤回。
+- 全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r2-full.xcresult` 190/190，0 失败 0 跳过；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r2-ui.xcresult` 1/1。
+- macOS：临时干净副本（HEAD + 当前 `Shared/Translation/` 全部文件）Debug build，第 1 次为已知 `SecretKey` 首次编译失败，第 2 次 `BUILD SUCCEEDED`（`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/mac4.log`）；副本已删除。
+- 缺口（只能真机验收）：整页左滑与竖向滚动 / 选字的手感、点标题的画面、两个新图标的观感、非 OpenRouter 服务商的真实思考输出。
+
 ## 2026-09-27 第 2～5 批：图片 / 播放器 / 整页右滑 / 图标 / 跨源入口 / 文件夹整理 / 自定义图标 / 浏览器（ADR-040～047；uncommitted worktree，待用户一次性真机验收）
 
 - 环境同第 1 批（iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/dd`，`-collect-test-diagnostics never`）；总数以 `xcresulttool get test-results summary` 为准。

@@ -159,14 +159,18 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 		}
 
 		let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data)
-		let content = decoded?.choices.first?.message.content ?? ""
+		// [翻译] 回复开头若是「思考」段（<think>…</think>），先去掉，只看正式回复（见 strippingThinking）
+		let rawContent = decoded?.choices.first?.message.content ?? ""
+		let content = Self.strippingThinking(rawContent)
 
 		guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
 			// [翻译] 空译文最常见的一种死法:模型把正文写进了 `reasoning`(思考区)。
 			// 我们已经请求关掉思考(见 ChatRequest.Reasoning),但有的模型关不掉。
 			// 与其抛一句笼统的"响应格式不对",不如告诉用户**该怎么办**。
+			// 回复里只有 <think> 段、正式回复是空的,也是同一回事。
 			let reasoning = decoded?.choices.first?.message.reasoning ?? ""
-			if !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			let onlyThoughts = !rawContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			if onlyThoughts || !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 				throw TranslationError.serverError(
 					status: 200,
 					message: "这个模型把正文写进了「思考」区、正式回复是空的,关不掉。请在设置里换一个模型。")
@@ -244,7 +248,8 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 			case .delta(let text):
 				accumulated += text
 				// onDelta 返回 false = 调用方不要这条流了(赛跑输了)→ 立刻停,别再花钱
-				guard await onDelta(accumulated) else {
+				// [翻译] 上屏的只是正式回复:模型还在「思考」段里时先什么也不显示(见 strippingThinking)
+				guard await onDelta(Self.strippingThinking(accumulated)) else {
 					throw CancellationError()
 				}
 			case .done:
@@ -312,7 +317,7 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 			throw TranslationError.invalidResponse
 		}
 
-		return content.trimmingCharacters(in: .whitespacesAndNewlines)
+		return strippingThinking(content).trimmingCharacters(in: .whitespacesAndNewlines)
 	}
 
 	// MARK: - 收拾模型的输出
@@ -324,7 +329,7 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 	/// - Parameter original: 送出去的原文。用来识别"模型把原文也回显了"的情况。
 	static func cleanUp(_ raw: String, original: String) -> String {
 
-		var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		var text = strippingThinking(raw).trimmingCharacters(in: .whitespacesAndNewlines)
 
 		// 去掉包裹用的代码块围栏
 		if text.hasPrefix("```") {
@@ -343,6 +348,24 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 		text = stripEchoedOriginal(from: text, original: original)
 
 		return text
+	}
+
+	/// [翻译] 去掉回复开头的「思考」段(2026-09-27,用户问「不管选什么模型,都不输出思考过程吧?」)。
+	///
+	/// 走 OpenRouter 时我们要求不思考、关不掉的也别回传(见 ChatRequest.Reasoning);即使回传,
+	/// 思考内容也在单独的 `reasoning` 字段里,我们从来不当译文用。但别的服务商可能把思考**直接写在
+	/// 正式回复开头**,用 `<think>…</think>` 包着 —— 那段绝不能当译文,也不能流式上屏。
+	///
+	/// 只认「回复一开头就是思考标签」这一种写法(译文不会以它开头,不会误删);
+	/// 思考还没写完(只有开头标签)时返回空串:流式上屏就先什么都不显示,等正式回复开始。
+	/// ⚠️ 这不是在解析文章 HTML:对象是模型的回复文本,和上面去掉 ``` 围栏是同一类收拾。
+	static func strippingThinking(_ raw: String) -> String {
+		let body = raw.drop { $0.isWhitespace }
+		for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] where body.hasPrefix(open) {
+			guard let end = body.range(of: close) else { return "" }
+			return String(body[end.upperBound...])
+		}
+		return raw
 	}
 
 	/// 模型有时会先把原文原样吐一遍,再跟上译文(中英对照)。

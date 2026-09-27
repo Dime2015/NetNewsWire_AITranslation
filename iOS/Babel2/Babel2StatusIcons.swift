@@ -1,10 +1,12 @@
 import UIKit
 
-/// 底栏「阅读模式」「翻译」两个状态图标（2026-09-27 用户反馈第 6、11 条，ADR-043）。
+/// 底栏「阅读模式」「翻译」两个状态图标（2026-09-27 用户反馈第 6、11 条，ADR-043；同日二改，ADR-049）。
 ///
-/// 两个图标同一套视觉语言（设计方案里选的是阅读模式「B · 纸页」、翻译「A · 文/A」）：
+/// 两个图标同一套状态语言：
+/// - 阅读模式：几道横线、最后一道略短（用户：纸页外框不好看，只要横线）
+/// - 翻译：系统「翻译」符号（与 iOS 自带翻译按钮同一个），右下角空心 / 实心小圆点表示有没有译文缓存（1.x 的设计拿回来）
 /// - 平时：线条图标，次要灰
-/// - 进行中：图标本身在动（纸页的三行字依次明灭、「文」和「A」交替亮起）——不用系统转圈，
+/// - 进行中：图标本身在动（横线依次明灭、翻译符号明灭）——不用系统转圈，
 ///   也不在标题下面写「正在获取全文…」
 /// - 成功（开着 / 已译）：32pt 圆角方块墨色底、图标反白，出现时从 0.85 倍轻轻放大到位
 /// - 失败：图标左右轻晃一下，回到平时；提示文字由页面用底栏上方的小胶囊给
@@ -140,31 +142,26 @@ class Babel2StatusIconControl: UIControl {
 	}
 }
 
-/// 阅读模式：纸页（圆角纸 + 三行字）。进行中三行字依次明灭。
+/// 阅读模式：四道横线，最后一道略短（像一段文字）。进行中四道线依次明灭。
 @MainActor
 final class Babel2ReaderModeIconButton: Babel2StatusIconControl {
-	private let page = CAShapeLayer()
-	private let lines = [CAShapeLayer(), CAShapeLayer(), CAShapeLayer()]
+	/// 设计网格（24 × 24）里的四道线：左端 4.5，前三道到 19.5，最后一道到 15.5（短约四分之一）；间隔 4，竖直居中。
+	static let lineSpecs: [(start: CGFloat, end: CGFloat, y: CGFloat)] = [
+		(4.5, 19.5, 6), (4.5, 19.5, 10), (4.5, 19.5, 14), (4.5, 15.5, 18)
+	]
+	private let lines = Babel2ReaderModeIconButton.lineSpecs.map { _ in CAShapeLayer() }
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
 		let scale = glyphScale
-		func scaled(_ rect: CGRect) -> CGRect {
-			CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)
-		}
-		page.path = UIBezierPath(roundedRect: scaled(CGRect(x: 5, y: 3.5, width: 14, height: 17)), cornerRadius: 2.6 * scale).cgPath
-		let lineSpecs: [(CGFloat, CGFloat, CGFloat)] = [(8.6, 15.4, 8.5), (8.6, 15.4, 12), (8.6, 13, 15.5)]
-		for (layer, spec) in zip(lines, lineSpecs) {
+		for (layer, spec) in zip(lines, Self.lineSpecs) {
 			let path = UIBezierPath()
-			path.move(to: CGPoint(x: spec.0 * scale, y: spec.2 * scale))
-			path.addLine(to: CGPoint(x: spec.1 * scale, y: spec.2 * scale))
+			path.move(to: CGPoint(x: spec.start * scale, y: spec.y * scale))
+			path.addLine(to: CGPoint(x: spec.end * scale, y: spec.y * scale))
 			layer.path = path.cgPath
-		}
-		for layer in [page] + lines {
 			layer.fillColor = UIColor.clear.cgColor
-			layer.lineWidth = 1.6 * scale
+			layer.lineWidth = 1.7 * scale
 			layer.lineCap = .round
-			layer.lineJoin = .round
 			glyph.layer.addSublayer(layer)
 		}
 		accessibilityIdentifier = "babel2.article.toolbar.reading-mode"
@@ -176,14 +173,14 @@ final class Babel2ReaderModeIconButton: Babel2StatusIconControl {
 	required init?(coder: NSCoder) { nil }
 
 	override func applyGlyphColor(_ color: UIColor) {
-		for layer in [page] + lines {
+		for layer in lines {
 			layer.strokeColor = color.cgColor
 		}
 	}
 
 	override func startWorkingAnimation() {
 		for (index, line) in lines.enumerated() where line.animation(forKey: "babel2.working") == nil {
-			line.add(Self.pulse(delay: Double(index) * 0.2, period: 1.2), forKey: "babel2.working")
+			line.add(Self.pulse(delay: Double(index) * 0.15, period: 1.2), forKey: "babel2.working")
 		}
 	}
 
@@ -193,33 +190,37 @@ final class Babel2ReaderModeIconButton: Babel2StatusIconControl {
 
 	/// 仅供自动化测试。
 	var isAnimatingWorkForTesting: Bool { lines.contains { $0.animation(forKey: "babel2.working") != nil } }
+	/// 仅供自动化测试：每道线的长度（设计网格单位）。
+	static var lineLengthsForTesting: [CGFloat] { lineSpecs.map { $0.end - $0.start } }
 }
 
-/// 翻译：「文」+「A」。进行中两个字交替亮起。状态沿用翻译引擎的六种，按图标的三态显示：
-/// 原文 / 有缓存 / 翻了一半 → 平时；翻译中 → 进行中；已译 → 成功（墨色方块底）；失败 → 晃一下后回到平时。
+/// 翻译：系统「翻译」符号（A / 文 双气泡，iOS 自带翻译按钮用的就是它）+ 右下角角标，
+/// 图形原样复用 1.x 已定案的 `NNWTranslateIcon`（14.5pt，角标外圈挖一圈透明、小尺寸下也认得出）。
+/// 状态沿用翻译引擎的六种：
+/// - 原文 → 纯图标；有完整译文缓存 → **实心小圆点**（点一下秒开）；有翻到一半的缓存 → **空心小圆点**（点一下接着翻）
+/// - 翻译中 → 图标明灭；已译 → 墨色方块底、图标反白（与阅读模式同一种「成功」）；失败 → 晃一下后回到平时
 @MainActor
 final class Babel2TranslateIconButton: Babel2StatusIconControl {
-	private let hanzi = UILabel()
-	private let latin = UILabel()
+	enum Badge: Equatable {
+		case none
+		case solidDot
+		case hollowDot
+	}
+
+	private let imageView = UIImageView()
 	private(set) var translationState: TranslationButtonState = .original
+	private(set) var badge: Badge = .none
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
-		let scale = glyphScale
-		hanzi.text = "文"
-		hanzi.font = .systemFont(ofSize: 15 * scale, weight: .medium)
-		latin.text = "A"
-		latin.font = .systemFont(ofSize: 11 * scale, weight: .semibold)
-		for label in [hanzi, latin] {
-			label.textAlignment = .center
-			label.isAccessibilityElement = false
-			glyph.addSubview(label)
-		}
-		// 设计网格里：「文」中心 (9.5, 11)，「A」中心 (18.5, 15.5)——A 在右下，略小
-		hanzi.bounds = CGRect(x: 0, y: 0, width: 16 * scale, height: 18 * scale)
-		hanzi.center = CGPoint(x: 9.5 * scale, y: 11 * scale)
-		latin.bounds = CGRect(x: 0, y: 0, width: 10 * scale, height: 13 * scale)
-		latin.center = CGPoint(x: 18.5 * scale, y: 15.5 * scale)
+		imageView.contentMode = .center
+		imageView.isAccessibilityElement = false
+		imageView.translatesAutoresizingMaskIntoConstraints = false
+		glyph.addSubview(imageView)
+		NSLayoutConstraint.activate([
+			imageView.centerXAnchor.constraint(equalTo: glyph.centerXAnchor),
+			imageView.centerYAnchor.constraint(equalTo: glyph.centerYAnchor)
+		])
 		accessibilityIdentifier = "babel2.article.toolbar.translate"
 		setState(.original)
 	}
@@ -227,8 +228,7 @@ final class Babel2TranslateIconButton: Babel2StatusIconControl {
 	required init?(coder: NSCoder) { nil }
 
 	override func applyGlyphColor(_ color: UIColor) {
-		hanzi.textColor = color
-		latin.textColor = color
+		imageView.tintColor = color
 	}
 
 	func setState(_ newState: TranslationButtonState) {
@@ -246,6 +246,7 @@ final class Babel2TranslateIconButton: Babel2StatusIconControl {
 		}
 		accessibilityLabel = Babel2Localization.text(label)
 		accessibilityValue = value
+		setBadge(newState == .cachedAvailable ? .solidDot : (newState == .partialCacheAvailable ? .hollowDot : .none))
 		switch newState {
 		case .working: setPhase(.working)
 		case .translated: setPhase(.on)
@@ -254,17 +255,34 @@ final class Babel2TranslateIconButton: Babel2StatusIconControl {
 		if newState == .failed, !wasFailed { shake() }
 	}
 
+	/// 换角标：图标本体不动，只换右下角（1.x 同一组图，各态位置一个像素不差）。
+	private func setBadge(_ newBadge: Badge) {
+		let image: UIImage
+		switch newBadge {
+		case .none: image = NNWTranslateIcon.outline
+		case .solidDot: image = NNWTranslateIcon.withSolidDot
+		case .hollowDot: image = NNWTranslateIcon.withHollowDot
+		}
+		let changed = newBadge != badge || imageView.image == nil
+		badge = newBadge
+		guard changed else { return }
+		if imageView.image != nil, window != nil {
+			Babel2Motion.crossfade(imageView) { self.imageView.image = image.withRenderingMode(.alwaysTemplate) }
+		} else {
+			imageView.image = image.withRenderingMode(.alwaysTemplate)
+		}
+	}
+
 	override func startWorkingAnimation() {
-		guard hanzi.layer.animation(forKey: "babel2.working") == nil else { return }
-		hanzi.layer.add(Self.pulse(delay: 0, period: 1.6), forKey: "babel2.working")
-		latin.layer.add(Self.pulse(delay: 0.8, period: 1.6), forKey: "babel2.working")
+		guard imageView.layer.animation(forKey: "babel2.working") == nil else { return }
+		imageView.layer.add(Self.pulse(delay: 0, period: 1.2), forKey: "babel2.working")
 	}
 
 	override func stopWorkingAnimation() {
-		hanzi.layer.removeAnimation(forKey: "babel2.working")
-		latin.layer.removeAnimation(forKey: "babel2.working")
+		imageView.layer.removeAnimation(forKey: "babel2.working")
 	}
 
 	/// 仅供自动化测试。
-	var isAnimatingWorkForTesting: Bool { hanzi.layer.animation(forKey: "babel2.working") != nil }
+	var isAnimatingWorkForTesting: Bool { imageView.layer.animation(forKey: "babel2.working") != nil }
+	var glyphImageForTesting: UIImage? { imageView.image }
 }

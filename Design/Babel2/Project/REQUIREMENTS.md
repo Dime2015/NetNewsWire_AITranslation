@@ -16,7 +16,7 @@
 | Reader 初始 title/byline 在正文上方，滚动后连续移入 compact header，icon 渐出 | Slice 4；Reader chrome motion | collapse progress、reverse/interruption、content height | 首屏、滚动、旋转、后台恢复 | 多 safe area/文章高度、用户跟手验收 | 部分实现：原生标题区首帧可见（2026-09-24 真机通过）；滑动收缩、图标与进度环渐入、圆环跟随阅读进度已实现并有自动化，2026-09-24 用户真机验收通过；顶/底栏随方向显隐为第 3 步 |
 | 翻译标题/正文不重影、不闪退、速度可接受 | Slice 5；translation session/DOM update | generation/cancellation、incremental update、error recovery | 大源、多次切换、翻译失败 | 真实翻译源、峰值内存和性能 | 部分实现：Timeline 仅展示已有标题译文缓存；正文翻译及完整状态流尚未接入 |
 | 横向正文图贴屏幕两端、直角；文字/caption 保持 inset | Slice 4/5；Reader HTML/media | media classification、viewport style checks | 横向/竖向/无图、caption | 真实图片、safe area、缩放和滚动 | 部分实现（2026-09-24，用户真机验收通过）：宽≥320 且宽>高×1.1 的图 100vw 贴边直角，文字/图注保留 20pt；有自动化（贴边宽度=视口宽度）；嵌套在引用/列表内的横图贴边位置未处理 |
-| 文章正文左滑打开内置浏览器，浏览器右滑回到 Reader | Slice 5；Browser route/motion | direction/edge arbitration、cancel/finish | WebView/Reader 手势冲突 | 跟手性、网页加载、双向返回 | 未开始 |
+| 文章正文左滑打开内置浏览器，浏览器右滑回到 Reader | Slice 5；Browser route/motion | direction/edge arbitration、cancel/finish | WebView/Reader 手势冲突 | 跟手性、网页加载、双向返回 | 已实现（ADR-021，右边缘）；2026-09-27 用户要求改为整页任意位置往左划、点标题也进原文（ADR-048，合同已修订），待真机验收 |
 | 全局右滑返回稳定跟手，非边缘横向内容不误触发（2026-09-27 ADR-042 修订：非浏览器页面整页往右横滑即可返回；能横向滚动的内容先滚自身） | Slice 1/5；Babel2 navigation + M1 driver | edge 24–32pt、velocity、interruption | 深栈/根路由/旋转 | 慢速边缘拖拽+松手完成、边缘拖拽中途反向取消：2026-09-08 用户真机确认通过；深栈/根路由/旋转/非边缘误触发/120Hz 帧率仍待补 | 2026-09-05：页面 consumer 已接入——`Babel2NavigationPopMotion`（新文件）把 M1 引擎接到 `Babel2NavigationController` 左边缘滑动返回手势上，只接管这一条交互路径，点按返回按钮的程序化 pop 保持系统默认动画不变；12 个新增单元测试覆盖手势状态机（开始/更新/结束、finish/cancel 判定、强制取消、装卸干净）全部通过，全量 suite 77/77 通过。2026-09-08：用户在真实物理 iPhone 上确认左边缘滑动返回"跟手"，且中途松手能"正常弹回"（取消路径），关闭 MOTION-CONTRACT 矩阵里这两行真机验收；深层导航栈、根路由拒绝开始、设备旋转、非边缘误触发、快速连续开合、120Hz 具体帧率与 Instruments signpost 采集、OSLogStore consumer integration 仍 pending，未在本轮范围内 |
 | 底栏控件尺寸、视觉中心、颜色统一；Reader 操作重绘 | Slice 2/4/5；shared toolbar tokens | geometry/token snapshot、action routing | 各屏幕 Light/Dark/中英文 | 目标设备可达性和视觉接受 | 部分实现：Feeds 控件与配色已接入；Reader 底栏（已读/星标可用，下一篇/阅读模式/翻译占位）与固定后上下滑显隐已实现并有自动化，2026-09-24 用户真机验收通过；长图位置待 Slice 5 定 |
 | 顶部普通分享；底栏点击生成长图，不长按分享 | Slice 5；share/long-image actions | tap-only action、share presentation、failure/retry | 分享菜单和长图状态 | 系统分享菜单、长图生成和返回 | 未开始 |
@@ -30,7 +30,7 @@
 | 长文翻译不再「依然原文 / 空白」（2026-09-27 反馈 7，ADR-037） | 翻译引擎宿主 / Shared/Translation | 重排清状态、排队翻全文、失败组拆单段、空白拒收与兜底 | 假翻译服务长文路径 | 真实模型长文 | 已实现，待真机验收 |
 | 模型列表覆盖最热门厂商、含最便宜与最热门（反馈 9，ADR-038） | 设置 / OpenRouter 目录 | 变体不吃热度、用量榜排行、价格与过期刷新 | — | 真实目录与价格显示 | 已实现，待真机验收 |
 | 冷启动订阅源图标立即出现；可自定义图标（反馈 8，ADR-039 / 046） | 首页 / 接入层图标缓存 | 备份落盘、重载合并、列表补图标、自定义图标存取与优先 | — | 冷启动速度、选图裁图 | 已实现，待真机验收 |
-| 正文图片卡片式居中查看、双指缩放（反馈 3，ADR-040） | Reader | 点图不进浏览器、查看器规则 | — | 缩放 / 关闭手感 | 已实现，待真机验收 |
+| 正文图片卡片式居中查看、双指缩放（反馈 3，ADR-040）；直角、横图贴满两边（验收中追加，ADR-051） | Reader | 点图不进浏览器、查看器规则（横图整宽 / 竖图留白 / 直角） | — | 缩放 / 关闭手感 | 已实现，待真机验收 |
 | 播客音频条居中、YouTube 横版贴边原地播放（反馈 1，ADR-041） | Reader / 接入层 | 视频编号识别、播放器插入 | — | 真实播放 | 已实现，待真机验收 |
 | 阅读模式 / 翻译图标重做：图标本身动效、成功有底色，去掉「正在获取全文」（反馈 6、11，ADR-043） | Reader 底栏 / 文章列表底栏 | 三态映射、失败晃动 | — | 观感 | 已实现，待真机验收 |
 | 首页「未读」可点：今日未读 / 全部未读 / 外文源（跟随档位）（反馈 5，ADR-044） | 首页 / 跨源列表 | 入口随档位、计数、跨源列表来源与批量已读 | — | 真实数据计数与外文源识别 | 已实现，待真机验收 |
