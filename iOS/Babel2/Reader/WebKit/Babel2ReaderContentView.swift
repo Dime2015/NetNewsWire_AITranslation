@@ -109,6 +109,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			return nil
 		}
 		renderState = .rendering
+		// 排版前后各清一次翻译引擎留在网页里的记忆（见 discardTranslationScriptState）
+		await discardTranslationScriptState()
 		do {
 			let raw = try await webView.callAsyncJavaScript(
 				Self.renderScript,
@@ -122,6 +124,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 				renderState = .failed
 				return nil
 			}
+			await discardTranslationScriptState()
 			renderState = .rendered
 			if let height = (values["articleHeight"] as? NSNumber)?.doubleValue {
 				updateArticleHeight(CGFloat(height))
@@ -131,6 +134,17 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			renderState = .failed
 			return nil
 		}
+	}
+
+	/// 翻译引擎的页内脚本（translation.js，跑在网页自己的脚本环境里）会记住「原文备份 / 是否正在显示译文 /
+	/// 分组」。它原本假设「换正文 = 整页重新加载」，而本页切阅读模式、重试都是在**同一个网页里重排**，
+	/// 那些记忆就过期了——2026-09-27 实测：切到全文后点「原文」跳回摘要，点「翻译」直接变回英文（ADR-037）。
+	/// 所以每次排版都把它清掉（排版前清一次；排版后再清一次，防止排版期间被取消的翻译流程又把旧状态写回来）。
+	/// 下次翻译时引擎会重新注入一份全新的。
+	private func discardTranslationScriptState() async {
+		_ = try? await webView.evaluateJavaScript(
+			"if (window.nnwTranslation && window.nnwTranslation.dispose) { window.nnwTranslation.dispose(); } else { delete window.nnwTranslation; } true;"
+		)
 	}
 
 	// MARK: - 长图用的临时标题区（ADR-025）

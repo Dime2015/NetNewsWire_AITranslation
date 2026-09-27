@@ -113,6 +113,16 @@ enum TranslationCache {
 		}
 	}
 
+	/// 删掉一条缓存(2026-09-27:从缓存恢复出来是空白的坏条目,删掉,免得每次打开都恢复成空白)。
+	static func remove(key: String) {
+
+		memory[key] = nil
+
+		Task.detached {
+			try? FileManager.default.removeItem(at: fileURL(for: key))
+		}
+	}
+
 	// MARK: - 磁盘
 
 	private nonisolated static var directoryURL: URL {

@@ -53,7 +53,8 @@ struct OpenRouterCatalogModel: Codable, Sendable, Hashable {
 	/// 能吐什么。**只留能吐文本的** —— 这一条比按名字猜可靠得多,
 	/// 图片生成、音频合成那些一刀就没了。
 	let outputModalities: [String]
-	/// 流行度:OpenRouter 近 30 天里,这个模型在**各任务分类**的花费占比之和。
+	/// 流行度:这个模型占 OpenRouter 近期总用量(token)的比例(2026-09-27 起,见 `OpenRouterRankings.parseUsage`);
+	/// 用量榜拿不到时退回旧口径:近 30 天里,这个模型在**各任务分类**的花费占比之和。
 	/// 拿不到就是 0 —— ⚠️ **0 的意思是"榜上无名",不是"没人用"**,详见 `OpenRouterRankings`。
 	let popularity: Double
 
@@ -341,14 +342,21 @@ enum OpenRouterCatalog {
 	/// 榜单给的 id 带日期后缀(`anthropic/claude-4.8-opus-20260528`),不能直接当调用参数用;
 	/// `/models` 里的 `canonical_slug` 就是那个带日期的写法,拿它建一张映射表。
 	/// (同样的坑在 `OpenRouterModelCatalog.swift` 里记过,这里是同一件事。)
-	private static func canonicalMap(from data: Data) -> [String: String] {
+	static func canonicalMap(from data: Data) -> [String: String] {
 		guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
 			  let list = root["data"] as? [[String: Any]] else { return [:] }
 		var map = [String: String]()
 		for item in list {
 			guard let id = item["id"] as? String else { continue }
 			map[id] = id
-			if let canonical = item["canonical_slug"] as? String { map[canonical] = id }
+			guard let canonical = item["canonical_slug"] as? String else { continue }
+			// 🔴 2026-09-27(用户报「DeepSeek V4.1 Flash、小米 MiMo 在列表里找不到」):
+			// 同一个带日期写法常被 `:batch` / `:free` 变体共用,而且变体排在正主**后面**。
+			// 原来是「后写覆盖」,榜单热度全记到了变体头上 —— 变体又被浏览列表过滤掉,
+			// 正主热度就成了 0(当天实测 89 个模型中招,V4.1 Flash 其实是用量第 1)。
+			// 现在:已经映射到正主的,不许被变体覆盖;先来的是变体、后来的是正主,就换成正主。
+			if let existing = map[canonical], !existing.contains(":") || id.contains(":") { continue }
+			map[canonical] = id
 		}
 		return map
 	}
@@ -589,13 +597,14 @@ enum OpenRouterCatalog {
 	/// (少字段 → 整份解码失败 → 目录变空)。换个文件名 = 旧缓存自然被无视,
 	/// 而页面在"目录是空的"时会自动去拉一次 —— **自愈,不用用户做任何事**。
 	/// (v2:2026-08-08 精选改用新标准,加了 created / 模态两组字段。
-	///  v3:同日,加了 popularity。)
+	///  v3:同日,加了 popularity。
+	///  v4:2026-09-27,热度改用「用量排行」并修掉被变体吃掉热度的 bug —— 旧热度作废,拉一次新的。)
 	private static var cacheURL: URL {
 		let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-		return caches.appendingPathComponent("nnw-openrouter-models-v3.json")
+		return caches.appendingPathComponent("nnw-openrouter-models-v4.json")
 	}
 
-	private static let cacheDateKey = "nnwOpenRouterCatalogDateV3"
+	private static let cacheDateKey = "nnwOpenRouterCatalogDateV4"
 
 	/// 上次成功拉取的时间。没拉过就是 nil。
 	static var lastRefreshed: Date? {
@@ -650,15 +659,55 @@ enum OpenRouterRankings {
 
 		guard !canonicalMap.isEmpty else { return [:] }
 
+		// 先用「用量榜」;拿不到或结构不对,再退回原来的「任务花费榜」
+		if let data = await download(usageURL) {
+			let usage = parseUsage(data, canonicalMap: canonicalMap)
+			if !usage.isEmpty { return usage }
+		}
+		guard let data = await download(url) else { return [:] }
+		return parse(data, canonicalMap: canonicalMap)
+	}
+
+	/// 🔴 2026-09-27:热度改用「用量榜」(按近期 token 用量排,覆盖几乎所有在用的模型)。
+	///
+	/// 原来的「任务花费榜」每个任务只列前 10,整张榜只有三十来个模型,而且按**花费**排、贵的天然靠前 ——
+	/// 便宜又被大量使用的模型(小米 MiMo 当天用量第 7)压根不在榜上,热度一律是 0(用户报「看不到 MiMo」)。
+	/// ⚠️ 同样是 OpenRouter 网站自用的内部接口,随时可能改结构或下线 —— 拿不到就退回花费榜,再不行就按价格排。
+	private static let usageURL = URL(string: "https://openrouter.ai/api/frontend/v1/rankings/models")!
+
+	private static func download(_ url: URL) async -> Data? {
 		var request = URLRequest(url: url)
 		request.timeoutInterval = 20
 		request.setValue("NetNewsWire AI Translation", forHTTPHeaderField: "User-Agent")
-
 		guard let (data, response) = try? await URLSession.shared.data(for: request),
 			  let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+			return nil
+		}
+		return data
+	}
+
+	/// 用量榜:`data` 里一行是一个(模型, 变体),`rankingMetricValue` = 近期总 token 数。
+	/// 只算 standard 变体(`:free` / `:batch` 是另外的模型 id,本来就不进浏览列表)。
+	/// 分数 = 占全部 standard 用量的比例(0~1),只用来排先后。任何一层不对就返回空表。
+	static func parseUsage(_ data: Data, canonicalMap: [String: String]) -> [String: Double] {
+		guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+			  let rows = root["data"] as? [[String: Any]] else {
 			return [:]
 		}
-		return parse(data, canonicalMap: canonicalMap)
+		var tokens = [String: Double]()
+		var total = 0.0
+		for row in rows {
+			guard (row["variant"] as? String ?? "standard") == "standard",
+				  let slug = row["model_permaslug"] as? String else { continue }
+			let value = (row["rankingMetricValue"] as? NSNumber)?.doubleValue
+				?? (((row["total_prompt_tokens"] as? NSNumber)?.doubleValue ?? 0) + ((row["total_completion_tokens"] as? NSNumber)?.doubleValue ?? 0))
+			guard value > 0 else { continue }
+			total += value
+			guard let usableID = canonicalMap[slug] else { continue }
+			tokens[usableID, default: 0] += value
+		}
+		guard total > 0 else { return [:] }
+		return tokens.mapValues { $0 / total }
 	}
 
 	/// 逐层检查,任何一层缺失就返回空表(结构变了宁可没有分数,也不要一份错的)。

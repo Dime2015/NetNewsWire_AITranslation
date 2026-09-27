@@ -1,8 +1,17 @@
 # Babel 2.0 接手说明
 
-## ★ 下一会话从这里开始（2026-09-26 更新）
+## ★ 下一会话从这里开始（2026-09-27 更新）
 
-**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～034、LESSONS.md 第 30～45 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～036、LESSONS.md 第 30～45 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+
+**当前：用户 11 条反馈（ADR-036），分 5 批；第 1 批（长文翻译 7、模型列表 9、冷启动图标 8 前半，ADR-037～039）实现与自动化完成，待用户真机验收（未提交）**
+- 调查结论与第 1 批明细在 STATUS 顶部。用户已批准：整页右滑（改合同）、阅读页内联播放（边界测试精确例外）、智能入口随档位。
+- 用户说「一会儿统一验收」：ADR-035 与第 1 批一起真机验收后再提交（不含 pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行）。
+- 下一批：第 2 批（图片查看 3、播客/YouTube 1、整页右滑 2）。
+
+**待验收：阅读页上拉翻到下一篇（ADR-035）已实现，待用户真机验收（未提交）**
+- 规则与 ∨ 在 `iOS/Babel2/Reader/Babel2ReaderNextPull.swift`（临界点 80pt、∨ 弯曲深度等数字都在这里）。全量 153/153、UI Driver 1/1。详见 STATUS 顶部。
+- 用户验收并说「提交」后：提交（不含 pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行）并推送。
 
 **最近完成：全 App 字号（ADR-033）+ 动效第二、三批（ADR-034）+ 四项反馈修正（ADR-032）——2026-09-26 用户集中验收通过，已提交并推送**
 - 用户原话：「还是有一些不足，但是目前这个阶段，不是那么重要。所以先验收通过」。**不足之处用户尚未具体说明**；下次开工可先问用户哪些地方想再调（多数只需改 `Babel2Type.swift` / `Babel2Motion.swift` 里的数字）。

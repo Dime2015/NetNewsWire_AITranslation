@@ -96,13 +96,16 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 设置「全部标为已读前确认」（Slice 6）；关掉时点底栏按钮直接标记。
 	private let shouldConfirmMarkAllRead: @MainActor () -> Bool
 	private let feedActions: Babel2FeedActions?
+	private let currentIcon: (@MainActor () -> Data?)?
 	/// 大图标题（重命名后更新）。
 	private var displayTitle: String
 	/// 用户亲手点了刷新：同步结束时重新加载一次列表（后台自动同步不重载，避免列表突然跳动）。
 	private var userRefreshTask: Task<Void, Never>?
 	private var isShowingSync = false
 
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil) {
+	/// - currentIcon: 这个源此刻的小图标。打开页面时图标还没到的，之后据此补上（ADR-039）。
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil, currentIcon: (@MainActor () -> Data?)? = nil) {
+		self.currentIcon = currentIcon
 		self.shouldConfirmMarkAllRead = confirmMarkAllRead
 		self.feedActions = feedActions
 		self.displayTitle = feed.title
@@ -151,9 +154,27 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		updateSyncState()
 		statusRefreshTimer?.invalidate()
 		statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-			MainActor.assumeIsolated { self?.refreshStatusesInPlace() }
+			MainActor.assumeIsolated {
+				self?.refreshFeedIconIfMissing()
+				self?.refreshStatusesInPlace()
+			}
 		}
 	}
+
+	/// 打开页面时订阅源图标还没到（冷启动常见）：之后每次数据变化看一眼，到了就补到窄栏与每一行（ADR-039）。
+	/// 以前这一页一直显示首字母，要退出再进才有图标。
+	private func refreshFeedIconIfMissing() {
+		guard feedIconImage == nil, let data = currentIcon?(), let image = UIImage(data: data) else { return }
+		feedIconImage = image
+		compactBar?.setIcon(image, title: displayTitle)
+		for case let cell as Babel2ArticleCell in tableView.visibleCells {
+			cell.setFeedIcon(image)
+		}
+	}
+
+	/// 仅供自动化测试。
+	var hasFeedIconForTesting: Bool { feedIconImage != nil }
+	func refreshFeedIconForTesting() { refreshFeedIconIfMissing() }
 
 	/// 重新读取这个订阅源所有文章的最新状态，只替换已显示的行（用户 2026-09-24 选定方案 A）：
 	/// 不增删行、不改顺序、不动滚动位置、不显示加载中。例如「未读」档里刚读完的文章
@@ -1302,6 +1323,14 @@ private final class Babel2ArticleCell: UITableViewCell {
 		summaryLabel.attributedText = nil
 		titleLabel.attributedText = nil
 		dateLabel.attributedText = nil
+	}
+
+	/// 图标晚到时只换图标（ADR-039）。
+	func setFeedIcon(_ icon: UIImage?) {
+		guard let icon else { return }
+		feedIconView.image = icon
+		feedIconView.backgroundColor = .clear
+		feedInitialLabel.text = nil
 	}
 
 	func configure(article: ArticleSnapshot, feedTitle: String, feedIcon: UIImage?, imageProvider: any ImageProviding) {

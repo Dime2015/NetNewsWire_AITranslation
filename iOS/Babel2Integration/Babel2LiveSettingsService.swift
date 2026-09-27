@@ -205,6 +205,8 @@ final class Babel2LiveSettingsService: Babel2SettingsService {
 		Self.convert(OpenRouterCatalog.cached())
 	}
 
+	var translationModelsLastRefreshed: Date? { OpenRouterCatalog.lastRefreshed }
+
 	func refreshTranslationModels() async throws -> [Babel2TranslationModel] {
 		let models = try await OpenRouterCatalog.fetchAll(baseURL: TranslationConfigStore.baseURL)
 		return Self.convert(models)
@@ -214,7 +216,20 @@ final class Babel2LiveSettingsService: Babel2SettingsService {
 	private static func convert(_ models: [OpenRouterCatalogModel]) -> [Babel2TranslationModel] {
 		models
 			.filter { $0.isBrowseWorthy && !$0.isLatestAlias && !$0.isFreeVariant }
-			.map { Babel2TranslationModel(id: $0.id, name: shortName($0.name), vendor: $0.vendor, popularity: $0.popularity, created: $0.created) }
+			.map { model in
+				Babel2TranslationModel(id: model.id, name: shortName(model.name), vendor: model.vendor, popularity: model.popularity, created: model.created,
+					usdPerArticle: model.estimatedUSDPerArticle, priceText: priceText(usdPerArticle: model.estimatedUSDPerArticle))
+			}
+	}
+
+	/// 行尾价格（ADR-038）：中文界面按估算汇率显示人民币「≈¥0.02/篇」，其它语言显示美元。
+	/// 「一篇」按 4000 token 进、4000 token 出估算（与旧版模型页同一口径），只用来比较便宜贵。
+	private static func priceText(usdPerArticle: Double) -> String? {
+		guard usdPerArticle > 0 else { return nil }
+		let isChinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+		let amount = isChinese ? usdPerArticle * OpenRouterCatalog.usdToCNY : usdPerArticle
+		let number = amount < 0.01 ? String(format: "%.3f", amount) : String(format: "%.2f", amount)
+		return Babel2SettingsText.f("≈%@ per article", (isChinese ? "¥" : "$") + number)
 	}
 
 	func vendorLogo(_ vendor: String, traits: UITraitCollection) -> UIImage? {

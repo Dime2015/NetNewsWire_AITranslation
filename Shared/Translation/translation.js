@@ -218,6 +218,13 @@
 			if (!element) {
 				return false;
 			}
+			// 🔴 2026-09-27:译文**只有标签、没有字**就拒收 —— 否则标题元素被清空,
+			// 页面上的标题却还是原文(原生标题只在拿到非空文字时才同步),看着像"没翻"又回不去。
+			var probe = document.createElement("div");
+			probe.innerHTML = translatedHTML;
+			if (normalizeSpace(probe.textContent).length === 0 && normalizeSpace(element.textContent).length > 0) {
+				return false;
+			}
 			if (this.originalTitleHTML === null) {
 				this.originalTitleHTML = element.innerHTML;
 			}
@@ -305,6 +312,8 @@
 
 			this.groupOriginalHTML = {};
 			this.groupOriginalText = {};
+			// 拆组重翻(splitGroup)用的新组号从这里往上发,远大于这里切出的组号,互不冲突
+			this.nextSplitGroup = 1000;
 
 			// 先挑出需要翻译的单元(没有文字的纯图片、分隔线跳过 —— 省钱也省时间)。
 			//
@@ -846,6 +855,21 @@
 				return false;
 			}
 
+			// 🔴 2026-09-27:**标签都在、文字没了**也拒收(用户报「长文翻译后正文一片空白」)。
+			//
+			// 上面那道闸只数块级元素的个数。模型偶尔会回 `<p></p><p></p>` 这种"结构完整、
+			// 一个字没有"的东西 —— 个数对得上,照收不误,整组就变成了空白;自检那一步
+			// 也只查"还是英文 / 混进原文",空白两样都不是,于是状态显示"已翻译",页面却是白的。
+			// 判据:原文至少 20 个字,而译文不到原文的一成(英译中正常约为原文的三到五成)。
+			var oldTextLength = 0;
+			for (var t = 0; t < oldNodes.length; t++) {
+				oldTextLength += normalizeSpace(oldNodes[t].textContent).length;
+			}
+			var newTextLength = normalizeSpace(temp.textContent).length;
+			if (oldTextLength >= 20 && newTextLength < oldTextLength * 0.1) {
+				return false;
+			}
+
 			var anchor = oldNodes[0];
 			var parent = anchor.parentNode;
 			while (temp.firstChild) {
@@ -860,6 +884,77 @@
 			if (this.skeletonWatchdogTimer) {
 				this.armSkeletonWatchdog();
 			}
+			return true;
+		},
+
+		/// 🔴 2026-09-27:一组翻译失败了(模型漏段/合并段落/超时),把它**拆成一段一组**重翻。
+		///
+		/// 为什么:以前失败的组会原样再发一次 —— 同样大的一组、同样的模型,多半同样失败,
+		/// 于是长文后半截整组整组地留着英文(用户报「长文翻译会失败、依然显示原文」)。
+		/// 一段一组时模型几乎不会再漏段;代价是多几次小请求(并发发出)。
+		///
+		/// 做法:给这一组的每个节点换一个新组号(从 nextSplitGroup 往上发),
+		/// 返回每段的**原文** HTML。节点此刻可能裹着骨架色条(markPending 加的那层 span),
+		/// 要在副本上把那层皮脱掉再交出去 —— 否则模型会把色条的 class 一起"保留"回来,译文就是透明的。
+		/// 只有一个节点的组拆无可拆,返回 "[]"(调用方改走普通重试)。
+		splitGroup: function (group) {
+			var element = findBodyElement();
+			if (!element) {
+				return JSON.stringify([]);
+			}
+			var nodes = element.querySelectorAll('[data-nnw-group="' + group + '"]');
+			if (nodes.length <= 1) {
+				return JSON.stringify([]);
+			}
+			if (typeof this.nextSplitGroup !== "number") {
+				this.nextSplitGroup = 1000;
+			}
+			var result = [];
+			for (var i = 0; i < nodes.length; i++) {
+				var node = nodes[i];
+				var newGroup = this.nextSplitGroup++;
+				node.setAttribute("data-nnw-group", String(newGroup));
+				var copy = node.cloneNode(true);
+				var skins = copy.querySelectorAll(".nnw-tr-skel");
+				for (var s = 0; s < skins.length; s++) {
+					var skin = skins[s];
+					while (skin.firstChild) {
+						skin.parentNode.insertBefore(skin.firstChild, skin);
+					}
+					skin.parentNode.removeChild(skin);
+				}
+				this.groupOriginalHTML[newGroup] = copy.outerHTML;
+				this.groupOriginalText[newGroup] = normalizeSpace(copy.textContent);
+				result.push({ group: newGroup, html: copy.outerHTML });
+			}
+			delete this.groupOriginalHTML[group];
+			delete this.groupOriginalText[group];
+			return JSON.stringify(result);
+		},
+
+		/// 正文**看得见的**文字有多少(2026-09-27,防空白兜底用)。
+		/// 用 innerText 而不是 textContent:被 display:none 藏起来的字不算。
+		visibleTextLength: function () {
+			var element = findBodyElement();
+			return element ? String(normalizeSpace(element.innerText).length) : "0";
+		},
+
+		/// 🔴 2026-09-27:宿主在**同一个网页里**换了正文(Babel 2.0 切阅读模式、重试)时调用。
+		///
+		/// 本脚本把「原文备份 / 是否在显示译文 / 分组」都记在自己身上,原先的假设是
+		/// "换正文 = 整页重新加载 = 这些记忆自然清零"。Babel 2.0 的阅读页不重新加载,
+		/// 记忆就过期了:实测切到全文后点「原文」会跳回摘要,点「翻译」会直接"还原"成英文。
+		/// 这里停掉看门狗、拆掉流式临时容器,然后把自己整个删掉 —— 下次注入就是一份全新的状态。
+		dispose: function () {
+			if (this.skeletonWatchdogTimer) {
+				clearTimeout(this.skeletonWatchdogTimer);
+				this.skeletonWatchdogTimer = null;
+			}
+			if (this.streamLeadContainer && this.streamLeadContainer.parentNode) {
+				this.streamLeadContainer.parentNode.removeChild(this.streamLeadContainer);
+			}
+			this.streamLeadContainer = null;
+			delete window.nnwTranslation;
 			return true;
 		},
 
@@ -897,8 +992,10 @@
 				currentText = normalizeSpace(currentText);
 
 				var originalText = this.groupOriginalText[group] || "";
+				// 2026-09-27:译文几乎没字(原文 ≥ 20 字,译文不到一成)也算没翻好 —— 见 applyGroup 的空白闸
+				var nearlyEmpty = originalText.length >= 20 && currentText.length < originalText.length * 0.1;
 
-				if (looksUntranslated(currentText) || containsOriginalEcho(currentText, originalText)) {
+				if (nearlyEmpty || looksUntranslated(currentText) || containsOriginalEcho(currentText, originalText)) {
 					result.push({ group: parseInt(group, 10), html: this.groupOriginalHTML[group] });
 				}
 			}

@@ -169,6 +169,13 @@ final class Babel2FeedCompactBar: UIView {
 	/// 仅供自动化测试观察：纸色底的不透明度（1 = 完全不透明）。
 	var backdropAlphaForTesting: CGFloat { backdrop.alpha }
 
+	/// 图标晚到时补上（ADR-039）。
+	func setIcon(_ icon: UIImage?, title: String) {
+		iconView.image = icon
+		iconView.backgroundColor = icon == nil ? BabelPalette.hairline : .clear
+		initialLabel.text = icon == nil ? title.first.map { String($0).uppercased() } : nil
+	}
+
 	init(title: String, icon: UIImage?) {
 		searchField = Babel2FeedSearchField(
 			placeholder: String(format: Babel2Localization.text(.searchFeedPlaceholder), title),

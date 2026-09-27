@@ -17,7 +17,11 @@ struct OpenAICompatibleTranslator: StreamingTranslationService {
 
 	/// 单次请求的超时。一块正文通常不长,60 秒足够;
 	/// 设太长的话,某一块卡住会让整篇迟迟翻不完。
-	private static let requestTimeout: TimeInterval = 60
+	///
+	/// 60 → 120(2026-09-27,用户报长文翻译失败):非流式请求要等模型整组写完才开始回数据,
+	/// 慢服务商上一组实测能到 80 多秒(T5),60 秒会把"慢但能成"的组判成失败。
+	/// 真正卡住的请求照样有对冲兜底(见 TranslationController.hedgedTranslate)。
+	private static let requestTimeout: TimeInterval = 120
 
 	// MARK: - 提示词
 

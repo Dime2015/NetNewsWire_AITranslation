@@ -82,7 +82,9 @@ enum Babel2SceneComposition {
 							openURL(url)
 						}
 					}
-				)
+				),
+				// 打开时图标还没到的，之后补上（ADR-039）
+				currentIcon: { Babel2LiveIconCache.currentIconData(for: feed.id) }
 			)
 			feedViewController.onScopeChanged = { [weak root] scope in
 				root?.applyScope(scope)
@@ -93,7 +95,8 @@ enum Babel2SceneComposition {
 					article: article,
 					environment: resolvedEnvironment,
 					feedTitle: feed.title,
-					feedIconData: feed.iconData,
+					// 用此刻的图标（列表打开后图标才到的也能用上，ADR-039）
+					feedIconData: Babel2LiveIconCache.currentIconData(for: feed.id) ?? feed.iconData,
 					hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) },
 					feedReaderModeSetting: Babel2FeedReaderModeSetting(
 						isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },

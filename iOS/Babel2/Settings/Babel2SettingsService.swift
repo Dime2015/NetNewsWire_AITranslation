@@ -54,6 +54,8 @@ protocol Babel2SettingsService: AnyObject {
 	func cachedTranslationModels() -> [Babel2TranslationModel]
 	/// 联网刷新模型目录。
 	func refreshTranslationModels() async throws -> [Babel2TranslationModel]
+	/// 模型目录上次联网刷新的时间（nil = 从没刷新过）。超过 3 天打开页面时自动刷新（ADR-038）。
+	var translationModelsLastRefreshed: Date? { get }
 	func vendorLogo(_ vendor: String, traits: UITraitCollection) -> UIImage?
 	func vendorDisplayName(_ vendor: String) -> String
 
@@ -143,16 +145,23 @@ struct Babel2TranslationModel: Equatable {
 	let id: String
 	let name: String
 	let vendor: String
-	/// 热度（OpenRouter 排行分数，0 = 没有排行数据）。
+	/// 热度（OpenRouter 用量占比，0 = 没有排行数据）。
 	let popularity: Double
 	let created: Double
+	/// 翻一篇文章的估算成本（美元），用来挑「最便宜的」；0 = 未标价。
+	var usdPerArticle: Double = 0
+	/// 行尾显示的价格，例如「≈¥0.003/篇」；nil = 不显示。
+	var priceText: String?
 }
 
-/// 翻译模型页的排行规则（SETTINGS-IA-SPEC / 产品合同：热门前 10 + 每个服务商恰好 3 个，刷新在最上方）。纯计算，可直接测试。
+/// 翻译模型页的排行规则（2026-09-27 用户要求改，ADR-038）：
+/// 热门前 10；再按服务商总用量挑最热的 12 家，每家最多 5 个——最热门的 3 个 + 剩下里最便宜的 2 个。
+/// 纯计算，可直接测试。
 enum Babel2TranslationModelRanking {
 	static let topCount = 10
-	static let perVendorCount = 3
-	static let vendorCount = 10
+	static let vendorCount = 12
+	static let popularPerVendor = 3
+	static let cheapestPerVendor = 2
 
 	struct VendorGroup: Equatable {
 		let vendor: String
@@ -164,20 +173,25 @@ enum Babel2TranslationModelRanking {
 		Array(models.filter { $0.popularity > 0 }.sorted(by: morePopular).prefix(topCount))
 	}
 
-	/// 按服务商分组：每组恰好 3 个最热门的模型（不足 3 个的服务商不列出），
-	/// 组按组内最高热度排序，最多 10 组。
+	/// 按服务商分组：每组先放最热门的 3 个，再从剩下的里补最便宜的 2 个（不足就有几个放几个）；
+	/// 组按这家所有模型的总热度排序（一样时模型多的在前，再按名字），最多 12 组。
 	static func vendorGroups(_ models: [Babel2TranslationModel]) -> [VendorGroup] {
 		let byVendor = Dictionary(grouping: models, by: \.vendor)
-		let groups = byVendor.compactMap { vendor, list -> VendorGroup? in
-			let picked = Array(list.sorted(by: morePopular).prefix(perVendorCount))
-			guard picked.count == perVendorCount else { return nil }
-			return VendorGroup(vendor: vendor, models: picked)
+		let ranked = byVendor.map { vendor, list -> (group: VendorGroup, total: Double, count: Int) in
+			let popular = Array(list.sorted(by: morePopular).prefix(popularPerVendor))
+			let picked = Set(popular.map(\.id))
+			let cheapest = list
+				.filter { !picked.contains($0.id) && $0.usdPerArticle > 0 }
+				.sorted { lhs, rhs in lhs.usdPerArticle != rhs.usdPerArticle ? lhs.usdPerArticle < rhs.usdPerArticle : morePopular(lhs, rhs) }
+				.prefix(cheapestPerVendor)
+			let total = list.reduce(0) { $0 + $1.popularity }
+			return (VendorGroup(vendor: vendor, models: popular + cheapest), total, list.count)
 		}
-		return Array(groups.sorted { lhs, rhs in
-			let left = lhs.models.first?.popularity ?? 0
-			let right = rhs.models.first?.popularity ?? 0
-			return left != right ? left > right : lhs.vendor < rhs.vendor
-		}.prefix(vendorCount))
+		return Array(ranked.sorted { lhs, rhs in
+			if lhs.total != rhs.total { return lhs.total > rhs.total }
+			if lhs.count != rhs.count { return lhs.count > rhs.count }
+			return lhs.group.vendor < rhs.group.vendor
+		}.prefix(vendorCount).map(\.group))
 	}
 
 	/// 热度高的在前；一样时新的在前，再按编号保证顺序稳定。

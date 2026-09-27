@@ -184,6 +184,52 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(all.transform, .identity, "released button returns to full size")
 	}
 
+	// MARK: - 上拉翻篇（ADR-035）
+
+	func testNextPullShapeFlattensAndDarkensUntilThreshold() {
+		XCTAssertEqual(Babel2ReaderNextPull.progress(overscroll: -10), 0)
+		XCTAssertEqual(Babel2ReaderNextPull.progress(overscroll: 40), 0.5, accuracy: 0.001)
+		XCTAssertEqual(Babel2ReaderNextPull.progress(overscroll: 200), 1, "clamped at threshold")
+		XCTAssertEqual(Babel2ReaderNextPull.depth(progress: 0), Babel2ReaderNextPull.restingDepth)
+		XCTAssertLessThan(Babel2ReaderNextPull.depth(progress: 0.5), Babel2ReaderNextPull.restingDepth, "flatter as you pull")
+		XCTAssertEqual(Babel2ReaderNextPull.depth(progress: 1), 0, "a straight line at the threshold")
+		XCTAssertEqual(Babel2ReaderNextPull.opacity(overscroll: 0), 0)
+		XCTAssertEqual(Babel2ReaderNextPull.opacity(overscroll: 100), 1)
+		XCTAssertFalse(Babel2ReaderNextPull.isArmed(overscroll: 79))
+		XCTAssertTrue(Babel2ReaderNextPull.isArmed(overscroll: 80))
+		XCTAssertTrue(Babel2ReaderNextPull.shouldCommit(overscrollAtRelease: 90, hasNext: true))
+		XCTAssertFalse(Babel2ReaderNextPull.shouldCommit(overscrollAtRelease: 60, hasNext: true), "pulled back below threshold → no flip")
+		XCTAssertFalse(Babel2ReaderNextPull.shouldCommit(overscrollAtRelease: 200, hasNext: false), "last article never flips")
+		// 长文章：最底 = 内容高 + 底部留白 − 可见高；短文章（不满一屏）以顶部为底
+		XCTAssertEqual(Babel2ReaderNextPull.overscroll(offsetY: 1294, contentHeight: 2000, boundsHeight: 800, insetTop: 100, insetBottom: 72), 22)
+		XCTAssertEqual(Babel2ReaderNextPull.overscroll(offsetY: -70, contentHeight: 300, boundsHeight: 800, insetTop: 100, insetBottom: 72), 30)
+	}
+
+	/// 阅读页：拉过临界点松手 → 走「下一篇」同一条路径；没过线或没有下一篇 → 不翻，最后一篇不显示 ∨。
+	func testReaderNextPullCommitsOnlyPastThresholdWithNextArticle() {
+		let reader = makeReader(body: "<p>Body</p>")
+		reader.loadViewIfNeeded()
+		let next = ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "next"), title: "Next", url: nil, feedID: FeedSnapshot.ID(accountID: "account", feedID: "feed"))
+		var shown = [ArticleSnapshot.ID]()
+		reader.onShowNext = { shown.append($0.id) }
+
+		reader.nextArticleProvider = { nil }
+		XCTAssertFalse(reader.simulateNextPullForTesting(overscroll: 120).visible, "last article: no arrow")
+		reader.releaseNextPullForTesting(overscroll: 120)
+		XCTAssertTrue(shown.isEmpty)
+
+		reader.nextArticleProvider = { next }
+		let halfway = reader.simulateNextPullForTesting(overscroll: 40)
+		XCTAssertTrue(halfway.visible)
+		XCTAssertEqual(halfway.progress, 0.5, accuracy: 0.001)
+		reader.releaseNextPullForTesting(overscroll: 40)
+		XCTAssertTrue(shown.isEmpty, "released before the threshold")
+
+		_ = reader.simulateNextPullForTesting(overscroll: 95)
+		reader.releaseNextPullForTesting(overscroll: 95)
+		XCTAssertEqual(shown, [next.id])
+	}
+
 	/// 同步箭头：开始时加上转动；停止后不再算作转动，图形最终回到正位（模型值无旋转）。
 	func testSyncSpinnerStartsAndSettles() {
 		let host = UIViewController()
@@ -728,12 +774,16 @@ final class Babel2FeedReaderTests: XCTestCase {
 	}
 
 	/// 翻译模型：热门前 10 按热度；每个服务商恰好 3 个（不足 3 个的不列）；选择在保存后才生效。
+	/// 模型页排行（ADR-038）：热门前 10；按服务商总热度挑 12 家，每家最热 3 个 + 剩下最便宜 2 个；
+	/// 模型少的服务商也列出；每行行尾显示价格；超过 3 天没刷新算过期。
 	func testTranslationModelRankingAndEditor() throws {
 		var models = [Babel2TranslationModel]()
-		for vendor in 0..<12 {
-			for index in 0..<(vendor == 11 ? 2 : 4) {
+		for vendor in 0..<14 {
+			for index in 0..<(vendor == 13 ? 2 : 7) {
+				// 热度随编号递减；价格：编号越大越便宜（最便宜的两个是 m6、m5）
 				models.append(Babel2TranslationModel(id: "v\(vendor)/m\(index)", name: "V\(vendor) M\(index)", vendor: "v\(vendor)",
-					popularity: Double(100 - vendor * 5 - index), created: 0))
+					popularity: Double(100 - vendor * 5 - index), created: 0,
+					usdPerArticle: Double(10 - index) / 1000, priceText: "≈¥0.0\(10 - index)/篇"))
 			}
 		}
 		let top = Babel2TranslationModelRanking.top(models)
@@ -741,10 +791,25 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(top.first?.id, "v0/m0")
 		XCTAssertEqual(top.map(\.popularity), top.map(\.popularity).sorted(by: >))
 		let groups = Babel2TranslationModelRanking.vendorGroups(models)
-		XCTAssertEqual(groups.count, 10, "at most 10 vendors")
-		XCTAssertTrue(groups.allSatisfy { $0.models.count == 3 }, "exactly 3 per vendor")
-		XCTAssertFalse(groups.contains { $0.vendor == "v11" }, "vendors with fewer than 3 models are left out")
-		XCTAssertEqual(groups.first?.vendor, "v0")
+		XCTAssertEqual(groups.count, 12, "at most 12 vendors")
+		XCTAssertEqual(groups.first?.vendor, "v0", "ordered by the vendor's total popularity")
+		XCTAssertEqual(groups.first?.models.map(\.id), ["v0/m0", "v0/m1", "v0/m2", "v0/m6", "v0/m5"], "3 most popular + 2 cheapest")
+		XCTAssertTrue(groups.allSatisfy { $0.models.count <= 5 })
+
+		// 模型少的服务商也要列出（以前不足 3 个就整家不显示——小米就是这样没了）
+		let fewModels = [
+			Babel2TranslationModel(id: "xiaomi/mimo", name: "MiMo", vendor: "xiaomi", popularity: 0.3, created: 0, usdPerArticle: 0.001),
+			Babel2TranslationModel(id: "big/a", name: "A", vendor: "big", popularity: 0.1, created: 0, usdPerArticle: 0.01),
+			Babel2TranslationModel(id: "big/b", name: "B", vendor: "big", popularity: 0.1, created: 0, usdPerArticle: 0.02),
+			Babel2TranslationModel(id: "big/c", name: "C", vendor: "big", popularity: 0.05, created: 0, usdPerArticle: 0.03)
+		]
+		let fewGroups = Babel2TranslationModelRanking.vendorGroups(fewModels)
+		XCTAssertEqual(fewGroups.map(\.vendor), ["xiaomi", "big"])
+		XCTAssertEqual(fewGroups.first?.models.map(\.id), ["xiaomi/mimo"])
+
+		XCTAssertTrue(Babel2SettingsTranslationModelViewController.isStale(nil))
+		XCTAssertFalse(Babel2SettingsTranslationModelViewController.isStale(Date().addingTimeInterval(-2 * 24 * 3600)))
+		XCTAssertTrue(Babel2SettingsTranslationModelViewController.isStale(Date().addingTimeInterval(-4 * 24 * 3600)))
 
 		let service = FakeSettingsService()
 		service.models = models
@@ -756,10 +821,27 @@ final class Babel2FeedReaderTests: XCTestCase {
 		navigation.pushBabel2(editor, animated: false)
 		editor.loadViewIfNeeded()
 		XCTAssertNotNil(descendant(of: editor.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.settings.translation-model.refresh" }, "refresh button on top")
+		let row = try XCTUnwrap(descendant(of: editor.view, matching: Babel2SettingsChoiceRow.self) { $0.accessibilityIdentifier == "babel2.settings.translation-model.option.v0/m6" })
+		XCTAssertEqual(row.detailLabel.text, "≈¥0.04/篇", "price shown at the end of the row")
 		editor.chooseForTesting("v3/m1")
 		XCTAssertEqual(service.translationModelID, "v0/m0", "not applied before save")
 		editor.saveTapped()
 		XCTAssertEqual(service.translationModelID, "v3/m1")
+	}
+
+	/// 模型目录（ADR-038）：热度记在正主模型上，不被共用同一带日期写法的 `:batch` / `:free` 变体吃掉；
+	/// 用量榜只算 standard 变体，分数是占总用量的比例。
+	func testModelCatalogCreditsPopularityToBaseModelsNotVariants() throws {
+		let catalog = #"{"data":[{"id":"deepseek/deepseek-v4.1-flash","canonical_slug":"deepseek/deepseek-v4.1-flash-20260910"},{"id":"deepseek/deepseek-v4.1-flash:batch","canonical_slug":"deepseek/deepseek-v4.1-flash-20260910"},{"id":"xiaomi/mimo-v2.5:free","canonical_slug":"xiaomi/mimo-v2.5-20260422"},{"id":"xiaomi/mimo-v2.5","canonical_slug":"xiaomi/mimo-v2.5-20260422"}]}"#
+		let map = OpenRouterCatalog.canonicalMap(from: Data(catalog.utf8))
+		XCTAssertEqual(map["deepseek/deepseek-v4.1-flash-20260910"], "deepseek/deepseek-v4.1-flash", "a later :batch variant must not take over")
+		XCTAssertEqual(map["xiaomi/mimo-v2.5-20260422"], "xiaomi/mimo-v2.5", "the base model replaces an earlier :free variant")
+
+		let usage = #"{"data":[{"model_permaslug":"deepseek/deepseek-v4.1-flash-20260910","variant":"standard","rankingMetricValue":300},{"model_permaslug":"deepseek/deepseek-v4.1-flash-20260910","variant":"batch","rankingMetricValue":900},{"model_permaslug":"xiaomi/mimo-v2.5-20260422","variant":"standard","rankingMetricValue":100}]}"#
+		let scores = OpenRouterRankings.parseUsage(Data(usage.utf8), canonicalMap: map)
+		XCTAssertEqual(scores["deepseek/deepseek-v4.1-flash"] ?? 0, 0.75, accuracy: 0.0001)
+		XCTAssertEqual(scores["xiaomi/mimo-v2.5"] ?? 0, 0.25, accuracy: 0.0001)
+		XCTAssertNil(scores["deepseek/deepseek-v4.1-flash:batch"])
 	}
 
 	/// 账户详情：默认本地账户不显示删除；其它账户可删除。没有 iCloud 账户时不显示 iCloud 存储统计。
@@ -1816,6 +1898,180 @@ final class Babel2FeedReaderTests: XCTestCase {
 		}
 	}
 
+	// MARK: - 长文翻译可靠性（ADR-037，2026-09-27 用户报「长文翻译失败 / 依然显示原文 / 空白」）
+
+	/// 同一网页里重排正文（切阅读模式）后，翻译脚本不能再记着上一版正文：
+	/// 以前这时点「原文」会跳回摘要，点「翻译」会直接“还原”成英文。
+	func testRerenderClearsTranslationScriptMemory() async throws {
+		let viewController = makeReader(body: "<p>Summary only, a short excerpt of the piece.</p>", hostArticle: NSObject(), fullTextProvider: { _, _ in
+			Self.longArticleBody(paragraphs: 3, prefix: "Full")
+		})
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		_ = try await viewController.nnwTranslationApply("<p>摘要的译文。</p>")
+		let showingBefore = try await viewController.nnwTranslationIsShowingTranslation()
+		XCTAssertTrue(showingBefore)
+
+		viewController.toggleReaderMode()
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 200 }
+		let showingAfter = try await viewController.nnwTranslationIsShowingTranslation()
+		XCTAssertFalse(showingAfter, "re-render must forget the previous translation")
+		let restored = try await viewController.nnwTranslationRestore()
+		XCTAssertFalse(restored, "nothing to restore on a freshly rendered body")
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertTrue(text.hasPrefix("Full 0"), "full text stays; got \(text.prefix(40))")
+	}
+
+	/// 「总是阅读模式」的源：全文还没到就点了翻译 → 先排队（显示「生成中」、不翻摘要），
+	/// 全文排好后自动翻全文；再点「原文」回到的是全文而不是摘要。
+	func testTranslateTappedBeforeFullTextArrivesWaitsThenTranslatesFullText() async throws {
+		let restore = useFakeTranslationServer()
+		defer { restore() }
+		let gate = Babel2TestGate()
+		var alwaysOn = true
+		let setting = Babel2FeedReaderModeSetting(isAlwaysOn: { alwaysOn }, setAlwaysOn: { alwaysOn = $0 })
+		let viewController = makeReader(body: "<p>Summary only, a short excerpt of the piece that is long enough to translate here.</p>", hostArticle: NSObject(), fullTextProvider: { _, _ in
+			await gate.wait()
+			return Self.longArticleBody(paragraphs: 12, prefix: "Full")
+		}, feedReaderModeSetting: setting)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitUntil { viewController.isTranslationReadyForTesting }
+
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		XCTAssertTrue(viewController.isTranslationQueuedForTesting)
+		XCTAssertEqual(viewController.toolbarView.translationToggle.displayedText.caption, "生成中")
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertEqual(FakeTranslationServer.requestCount, 0, "the summary is not translated while the full text is on its way")
+
+		gate.open()
+		await waitForTranslation(viewController, toReach: .translated)
+		XCTAssertFalse(viewController.isTranslationQueuedForTesting)
+		let translated = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertGreaterThan(Self.cjkRatio(translated), 0.9, "the full text is translated")
+
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		await waitForTranslation(viewController, toReach: .original)
+		let original = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertTrue(original.hasPrefix("Full 0"), "show original returns the full text, not the summary; got \(original.prefix(40))")
+	}
+
+	/// 正在看译文时切到全文：新正文自动接着翻（不再变回英文）。
+	func testSwitchingReaderModeWhileViewingTranslationTranslatesNewText() async throws {
+		let restore = useFakeTranslationServer()
+		defer { restore() }
+		let viewController = makeReader(body: "<p>Summary only, a short excerpt of the piece that is long enough to translate here.</p>", hostArticle: NSObject(), fullTextProvider: { _, _ in
+			Self.longArticleBody(paragraphs: 8, prefix: "Full")
+		})
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitUntil { viewController.isTranslationReadyForTesting }
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		await waitForTranslation(viewController, toReach: .translated)
+
+		viewController.toggleReaderMode()
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 500 }
+		await waitForTranslation(viewController, toReach: .translated)
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertGreaterThan(text.count, 500)
+		XCTAssertGreaterThan(Self.cjkRatio(text), 0.9, "the new full text is translated automatically")
+	}
+
+	/// 模型对多段的组总是漏段（被拒收）：失败的组拆成一段一组重翻，最终整篇译完。
+	func testFailedGroupsAreSplitIntoSingleParagraphsAndRetried() async throws {
+		let restore = useFakeTranslationServer(.dropParagraphs(atLeast: 2))
+		defer { restore() }
+		let viewController = makeReader(body: Self.longArticleBody(paragraphs: 30), hostArticle: NSObject())
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitUntil { viewController.isTranslationReadyForTesting }
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		await waitForTranslation(viewController, toReach: .translated)
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertGreaterThan(Self.cjkRatio(text), 0.9, "every paragraph ends up translated")
+		let skeletons = await viewController.readerContentView.evaluateForTesting("return document.querySelectorAll('.nnw-tr-skel').length;") as? Int
+		XCTAssertEqual(skeletons, 0)
+	}
+
+	/// 模型回「标签在、文字空」的译文：拒收，原文留在页面上（不能出现一片空白却显示「已译」）。
+	func testBlankModelOutputIsRejectedAndOriginalTextStays() async throws {
+		let restore = useFakeTranslationServer(.blankText)
+		defer { restore() }
+		let viewController = makeReader(body: Self.longArticleBody(paragraphs: 6), hostArticle: NSObject())
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await waitUntil { viewController.isTranslationReadyForTesting }
+		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
+		await waitForTranslation(viewController, toReach: .failed)
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertTrue(text.hasPrefix("Paragraph 0"), "original text stays visible; got \(text.prefix(40))")
+		let skeletons = await viewController.readerContentView.evaluateForTesting("return document.querySelectorAll('.nnw-tr-skel').length;") as? Int
+		XCTAssertEqual(skeletons, 0)
+		viewController.presentedViewController?.dismiss(animated: false)
+	}
+
+	/// 网页脚本两道新闸：空白译文拒收；拆组时交出去的原文不带骨架色条那层皮。
+	func testTranslationScriptRejectsBlankGroupsAndSplitsWithoutSkeletonMarkup() async throws {
+		let viewController = makeReader(body: "<p>First paragraph with enough words to count.</p><p>Second paragraph with enough words too.</p><p>Third paragraph closes the piece nicely.</p>", hostArticle: NSObject())
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		let splitResult = try await viewController.nnwTranslationSplitBody(leadChars: 10, firstGroupChars: 10_000, maxGroupChars: 10_000)
+		let json = try XCTUnwrap(splitResult)
+		let groups = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+		XCTAssertEqual(groups.count, 2, "lead paragraph + one group with the other two")
+		_ = try await viewController.nnwTranslationMarkPending()
+
+		let blankApplied = try await viewController.nnwTranslationApplyGroup(group: 1, translatedHTML: "<p></p><p> </p>")
+		XCTAssertFalse(blankApplied, "tags without text are rejected")
+
+		let piecesResult = try await viewController.nnwTranslationSplitGroup(1)
+		let piecesJSON = try XCTUnwrap(piecesResult)
+		let pieces = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(piecesJSON.utf8)) as? [[String: Any]])
+		XCTAssertEqual(pieces.count, 2)
+		for piece in pieces {
+			let html = try XCTUnwrap(piece["html"] as? String)
+			XCTAssertFalse(html.contains("nnw-tr-skel"), "pieces are sent without the skeleton wrapper")
+			XCTAssertGreaterThanOrEqual(piece["group"] as? Int ?? 0, 1000)
+		}
+		let firstPiece = try XCTUnwrap(pieces.first?["group"] as? Int)
+		let applied = try await viewController.nnwTranslationApplyGroup(group: firstPiece, translatedHTML: "<p>第二段的译文，足够长。</p>")
+		XCTAssertTrue(applied)
+		let singlePieces = try await viewController.nnwTranslationSplitGroup(firstPiece)
+		XCTAssertEqual(singlePieces, "[]", "a single paragraph cannot be split further")
+	}
+
+	private static func longArticleBody(paragraphs: Int, prefix: String = "Paragraph") -> String {
+		(0..<paragraphs).map { index in
+			let sentence = "\(prefix) \(index) talks about writing, craft and the long road of getting good at something difficult. "
+			return (index % 9 == 4 ? "<h2>Section heading number \(index)</h2>" : "") + "<p>" + String(repeating: sentence, count: 6) + "</p>"
+		}.joined()
+	}
+
+	/// 中文字符在字母 + 中文里的占比（判断「翻完了没有」）。
+	private static func cjkRatio(_ text: String) -> Double {
+		var cjk = 0
+		var latin = 0
+		for scalar in text.unicodeScalars {
+			if (0x4E00...0x9FFF).contains(scalar.value) { cjk += 1 } else if CharacterSet.letters.contains(scalar), scalar.isASCII { latin += 1 }
+		}
+		return cjk + latin == 0 ? 0 : Double(cjk) / Double(cjk + latin)
+	}
+
+	/// 等翻译流程到达某个状态（最多约 15 秒；假服务每个请求约 0.05 秒）。
+	private func waitForTranslation(_ viewController: Babel2ArticleViewController, toReach state: TranslationButtonState) async {
+		for _ in 0..<150 {
+			if viewController.translationController.state == state, !viewController.isTranslationQueuedForTesting { return }
+			try? await Task.sleep(for: .milliseconds(100))
+		}
+		XCTFail("Timed out waiting for translation state \(state); now \(viewController.translationController.state)")
+	}
+
 	func testReaderChromeUsesFigmaGeometryAndIcons() async throws {
 		let viewController = makeReader(body: "<p>Body</p>", author: "John Gruber")
 		let window = hostInWindow(viewController)
@@ -2304,6 +2560,92 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(tableView.accessibilityValue, "loaded")
 		await provider.releaseLibraryRequest(.unread, snapshot: LibrarySnapshot(feeds: [feed]))
 		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+	}
+
+	/// 冷启动图标（ADR-039）：重算进行中又来了后台通知（图标一张张到、同步进度），不打断正在进行的重算，
+	/// 只在它算完后再补一次——以前每来一个通知就从头再来，要等通知停了才出结果。
+	func testBackgroundChangesDuringReloadDoNotRestartIt() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed", count: 2)
+		let provider = FakeDataProvider(librarySnapshots: [.unread: LibrarySnapshot(feeds: [feed])])
+		let root = try XCTUnwrap(Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider)).viewControllers.first as? Babel2RootViewController)
+		root.loadViewIfNeeded()
+		root.viewDidAppear(false)
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+
+		await provider.delayNextLibraryRequest(.unread)
+		NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		await waitForLibraryStart(provider, .unread, after: 2)
+		for _ in 0..<5 {
+			NotificationCenter.default.post(name: .babel2LibraryDidChange, object: nil)
+		}
+		try await Task.sleep(for: .milliseconds(200))
+		let restarted = await provider.hasStarted(.unread, atLeast: 3)
+		XCTAssertFalse(restarted, "a reload in progress is not restarted by background changes")
+
+		await provider.releaseLibraryRequest(.unread, snapshot: LibrarySnapshot(feeds: [feed]))
+		await waitForLibraryStart(provider, .unread, after: 3)
+		try await Task.sleep(for: .milliseconds(200))
+		let extra = await provider.hasStarted(.unread, atLeast: 4)
+		XCTAssertFalse(extra, "the changes that arrived meanwhile are folded into exactly one follow-up reload")
+		await waitForRootState(root, scope: .unread, state: "loaded", rows: 1)
+	}
+
+	/// 冷启动图标（ADR-039）：小图标备份存到手机上、冷启动读回；存之前缩到最长边 96 像素。
+	func testFeedIconBackupIsDownscaledAndSurvivesColdStart() async throws {
+		let format = UIGraphicsImageRendererFormat()
+		format.scale = 1
+		let big = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 256), format: format).image { context in
+			UIColor.red.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 512, height: 256))
+		}
+		let data = try XCTUnwrap(Babel2LiveIconCache.compactData(for: big))
+		let decoded = try XCTUnwrap(UIImage(data: data))
+		XCTAssertEqual(decoded.size.width * decoded.scale, 96, accuracy: 0.5)
+		XCTAssertEqual(decoded.size.height * decoded.scale, 48, accuracy: 0.5)
+		let small = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40), format: format).image { context in
+			UIColor.blue.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+		}
+		let smallDecoded = try XCTUnwrap(Babel2LiveIconCache.compactData(for: small).flatMap(UIImage.init(data:)))
+		XCTAssertEqual(smallDecoded.size.width * smallDecoded.scale, 40, accuracy: 0.5, "small icons are not enlarged")
+
+		let key = "test-account|icon-\(UUID().uuidString)"
+		Babel2LiveIconCache.storeForTesting(data, key: key)
+		await Babel2LiveIconCache.saveNowForTesting()
+		Babel2LiveIconCache.reloadFromDiskForTesting()
+		XCTAssertEqual(Babel2LiveIconCache.cachedForTesting(key), data, "the backup is read back after a cold start")
+		Babel2LiveIconCache.removeForTesting(key)
+		await Babel2LiveIconCache.saveNowForTesting()
+	}
+
+	/// 冷启动图标（ADR-039）：文章列表打开时图标还没到，之后到了要补上（以前一直显示首字母）。
+	func testFeedPageFillsInIconThatArrivesLater() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let article = ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a"), title: "A", url: nil, feedID: feedID)
+		let provider = FakeDataProvider(feeds: [feedID: [article]])
+		let format = UIGraphicsImageRendererFormat()
+		format.scale = 1
+		let iconData = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40), format: format).pngData { context in
+			UIColor.green.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+		}
+		final class IconBox { var data: Data? }
+		let available = IconBox()
+		let feedViewController = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all, environment: makeEnvironment(provider: provider),
+			currentIcon: { available.data })
+		let window = hostInWindow(feedViewController)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 1)
+		XCTAssertFalse(feedViewController.hasFeedIconForTesting)
+		feedViewController.refreshFeedIconForTesting()
+		XCTAssertFalse(feedViewController.hasFeedIconForTesting, "still no icon")
+		available.data = iconData
+		feedViewController.refreshFeedIconForTesting()
+		XCTAssertTrue(feedViewController.hasFeedIconForTesting)
+		let icon = try XCTUnwrap(descendant(of: tableView, matching: UIImageView.self) { $0.accessibilityIdentifier == "babel2.article.feed-icon" })
+		XCTAssertNotNil(icon.image, "visible rows get the icon")
 	}
 
 	func testStaleScopeResultCannotPublishAfterLatestIntentChanges() async throws {
@@ -3093,6 +3435,7 @@ private final class FakeSettingsService: Babel2SettingsService {
 	var models = [Babel2TranslationModel]()
 	func cachedTranslationModels() -> [Babel2TranslationModel] { models }
 	func refreshTranslationModels() async throws -> [Babel2TranslationModel] { models }
+	var translationModelsLastRefreshed: Date? = Date()
 	func vendorLogo(_ vendor: String, traits: UITraitCollection) -> UIImage? { nil }
 	func vendorDisplayName(_ vendor: String) -> String { vendor }
 	func openSystemNotificationSettings() {}
@@ -3131,3 +3474,155 @@ private final class FakeSubscriptionService: Babel2SubscriptionService {
 	func makePreview(_ result: Babel2DiscoveryResult, isBusy: @escaping () -> Bool, subscribe: @escaping (@escaping (String?) -> Void) -> Void) -> UIViewController? { nil }
 }
 
+
+// MARK: - 假的翻译服务（ADR-037 的长文翻译测试用，不联网、不花钱）
+
+/// 让一段异步等待停在那里，直到测试手动放行（模拟「全文还在路上」）。
+@MainActor
+private final class Babel2TestGate {
+	private var continuation: CheckedContinuation<Void, Never>?
+	private var isOpen = false
+
+	func wait() async {
+		if isOpen { return }
+		await withCheckedContinuation { continuation = $0 }
+	}
+
+	func open() {
+		isOpen = true
+		continuation?.resume()
+		continuation = nil
+	}
+}
+
+/// 把翻译设置临时指向假服务；返回的闭包把设置原样还回去（API Key 在钥匙串里，也要还原）。
+@MainActor
+private func useFakeTranslationServer(_ mode: FakeTranslationServer.Mode = .normal) -> () -> Void {
+	let defaults = UserDefaults.standard
+	let savedKey = TranslationConfigStore.apiKey
+	let savedBaseURL = defaults.string(forKey: "nnwTranslationBaseURL")
+	let savedModel = defaults.string(forKey: "nnwTranslationSelectedModel")
+	TranslationConfigStore.apiKey = "fake-key"
+	TranslationConfigStore.baseURL = "https://" + FakeTranslationServer.host + "/v1"
+	TranslationConfigStore.selectedModel = "fake/model"
+	FakeTranslationServer.reset(mode: mode)
+	URLProtocol.registerClass(FakeTranslationServer.self)
+	return {
+		URLProtocol.unregisterClass(FakeTranslationServer.self)
+		TranslationConfigStore.apiKey = savedKey
+		if let savedBaseURL { defaults.set(savedBaseURL, forKey: "nnwTranslationBaseURL") } else { defaults.removeObject(forKey: "nnwTranslationBaseURL") }
+		if let savedModel { defaults.set(savedModel, forKey: "nnwTranslationSelectedModel") } else { defaults.removeObject(forKey: "nnwTranslationSelectedModel") }
+	}
+}
+
+/// 假的 OpenAI 兼容翻译服务：把 HTML 里的文字换成等量约六成的「译」字，标签原样保留；支持流式与非流式。
+/// - dropParagraphs：一组里有 N 段以上时只还第一段（模拟模型漏段）
+/// - blankText：标签照还、文字全空（模拟「结构完整、一个字没有」）
+private final class FakeTranslationServer: URLProtocol {
+	enum Mode {
+		case normal
+		case dropParagraphs(atLeast: Int)
+		case blankText
+	}
+
+	static let host = "fake-llm.babel2.test"
+	nonisolated(unsafe) static var requestCount = 0
+	nonisolated(unsafe) static var mode = Mode.normal
+	private var isStopped = false
+	private var payload: (response: HTTPURLResponse, data: Data)?
+
+	static func reset(mode: Mode) {
+		requestCount = 0
+		self.mode = mode
+	}
+
+	override class func canInit(with request: URLRequest) -> Bool {
+		request.url?.host == host
+	}
+
+	override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+	override func startLoading() {
+		Self.requestCount += 1
+		var body = request.httpBody
+		if body == nil, let stream = request.httpBodyStream {
+			stream.open()
+			var data = Data()
+			var buffer = [UInt8](repeating: 0, count: 4096)
+			while stream.hasBytesAvailable {
+				let read = stream.read(&buffer, maxLength: buffer.count)
+				if read <= 0 { break }
+				data.append(buffer, count: read)
+			}
+			stream.close()
+			body = data
+		}
+		let json = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any]
+		let messages = json?["messages"] as? [[String: Any]] ?? []
+		let user = messages.last?["content"] as? String ?? ""
+		let marker = "请翻译下面这段 HTML 片段:\n\n"
+		let chunk = user.range(of: marker).map { String(user[$0.upperBound...]) } ?? user
+		var translated = Self.fakeTranslate(chunk, blank: { if case .blankText = Self.mode { return true } else { return false } }())
+		if case .dropParagraphs(let limit) = Self.mode, chunk.components(separatedBy: "<p").count - 1 >= limit,
+			let firstClose = translated.range(of: "</p>") {
+			translated = String(translated[..<firstClose.upperBound])
+		}
+		let isStream = json?["stream"] as? Bool == true
+		let data: Data
+		if isStream {
+			var text = ""
+			let characters = Array(translated)
+			let size = max(1, characters.count / 3 + 1)
+			for start in stride(from: 0, to: characters.count, by: size) {
+				let part = String(characters[start..<min(start + size, characters.count)])
+				let delta = (try? JSONSerialization.data(withJSONObject: ["choices": [["delta": ["content": part]]]])) ?? Data()
+				text += "data: " + (String(data: delta, encoding: .utf8) ?? "") + "\n\n"
+			}
+			text += "data: [DONE]\n\n"
+			data = Data(text.utf8)
+		} else {
+			data = (try? JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": translated]]]])) ?? Data()
+		}
+		guard let url = request.url,
+			let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+				headerFields: ["Content-Type": isStream ? "text/event-stream" : "application/json"]) else { return }
+		payload = (response, data)
+		// 模拟一点网络延迟；回调必须回到发起加载的那个线程上
+		let thread = Thread.current
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [weak self] in
+			guard let self else { return }
+			self.perform(#selector(self.deliver), on: thread, with: nil, waitUntilDone: false, modes: [RunLoop.Mode.default.rawValue])
+		}
+	}
+
+	@objc private func deliver() {
+		guard !isStopped, let payload else { return }
+		client?.urlProtocol(self, didReceive: payload.response, cacheStoragePolicy: .notAllowed)
+		client?.urlProtocol(self, didLoad: payload.data)
+		client?.urlProtocolDidFinishLoading(self)
+	}
+
+	override func stopLoading() { isStopped = true }
+
+	/// 逐段扫：`<…>` 原样保留，标签之间的文字换成「译」字（blank 时换成空）。
+	static func fakeTranslate(_ html: String, blank: Bool) -> String {
+		var result = ""
+		var index = html.startIndex
+		while index < html.endIndex {
+			if html[index] == "<", let close = html[index...].firstIndex(of: ">") {
+				result += html[index...close]
+				index = html.index(after: close)
+			} else {
+				let next = html[index...].firstIndex(of: "<") ?? html.endIndex
+				let text = html[index..<next]
+				if blank || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+					result += blank ? "" : text
+				} else {
+					result += String(repeating: "译", count: max(2, text.count * 6 / 10))
+				}
+				index = next
+			}
+		}
+		return result
+	}
+}

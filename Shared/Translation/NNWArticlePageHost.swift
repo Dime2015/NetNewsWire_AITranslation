@@ -87,6 +87,20 @@ extension NNWArticlePageHost {
 		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.findGroupsNeedingRetranslation()")
 	}
 
+	/// [翻译] 2026-09-27:把翻译失败的一组拆成一段一组(给重翻用)。
+	/// 返回 JSON 字符串 [{"group":1000,"html":"<原文>"}, ...];只有一段的组返回 "[]"。
+	func nnwTranslationSplitGroup(_ group: Int) async throws -> String? {
+		try await nnwTranslationEnsureScriptInjected()
+		return try await nnwTranslationEvaluateReturningString("window.nnwTranslation.splitGroup(\(group))")
+	}
+
+	/// [翻译] 2026-09-27:正文看得见的文字数(防空白兜底:翻完 / 从缓存恢复后检查)。
+	func nnwTranslationVisibleTextLength() async throws -> Int {
+		try await nnwTranslationEnsureScriptInjected()
+		let text = try await nnwTranslationEvaluateReturningString("window.nnwTranslation.visibleTextLength()")
+		return Int(text ?? "") ?? 0
+	}
+
 	/// 正文的稳定指纹(纯文字,不含 HTML)。用于缓存的"内容变没变"校验。
 	func nnwTranslationBodyFingerprint() async throws -> String? {
 		try await nnwTranslationEnsureScriptInjected()

@@ -56,6 +56,12 @@ final class Babel2ArticleViewController: UIViewController {
 	private(set) var translationHostArticle: AnyObject?
 	private let hostArticleProvider: (@MainActor (ArticleSnapshot.ID) async -> AnyObject?)?
 	private var isTranslationPrepared = false
+	/// 用户想看译文：点了「翻译」、或正在看译文，且没有再点回原文（ADR-037）。
+	/// 正文重排（切阅读模式、重试）后据此自动接着翻——不然切到全文就变回英文。
+	private var wantsTranslation = false
+	/// 翻译已排队：网页一就绪（全文也到了）就开始。全文还在路上时点了「翻译」、或重排前正在看译文时置上；
+	/// 排队期间按钮显示「生成中」，再点一下取消（ADR-037）。
+	private var isTranslationQueued = false
 	/// 阅读模式（全文）：开着时正文显示的是从原网页提取的全文。
 	private(set) var isReaderModeOn = false
 	private var fullTextHTML: String?
@@ -74,7 +80,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private lazy var translation: TranslationController = {
 		let controller = TranslationController(currentWebViewController: { [weak self] in self })
 		controller.stateDidChange = { [weak self] state in
-			self?.toolbar.setTranslationState(state)
+			guard let self else { return }
+			if state == .translated { self.wantsTranslation = true }
+			self.toolbar.setTranslationState(self.isTranslationQueued ? .working : state)
 		}
 		controller.presentError = { [weak self] message in
 			self?.presentTranslationError(message)
@@ -101,6 +109,13 @@ final class Babel2ArticleViewController: UIViewController {
 		didSet { refreshNextAvailability() }
 	}
 	var onShowNext: ((ArticleSnapshot) -> Void)?
+
+	/// 上拉翻篇（ADR-035）：底部的 ∨、这次拖动是否进入了上拉、是否已过临界点、这次有没有下一篇
+	private let nextPullView = Babel2ReaderNextPullView()
+	private let nextPullHaptic = UIImpactFeedbackGenerator(style: .light)
+	private var isNextPullActive = false
+	private var isNextPullArmed = false
+	private var nextPullHasNext = false
 
 	/// 仅供自动化测试观察。
 	var readerContentView: Babel2ReaderContentView { contentView }
@@ -154,6 +169,7 @@ final class Babel2ArticleViewController: UIViewController {
 		configureMessage()
 		contentView.onScrollGeometryChange = { [weak self] in
 			self?.updateChrome()
+			self?.updateNextPull()
 		}
 		contentView.onLinkActivated = { [weak self] url in
 			self?.openLink(url)
@@ -235,7 +251,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private func startRendering(fullText: String? = nil, scrollToTop: Bool = false) {
 		cancelRendering()
 		hideMessage()
-		// 重新排版 = 网页里没有译文了，翻译按钮回到初始并等待重新就绪
+		// 重新排版 = 网页里没有译文了，翻译按钮回到初始并等待重新就绪；
+		// 正在看译文（或刚点了翻译）时先排队，新正文排好后自动接着翻（ADR-037）
+		if wantsTranslation { isTranslationQueued = true }
 		if isTranslationPrepared { translation.resetForNewArticle() }
 		isTranslationPrepared = false
 		toolbar.setTranslationAvailable(false)
@@ -339,7 +357,12 @@ final class Babel2ArticleViewController: UIViewController {
 			isReaderModeOn = false
 			ArticleReadingStateStore.setReaderMode(false, for: readingStateKey)
 			readerModeStateDidChange()
-			if wasOn { startRendering(fullText: nil, scrollToTop: true) }
+			if wasOn {
+				startRendering(fullText: nil, scrollToTop: true)
+			} else if isTranslationQueued, isTranslationPrepared {
+				// 全文还没到就关掉了阅读模式：正文不会重排，排队的翻译现在就翻这版（ADR-037）
+				startQueuedTranslation()
+			}
 		} else {
 			startFullTextFetch(rememberForArticle: true)
 		}
@@ -374,6 +397,8 @@ final class Babel2ArticleViewController: UIViewController {
 				}
 				self.readerModeStateDidChange()
 				self.showStatus(Babel2Localization.text(.unableToFetchFullText), autoHide: true)
+				// 排队等全文的翻译：全文拿不到，就翻现在显示的这版正文（ADR-037）
+				if self.isTranslationQueued, self.isTranslationPrepared { self.startQueuedTranslation() }
 			}
 		}
 		readerModeStateDidChange()
@@ -590,8 +615,49 @@ final class Babel2ArticleViewController: UIViewController {
 		isTranslationPrepared = true
 		toolbar.setTranslationAvailable(true)
 		translation.resetForNewArticle()
-		translation.autoApplyTranslationFromCacheIfNeeded()
+		if isTranslationQueued {
+			// 全文还在路上：继续等，等全文排好这里会再来一次
+			guard fullTextTask == nil else { return }
+			startQueuedTranslation()
+		} else {
+			translation.autoApplyTranslationFromCacheIfNeeded()
+		}
 	}
+
+	/// 底栏「翻译」开关（ADR-037）：
+	/// - 排队中再点 = 取消排队；
+	/// - 翻译中 / 正在看译文时点 = 交给引擎（取消 / 回到原文），并记下「不想看译文了」；
+	/// - 其它 = 想看译文。全文还在路上时先排队（按钮显示「生成中」），全文排好自动开始——
+	///   以前会先翻摘要，全文一到就被悄悄取消，页面变成英文全文（2026-09-27 用户报「依然显示原文」）。
+	func translateTapped() {
+		if isTranslationQueued {
+			isTranslationQueued = false
+			wantsTranslation = false
+			toolbar.setTranslationState(translation.state)
+			return
+		}
+		switch translation.state {
+		case .working, .translated:
+			wantsTranslation = false
+		case .original, .cachedAvailable, .partialCacheAvailable, .failed:
+			wantsTranslation = true
+			if fullTextTask != nil {
+				isTranslationQueued = true
+				toolbar.setTranslationState(.working)
+				return
+			}
+		}
+		translation.toggle()
+	}
+
+	/// 开始排队中的翻译。引擎此刻是「原文」态（刚重置过），点一下 = 翻译；它自己会先查有没有可用的缓存。
+	private func startQueuedTranslation() {
+		isTranslationQueued = false
+		translation.toggle()
+	}
+
+	/// 仅供自动化测试观察。
+	var isTranslationQueuedForTesting: Bool { isTranslationQueued }
 
 	private func presentTranslationError(_ message: String) {
 		let alert = UIAlertController(title: Babel2Localization.text(.translationFailed), message: message, preferredStyle: .alert)
@@ -963,7 +1029,7 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.setRead(isRead)
 		toolbar.setStarred(isStarred)
 		toolbar.onToggleRead = { [weak self] in self?.toggleRead() }
-		toolbar.onTranslate = { [weak self] in self?.translation.toggle() }
+		toolbar.onTranslate = { [weak self] in self?.translateTapped() }
 		toolbar.onToggleReaderMode = { [weak self] in self?.toggleReaderMode() }
 		toolbar.onNext = { [weak self] in self?.showNextArticle() }
 		// 页面一建好就确定 ∨ 能不能点，滑入动画期间状态就是对的（出现后还会再刷新一次）
@@ -972,6 +1038,9 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
 		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）
 		contentView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanChanged(_:)))
+		// 上拉翻篇：∨ 压在底栏下面；正文不满一屏也要能往上拉
+		view.insertSubview(nextPullView, belowSubview: toolbar)
+		contentView.scrollView.alwaysBounceVertical = true
 	}
 
 	/// 正文底部让出底栏高度（系统已自动让出 Home 指示条那部分），最后几行不被挡住。
@@ -1015,6 +1084,83 @@ final class Babel2ArticleViewController: UIViewController {
 				self?.isStatusRequestInFlight = false
 			}
 		}
+	}
+
+	// MARK: - 上拉翻到下一篇（ADR-035）
+
+	/// 正文拉过底部多少 pt（正数 = 在底部橡皮筋区）。
+	private var bottomOverscroll: CGFloat {
+		let scrollView = contentView.scrollView
+		return Babel2ReaderNextPull.overscroll(
+			offsetY: scrollView.contentOffset.y,
+			contentHeight: scrollView.contentSize.height,
+			boundsHeight: scrollView.bounds.height,
+			insetTop: scrollView.adjustedContentInset.top,
+			insetBottom: scrollView.adjustedContentInset.bottom
+		)
+	}
+
+	/// 每次滚动都更新 ∨：只有「手指拖着拉过底」才出现（惯性甩到底的回弹不算）；没有下一篇不出现。
+	private func updateNextPull() {
+		let scrollView = contentView.scrollView
+		let overscroll = bottomOverscroll
+		if overscroll <= 0 {
+			isNextPullActive = false
+			isNextPullArmed = false
+		} else if !isNextPullActive, scrollView.isDragging {
+			isNextPullActive = true
+			nextPullHasNext = nextArticleProvider?() != nil
+			if nextPullHasNext { nextPullHaptic.prepare() }
+		}
+		guard isNextPullActive, nextPullHasNext else {
+			nextPullView.alpha = 0
+			return
+		}
+		nextPullView.apply(progress: Babel2ReaderNextPull.progress(overscroll: overscroll))
+		nextPullView.alpha = Babel2ReaderNextPull.opacity(overscroll: overscroll)
+		let armed = Babel2ReaderNextPull.isArmed(overscroll: overscroll)
+		// 只在手指往上越过临界点的那一下轻震；往回拉不震
+		if armed, !isNextPullArmed, scrollView.isDragging { nextPullHaptic.impactOccurred() }
+		isNextPullArmed = armed
+		positionNextPullView(overscroll: overscroll)
+	}
+
+	/// ∨ 放在正文末尾与底部（底栏上缘；底栏收起时是屏幕可用区底部）之间那块空白的正中，水平居中。
+	private func positionNextPullView(overscroll: CGFloat) {
+		let scrollView = contentView.scrollView
+		guard let scrollFrame = scrollView.superview?.convert(scrollView.frame, to: view) else { return }
+		let contentEnd = scrollFrame.minY + scrollView.bounds.height - scrollView.adjustedContentInset.bottom - overscroll
+		let visibleBottom = min(toolbar.frame.minY, view.bounds.maxY - view.safeAreaInsets.bottom)
+		let centerY = (contentEnd + max(visibleBottom, contentEnd)) / 2
+		nextPullView.center = CGPoint(x: view.bounds.midX, y: centerY)
+	}
+
+	/// 松手：过了临界点且有下一篇 → 翻篇（与底栏 ∨ 同一条路径：自动已读、阅读模式、译文恢复照常）。
+	private func commitNextPullIfArmed() {
+		guard isNextPullActive else { return }
+		// 没过线：保持显示，∨ 随正文回弹慢慢弯回、变浅、消失（回到底部时自动收尾）
+		guard Babel2ReaderNextPull.shouldCommit(overscrollAtRelease: bottomOverscroll, hasNext: nextPullHasNext) else { return }
+		isNextPullActive = false
+		isNextPullArmed = false
+		showNextArticle()
+	}
+
+	/// 仅供自动化测试：模拟「手指拖着拉过底 overscroll pt」与「松手」。
+	func simulateNextPullForTesting(overscroll: CGFloat) -> (visible: Bool, progress: CGFloat) {
+		isNextPullActive = true
+		nextPullHasNext = nextArticleProvider?() != nil
+		if nextPullHasNext {
+			nextPullView.apply(progress: Babel2ReaderNextPull.progress(overscroll: overscroll))
+			nextPullView.alpha = Babel2ReaderNextPull.opacity(overscroll: overscroll)
+		} else {
+			nextPullView.alpha = 0
+		}
+		return (nextPullView.alpha > 0, nextPullView.progress)
+	}
+	func releaseNextPullForTesting(overscroll: CGFloat) {
+		guard isNextPullActive else { return }
+		isNextPullActive = false
+		if Babel2ReaderNextPull.shouldCommit(overscrollAtRelease: overscroll, hasNext: nextPullHasNext) { showNextArticle() }
 	}
 
 	// MARK: - 顶/底栏随上下滑显隐
@@ -1062,7 +1208,10 @@ final class Babel2ArticleViewController: UIViewController {
 
 	@objc private func scrollPanChanged(_ gesture: UIPanGestureRecognizer) {
 		switch gesture.state {
-		case .ended, .cancelled, .failed:
+		case .ended:
+			commitNextPullIfArmed()
+			scheduleSettleIfIdle(afterFingerLifted: true)
+		case .cancelled, .failed:
 			// 此刻滚动区可能还标记为「手指按着」，所以这里不做那项检查
 			scheduleSettleIfIdle(afterFingerLifted: true)
 		default:

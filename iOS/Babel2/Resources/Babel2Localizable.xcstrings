@@ -3451,6 +3451,22 @@
           }
         }
       }
+    },
+    "≈%@ per article" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈%@ per article"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈%@/篇"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -252,7 +252,18 @@ enum TranslationScript {
 
 	/// 单组字符上限。超长文章会自动多分几组,
 	/// 避免一次要模型吐太多内容而被截断(截断会直接丢掉半篇文章)。
-	private static let maxGroupCharacters = 4000
+	///
+	/// 4000 → 2500(2026-09-27,用户报「长文翻译会失败、依然显示原文」):组越大,
+	/// 模型越容易漏段/合并段落(整组被拒收),慢服务商上也越容易等过超时。
+	/// ⚠️ 改这个数会挪动组边界。完整缓存(整篇译文)不受影响;按组存的**未完成缓存**
+	/// 靠 `partialGroupKey` 的版本前缀作废旧条目(不再动 promptGeneration,免得整篇缓存全部白翻)。
+	private static let maxGroupCharacters = 2500
+
+	/// 未完成缓存里「组号 → 译文」的键。带版本前缀:组边界变了就换前缀,旧条目自然对不上、不会被套错。
+	/// 版本史:无前缀 = 组上限 4000;"g2:" = 组上限 2500 + 失败组拆单段(2026-09-27)。
+	private static func partialGroupKey(_ group: Int) -> String {
+		"g2:\(group)"
+	}
 
 	/// 正在进行的翻译任务。换文章时要取消它,
 	/// 否则还在飞的译文会替换到**下一篇文章**的页面上。
@@ -509,11 +520,34 @@ enum TranslationScript {
 				_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 			}
 			if (try? await webViewController.nnwTranslationApply(fullBody)) == true {
+				// 防空白兜底(2026-09-27):恢复出来看不见字 → 退回原文、删掉这条坏缓存,
+				// 免得这篇以后每次打开都自动恢复成一片空白
+				if await Self.pageLooksBlank(webViewController) {
+					_ = try? await webViewController.nnwTranslationRestore()
+					Self.removeCachedTranslation(for: article, model: model)
+					self.state = .original
+					Self.logger.error("[翻译] 自动恢复出来是空白,已退回原文并删除该缓存")
+					return
+				}
 				self.state = .translated
 				self.lastErrorMessage = nil
 				Self.logger.debug("[翻译] 自动恢复:命中完整缓存,零请求")
 			}
 		}
+	}
+
+	/// 删掉这篇文章在这个模型下的缓存(新键和带账户前缀的老键都删,见 lookupCache)。
+	private static func removeCachedTranslation(for article: Article, model: String) {
+		TranslationCache.remove(key: TranslationCache.articleKey(articleID: article.articleID, model: model))
+		TranslationCache.remove(key: TranslationCache.articleKey(articleID: article.accountID + "|" + article.articleID, model: model))
+	}
+
+	/// 页面正文此刻是否一个看得见的字都没有(防空白兜底,2026-09-27)。
+	/// 用网页自己的 innerText 判断(Swift 不解析 HTML,CLAUDE.md 第 5 节)。
+	/// 读不到(页面没了、脚本出错)时按"不空"处理 —— 兜底只在确定空白时出手。
+	private static func pageLooksBlank(_ page: any NNWArticlePageHost) async -> Bool {
+		guard let visible = try? await page.nnwTranslationVisibleTextLength() else { return false }
+		return visible == 0
 	}
 
 	/// 换到另一篇文章时调用,把按钮图标重置成"未翻译"。
@@ -636,11 +670,19 @@ enum TranslationScript {
 								_ = try? await webViewController.nnwTranslationApplyTitle(cachedTitle)
 							}
 							_ = try await webViewController.nnwTranslationApply(fullBody)
-							state = .translated
-							lastErrorMessage = nil
-							recordTranslatedState(true)	// [状态记忆] item③
-							Self.logger.debug("[翻译] 命中完整缓存,零请求")
-							return
+							if await Self.pageLooksBlank(webViewController) {
+								// 防空白兜底(2026-09-27):这条缓存是空白的坏条目 —— 退回原文、删掉它,
+								// 然后**接着往下走一遍正常翻译**(用户点的就是"翻译")
+								_ = try? await webViewController.nnwTranslationRestore()
+								Self.removeCachedTranslation(for: article, model: model)
+								Self.logger.error("[翻译] 完整缓存恢复出来是空白,已删除,改为重新翻译")
+							} else {
+								state = .translated
+								lastErrorMessage = nil
+								recordTranslatedState(true)	// [状态记忆] item③
+								Self.logger.debug("[翻译] 命中完整缓存,零请求")
+								return
+							}
 						} else {
 							partialEntry = cached
 							Self.logger.debug("[翻译] 命中未完成缓存(已有 \(cached.groups?.count ?? 0) 组),接着上次继续")
@@ -648,6 +690,10 @@ enum TranslationScript {
 					}
 				}
 			}
+
+			// 2026-09-27:每次和网页来回一趟之后都看一眼是否已被取消(换文章 / 正文重排)。
+			// 被取消的流程若继续往下走,会在**新正文**上打分组记号、铺骨架色条。
+			try Task.checkCancellation()
 
 			// 1. 让网页把正文切成若干组(第 1 组最小、越往后越大,理由见参数注释)
 			guard let chunksJSON = try await webViewController.nnwTranslationSplitBody(
@@ -665,6 +711,8 @@ enum TranslationScript {
 			// 排查性能问题的关键日志:一眼看清每组多大
 			let sizeSummary = chunks.map { "组\($0.group)=\($0.html.count)字符" }.joined(separator: " ")
 			Self.logger.debug("[翻译] 切分完成:\(sizeSummary, privacy: .public)")
+
+			try Task.checkCancellation()
 
 			// [外观] 2026-08-12:把还没翻的段落先变成淡色条(文字透明、占位不变),
 			// 每组译文落地时再从左往右"填"进去。失败/取消路径在下面的 defer 里统一拆掉。
@@ -730,7 +778,9 @@ enum TranslationScript {
 			//    同时它的译文会作为"示范"传给后面所有组,压住术语漂移(方案 C)。
 			let first = chunks[0]
 			let firstTranslation: String
-			if let cachedLead = partialEntry?.groups?[String(first.group)],
+			// 2026-09-27:先导块的译文可能被网页拒收(模型漏段 / 空白),拒收时下面把它拆成单段重翻
+			var leadApplied = true
+			if let cachedLead = partialEntry?.groups?[Self.partialGroupKey(first.group)],
 			   (try? await webViewController.nnwTranslationApplyGroup(group: first.group,
 																	  translatedHTML: cachedLead)) == true {
 				firstTranslation = cachedLead
@@ -774,10 +824,12 @@ enum TranslationScript {
 				}
 				Self.logger.debug("[翻译] 先导块完成,耗时 \(String(format: "%.1f", Date().timeIntervalSince(leadStartedAt)), privacy: .public)s")
 				try Task.checkCancellation()
-				_ = try await webViewController.nnwTranslationApplyGroup(group: first.group,
+				leadApplied = try await webViewController.nnwTranslationApplyGroup(group: first.group,
 																		 translatedHTML: firstTranslation)
 			}
-			runGroupTranslations[first.group] = firstTranslation
+			if leadApplied {
+				runGroupTranslations[first.group] = firstTranslation
+			}
 
 			// 注意:这里**不**把按钮切成"已完成"。
 			// 全文没翻完就显示完成,会让人以为翻译停了 —— 转圈要一直转到真的全部结束。
@@ -786,8 +838,12 @@ enum TranslationScript {
 			// 4. 其余组:上次翻过的直接复用缓存(零请求),剩下的并行翻。
 			//    组是按"由小到大"切的,天然靠前的先回来 —— 正合顺序阅读的节奏。
 			var work: [TranslationWorkItem] = []
+			if !leadApplied {
+				Self.logger.error("[翻译] 先导块译文被拒收,拆成单段重翻")
+				work.append(contentsOf: await splitPieces(ofGroup: first.group, html: first.html, webViewController: webViewController))
+			}
 			for chunk in chunks.dropFirst() {
-				if let cachedGroup = partialEntry?.groups?[String(chunk.group)],
+				if let cachedGroup = partialEntry?.groups?[Self.partialGroupKey(chunk.group)],
 				   (try? await webViewController.nnwTranslationApplyGroup(group: chunk.group,
 																		  translatedHTML: cachedGroup)) == true {
 					runGroupTranslations[chunk.group] = cachedGroup
@@ -825,6 +881,21 @@ enum TranslationScript {
 
 			try Task.checkCancellation()
 
+			// 7a. 防空白兜底(2026-09-27,用户报「长文翻译后正文一片空白」):
+			//     不管哪一步出了我们没料到的岔子,只要此刻正文一个看得见的字都没有,
+			//     就退回原文、如实报失败,**不存缓存**(否则这篇以后每次打开都自动恢复成空白)。
+			if await Self.pageLooksBlank(webViewController) {
+				Self.logger.error("[翻译] 翻完正文是空白,已退回原文")
+				_ = try? await webViewController.nnwTranslationRestore()
+				_ = try? await webViewController.nnwTranslationClearPending()
+				let message = "这次的译文是空白的,已恢复原文。可以再试一次,或在设置里换一个翻译模型。"
+				lastErrorMessage = message
+				state = .failed
+				recordTranslatedState(false)
+				presentError?(message)
+				return
+			}
+
 			// 7. 真的全部结束了,现在才点亮按钮
 			let totalFailures = failureCount + recheckFailures
 
@@ -861,6 +932,12 @@ enum TranslationScript {
 			Self.logger.debug("[翻译] 已取消,保存未完成进度")
 			savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
 			_ = try? await webViewController.nnwTranslationClearPending()	// [外观] 骨架收尾(取消)
+		} catch where Task.isCancelled {
+			// 2026-09-27:已被取消的流程,之后和网页来回时抛出的任何错误(正文已换、网页在重排)
+			// 都按「取消」处理 —— 不能弹一个莫名其妙的失败框。
+			Self.logger.debug("[翻译] 已取消(取消后出错),保存未完成进度")
+			savePartialProgress(cacheKey: cacheKey, bodyHash: currentBodyHash, run: thisRun)
+			_ = try? await webViewController.nnwTranslationClearPending()
 		} catch {
 			Self.logger.error("[翻译] 失败:\(error.localizedDescription, privacy: .public)")
 			lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -884,7 +961,7 @@ enum TranslationScript {
 		guard let cacheKey, let bodyHash, !runGroupTranslations.isEmpty else {
 			return
 		}
-		let groups = Dictionary(uniqueKeysWithValues: runGroupTranslations.map { (String($0.key), $0.value) })
+		let groups = Dictionary(uniqueKeysWithValues: runGroupTranslations.map { (Self.partialGroupKey($0.key), $0.value) })
 		TranslationCache.store(key: cacheKey,
 							   CachedTranslation(bodyHash: bodyHash,
 												 titleHTML: runTitleTranslation,
@@ -1083,6 +1160,8 @@ enum TranslationScript {
 		var failureCount = 0
 		var pending = items
 		var nextIndex = 0
+		// 在飞的请求数。拆组会一次多出好几件活,每回来一件就把空出的并发位补满(见循环末尾)
+		var inFlight = 0
 
 		await withTaskGroup(of: (TranslationWorkItem, String?, TimeInterval).self) { group in
 
@@ -1090,6 +1169,7 @@ enum TranslationScript {
 				guard nextIndex < pending.count else { return }
 				let item = pending[nextIndex]
 				nextIndex += 1
+				inFlight += 1
 				// [翻译] item①:按这一组的大小估对冲阈值(主线程算好再带进任务)。
 				let hedgeDelay = Self.bodyHedgeDelay(forChars: item.html.count)
 				group.addTask {
@@ -1107,7 +1187,7 @@ enum TranslationScript {
 				}
 			}
 
-			for _ in 0..<min(Self.maxConcurrentRequests, pending.count) {
+			while inFlight < Self.maxConcurrentRequests, nextIndex < pending.count {
 				addNext()
 			}
 
@@ -1143,7 +1223,17 @@ enum TranslationScript {
 				Self.logger.debug("[翻译] \(item.debugLabel, privacy: .public) 第\(item.attempt + 1)次:\(outcome, privacy: .public),耗时 \(String(format: "%.1f", elapsed), privacy: .public)s,原文 \(item.html.count) 字符")
 
 				if !applied {
-					if item.attempt < Self.maxRetries {
+					// 2026-09-27:多段的组第一次失败就拆成一段一组重翻 —— 同样大的一组原样重发,
+					// 模型多半还是漏段/超时(用户报「长文翻译会失败、依然显示原文」)。
+					// 拆出来的单段、以及拆无可拆的单段组,才走原来的「原样再试一次」。
+					var pieces: [TranslationWorkItem] = []
+					if case .chunk(let group) = item.target, !item.isSplitPiece {
+						pieces = await splitPieces(ofGroup: group, html: nil, webViewController: webViewController)
+					}
+					if !pieces.isEmpty {
+						Self.logger.debug("[翻译] \(item.debugLabel, privacy: .public) 失败,拆成 \(pieces.count) 段重翻")
+						pending.append(contentsOf: pieces)
+					} else if item.attempt < Self.maxRetries {
 						// 排到队尾再试一次
 						pending.append(item.retrying())
 					} else {
@@ -1152,11 +1242,30 @@ enum TranslationScript {
 					}
 				}
 
-				addNext()
+				inFlight -= 1
+				while inFlight < Self.maxConcurrentRequests, nextIndex < pending.count {
+					addNext()
+				}
 			}
 		}
 
 		return failureCount
+	}
+
+	/// 把一组拆成一段一组的待办(2026-09-27)。网页拆不开(只有一段)时:给了原文 `html` 就退回
+	/// 整组原样的一件活(交给普通重试),没给就返回空(调用方自己决定怎么重试)。
+	private func splitPieces(
+		ofGroup group: Int,
+		html: String?,
+		webViewController: any NNWArticlePageHost
+	) async -> [TranslationWorkItem] {
+		if let json = try? await webViewController.nnwTranslationSplitGroup(group),
+		   let pieces = try? JSONDecoder().decode([TranslationChunk].self, from: Data(json.utf8)),
+		   !pieces.isEmpty {
+			return pieces.map { TranslationWorkItem(target: .chunk($0.group), html: $0.html, isSplitPiece: true) }
+		}
+		guard let html else { return [] }
+		return [TranslationWorkItem(target: .chunk(group), html: html)]
 	}
 }
 
@@ -1188,6 +1297,8 @@ private struct TranslationWorkItem: Sendable {
 	let target: Target
 	let html: String
 	var attempt: Int = 0
+	/// 由失败的大组拆出来的单段(2026-09-27)。它再失败只原样重试,不再拆。
+	var isSplitPiece: Bool = false
 
 	var debugLabel: String {
 		switch target {
@@ -1199,7 +1310,7 @@ private struct TranslationWorkItem: Sendable {
 	}
 
 	func retrying() -> TranslationWorkItem {
-		TranslationWorkItem(target: target, html: html, attempt: attempt + 1)
+		TranslationWorkItem(target: target, html: html, attempt: attempt + 1, isSplitPiece: isSplitPiece)
 	}
 }
 

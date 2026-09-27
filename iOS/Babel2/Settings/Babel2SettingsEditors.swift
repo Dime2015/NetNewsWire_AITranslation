@@ -113,8 +113,9 @@ final class Babel2SettingsTranslationAPIViewController: Babel2SettingsPage {
 
 // MARK: - 翻译模型（Figma 110:560）
 
-/// 最上方「刷新模型列表」；「热门模型 · Top 10」（每行左侧服务商 logo）；再按服务商分组、每组恰好 3 个；底部说明。
-/// 先显示缓存的目录，同时在后台刷新；刷新失败保留旧列表并提示。点保存才生效。
+/// 最上方「刷新模型列表」；「热门模型 · Top 10」（每行左侧服务商 logo）；再按服务商分组（最热的 12 家，
+/// 每家最热门 3 个 + 最便宜 2 个，ADR-038）；每行行尾是估算价格；底部说明。
+/// 先显示缓存的目录；目录为空或超过 3 天没刷新时自动刷新一次。刷新失败保留旧列表并提示。点保存才生效。
 final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 	private var pendingModelID: String
 	private var models: [Babel2TranslationModel]
@@ -135,8 +136,9 @@ final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 
 	override func viewDidLoad() {
 		super.viewDidLoad()
-		// 目录为空时自动刷新一次；有缓存时不打扰（用户可手动刷新）
-		if models.isEmpty { refresh() }
+		// 目录为空、或超过 3 天没刷新时自动刷新一次（ADR-038：以前只在为空时刷新，
+		// 手机上的列表可能停在一个多月前，新出的模型一个都看不到）
+		if models.isEmpty || Self.isStale(service.translationModelsLastRefreshed) { refresh() }
 	}
 
 	override func buildContent() {
@@ -211,7 +213,7 @@ final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 		logo.layer.cornerRadius = 4
 		logo.clipsToBounds = true
 		let label = UILabel()
-		label.text = Babel2SettingsText.f("%@ · Top 3", service.vendorDisplayName(vendor))
+		label.text = service.vendorDisplayName(vendor)
 		label.font = .systemFont(ofSize: 12, weight: .semibold)
 		label.textColor = Babel2SettingsStyle.secondaryText
 		label.accessibilityTraits = .header
@@ -234,7 +236,7 @@ final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 	}
 
 	private func addModelRow(_ model: Babel2TranslationModel, logo: UIImage?) {
-		let row = Babel2SettingsChoiceRow(title: model.name, isSelected: model.id == pendingModelID, logo: logo)
+		let row = Babel2SettingsChoiceRow(title: model.name, isSelected: model.id == pendingModelID, logo: logo, detail: model.priceText)
 		row.accessibilityIdentifier = "babel2.settings.translation-model.option.\(model.id)"
 		row.onTap = { [weak self] in self?.choose(model.id) }
 		add(row)
@@ -247,6 +249,12 @@ final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 				row.setSelected(identifier == "babel2.settings.translation-model.option.\(id)")
 			}
 		}
+	}
+
+	/// 超过 3 天没刷新（或从没刷新过）算过期。
+	static func isStale(_ lastRefreshed: Date?, now: Date = Date()) -> Bool {
+		guard let lastRefreshed else { return true }
+		return now.timeIntervalSince(lastRefreshed) > 3 * 24 * 60 * 60
 	}
 
 	@objc private func refreshTapped() { refresh() }

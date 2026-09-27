@@ -207,6 +207,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	)
 	private var scopeSurfaces = [Babel2FeedScope: ScopeSurface]()
 	private var libraryTasks = [Babel2FeedScope: Task<Void, Never>]()
+	/// 后台变化（图标到了、同步进度、状态变化）在一次重算进行中又来了：先记一笔，这次算完再来一次（ADR-039）。
+	private var needsLibraryReloadAfterCurrent = false
 	private var scopeTransitionAnimator: UIViewPropertyAnimator?
 	private var scopeTransitionToken = UUID()
 	private var presentationNeedsSettlement = false
@@ -549,8 +551,16 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		requestLibrary(for: .unread, showLoading: true)
 	}
 
+	/// 后台变化触发的重新加载（ADR-039，2026-09-27 用户报「冷启动时图标要延迟几秒才出来」）。
+	/// 以前每来一个通知就取消正在进行的重算、从头再来——冷启动时图标一张张到、同步通知也一串串来，
+	/// 重算被接连打断，要等通知停了才出一次结果。现在正在重算时不打断，只记一笔，算完再补一次：
+	/// 每一轮都能算完、先到的图标先显示。用户自己的操作（切档、重试）仍然立刻重来。
 	private func reloadLibraryIfVisible() {
 		guard hasAppeared else { return }
+		if libraryTasks[displayedScope] != nil {
+			needsLibraryReloadAfterCurrent = true
+			return
+		}
 		requestLibrary(for: displayedScope, showLoading: false)
 	}
 
@@ -572,6 +582,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			defer {
 				if let self, self.scopeSurfaces[scope]?.requestID == requestID {
 					self.libraryTasks[scope] = nil
+					// 重算期间又有后台变化：现在补一次（ADR-039）
+					if self.needsLibraryReloadAfterCurrent {
+						self.needsLibraryReloadAfterCurrent = false
+						self.reloadLibraryIfVisible()
+					}
 				}
 			}
 			do {

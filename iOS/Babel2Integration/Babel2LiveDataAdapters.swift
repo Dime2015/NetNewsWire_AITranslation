@@ -808,32 +808,132 @@ enum Babel2LiveFeedActions {
 /// 订阅源小图标的备份（2026-09-25，用户反馈切回前台时所有图标都重新加载一次）。
 /// 上游的图标下载器在 app 进后台时清空**内存**缓存（刻意省内存，硬盘缓存仍在），回到前台首页刷新的那一刻
 /// 拿不到图标、先显示空白，等从硬盘读回再逐个补上。这里记住每个源最后一次拿到的图标：
-/// 进后台不清，只在系统报内存紧张时清。上游缓存逻辑一行不改；全部小图标合计约几百 KB。
+/// 进后台不清，只在系统报内存紧张时清。上游缓存逻辑一行不改。
+///
+/// 2026-09-27（用户报「第一次打开 app 时图标要延迟几秒」，ADR-039）：备份原来只在内存里，冷启动是空的，
+/// 只能等上游下载器从硬盘把图一张张读回来。现在备份也存一份到手机上（Caches/Babel2FeedIcons.plist），
+/// 冷启动第一眼就用它。存之前把图缩到最长边 96 像素（列表 20pt、紧凑栏 26pt，3 倍屏也够清晰），
+/// 全部源加起来几百 KB；同一张图只压缩、只写盘一次。
 @MainActor
 enum Babel2LiveIconCache {
+	/// 最长边超过这个像素就缩小再存。
+	static let maxPixelSide: CGFloat = 96
 	private static var icons = [String: Data]()
+	/// 每个源上次压缩的原图（弱引用：原图被上游释放后自然失效）。同一张原图不重复压缩。
+	private static var sources = [String: WeakImageBox]()
+	private static var didLoadDisk = false
+	private static var isSaveScheduled = false
 	private static var observer: NSObjectProtocol?
+
+	private final class WeakImageBox {
+		weak var image: UIImage?
+		init(_ image: UIImage) { self.image = image }
+	}
 
 	static func iconData(for feed: Feed, accountID: String) -> Data? {
 		installMemoryWarningObserverIfNeeded()
+		loadFromDiskIfNeeded()
 		let key = "\(accountID)|\(feed.feedID)"
-		if let fresh = FeedIconDownloader.shared.icon(for: feed)?.image.dataRepresentation()
-			?? FaviconDownloader.shared.faviconAsIcon(for: feed)?.image.dataRepresentation() {
-			icons[key] = fresh
-			return fresh
+		if let image = FeedIconDownloader.shared.icon(for: feed)?.image ?? FaviconDownloader.shared.faviconAsIcon(for: feed)?.image,
+			sources[key]?.image !== image || icons[key] == nil {
+			sources[key] = WeakImageBox(image)
+			if let data = compactData(for: image), data != icons[key] {
+				icons[key] = data
+				scheduleSave()
+			}
 		}
 		return icons[key]
+	}
+
+	/// 某个订阅源此刻的小图标（ADR-039）：文章列表页 / 阅读页打开时图标还没到的，
+	/// 之后据此补上（以前这两页一直显示首字母，直到重新进入）。找不到订阅源时退回备份。
+	static func currentIconData(for id: FeedSnapshot.ID) -> Data? {
+		guard let feed = Babel2LiveFeedReaderSetting.feed(id) else {
+			loadFromDiskIfNeeded()
+			return icons["\(id.accountID)|\(id.feedID)"]
+		}
+		return iconData(for: feed, accountID: id.accountID)
+	}
+
+	/// 缩到最长边 96 像素（本来就小的不放大）再转成 PNG。
+	static func compactData(for image: UIImage) -> Data? {
+		let pixelWidth = image.size.width * image.scale
+		let pixelHeight = image.size.height * image.scale
+		let longest = max(pixelWidth, pixelHeight)
+		guard longest > maxPixelSide else { return image.pngData() }
+		let ratio = maxPixelSide / longest
+		let size = CGSize(width: max(1, (pixelWidth * ratio).rounded()), height: max(1, (pixelHeight * ratio).rounded()))
+		let format = UIGraphicsImageRendererFormat()
+		format.scale = 1
+		return UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
+			image.draw(in: CGRect(origin: .zero, size: size))
+		}
+	}
+
+	// MARK: 存在手机上的那一份
+
+	private static var fileURL: URL {
+		FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+			.appendingPathComponent("Babel2FeedIcons.plist")
+	}
+
+	/// 第一次用到时同步读一次（文件只有几百 KB，冷启动首页第一眼就要用）。内存里已有的（更新鲜）不被覆盖。
+	private static func loadFromDiskIfNeeded() {
+		guard !didLoadDisk else { return }
+		didLoadDisk = true
+		guard let data = try? Data(contentsOf: fileURL),
+			let stored = try? PropertyListDecoder().decode([String: Data].self, from: data) else { return }
+		icons.merge(stored) { current, _ in current }
+	}
+
+	/// 攒 1 秒再写（冷启动时图标一张张到，合并成一次写盘），写盘在后台做。
+	private static func scheduleSave() {
+		guard !isSaveScheduled else { return }
+		isSaveScheduled = true
+		Task { @MainActor in
+			try? await Task.sleep(for: .seconds(1))
+			saveNow()
+		}
+	}
+
+	private static func saveNow() {
+		isSaveScheduled = false
+		guard let data = try? PropertyListEncoder().encode(icons) else { return }
+		let url = fileURL
+		Task.detached(priority: .utility) {
+			try? data.write(to: url, options: .atomic)
+		}
 	}
 
 	private static func installMemoryWarningObserverIfNeeded() {
 		guard observer == nil else { return }
 		observer = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
-			MainActor.assumeIsolated { icons.removeAll() }
+			MainActor.assumeIsolated {
+				icons.removeAll()
+				sources.removeAll()
+				// 下次用到时从手机上那一份读回来（小图，读回来不占多少内存）
+				didLoadDisk = false
+			}
 		}
 	}
 
 	/// 仅供自动化测试。
 	static func storeForTesting(_ data: Data, key: String) { icons[key] = data }
 	static func cachedForTesting(_ key: String) -> Data? { icons[key] }
+	/// 仅供自动化测试：立刻写盘 / 清空内存后从手机上那一份读回 / 删掉某个键。
+	static func saveNowForTesting() async {
+		guard let data = try? PropertyListEncoder().encode(icons) else { return }
+		try? data.write(to: fileURL, options: .atomic)
+	}
+	static func reloadFromDiskForTesting() {
+		icons.removeAll()
+		sources.removeAll()
+		didLoadDisk = false
+		loadFromDiskIfNeeded()
+	}
+	static func removeForTesting(_ key: String) {
+		icons[key] = nil
+		sources[key] = nil
+	}
 }
 

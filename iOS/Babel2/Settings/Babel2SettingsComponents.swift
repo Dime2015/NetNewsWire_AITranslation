@@ -332,9 +332,11 @@ final class Babel2SettingsActionRow: Babel2SettingsRowControl {
 /// 翻译模型页的行左侧可再放 20pt 服务商 logo（文字从 x=28 开始）。
 final class Babel2SettingsChoiceRow: Babel2SettingsRowControl {
 	let titleLabel = UILabel()
+	let detailLabel = UILabel()
 	private let check = settingsGlyph("Babel2SettingsCheck", side: 20)
 
-	init(title: String, isSelected: Bool, logo: UIImage? = nil) {
+	/// - detail: 行尾（勾的左边）的浅灰小字，例如模型价格（ADR-038）。
+	init(title: String, isSelected: Bool, logo: UIImage? = nil, detail: String? = nil) {
 		super.init(frame: .zero)
 		titleLabel.text = title
 		titleLabel.font = Babel2SettingsStyle.rowTitleFont
@@ -359,15 +361,29 @@ final class Babel2SettingsChoiceRow: Babel2SettingsRowControl {
 			])
 			textLeading = 28
 		}
+		var titleTrailing = check.leadingAnchor
+		if let detail {
+			detailLabel.text = detail
+			detailLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+			detailLabel.textColor = Babel2SettingsStyle.secondaryText
+			detailLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+			detailLabel.translatesAutoresizingMaskIntoConstraints = false
+			addSubview(detailLabel)
+			NSLayoutConstraint.activate([
+				detailLabel.trailingAnchor.constraint(equalTo: check.leadingAnchor, constant: -8),
+				detailLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+			])
+			titleTrailing = detailLabel.leadingAnchor
+		}
 		NSLayoutConstraint.activate([
 			heightAnchor.constraint(equalToConstant: Babel2SettingsStyle.rowHeight),
 			titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: textLeading),
-			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: check.leadingAnchor, constant: -8),
+			titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: titleTrailing, constant: -8),
 			titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 			check.trailingAnchor.constraint(equalTo: trailingAnchor),
 			check.centerYAnchor.constraint(equalTo: centerYAnchor)
 		])
-		accessibilityLabel = title
+		accessibilityLabel = [title, detail].compactMap { $0 }.joined(separator: ", ")
 		setSelected(isSelected)
 	}
 

@@ -24,6 +24,30 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 用户 11 条反馈：调查结论与分批（2026-09-27，ADR-036；第 1 批进行中）
+
+调查只读、未改产品代码；第 7 条用临时探针测试（假翻译服务，不联网）取证，测试已删除。
+- **7 长文翻译**：① 已复现——Babel 2.0 切阅读模式 / 重试是在**同一网页里重排**，翻译脚本（translation.js 的 `window.nnwTranslation`）不重置，仍记着上一版正文与「在显示译文」：重排后点「原文」回到摘要，点「翻译」可能直接还原成英文。② 已复现——「总是阅读模式」的源，全文未到时点翻译，全文一到 `startRendering` 调 `resetForNewArticle` 取消翻译，页面显示英文全文、按钮回「原 翻译」。③ 机制已证实、设备上未证实——模型少还段落或超时，整组被拒收保持英文；重试发同一大组（≤4000 字 / 6 段），易再失败；非流式请求 60 秒超时。④ 模型返回「标签在、文字空」（如 `<p></p>`）时 `applyGroup` 照收、自检也不报——会得到「状态已译 + 正文空白」，且标题译文为空时原生标题保持英文，与截图 7 症状一致（推测，未在设备上证实）。空白未在模拟器复现。长文正常路径（约 3 万字符）通过。
+- **9 模型列表**：`OpenRouterCatalog.canonicalMap` 后写覆盖，89 个带日期 id 映射到被过滤的 `:batch`/`:free` 变体，正主热度为 0（DeepSeek V4.1 Flash 实为 OpenRouter 用量第 1）；厂商只取 10 家、无热度按字母排，xiaomi 被截；缓存仅在为空时自动刷新。已用 2026-09-27 实时数据核对。
+- **8 图标**：`Babel2LiveIconCache` 只在内存，冷启动为空；上游下载器硬盘缓存异步回来逐个发通知，首页每次都取消重建（与同步通知叠加）——「慢几秒」原因为推测、未实测。已打开的文章列表 / 阅读页不更新图标（`Babel2LibraryViewControllers.swift` 懒加载一次）。
+- **其余**（1 播客/YouTube、2 整页右滑、3 图片查看、4 文件夹与重复源、5 未读入口、6/11 图标、10 浏览器）：原因与方案见 ADR-036 与 HANDOFF；工作底稿不在仓库。
+
+### 第 1 批：长文翻译 / 模型列表 / 冷启动图标（ADR-037～039；实现与自动化完成，待用户真机验收，未提交）
+
+- **翻译（ADR-037）**：重排前后清空翻译脚本状态；全文未到时点翻译先排队（「生成中」），全文排好自动翻；正在看译文时切阅读模式自动接着翻；失败组拆单段重翻；组上限 2500、超时 120 秒；空白译文拒收 + 翻完 / 缓存恢复后空白兜底。改动：`Shared/Translation/`（TranslationController、translation.js、NNWArticlePageHost、TranslationCache、OpenAICompatibleTranslator）、`Reader/WebKit/Babel2ReaderContentView.swift`、`Reader/Babel2ArticleViewController.swift`。
+- **模型列表（ADR-038）**：修变体吃热度；热度改用量榜；12 家 × (最热 3 + 最便宜 2)；行尾价格；超过 3 天自动刷新；目录缓存 v4。改动：`OpenRouterCatalog.swift`、`Settings/Babel2SettingsService.swift`、`Babel2SettingsEditors.swift`、`Babel2SettingsComponents.swift`（选择行可带行尾小字）、`Babel2LiveSettingsService.swift`、Babel2 字符串 +1（≈%@ per article）。
+- **冷启动图标（ADR-039）**：图标备份落盘（缩到 96px）；首页后台重载合并不打断；文章列表 / 阅读页补上晚到的图标。改动：`Babel2LiveDataAdapters.swift`（Babel2LiveIconCache）、`Babel2RootViewController.swift`、`Babel2LibraryViewControllers.swift`、`Babel2FeedHeroView.swift`（窄栏 setIcon）、`Babel2SceneComposition.swift`。
+- 测试：新增 10 项（翻译 6：重排清状态、排队翻全文、切阅读模式接着翻、失败组拆单段、空白拒收、脚本两道闸；模型 1：变体不吃热度 + 用量榜；图标 3：重载不被打断、备份落盘缩图、列表补图标），改 1 项（模型排行新规则 + 行尾价格 + 过期判断）。反向验证：关掉「清状态 / 拆组 / 排队 / 空白两道防线 / 合并重载」后对应测试均失败，恢复后通过。全量 `scratchpad/b1-full.xcresult` 163/163（上一轮 153 + 10）；UI Driver（Release、真实数据）`scratchpad/b1-ui.xcresult` 1/1；pbxproj diff hash 仍 `c5f5a8cf…`。另用临时探针以当天真实 OpenRouter 数据跑新排行（已删除）。
+- 未能自动验证：真机真实模型下的长文翻译（是否还会空白 / 部分英文）、价格显示、冷启动图标实际快慢——真机验收。
+
+## 阅读页上拉翻到下一篇（2026-09-26，ADR-035；实现与自动化完成，待用户真机验收，未提交）
+
+- 用户设计：读到底继续上拉，底部出现一个浅色、很扁的向下 ∨；越拉越扁、越深，拉过 80pt 正好成一条横线（墨色）并轻震一下，松手进入下一篇。
+- 细节（用户同意）：只在往上越过临界点时震一次；越过后往回拉 ∨ 弯回变浅、松手不翻；∨ 水平居中（与底栏 ∨ 同一竖线），位于正文末尾与底部之间的空白正中；最后一篇不显示 ∨，只普通回弹；不显示下一篇标题；不做顶部下拉回上一篇；短文章直接上拉也能翻；翻篇走与底栏 ∨ 相同的路径与过渡。
+- 实现：新文件 `iOS/Babel2/Reader/Babel2ReaderNextPull.swift`（纯规则 + 画 ∨ 的视图）；`Babel2ArticleViewController.swift` 只监听滚动与松手（不新增手势识别器，不与右滑返回 / 右缘进浏览器抢手势）；惯性甩到底的回弹不显示 ∨；没过线松手时 ∨ 随回弹慢慢收回。
+- 测试：新增 2 项（形状 / 颜色 / 临界点 / 松手判定 / 长短文章的「底」；阅读页过线且有下一篇才翻、最后一篇不显示）。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/pull-full.xcresult` 153/153；UI Driver `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/9aae9465-6455-4fea-bb8a-7eb613336df1/scratchpad/pull-ui.xcresult` 1/1；pbxproj diff hash 仍 `c5f5a8cf…`。
+- 未能自动验证：真实手指拖动的手感、震动、∨ 的位置与颜色变化——真机验收。
+
 ## 全 App 动效第二、三批（2026-09-26，ADR-034；2026-09-26 用户真机集中验收通过，已提交并推送）
 
 - 用户要求两批连做、与第一批（字号，ADR-033）一起集中验收。
