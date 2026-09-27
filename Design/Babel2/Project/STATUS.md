@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 位置记忆与底栏统一（2026-09-27 用户第三轮反馈，ADR-052 / 053；实现与自动化完成，待真机验收，未提交）
+
+- **底栏图标统一（ADR-052，第 4、5 条）**：首页 / 文章列表 / 阅读页三条底栏同一比例（21pt 画布）+ 视觉修正（圆 0.86、向下箭头 0.85、翻译符号 11.5pt）；首页 / 列表的星与横线从 24pt 缩到与阅读页一样；「全部已读」的勾改为镂空（以前被同色吞掉）。改 `Babel2Type.swift`、`Reader/Babel2ReaderToolbarView.swift`、`Babel2ScopeFilterControl.swift`、`Babel2StatusIcons.swift`（翻译符号按新字号画）、`Babel2LibraryViewControllers.swift`。改前 / 改后对比图已发给用户。
+- **位置记忆（ADR-053，第 1～3 条）**：新文件 `Babel2PositionStore.swift`（本机存储 + 「↑ N 篇新文章」胶囊）；文章列表按「最上面那一篇」记与恢复、三档共用、今日未读 / 全部未读共用、新文章提示；文章里按段落记与恢复（全文晚到、译文放回、图片加载后都再对一次，用户一滑就停）。改 `Babel2LibraryViewControllers.swift`、`Reader/Babel2ArticleViewController.swift`、`Reader/WebKit/Babel2ReaderContentView.swift`（两段查位置的脚本）、`Babel2SceneComposition.swift`（注入）、文案 +3。翻译按用户选择不自动接着翻。
+- 真实数据 UI Driver 两次失败，各抓到一个真问题，均已修并补测试：①换成第一篇时大图被误收起（LESSONS 57）；②没往下滑就离开也被记成「最上面那一篇」，换一档再开时列表被滚到中间；顺带查出「新文章」跨档比会误报（LESSONS 58）。规则随之补充（ADR-053 补充）：没滑动过下次从顶部开始；「新文章」每档各记各的、只跟同一档比，没记过不提示。UI 测试启动时带 `BABEL2_RESET_READING_POSITIONS=1` 清空记住的位置。
+- 测试：新增 9 项（底栏图标统一、文章里记与恢复、全文晚到后恢复、列表记与恢复 + 新文章提示、找回规则与共用键、今日未读 → 全部未读接着看、换成第一篇时回到展开的顶部、没滑动过下次从顶部开始、新文章只跟同一档比）。反向验证：关掉文章恢复 / 列表恢复 / 新文章提示后对应 4 项失败；关掉「停在顶部」「分档记新文章」后对应 3 项失败；恢复后通过。全量与 UI Driver 见 VALIDATION。
+
 ## 用户 11 条反馈：调查结论与分批（2026-09-27，ADR-036；五批 + 验收追加已分 6 个提交推送 `f194862bd`…`ff95ddab3`）
 
 ### 验收中追加（2026-09-27 第二轮，ADR-048～051；已提交推送 `ff95ddab3`）

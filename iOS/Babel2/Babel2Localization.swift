@@ -111,6 +111,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case translatePage = "Translate This Page"
 	case blockAds = "Block Ads"
 	case unableToExtractPage = "Couldn’t find an article on this page to translate."
+	case newArticles = "%d New Articles"
+	case newArticlesOne = "%d New Article"
+	case backToTop = "Back to Top"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -172,6 +175,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 			.folderFeedCountOne, .moreActions:
 			return "babel2.library.edit"
 		case .translatePage, .blockAds, .unableToExtractPage: return "babel2.browser.more"
+		case .newArticles, .newArticlesOne, .backToTop: return "babel2.feed.new-articles"
 		}
 	}
 }

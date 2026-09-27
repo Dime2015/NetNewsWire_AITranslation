@@ -67,6 +67,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let countLabel = UILabel()
 	private let retryButton = UIButton(type: .system)
 	private var articles = [ArticleSnapshot]()
+	/// 列表位置记忆（ADR-053）：没有注入时不记也不恢复。
+	private let positionStore: Babel2PositionStore?
+	/// 第一次加载完成时回到上次的位置，只做一次（之后切档照旧回顶部）。
+	private var hasRestoredPosition = false
+	/// 「↑ N 篇新文章」与它要去的那一篇
+	private let newArticlesPill = Babel2NewArticlesPill()
+	private var newArticlesTarget: ArticleSnapshot.ID?
 	/// 按天分段（Reeder 式日期分组，2026-09-25）：每段是 articles 里连续的一截，不改文章顺序。
 	private var daySections = [Babel2DaySection]()
 	/// 订阅源图标只解码一次，所有行共用。
@@ -117,8 +124,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var isShowingSync = false
 
 	/// - currentIcon: 这个源此刻的小图标。打开页面时图标还没到的，之后据此补上（ADR-039）。
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil, currentIcon: (@MainActor () -> Data?)? = nil, smartFeed: Babel2SmartFeed? = nil) {
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil, currentIcon: (@MainActor () -> Data?)? = nil, smartFeed: Babel2SmartFeed? = nil, positionStore: Babel2PositionStore? = nil) {
 		self.smartFeed = smartFeed
+		self.positionStore = positionStore
 		self.currentIcon = currentIcon
 		self.shouldConfirmMarkAllRead = confirmMarkAllRead
 		self.feedActions = feedActions
@@ -137,13 +145,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 跨源列表页（ADR-044）：今日未读 / 全部未读 / 外文源 / 全部星标。没有订阅源图标、刷新与更多菜单、标题翻译开关；
 	/// 搜索在已列出的文章里筛。名字随档位变（例如「今日未读」切到全部档叫「今天」）。
-	convenience init(smartFeed: Babel2SmartFeed, scope: Babel2FeedScope, environment: AppEnvironment, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }) {
+	convenience init(smartFeed: Babel2SmartFeed, scope: Babel2FeedScope, environment: AppEnvironment, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, positionStore: Babel2PositionStore? = nil) {
 		let placeholder = FeedSnapshot(
 			id: FeedSnapshot.ID(accountID: "babel2.smart", feedID: smartFeed.rawValue),
 			title: Babel2Localization.text(smartFeed.titleKey(scope: scope)),
 			url: URL(string: "https://babel2.invalid/smart/\(smartFeed.rawValue)")!
 		)
-		self.init(feed: placeholder, scope: scope, environment: environment, confirmMarkAllRead: confirmMarkAllRead, smartFeed: smartFeed)
+		self.init(feed: placeholder, scope: scope, environment: environment, confirmMarkAllRead: confirmMarkAllRead, smartFeed: smartFeed, positionStore: positionStore)
 	}
 
 	/// 这篇文章所属的订阅源（跨源列表里各不相同；单个源的页面就是这个源）。装配层据此给阅读页显示来源名与图标。
@@ -175,7 +183,14 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		configureHeader()
 		configureToolbar()
 		configureTable()
+		configureNewArticlesPill()
 		startLoading()
+	}
+
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		// 离开（进文章、返回首页）前记下滑到哪（ADR-053）
+		savePosition()
 	}
 
 	override func viewDidDisappear(_ animated: Bool) {
@@ -304,7 +319,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		scopeFilter.translatesAutoresizingMaskIntoConstraints = false
 		bottomToolbar.addSubview(scopeFilter)
 
-		readAllButton.setImage(Babel2Type.icon(UIImage(named: "Babel2FeedReadAll"), side: Babel2Type.toolbarIcon), for: .normal)
+		// 实心圆里挖出勾、按统一的视觉修正缩小（ADR-052），与阅读页「已读」的圆同样大
+		readAllButton.setImage(Babel2Type.readAllIcon(), for: .normal)
 		readAllButton.tintColor = BabelPalette.mutedInk
 		readAllButton.accessibilityLabel = Babel2Localization.text(.markAllRead)
 		readAllButton.accessibilityIdentifier = "babel2.feed.read-all"
@@ -387,7 +403,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 先确认「将 N 篇文章标为已读？」：全 app 统一的毛玻璃菜单，锚在底栏按钮上方；点空白处即取消。
 	private func confirmMarkAllRead(count: Int) {
 		Babel2GlassMenu.present(sections: [[
-			Babel2MenuItem(title: Babel2Localization.text(.markAllRead), image: UIImage(named: "Babel2FeedReadAll"),
+			Babel2MenuItem(title: Babel2Localization.text(.markAllRead), image: Babel2Type.readAllIcon(side: 18, optical: 1),
 				identifier: "babel2.feed.read-all.confirm") { [weak self] in self?.performMarkAllRead() }
 		]], title: String(format: Babel2Localization.text(.markAllReadConfirm), count), from: readAllButton, in: view)
 		pendingMarkAllReadCountForTesting = count
@@ -453,10 +469,18 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
 		requestVisibleTitleTranslations()
+		savePosition()
 	}
 
 	func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-		if !decelerate { requestVisibleTitleTranslations() }
+		if !decelerate {
+			requestVisibleTitleTranslations()
+			savePosition()
+		}
+	}
+
+	func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+		savePosition()
 	}
 
 	var titleTranslationToggleForTesting: Babel2TranslateIconButton { titleTranslationToggle }
@@ -466,6 +490,155 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private(set) var pendingMarkAllReadCountForTesting: Int?
 	func confirmMarkAllReadForTesting() { performMarkAllRead() }
 	var scopeFilterForTesting: Babel2ScopeFilterControl { scopeFilter }
+
+	// MARK: - 位置记忆与新文章提示（ADR-053）
+
+	/// 三档共用一个位置；今日未读 / 全部未读（今天 / 全部文章）共用一个。
+	private var positionKey: String {
+		smartFeed.map(Babel2PositionStore.listKey(smart:)) ?? Babel2PositionStore.listKey(feed: feed.id)
+	}
+
+	/// 可视区顶边（列表坐标）：展开时就是第一行的顶边；收缩后窄栏盖住上面一段（大图上移 collapseDistance）。
+	private var visibleTopY: CGFloat {
+		tableView.contentOffset.y + tableView.adjustedContentInset.top - Babel2FeedHeroMotion.collapseDistance * max(heroProgress, 0)
+	}
+
+	private var restingOffsetY: CGFloat { -tableView.adjustedContentInset.top }
+
+	/// 此刻的位置：可视区最上面那一篇（被窄栏盖住的不算）和它的顶边离可视区顶边多远；另记列表里最新一篇的时间。
+	private func currentPosition() -> Babel2PositionStore.ListPosition? {
+		guard loadState == .loaded, !articles.isEmpty, !isSearching else { return nil }
+		let top = visibleTopY
+		let rows = (tableView.indexPathsForVisibleRows ?? []).sorted()
+		guard let path = rows.first(where: { tableView.rectForRow(at: $0).maxY > top + 0.5 }) ?? rows.first,
+			let index = articleIndex(for: path) else { return nil }
+		let article = articles[index]
+		return Babel2PositionStore.ListPosition(
+			accountID: article.id.accountID, feedID: article.id.feedID, articleID: article.id.articleID,
+			publishedAt: article.publishedAt,
+			offset: Double(tableView.rectForRow(at: path).minY - top),
+			savedAt: Date(),
+			atTop: tableView.contentOffset.y <= restingOffsetY + 1,
+			seenByScope: articles.compactMap(\.publishedAt).max().map { [scope.rawValue: $0] }
+		)
+	}
+
+	/// 记下滑到哪（第一次回到原处之前不记，免得把「顶部」写进去）。
+	private func savePosition() {
+		guard let positionStore, hasRestoredPosition, var position = currentPosition() else { return }
+		// 各档的「最新一篇」分开记：在这一档离开，只更新这一档的，别的档上次记下的留着
+		var seen = positionStore.listPosition(for: positionKey)?.seenByScope ?? [:]
+		seen.merge(position.seenByScope ?? [:]) { $1 }
+		position.seenByScope = seen
+		positionStore.setListPosition(position, for: positionKey)
+	}
+
+	/// 上次停在哪一篇：那篇还在就是它；不在了（未读档里读过的被收起、到了另一个列表），
+	/// 就按时间找紧挨着的下一篇（新的在前时找更早的第一篇）；一篇都没有就停在最后。
+	static func restoreAnchor(for stored: Babel2PositionStore.ListPosition, in articles: [ArticleSnapshot]) -> (index: Int, exact: Bool)? {
+		guard !articles.isEmpty else { return nil }
+		if let exact = articles.firstIndex(where: { $0.id == stored.articleSnapshotID }) { return (exact, true) }
+		guard let date = stored.publishedAt else { return nil }
+		let newestFirst = (articles.first?.publishedAt ?? .distantPast) >= (articles.last?.publishedAt ?? .distantPast)
+		let next = newestFirst
+			? articles.firstIndex { ($0.publishedAt ?? .distantPast) < date }
+			: articles.firstIndex { ($0.publishedAt ?? .distantFuture) > date }
+		return (next ?? articles.count - 1, false)
+	}
+
+	/// 上次离开之后新来的文章（比当时列表里最新的一篇还新）。
+	static func newArticles(in articles: [ArticleSnapshot], since date: Date?) -> [ArticleSnapshot] {
+		guard let date else { return [] }
+		return articles.filter { ($0.publishedAt ?? .distantPast) > date }
+	}
+
+	/// 第一次加载完成：回到上次的位置（大图随之收缩）；停在中间且有新文章时，底栏上方提示。
+	private func restorePositionIfNeeded() {
+		guard !hasRestoredPosition else { return }
+		hasRestoredPosition = true
+		guard let positionStore, let stored = positionStore.listPosition(for: positionKey) else { return }
+		// 上次停在最上面（没往下滑过）：这次也从最上面开始（新文章本来就在上面，不用提示）
+		if stored.atTop == true { return }
+		guard let anchor = Self.restoreAnchor(for: stored, in: articles),
+			let indexPath = indexPath(forArticleAt: anchor.index) else { return }
+		tableView.layoutIfNeeded()
+		tableView.scrollToRow(at: indexPath, at: .top, animated: false)
+		tableView.layoutIfNeeded()
+		// 要让这一篇的顶边落在可视区顶边下方 offset 处。换成了紧挨着的下一篇时：
+		// 是第一篇就回到展开的顶部（2026-09-27 真实数据 UI 自动测试发现：以前因为上面还有日期标题和大图下的留白，
+		// 被当成「不在顶部」、大图被收起，篇数跟着看不见）；否则让它正好在吸顶的日期标题下面。
+		let rest = restingOffsetY
+		let maxY = max(rest, tableView.contentSize.height + tableView.adjustedContentInset.bottom - tableView.bounds.height)
+		let fallbackGap = tableView.rectForHeader(inSection: indexPath.section).height
+		let desiredTop = tableView.rectForRow(at: indexPath).minY - (anchor.exact ? CGFloat(stored.offset) : fallbackGap)
+		let backToTop = desiredTop <= 1 || (!anchor.exact && anchor.index == 0)
+		let target = backToTop ? rest : desiredTop - tableView.adjustedContentInset.top + Babel2FeedHeroMotion.collapseDistance
+		tableView.setContentOffset(CGPoint(x: 0, y: min(max(target, rest), maxY)), animated: false)
+		updateHeroProgress()
+		// 「新文章」只跟同一档上次记下的比：换了一档（例如从星标档到全部档），多出来的多半是本来就有、
+		// 只是那一档不显示的文章；这一档还没记过就不提示
+		guard let since = stored.seenByScope?[scope.rawValue] else { return }
+		let fresh = Self.newArticles(in: articles, since: since)
+		if let first = articles.first(where: { article in fresh.contains { $0.id == article.id } }) {
+			showNewArticlesPill(count: fresh.count, target: first.id)
+		}
+	}
+
+	private func configureNewArticlesPill() {
+		newArticlesPill.translatesAutoresizingMaskIntoConstraints = false
+		newArticlesPill.addTarget(self, action: #selector(newArticlesPillTapped), for: .touchUpInside)
+		view.addSubview(newArticlesPill)
+		NSLayoutConstraint.activate([
+			newArticlesPill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			newArticlesPill.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: -12)
+		])
+	}
+
+	/// 新文章已经在屏幕上（例如本来就停在顶部）就不提示。
+	private func showNewArticlesPill(count: Int, target: ArticleSnapshot.ID) {
+		guard count > 0, !isSearching, !isArticleVisible(target) else { return }
+		newArticlesTarget = target
+		newArticlesPill.show(count: count)
+	}
+
+	private func hideNewArticlesPill(animated: Bool = true) {
+		newArticlesTarget = nil
+		newArticlesPill.hide(animated: animated)
+	}
+
+	private func hideNewArticlesPillIfReached() {
+		guard newArticlesPill.isShowing, let target = newArticlesTarget, isArticleVisible(target) else { return }
+		hideNewArticlesPill()
+	}
+
+	/// 这一篇的行有没有露在可视区里（被窄栏盖住的不算）。
+	private func isArticleVisible(_ id: ArticleSnapshot.ID) -> Bool {
+		guard let index = articles.firstIndex(where: { $0.id == id }), let path = indexPath(forArticleAt: index),
+			tableView.indexPathsForVisibleRows?.contains(path) == true else { return false }
+		let rect = tableView.rectForRow(at: path)
+		let visibleBottom = tableView.contentOffset.y + tableView.bounds.height - tableView.adjustedContentInset.bottom
+		return rect.maxY > visibleTopY + 1 && rect.minY < visibleBottom
+	}
+
+	/// 点「↑ N 篇新文章」：新的在前时回到顶部（大图展开），否则滚到第一篇新文章。
+	@objc private func newArticlesPillTapped() {
+		guard let target = newArticlesTarget, let index = articles.firstIndex(where: { $0.id == target }) else {
+			hideNewArticlesPill()
+			return
+		}
+		hideNewArticlesPill()
+		if index == 0 {
+			tableView.setContentOffset(CGPoint(x: 0, y: restingOffsetY), animated: true)
+		} else if let path = indexPath(forArticleAt: index) {
+			tableView.scrollToRow(at: path, at: .middle, animated: true)
+		}
+	}
+
+	/// 仅供自动化测试。
+	var newArticlesPillForTesting: Babel2NewArticlesPill { newArticlesPill }
+	var currentPositionForTesting: Babel2PositionStore.ListPosition? { currentPosition() }
+	func savePositionForTesting() { savePosition() }
+	func tapNewArticlesPillForTesting() { newArticlesPillTapped() }
 
 	// MARK: - 下一篇（ADR-022）
 
@@ -491,6 +664,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private func startLoading() {
 		loadGeneration = UUID()
 		let generation = loadGeneration
+		hideNewArticlesPill(animated: false)
 		loadTask?.cancel()
 		articles.removeAll(keepingCapacity: true)
 		rebuildDaySections()
@@ -529,6 +703,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				self.setCount(self.articles.count)
 				self.tableView.reloadData()
 				self.setState(self.articles.isEmpty ? .empty : .loaded)
+				self.restorePositionIfNeeded()
 				self.presentLoadedContent()
 				// 列表排好后再看哪些行在屏幕上
 				DispatchQueue.main.async { [weak self] in self?.requestVisibleTitleTranslations() }
@@ -753,6 +928,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			self.setCount(snapshot.count)
 			self.setState(snapshot.isEmpty ? .empty : .loaded)
 			self.animateRowsAfterRefresh(previousPositions: before, previousIDs: oldIDs)
+			// 停在中间时刷新出了新文章：底栏上方提示一下（ADR-053）
+			let fresh = snapshot.filter { !oldIDs.contains($0.id) }
+			if let first = snapshot.first(where: { article in fresh.contains { $0.id == article.id } }) {
+				self.showNewArticlesPill(count: fresh.count, target: first.id)
+			}
 		}
 	}
 
@@ -1038,6 +1218,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	func scrollViewDidScroll(_ scrollView: UIScrollView) {
 		guard scrollView === tableView else { return }
 		updateHeroProgress()
+		hideNewArticlesPillIfReached()
 		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
 		for section in 0..<daySections.count {
 			guard let header = tableView.headerView(forSection: section) as? Babel2DayHeaderView else { continue }
@@ -1058,6 +1239,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	@objc private func searchTapped() {
 		guard !isSearching, let compactBar else { return }
+		hideNewArticlesPill(animated: false)
 		isSearching = true
 		articlesBeforeSearch = articles
 		offsetBeforeSearch = tableView.contentOffset.y

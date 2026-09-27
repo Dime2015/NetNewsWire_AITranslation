@@ -155,6 +155,13 @@ final class Babel2ReaderToolbarView: UIView {
 		nextButton.isEnabled = available
 	}
 
+	/// 视觉修正（ADR-052）：已读的圆缩一点、向下箭头缩一点，星形不动。
+	static func optical(for iconName: String) -> CGFloat {
+		if iconName.contains("ReadState") { return Babel2Type.BarOptical.circle }
+		if iconName.contains("Next") { return Babel2Type.BarOptical.chevron }
+		return Babel2Type.BarOptical.star
+	}
+
 	private static func makeButton(identifier: String) -> UIButton {
 		let button = UIButton(type: .system)
 		button.tintColor = BabelPalette.mutedInk
@@ -168,7 +175,7 @@ final class Babel2ReaderToolbarView: UIView {
 	private func setIcon(_ name: String, on button: UIButton) {
 		let key = ObjectIdentifier(button)
 		guard iconNames[key] != name else { return }
-		let image = Babel2Type.icon(UIImage(named: name), side: Babel2Type.toolbarIcon)?.withRenderingMode(.alwaysTemplate)
+		let image = Babel2Type.barIcon(UIImage(named: name), optical: Self.optical(for: name))
 		assert(image != nil, "missing reader icon asset \(name)")
 		let isFirstIcon = iconNames[key] == nil
 		iconNames[key] = name

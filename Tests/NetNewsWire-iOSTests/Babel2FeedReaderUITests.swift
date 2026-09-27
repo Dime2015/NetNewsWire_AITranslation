@@ -7,6 +7,8 @@ final class Babel2FeedReaderUITests: XCTestCase {
 
 	func testRealFeedsToArticleAndOpenOriginal() {
 		let app = XCUIApplication(bundleIdentifier: appBundleIdentifier)
+		// 列表和文章会跨启动记住滑到哪（ADR-053）：从干净的位置记录开始，下面「打开列表就在最上面、第一行点得到」才成立
+		app.launchEnvironment["BABEL2_RESET_READING_POSITIONS"] = "1"
 		app.launch()
 
 		let defaultFeedsTable = app.tables[tableIdentifier(for: "babel2.scope.unread")]

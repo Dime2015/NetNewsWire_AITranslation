@@ -85,6 +85,53 @@ enum Babel2Type {
 	static let menuRowHeight: CGFloat = 44
 	static var menuHeader: UIFont { .systemFont(ofSize: 12, weight: .regular) }
 
+	// MARK: 底栏图标的统一画法与视觉修正（ADR-052）
+
+	/// 2026-09-27 用户：「圆看起来就比星视觉上大一些」「列表页和阅读页底栏，一样的控件位置大小一样，不一样的控件视觉上大小相近」。
+	/// 设计稿图标都画在 24×24 网格里：首页、列表、阅读页底栏一律按同一比例画进 21pt 画布
+	/// （以前首页 / 列表页的档位图标按 24pt 画，同一颗星大了 14%），再按形状做视觉修正——
+	/// 实心 / 空心的圆会把框占满，比同宽的星看起来大一圈；向下箭头又宽又粗。
+	enum BarOptical {
+		static let circle: CGFloat = 0.86
+		static let chevron: CGFloat = 0.85
+		static let star: CGFloat = 1
+		static let lines: CGFloat = 1
+		/// 翻译符号（A / 文 双气泡）：1.x 的 14.5pt 放在这里比邻居大一圈，按同样的视觉大小取 11.5pt（角标等比例缩小）
+		static let translatePointSize: CGFloat = 11.5
+	}
+
+	/// 底栏图标：画布固定 21pt（位置、点按区都不变），图形在里面居中画成 21 × optical 大小。模板渲染，随 tintColor 变色。
+	static func barIcon(_ image: UIImage?, optical: CGFloat = 1) -> UIImage? {
+		guard let image, image.size.width > 0, image.size.height > 0 else { return image }
+		let canvas = CGSize(width: toolbarIcon, height: toolbarIcon)
+		let scale = toolbarIcon * optical / max(image.size.width, image.size.height)
+		let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+		let rect = CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2, width: size.width, height: size.height)
+		return UIGraphicsImageRenderer(size: canvas, format: .preferred()).image { _ in
+			image.draw(in: rect)
+		}.withRenderingMode(.alwaysTemplate)
+	}
+
+	/// 「全部标为已读」：实心圆里挖出一个勾。设计稿里勾和圆同色，按模板上色后勾就消失了、只剩一个实心圆，
+	/// 和阅读页的「已读」实心圆一模一样；这里按设计稿同样的坐标自己画，勾是镂空的。
+	static func readAllIcon(side: CGFloat = toolbarIcon, optical: CGFloat = BarOptical.circle) -> UIImage {
+		UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: .preferred()).image { context in
+			let unit = side * optical / 24
+			let origin = (side - 24 * unit) / 2
+			func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: origin + x * unit, y: origin + y * unit) }
+			UIColor.black.setFill()
+			context.cgContext.fillEllipse(in: CGRect(x: origin + 4 * unit, y: origin + 4 * unit, width: 16 * unit, height: 16 * unit))
+			let check = UIBezierPath()
+			check.move(to: point(7.6, 12.64))
+			check.addLine(to: point(10.16, 15.2))
+			check.addLine(to: point(16.4, 8.8))
+			check.lineWidth = 2.2 * unit
+			check.lineCapStyle = .round
+			check.lineJoinStyle = .round
+			check.stroke(with: .clear, alpha: 1)
+		}.withRenderingMode(.alwaysTemplate)
+	}
+
 	/// 设计稿图标（SVG 矢量）按比例重画，使较长的一边等于 side（「•••」这种扁图标也不变形）；
 	/// 模板渲染方式保留，照样随 tintColor 变色。
 	static func icon(_ image: UIImage?, side: CGFloat) -> UIImage? {

@@ -195,13 +195,14 @@ final class Babel2ReaderModeIconButton: Babel2StatusIconControl {
 }
 
 /// 翻译：系统「翻译」符号（A / 文 双气泡，iOS 自带翻译按钮用的就是它）+ 右下角角标，
-/// 图形原样复用 1.x 已定案的 `NNWTranslateIcon`（14.5pt，角标外圈挖一圈透明、小尺寸下也认得出）。
+/// 图形与 1.x 已定案的 `NNWTranslateIcon` 相同（角标外圈挖一圈透明、小尺寸下也认得出），
+/// 字号按底栏邻居的视觉大小取 11.5pt（1.x 的 14.5pt 在这里大一圈，ADR-052），角标等比例缩小。
 /// 状态沿用翻译引擎的六种：
 /// - 原文 → 纯图标；有完整译文缓存 → **实心小圆点**（点一下秒开）；有翻到一半的缓存 → **空心小圆点**（点一下接着翻）
 /// - 翻译中 → 图标明灭；已译 → 墨色方块底、图标反白（与阅读模式同一种「成功」）；失败 → 晃一下后回到平时
 @MainActor
 final class Babel2TranslateIconButton: Babel2StatusIconControl {
-	enum Badge: Equatable {
+	enum Badge: Hashable {
 		case none
 		case solidDot
 		case hollowDot
@@ -255,14 +256,9 @@ final class Babel2TranslateIconButton: Babel2StatusIconControl {
 		if newState == .failed, !wasFailed { shake() }
 	}
 
-	/// 换角标：图标本体不动，只换右下角（1.x 同一组图，各态位置一个像素不差）。
+	/// 换角标：图标本体不动，只换右下角（同一组图，各态位置一个像素不差）。
 	private func setBadge(_ newBadge: Badge) {
-		let image: UIImage
-		switch newBadge {
-		case .none: image = NNWTranslateIcon.outline
-		case .solidDot: image = NNWTranslateIcon.withSolidDot
-		case .hollowDot: image = NNWTranslateIcon.withHollowDot
-		}
+		let image = Babel2TranslateGlyph.image(newBadge)
 		let changed = newBadge != badge || imageView.image == nil
 		badge = newBadge
 		guard changed else { return }
@@ -285,4 +281,53 @@ final class Babel2TranslateIconButton: Babel2StatusIconControl {
 	/// 仅供自动化测试。
 	var isAnimatingWorkForTesting: Bool { imageView.layer.animation(forKey: "babel2.working") != nil }
 	var glyphImageForTesting: UIImage? { imageView.image }
+}
+
+/// 翻译符号 + 右下角角标（ADR-049 / 052）。画法照搬 1.x `NNWTranslateIcon`：
+/// 系统「translate」符号（中等粗细）；角标中心压着图标右下角往里收一点，外圈先挖掉一圈透明（把压住的气泡描边断开），
+/// 再画实心小圆点（完整缓存）或空心小圆圈（翻到一半）。四周对称留白，各态的图标位置一个像素不差；输出模板图，随 tintColor 变色。
+/// 只是字号按底栏邻居的视觉大小取 11.5pt，角标的所有尺寸按同一比例缩小。
+@MainActor
+enum Babel2TranslateGlyph {
+	static let pointSize = Babel2Type.BarOptical.translatePointSize
+	private static var cache = [Babel2TranslateIconButton.Badge: UIImage]()
+
+	static func image(_ badge: Babel2TranslateIconButton.Badge) -> UIImage {
+		if let cached = cache[badge] { return cached }
+		let image = compose(badge)
+		cache[badge] = image
+		return image
+	}
+
+	private static func compose(_ badge: Babel2TranslateIconButton.Badge) -> UIImage {
+		let configuration = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+		let symbol = UIImage(systemName: "translate", withConfiguration: configuration)
+			?? UIImage(systemName: "character.bubble", withConfiguration: configuration)
+			?? UIImage()
+		let icon = symbol.withTintColor(.black, renderingMode: .alwaysOriginal)
+		let k = pointSize / 14.5
+		let pad = 4.5 * k
+		let size = CGSize(width: icon.size.width + pad * 2, height: icon.size.height + pad * 2)
+		return UIGraphicsImageRenderer(size: size, format: .preferred()).image { rendererContext in
+			let context = rendererContext.cgContext
+			icon.draw(at: CGPoint(x: pad, y: pad))
+			guard badge != .none else { return }
+			let center = CGPoint(x: pad + icon.size.width - 1.5 * k, y: pad + icon.size.height - 1.5 * k)
+			context.setBlendMode(.destinationOut)
+			context.fillEllipse(in: CGRect(x: center.x - 5.2 * k, y: center.y - 5.2 * k, width: 10.4 * k, height: 10.4 * k))
+			context.setBlendMode(.normal)
+			UIColor.black.setFill()
+			UIColor.black.setStroke()
+			switch badge {
+			case .solidDot:
+				context.fillEllipse(in: CGRect(x: center.x - 3.1 * k, y: center.y - 3.1 * k, width: 6.2 * k, height: 6.2 * k))
+			case .hollowDot:
+				let ring = UIBezierPath(ovalIn: CGRect(x: center.x - 2.3 * k, y: center.y - 2.3 * k, width: 4.6 * k, height: 4.6 * k))
+				ring.lineWidth = 1.6 * k
+				ring.stroke()
+			case .none:
+				break
+			}
+		}.withRenderingMode(.alwaysTemplate)
+	}
 }

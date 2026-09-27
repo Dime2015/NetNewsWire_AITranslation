@@ -2051,6 +2051,347 @@ final class Babel2FeedReaderTests: XCTestCase {
 		browser.dismiss(animated: false)
 	}
 
+	// MARK: - 底栏图标统一（ADR-052）
+
+	/// 三条底栏同一比例：设计稿图标一律画进 21pt 画布；圆、向下箭头按视觉缩小，星、横线不动；
+	/// 首页 / 列表页档位里的星和横线与阅读页一样大；「全部已读」的勾是镂空的；翻译符号 11.5pt。
+	func testBottomBarIconsShareOneScaleWithOpticalCorrections() {
+		let toolbar = Babel2ReaderToolbarView()
+		for button in [toolbar.readButton, toolbar.starButton, toolbar.nextButton] {
+			XCTAssertEqual(button.image(for: .normal)?.size, CGSize(width: 21, height: 21))
+		}
+		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderReadState"), Babel2Type.BarOptical.circle)
+		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderReadStateFilled"), Babel2Type.BarOptical.circle)
+		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderNext"), Babel2Type.BarOptical.chevron)
+		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderStar"), Babel2Type.BarOptical.star)
+		XCTAssertLessThan(Babel2Type.BarOptical.circle, 1, "circles are drawn a bit smaller than stars")
+
+		let filter = Babel2ScopeFilterControl(selectedScope: .unread)
+		XCTAssertEqual(filter.buttons[.starred]?.configuration?.image?.size, CGSize(width: 21, height: 21), "same size as the reader star")
+		XCTAssertEqual(filter.buttons[.all]?.configuration?.image?.size, CGSize(width: 21, height: 21))
+
+		let readAll = Babel2Type.readAllIcon()
+		XCTAssertEqual(readAll.size, CGSize(width: 21, height: 21))
+		// 勾的拐角处是镂空的，圆里别处是实的（24 网格坐标，按 0.86 缩进 21pt 画布）
+		func gridPoint(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+			let unit = 21 * Babel2Type.BarOptical.circle / 24
+			let origin = (21 - 24 * unit) / 2
+			return CGPoint(x: origin + x * unit, y: origin + y * unit)
+		}
+		XCTAssertLessThan(alphaAt(readAll, gridPoint(10.16, 15.2)), 0.2, "the check is cut out of the circle")
+		XCTAssertGreaterThan(alphaAt(readAll, gridPoint(12, 6.5)), 0.8)
+
+		let translate = Babel2TranslateGlyph.image(.none)
+		XCTAssertLessThan(translate.size.height, NNWTranslateIcon.withSolidDot.size.height, "smaller than the 1.x 14.5pt symbol")
+		XCTAssertEqual(Babel2TranslateGlyph.pointSize, 11.5)
+	}
+
+	// MARK: - 位置记忆（ADR-053）
+
+	/// 文章里：记下读到第几段，重新打开（新的阅读页、存盘后重读）回到同一段；回到顶部再离开就清掉。
+	func testReaderRemembersReadingPositionAcrossOpens() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let body = Self.longArticleBody(paragraphs: 30)
+		let first = makeReader(body: body, positionStore: store)
+		var window = hostInWindow(first)
+		await waitForReaderRender(first)
+		await waitForScrollableLength(first, atLeast: 2000)
+		first.readerContentView.scrollView.setContentOffset(CGPoint(x: 0, y: 1500), animated: false)
+		await first.capturePosition()
+		let saved = try XCTUnwrap(store.articlePosition(for: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")))
+		XCTAssertGreaterThanOrEqual(saved.block, 2, "well into the article body")
+		window.isHidden = true
+
+		store.saveNow()
+		let reopenedStore = Babel2PositionStore(fileURL: file)
+		let second = makeReader(body: body, positionStore: reopenedStore)
+		window = hostInWindow(second)
+		defer { window.isHidden = true }
+		XCTAssertTrue(second.isRestoringPositionForTesting)
+		await waitForReaderRender(second)
+		await waitUntil { abs(second.readerContentView.scrollView.contentOffset.y - 1500) < 40 }
+		XCTAssertEqual(second.readerContentView.scrollView.contentOffset.y, 1500, accuracy: 40, "back to the same paragraph")
+		XCTAssertEqual(second.barVisibilityProgress, 0, "jumping back does not hide the bars")
+
+		second.readerContentView.scrollView.setContentOffset(CGPoint(x: 0, y: -second.readerContentView.scrollView.adjustedContentInset.top), animated: false)
+		// 用户自己滑回顶部（相当于自己动手滑过）再离开：清掉，下次从头开始
+		second.endPositionRestoreForTesting()
+		await second.capturePosition()
+		XCTAssertNil(reopenedStore.articlePosition(for: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")))
+	}
+
+	/// 开着阅读模式离开的文章：重新打开时先排的是摘要，全文到了之后才对到记下的那一段（全文比摘要长得多也对得上）。
+	func testReaderRestoresPositionAfterFullTextArrives() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let full = Self.longArticleBody(paragraphs: 30, prefix: "Full")
+		let setting = Babel2FeedReaderModeSetting(isAlwaysOn: { true }, setAlwaysOn: { _ in })
+		let first = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in full }, feedReaderModeSetting: setting, positionStore: store)
+		var window = hostInWindow(first)
+		await waitUntil { first.isReaderModeOn }
+		await waitForReaderRender(first)
+		await waitForScrollableLength(first, atLeast: 2500)
+		first.readerContentView.scrollView.setContentOffset(CGPoint(x: 0, y: 2000), animated: false)
+		await first.capturePosition()
+		XCTAssertNotNil(store.articlePosition(for: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")))
+		window.isHidden = true
+
+		let gate = Babel2TestGate()
+		let second = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
+			await gate.wait()
+			return full
+		}, feedReaderModeSetting: setting, positionStore: store)
+		window = hostInWindow(second)
+		defer { window.isHidden = true }
+		await waitForReaderRender(second)
+		XCTAssertTrue(second.isRestoringPositionForTesting, "still waiting for the full text")
+		gate.open()
+		await waitUntil { second.isReaderModeOn }
+		await waitUntil { abs(second.readerContentView.scrollView.contentOffset.y - 2000) < 40 }
+		XCTAssertEqual(second.readerContentView.scrollView.contentOffset.y, 2000, accuracy: 40)
+	}
+
+	/// 文章列表：记下可视区最上面那一篇，重新打开回到同一篇、同样的位置；
+	/// 上次离开之后新来的文章在上面时，底栏上方提示「↑ N 篇新文章」，点一下回到顶部并收起。
+	func testListRemembersPositionAndOffersNewArticles() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		func article(_ index: Int) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a\(index)"),
+				title: "Article \(index)", summary: "Summary of article \(index).", url: nil, feedID: feedID,
+				publishedAt: now.addingTimeInterval(-Double(index) * 600))
+		}
+		let older = (0..<40).map(article)
+		let first = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: older])), positionStore: store)
+		var window = hostInWindow(first)
+		await waitForRows(in: first.tableViewForTesting, count: 40)
+		let table = first.tableViewForTesting
+		table.scrollToRow(at: try XCTUnwrap(indexPathOfArticle("a20", in: table)), at: .top, animated: false)
+		table.layoutIfNeeded()
+		first.savePositionForTesting()
+		let saved = try XCTUnwrap(store.listPosition(for: Babel2PositionStore.listKey(feed: feedID)))
+		window.isHidden = true
+
+		// 同样的文章再打开：回到同一篇、同样的位置
+		let second = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: older])), positionStore: store)
+		window = hostInWindow(second)
+		await waitForRows(in: second.tableViewForTesting, count: 40)
+		let restored = try XCTUnwrap(second.currentPositionForTesting)
+		XCTAssertEqual(restored.articleID, saved.articleID, "the same article is at the top (the three ranges share one position)")
+		XCTAssertEqual(restored.offset, saved.offset, accuracy: 2)
+		XCTAssertFalse(second.newArticlesPillForTesting.isShowing, "nothing new")
+		// 从未读档离开（也记一次）：不影响下面回到全部档时数新文章
+		second.savePositionForTesting()
+		window.isHidden = true
+
+		// 上面来了 3 篇新文章：停在原处，提示「↑ 3 篇新文章」；点一下回到顶部、提示收起
+		let fresh = (1...3).map { index in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "new\(index)"),
+				title: "New \(index)", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(Double(index) * 60))
+		}.reversed()
+		let third = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: Array(fresh) + older])), positionStore: store)
+		window = hostInWindow(third)
+		defer { window.isHidden = true }
+		await waitForRows(in: third.tableViewForTesting, count: 43)
+		XCTAssertEqual(third.currentPositionForTesting?.articleID, saved.articleID)
+		XCTAssertTrue(third.newArticlesPillForTesting.isShowing)
+		XCTAssertEqual(third.newArticlesPillForTesting.count, 3)
+		XCTAssertEqual(third.newArticlesPillForTesting.accessibilityLabel, String(format: localized(.newArticles), 3))
+		third.tapNewArticlesPillForTesting()
+		let top = -third.tableViewForTesting.adjustedContentInset.top
+		await waitUntil { abs(third.tableViewForTesting.contentOffset.y - top) < 1 }
+		XCTAssertFalse(third.newArticlesPillForTesting.isShowing)
+	}
+
+	/// 在「全部」档停在顶部、读了第一篇；换到「未读」档（那篇已读、不在了）：换成紧挨着的下一篇——
+	/// 它就是第一篇，所以回到展开的顶部，大图和篇数照常显示（2026-09-27 真实数据 UI 自动测试发现的问题）。
+	func testFallbackToFirstArticleKeepsTheExpandedTop() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let all = (0..<12).map { index in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a\(index)"),
+				title: "Article \(index)", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-Double(index) * 600))
+		}
+		let first = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: all])), positionStore: store)
+		var window = hostInWindow(first)
+		await waitForRows(in: first.tableViewForTesting, count: 12)
+		// 往下滑了一点（大图收起、第一篇还露着）再离开：不算「停在最上面」，走「按文章找回」这条路
+		let firstTable = first.tableViewForTesting
+		firstTable.setContentOffset(CGPoint(x: 0, y: -firstTable.adjustedContentInset.top + 100), animated: false)
+		firstTable.layoutIfNeeded()
+		first.savePositionForTesting()
+		let saved = try XCTUnwrap(store.listPosition(for: Babel2PositionStore.listKey(feed: feedID)))
+		XCTAssertEqual(saved.articleID, "a0")
+		XCTAssertEqual(saved.atTop, false)
+		window.isHidden = true
+
+		let unread = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: Array(all.dropFirst())])), positionStore: store)
+		window = hostInWindow(unread)
+		defer { window.isHidden = true }
+		await waitForRows(in: unread.tableViewForTesting, count: 11)
+		XCTAssertEqual(unread.tableViewForTesting.contentOffset.y, -unread.tableViewForTesting.adjustedContentInset.top, accuracy: 0.5)
+		XCTAssertEqual(unread.heroProgressForTesting, 0, "the big header stays expanded")
+	}
+
+	/// 上次停在最上面（没往下滑过）：换一档再打开，即使那一篇不在第一位，也从最上面开始、大图展开
+	///（2026-09-27 真实数据 UI 自动测试发现：以前会为了把那篇放回原位而收起大图、把前一篇压在窄栏下面）。
+	func testListLeftAtTopReopensAtTop() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let all = (0..<12).map { index in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a\(index)"),
+				title: "Article \(index)", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-Double(index) * 600))
+		}
+		// 未读档：第一篇已读、不在；停在最上面离开（最上面那篇是 a1）
+		let unread = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: Array(all.dropFirst())])), positionStore: store)
+		var window = hostInWindow(unread)
+		await waitForRows(in: unread.tableViewForTesting, count: 11)
+		unread.savePositionForTesting()
+		let saved = try XCTUnwrap(store.listPosition(for: Babel2PositionStore.listKey(feed: feedID)))
+		XCTAssertEqual(saved.articleID, "a1")
+		XCTAssertEqual(saved.atTop, true)
+		window.isHidden = true
+
+		// 全部档：a1 排在第二位，照样从最上面开始
+		let allList = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: all])), positionStore: store)
+		window = hostInWindow(allList)
+		defer { window.isHidden = true }
+		await waitForRows(in: allList.tableViewForTesting, count: 12)
+		XCTAssertEqual(allList.tableViewForTesting.contentOffset.y, -allList.tableViewForTesting.adjustedContentInset.top, accuracy: 0.5)
+		XCTAssertEqual(allList.heroProgressForTesting, 0)
+		XCTAssertFalse(allList.newArticlesPillForTesting.isShowing)
+	}
+
+	/// 「新文章」只跟同一档比：星标档里滑到中间离开，换到全部档打开同一个源——回到同一篇，
+	/// 但上面那些没加星标的（本来就有的）文章不算新文章，不弹提示；回到星标档、真有新加星标的才弹。
+	func testNewArticlesHintOnlyComparesTheSameScope() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		func article(_ id: String, minutesAgo: Double) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id,
+				summary: "Summary of \(id).", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-minutesAgo * 60))
+		}
+		// 星标档：40 篇加了星标的旧文章（一天前起）；全部档：上面还有 10 篇较新的、没加星标的
+		let starred = (0..<40).map { article("s\($0)", minutesAgo: 1440 + Double($0) * 10) }
+		let recent = (0..<10).map { article("r\($0)", minutesAgo: Double($0) * 10) }
+		let starredList = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .starred,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: starred])), positionStore: store)
+		var window = hostInWindow(starredList)
+		await waitForRows(in: starredList.tableViewForTesting, count: 40)
+		starredList.tableViewForTesting.scrollToRow(at: try XCTUnwrap(indexPathOfArticle("s20", in: starredList.tableViewForTesting)), at: .top, animated: false)
+		starredList.tableViewForTesting.layoutIfNeeded()
+		starredList.savePositionForTesting()
+		let saved = try XCTUnwrap(store.listPosition(for: Babel2PositionStore.listKey(feed: feedID)))
+		XCTAssertEqual(saved.seenByScope?.keys.sorted(), [Babel2FeedScope.starred.rawValue])
+		window.isHidden = true
+
+		let allList = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: recent + starred])), positionStore: store)
+		window = hostInWindow(allList)
+		await waitForRows(in: allList.tableViewForTesting, count: 50)
+		XCTAssertEqual(allList.currentPositionForTesting?.articleID, saved.articleID, "the three ranges share one position")
+		XCTAssertFalse(allList.newArticlesPillForTesting.isShowing, "older unstarred articles are not new")
+		// 从全部档离开：全部档的记下来，星标档上次记下的留着
+		allList.savePositionForTesting()
+		XCTAssertEqual(store.listPosition(for: Babel2PositionStore.listKey(feed: feedID))?.seenByScope?.keys.sorted(),
+			[Babel2FeedScope.all.rawValue, Babel2FeedScope.starred.rawValue].sorted())
+		window.isHidden = true
+
+		// 回到星标档：新加了 2 篇星标（比离开时星标档里最新的一篇新）→ 提示「↑ 2 篇新文章」
+		let backToStarred = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .starred,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: Array(recent.prefix(2)) + starred])), positionStore: store)
+		window = hostInWindow(backToStarred)
+		defer { window.isHidden = true }
+		await waitForRows(in: backToStarred.tableViewForTesting, count: 42)
+		XCTAssertEqual(backToStarred.currentPositionForTesting?.articleID, saved.articleID)
+		XCTAssertTrue(backToStarred.newArticlesPillForTesting.isShowing)
+		XCTAssertEqual(backToStarred.newArticlesPillForTesting.count, 2)
+	}
+
+	/// 找回位置的规则：那篇还在就是它；不在了按时间找紧挨着的下一篇（新的在前 → 更早的第一篇）；
+	/// 一篇都没有更早的就停在最后。今日未读和全部未读（今天 / 全部文章）共用一个位置，外文源、星标各一个。
+	func testListPositionAnchorRulesAndSharedKeys() {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		func article(_ id: String, minutesAgo: Double) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: id), title: id, url: nil,
+				feedID: feedID, publishedAt: now.addingTimeInterval(-minutesAgo * 60))
+		}
+		let list = [article("a", minutesAgo: 0), article("b", minutesAgo: 10), article("c", minutesAgo: 20), article("d", minutesAgo: 30)]
+		func stored(_ id: String, minutesAgo: Double) -> Babel2PositionStore.ListPosition {
+			.init(accountID: "account", feedID: "feed", articleID: id, publishedAt: now.addingTimeInterval(-minutesAgo * 60),
+				offset: -12, savedAt: now)
+		}
+		let exact = Babel2FeedViewController.restoreAnchor(for: stored("c", minutesAgo: 20), in: list)
+		XCTAssertEqual(exact?.index, 2)
+		XCTAssertEqual(exact?.exact, true)
+		let gone = Babel2FeedViewController.restoreAnchor(for: stored("gone", minutesAgo: 15), in: list)
+		XCTAssertEqual(gone?.index, 2, "read and filtered out: the next older one")
+		XCTAssertEqual(gone?.exact, false)
+		let old = Babel2FeedViewController.restoreAnchor(for: stored("old", minutesAgo: 90), in: list)
+		XCTAssertEqual(old?.index, 3, "everything here is newer: stop at the end")
+		XCTAssertEqual(Babel2FeedViewController.newArticles(in: list, since: now.addingTimeInterval(-15 * 60)).map(\.id.articleID), ["a", "b"])
+		XCTAssertEqual(Babel2PositionStore.listKey(smart: .today), Babel2PositionStore.listKey(smart: .all))
+		XCTAssertNotEqual(Babel2PositionStore.listKey(smart: .today), Babel2PositionStore.listKey(smart: .foreign))
+		XCTAssertNotEqual(Babel2PositionStore.listKey(smart: .starred), Babel2PositionStore.listKey(smart: .foreign))
+	}
+
+	/// 今日未读里看到哪，打开全部未读就接着那一篇（反过来也一样）。
+	func testTodayAndAllUnreadShareTheirPosition() async throws {
+		let file = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-positions-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: file) }
+		let store = Babel2PositionStore(fileURL: file)
+		let now = Date()
+		func article(_ index: Int) -> ArticleSnapshot {
+			let feedID = FeedSnapshot.ID(accountID: "account", feedID: "f\(index % 3)")
+			return ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: feedID.feedID, articleID: "s\(index)"),
+				title: "Story \(index)", summary: "Summary \(index).", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-Double(index) * 900))
+		}
+		let today = (0..<30).map(article)
+		let all = (0..<60).map(article)
+		let feeds = (0..<3).map { makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: "f\($0)"), title: "Feed \($0)") }
+		let provider = FakeDataProvider()
+		await provider.setSmartArticles(SmartFeedArticlesSnapshot(articles: today, feeds: feeds), for: .today)
+		await provider.setSmartArticles(SmartFeedArticlesSnapshot(articles: all, feeds: feeds), for: .all)
+
+		let todayList = Babel2FeedViewController(smartFeed: .today, scope: .unread, environment: makeEnvironment(provider: provider), positionStore: store)
+		var window = hostInWindow(todayList)
+		await waitForRows(in: todayList.tableViewForTesting, count: 30)
+		todayList.tableViewForTesting.scrollToRow(at: try XCTUnwrap(indexPathOfArticle("s18", in: todayList.tableViewForTesting)), at: .top, animated: false)
+		todayList.tableViewForTesting.layoutIfNeeded()
+		todayList.savePositionForTesting()
+		let saved = try XCTUnwrap(todayList.currentPositionForTesting)
+		window.isHidden = true
+
+		let allList = Babel2FeedViewController(smartFeed: .all, scope: .unread, environment: makeEnvironment(provider: provider), positionStore: store)
+		window = hostInWindow(allList)
+		defer { window.isHidden = true }
+		await waitForRows(in: allList.tableViewForTesting, count: 60)
+		XCTAssertEqual(allList.currentPositionForTesting?.articleID, saved.articleID, "opens where Today's Unread was left")
+	}
+
 	// MARK: - 整页左滑进原文、点标题进原文（ADR-048）
 
 	/// 整页往左划进原文的开始条件：明显往左横滑才开始；往右 / 竖着 / 进行中 / 在还能往左滚的横向滚动区里都不开始。
@@ -4208,7 +4549,8 @@ private func makeReader(
 	author: String? = nil,
 	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() },
 	feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
-	makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil
+	makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
+	positionStore: Babel2PositionStore? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -4229,7 +4571,8 @@ private func makeReader(
 		hostArticleProvider: { _ in hostArticle },
 		fullTextProvider: fullTextProvider,
 		feedReaderModeSetting: feedReaderModeSetting,
-		makeBrowser: makeBrowser
+		makeBrowser: makeBrowser,
+		positionStore: positionStore
 	)
 }
 
@@ -4747,4 +5090,36 @@ private func makeOrganizableHome() async throws -> (navigation: Babel2Navigation
 	let root = try XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
 	await waitForRootState(root, scope: .unread, state: "loaded", rows: 7)
 	return (navigation, root, editing, provider, window)
+}
+
+
+// MARK: - 位置记忆测试用（ADR-053）
+
+/// 列表里某篇文章所在的行。
+@MainActor
+private func indexPathOfArticle(_ articleID: String, in tableView: UITableView) -> IndexPath? {
+	for section in 0..<tableView.numberOfSections {
+		for row in 0..<tableView.numberOfRows(inSection: section) {
+			let path = IndexPath(row: row, section: section)
+			if let cell = tableView.dataSource?.tableView(tableView, cellForRowAt: path),
+				cell.accessibilityIdentifier?.hasSuffix(".\(articleID)") == true {
+				return path
+			}
+		}
+	}
+	return nil
+}
+
+/// 读图上某一点（点坐标）的不透明度。
+@MainActor
+private func alphaAt(_ image: UIImage, _ point: CGPoint) -> CGFloat {
+	guard let cgImage = image.cgImage else { return 0 }
+	let x = Int(point.x * image.scale), y = Int(point.y * image.scale)
+	var pixel = [UInt8](repeating: 0, count: 4)
+	pixel.withUnsafeMutableBytes { buffer in
+		guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+			space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+		context.draw(cgImage, in: CGRect(x: -CGFloat(x), y: -CGFloat(cgImage.height - 1 - y), width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
+	}
+	return CGFloat(pixel[3]) / 255
 }

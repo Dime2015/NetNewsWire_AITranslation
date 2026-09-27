@@ -93,7 +93,9 @@ enum Babel2SceneComposition {
 					}
 				),
 				// 打开时图标还没到的，之后补上（ADR-039）
-				currentIcon: { Babel2LiveIconCache.currentIconData(for: feed.id) }
+				currentIcon: { Babel2LiveIconCache.currentIconData(for: feed.id) },
+				// 记住滑到哪（ADR-053）
+				positionStore: .shared
 			)
 			wireArticleList(feedViewController, root: root, navigationController: navigationController,
 				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
@@ -106,7 +108,8 @@ enum Babel2SceneComposition {
 				smartFeed: kind,
 				scope: scope,
 				environment: resolvedEnvironment,
-				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead }
+				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead },
+				positionStore: .shared
 			)
 			wireArticleList(listViewController, root: root, navigationController: navigationController,
 				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
@@ -153,7 +156,9 @@ enum Babel2SceneComposition {
 					makeBrowser(url, navigationController: navigationController, environment: environment, settings: settings, openURL: openURL)
 				} : nil,
 				// 播客音频条、YouTube 简介（ADR-041）
-				mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) }
+				mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) },
+				// 记住读到哪（ADR-053）
+				positionStore: .shared
 			)
 			articleViewController.onOpenOriginal = { url, _ in
 				openURL(url)
@@ -222,7 +227,8 @@ enum Babel2SceneComposition {
 			makeBrowser: settings.openLinksInApp ? { [weak navigationController] url in
 				makeBrowser(url, navigationController: navigationController, environment: environment, settings: settings, openURL: openURL)
 			} : nil,
-			standalonePage: true
+			standalonePage: true,
+			positionStore: .shared
 		)
 		reader.onOpenOriginal = { url, _ in openURL(url) }
 		reader.onOpenLink = { url in openURL(url) }

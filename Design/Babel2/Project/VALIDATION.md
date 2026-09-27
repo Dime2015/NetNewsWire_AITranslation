@@ -9,6 +9,29 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-27 第三轮：位置记忆、新文章提示、底栏图标统一（ADR-052 / 053；uncommitted worktree，待用户真机验收）
+
+- 环境同上（iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData；所有测试命令都带 `-collect-test-diagnostics never`，含 UI Driver，见 LESSONS 57）。
+- 新增 9 项：底栏图标统一；文章里记与恢复；全文晚到后恢复；列表记与恢复 + 新文章提示；找回规则与共用键；今日未读 → 全部未读接着看；换成第一篇时回到展开的顶部；没滑动过下次从顶部开始；新文章只跟同一档比。列表位置 6 项最后一次定向为 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/pos9.xcresult`，6/6。
+- 反向验证：
+  - `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/rev8.xcresult`：关掉文章恢复 / 列表恢复 / 新文章提示后，`testListRemembersPositionAndOffersNewArticles`、`testReaderRemembersReadingPositionAcrossOpens`、`testReaderRestoresPositionAfterFullTextArrives`、`testTodayAndAllUnreadShareTheirPosition` 失败。
+  - `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/rev-AC.xcresult`：关掉「停在顶部」和「分档合并」后 3 项失败。
+  - `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/rev-B.xcresult`：「新文章」改成跟任意一档比后，只有 `testNewArticlesHintOnlyComparesTheSameScope` 失败。
+  - 每次恢复后都用 `cmp` 核对，与备份一致。
+- 真实数据 UI Driver（Release）：
+  - `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r4-ui.xcresult` 失败：`feed header count did not appear for babel2.scope.unread`。换成第一篇时大图被误收起（LESSONS 57），已修。
+  - `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r5-ui.xcresult` 失败：`ARTICLE_BODY_LOADING_OR_EMPTY`。星标档没滑动就离开，也被记成「第一篇」，全部档打开时列表被滚到中间，测试点第一行点在了窄栏上（LESSONS 58）。已修，同时把「新文章」改为分档比；UI 测试启动时带 `BABEL2_RESET_READING_POSITIONS=1`。
+  - 最终 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r6-ui.xcresult` 1/1（55 秒）。
+- 全量：中间版本 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r4-full.xcresult` 196/196、`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r5-full.xcresult` 197/197；最终 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r6-full.xcresult` 199/199，0 失败 0 跳过。
+- 边界：
+  - pbxproj 签名 diff hash 仍是 `c5f5a8cf…`；`Shared/Localizable.xcstrings` stale 行 diff hash 仍是 `4e9e96a3…`。
+  - `git diff --check` 干净；改动里没有调试输出。
+  - 本轮只改 `iOS/Babel2`、测试和文档，不涉及 Shared / Mac，所以没有重跑 macOS build。
+- 缺口（只能真机验收）：
+  - 回到原处准不准、看起来怎样（尤其长列表、图片多的文章）；
+  - 「↑ N 篇新文章」什么时候出现（需要真有新文章）；
+  - 三条底栏图标在真机上的视觉大小。
+
 ## 2026-09-27 验收中追加：图片查看器直角 + 横图贴边（ADR-051；uncommitted worktree，待用户真机验收）
 
 - 定向 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/r3t.xcresult` 2/2（`testImageViewerRules`、`testTappingImageOpensCardViewerInsteadOfFollowingItsLink`，均按新规则更新）。

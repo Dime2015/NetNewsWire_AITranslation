@@ -76,6 +76,17 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 不在订阅里的独立网页（内置浏览器「翻译此页」打开的，ADR-047）：没有已读 / 星标 / 下一篇，
 	/// 正文已经是抽出来的全文、不再提供阅读模式；打开时不标已读。
 	private let isStandalonePage: Bool
+	/// 读到哪（ADR-053）：没有注入时不记也不恢复。
+	private let positionStore: Babel2PositionStore?
+	/// 打开时要回到的位置：每次排版完成、正文变长（全文到了、从缓存放回译文、图片加载）都按它再对一次，
+	/// 直到用户自己动手滑、或切换阅读模式为止。
+	private var pendingPosition: Babel2PositionStore.ArticlePosition?
+	private var positionRestoreTask: Task<Void, Never>?
+	private var positionCaptureTask: Task<Void, Never>?
+	private var isRestoringPosition = false
+	private var lastRestoredHeight: CGFloat?
+	/// 上次对位时正文还没排到那么长、只滚到了能滚的最远处：正文变长后再对一次
+	private var positionRestoreWasClamped = false
 	private var browserMotion: Babel2ReaderBrowserMotion?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
@@ -140,9 +151,12 @@ final class Babel2ArticleViewController: UIViewController {
 		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
 		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
 		mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)? = nil,
-		standalonePage: Bool = false
+		standalonePage: Bool = false,
+		positionStore: Babel2PositionStore? = nil
 	) {
 		self.isStandalonePage = standalonePage
+		self.positionStore = positionStore
+		self.pendingPosition = positionStore?.articlePosition(for: article.id)
 		self.mediaProvider = mediaProvider
 		self.feedReaderModeSetting = feedReaderModeSetting
 		self.makeBrowser = makeBrowser
@@ -180,6 +194,7 @@ final class Babel2ArticleViewController: UIViewController {
 		contentView.onScrollGeometryChange = { [weak self] in
 			self?.updateChrome()
 			self?.updateNextPull()
+			self?.positionGeometryChanged()
 		}
 		contentView.onLinkActivated = { [weak self] url in
 			self?.openLink(url)
@@ -243,9 +258,19 @@ final class Babel2ArticleViewController: UIViewController {
 		updateBottomInset()
 	}
 
+	override func viewWillDisappear(_ animated: Bool) {
+		super.viewWillDisappear(animated)
+		// 离开前记下读到哪（ADR-053）；还在按记下的位置恢复（用户没动过）就不用改
+		if pendingPosition == nil {
+			Task { @MainActor [weak self] in await self?.capturePosition() }
+		}
+	}
+
 	override func viewDidDisappear(_ animated: Bool) {
 		super.viewDidDisappear(animated)
 		if isMovingFromParent {
+			positionRestoreTask?.cancel()
+			positionCaptureTask?.cancel()
 			fullTextTask?.cancel()
 			statusHideTask?.cancel()
 			// 离开页面：取消还在飞的翻译请求（不再花钱，也不会写到别的页面上）
@@ -322,6 +347,7 @@ final class Babel2ArticleViewController: UIViewController {
 				guard !Task.isCancelled, self.renderGeneration == generation else { return }
 				self.lastRenderResult = result
 				if scrollToTop { self.scrollToTop() }
+				self.applyPendingPosition()
 				if let result {
 					if result.isEmpty {
 						self.showMessage(Babel2Localization.text(.noArticleContent), allowsRetry: false)
@@ -370,6 +396,8 @@ final class Babel2ArticleViewController: UIViewController {
 
 	/// 底栏第 4 格「阅读模式」：开 → 取全文；关 → 回到订阅源自带的正文（ADR-020）。
 	func toggleReaderMode() {
+		// 用户手动切换：两版正文按位置对不上，从头开始（不再恢复记下的位置）
+		pendingPosition = nil
 		if isReaderModeOn || fullTextTask != nil {
 			fullTextTask?.cancel()
 			fullTextTask = nil
@@ -1214,6 +1242,69 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 	}
 
+	// MARK: - 读到哪（ADR-053）
+
+	/// 按记下的位置滚过去。每次排版完成、正文变长时都会再来一次（直到用户自己动手滑）。
+	/// 程序跳转不算「往下滑」：顶 / 底栏保持显示。
+	private func applyPendingPosition() {
+		guard let position = pendingPosition, contentView.renderState == .rendered else { return }
+		let generation = renderGeneration
+		positionRestoreTask?.cancel()
+		positionRestoreTask = Task { @MainActor [weak self] in
+			guard let self,
+				let y = await self.contentView.contentY(block: position.block, blockCount: position.blockCount,
+					fraction: position.fraction, progress: position.progress),
+				!Task.isCancelled, self.pendingPosition == position, self.renderGeneration == generation else { return }
+			let scrollView = self.contentView.scrollView
+			let insets = scrollView.adjustedContentInset
+			let minY = -insets.top
+			// 能滚到的最远处：网页的内容高度可能还没跟上刚量出来的正文高度，两者取大
+			let byContentSize = scrollView.contentSize.height + insets.bottom - scrollView.bounds.height
+			let byArticle = (self.contentView.articleHeight ?? 0) + insets.bottom - scrollView.bounds.height
+			let maxY = max(minY, byContentSize, byArticle)
+			self.isRestoringPosition = true
+			self.lastScrolled = nil
+			scrollView.setContentOffset(CGPoint(x: 0, y: min(max(y, minY), maxY)), animated: false)
+			self.isRestoringPosition = false
+			self.positionRestoreWasClamped = y > maxY + 1
+			self.lastRestoredHeight = self.contentView.articleHeight
+		}
+	}
+
+	/// 滚动或正文高度变了：还在恢复中且正文变长了 → 再对一次；否则（用户在读）停下半秒后记下位置。
+	private func positionGeometryChanged() {
+		guard positionStore != nil, !isRestoringPosition else { return }
+		if pendingPosition != nil {
+			if contentView.articleHeight != lastRestoredHeight || positionRestoreWasClamped { applyPendingPosition() }
+			return
+		}
+		positionCaptureTask?.cancel()
+		positionCaptureTask = Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .milliseconds(500))
+			guard !Task.isCancelled else { return }
+			await self?.capturePosition()
+		}
+	}
+
+	/// 记下读到哪：可视区顶边落在正文第几段、段内比例、整体进度。还在标题区（没读进正文）就清掉，下次从头开始。
+	func capturePosition() async {
+		guard let positionStore, pendingPosition == nil, contentView.renderState == .rendered else { return }
+		let articleID = article.id
+		let y = contentView.scrollView.contentOffset.y
+		guard y > 24 else {
+			positionStore.setArticlePosition(nil, for: articleID)
+			return
+		}
+		guard let anchor = await contentView.readingAnchor(atContentY: y), article.id == articleID else { return }
+		positionStore.setArticlePosition(Babel2PositionStore.ArticlePosition(block: anchor.block, blockCount: anchor.blockCount,
+			fraction: anchor.fraction, progress: anchor.progress, savedAt: Date()), for: articleID)
+	}
+
+	/// 仅供自动化测试。
+	var isRestoringPositionForTesting: Bool { pendingPosition != nil }
+	/// 仅供自动化测试：相当于用户自己动手滑了一下（不再按记下的位置恢复）。
+	func endPositionRestoreForTesting() { pendingPosition = nil }
+
 	// MARK: - 上拉翻到下一篇（ADR-035）
 
 	/// 正文拉过底部多少 pt（正数 = 在底部橡皮筋区）。
@@ -1336,6 +1427,11 @@ final class Babel2ArticleViewController: UIViewController {
 
 	@objc private func scrollPanChanged(_ gesture: UIPanGestureRecognizer) {
 		switch gesture.state {
+		case .began:
+			// 用户自己动手滑了：不再按记下的位置恢复（ADR-053）
+			pendingPosition = nil
+			positionRestoreTask?.cancel()
+			settleTimer?.invalidate()
 		case .ended:
 			commitNextPullIfArmed()
 			scheduleSettleIfIdle(afterFingerLifted: true)

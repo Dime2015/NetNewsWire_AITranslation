@@ -142,16 +142,18 @@ final class Babel2ScopeFilterControl: UIView {
 		}
 	}
 
-	/// 与首页同一套图标：星标（选中为实心小星）、未读（8pt 圆点）、全部（三条横线，选中缩到 15pt）。
+	/// 与首页同一套图标：星标（选中为实心小星）、未读（8pt 圆点）、全部（横线，选中缩到 15pt）。
+	/// 没选中的星标 / 横线按底栏统一画法（21pt 画布，ADR-052），与阅读页底栏同一位置的星、横线一样大。
 	private static func image(for scope: Babel2FeedScope, selected: Bool) -> UIImage? {
 		switch scope {
 		case .starred:
-			return UIImage(named: selected ? "BabelFilterSelectedStar" : "BabelHomeStar")?.withRenderingMode(.alwaysTemplate)
+			if selected { return UIImage(named: "BabelFilterSelectedStar")?.withRenderingMode(.alwaysTemplate) }
+			return Babel2Type.barIcon(UIImage(named: "BabelHomeStar"), optical: Babel2Type.BarOptical.star)
 		case .unread:
 			return UIImage(systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .regular))
 		case .all:
 			guard let image = UIImage(named: "BabelHomeAll")?.withRenderingMode(.alwaysTemplate) else { return nil }
-			guard selected else { return image }
+			guard selected else { return Babel2Type.barIcon(image, optical: Babel2Type.BarOptical.lines) }
 			let size = CGSize(width: 15, height: 15)
 			return UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
 				.withRenderingMode(.alwaysTemplate)

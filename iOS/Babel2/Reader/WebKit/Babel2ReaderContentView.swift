@@ -241,6 +241,55 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	}
 
 	/// 仅供自动化测试：读出正文容器里的纯文字。
+	// MARK: - 读到哪（ADR-053）
+
+	/// 某个正文坐标 y（可视区顶边）落在正文第几段、在那一段的什么比例处，以及在整篇正文里的进度。
+	/// 段落 = 正文容器的直接子元素（译文与原文一一对应）；不占高度的元素跳过。排版没完成时为 nil。
+	func readingAnchor(atContentY y: CGFloat) async -> (block: Int, blockCount: Int, fraction: Double, progress: Double)? {
+		guard renderState == .rendered else { return nil }
+		let raw = try? await webView.callAsyncJavaScript("""
+			const root = document.getElementById('babel2-article');
+			if (!root) { return null; }
+			const box = root.getBoundingClientRect();
+			const rootTop = box.top + window.scrollY;
+			const rootBottom = box.bottom + window.scrollY;
+			const progress = rootBottom > rootTop ? Math.min(Math.max((y - rootTop) / (rootBottom - rootTop), 0), 1) : 0;
+			const blocks = root.children;
+			for (let i = 0; i < blocks.length; i++) {
+				const r = blocks[i].getBoundingClientRect();
+				if (r.height <= 0) { continue; }
+				const top = r.top + window.scrollY;
+				if (top + r.height > y) {
+					return { block: i, count: blocks.length, fraction: Math.min(Math.max((y - top) / r.height, 0), 1), progress: progress };
+				}
+			}
+			return { block: Math.max(blocks.length - 1, 0), count: blocks.length, fraction: 1, progress: progress };
+			""", arguments: ["y": Double(y)], in: nil, contentWorld: .defaultClient)
+		guard let dictionary = raw as? [String: Any],
+			let block = (dictionary["block"] as? NSNumber)?.intValue,
+			let count = (dictionary["count"] as? NSNumber)?.intValue,
+			let fraction = (dictionary["fraction"] as? NSNumber)?.doubleValue,
+			let progress = (dictionary["progress"] as? NSNumber)?.doubleValue else { return nil }
+		return (block, count, fraction, progress)
+	}
+
+	/// 记下的位置现在在正文里的 y：段数没变就按「第几段 + 段内比例」，段数对不上就按整体进度。
+	func contentY(block: Int, blockCount: Int, fraction: Double, progress: Double) async -> CGFloat? {
+		guard renderState == .rendered else { return nil }
+		let raw = try? await webView.callAsyncJavaScript("""
+			const root = document.getElementById('babel2-article');
+			if (!root) { return null; }
+			const blocks = root.children;
+			if (blocks.length === count && block < blocks.length) {
+				const r = blocks[block].getBoundingClientRect();
+				if (r.height > 0) { return r.top + window.scrollY + fraction * r.height; }
+			}
+			const box = root.getBoundingClientRect();
+			return box.top + window.scrollY + progress * box.height;
+			""", arguments: ["block": block, "count": blockCount, "fraction": fraction, "progress": progress], in: nil, contentWorld: .defaultClient)
+		return (raw as? NSNumber).map { CGFloat($0.doubleValue) }
+	}
+
 	func articleTextForTesting() async -> String? {
 		try? await webView.callAsyncJavaScript(
 			"const root = document.getElementById('babel2-article'); return root ? root.innerText.trim() : null;",

@@ -2,9 +2,14 @@
 
 ## ★ 下一会话从这里开始（2026-09-27 更新）
 
-**先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～047、LESSONS.md 第 30～53 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+**先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～053、LESSONS.md 第 30～58 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**当前：用户 11 条反馈（ADR-036）五批 + 验收中追加（ADR-048～051）已分 6 个提交推送（2026-09-27，用户回复「好的，分批commit+push所有的改动」）**
+**当前（第三轮）：位置记忆与底栏统一（ADR-052 / 053）已实现与自动化完成，待用户真机验收（未提交）**
+- 明细见 STATUS 顶部。用户选择：重开 App 也记得位置；订阅源三档共用一个位置；离开时翻到一半的文章不自动接着翻（维持原规则）；首页底栏一起统一。
+- 真实数据 UI Driver 抓到两个真问题（LESSONS 57、58），已修。规则补充见 ADR-053 补充：没滑动过下次从顶部开始；「新文章」分档比。**跑 UI Driver 前不用手动清位置**：测试自己带 `BABEL2_RESET_READING_POSITIONS=1`；用 simctl 手动取证时写 `SIMCTL_CHILD_BABEL2_RESET_READING_POSITIONS=1`。
+- 全量 199/199、真实数据 UI Driver 1/1（VALIDATION）。用户 2026-09-27 原话：「我验收后没有问题的话，就commit+push」——**等用户明确说验收没问题**再提交并推送；一个提交，不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、未跟踪的 `icon new/`（图标草稿，历来不提交）。
+
+**上一轮：用户 11 条反馈（ADR-036）五批 + 验收中追加（ADR-048～051）已分 6 个提交推送（2026-09-27，用户回复「好的，分批commit+push所有的改动」）**
 - 提交：`f194862bd`（ADR-035 + 第 1 批）→ `54d5fc003`（第 2 批）→ `24299e82e`（第 3 批）→ `7caa5437f`（第 4 批）→ `282547c0b`（第 5 批）→ `ff95ddab3`（验收追加）；远端 `origin/codex/reeder-classic-rebuild` 与本地一致。pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行照旧留在工作树、未提交。
 - 用户没有逐条说明验收结果；下次开工可先问用户各条在真机上的表现（尤其整页左划 / 右滑手感、图片查看器、首页长按整理、浏览器去广告）。
 - 用户 2026-09-27 原话：「全部按你的建议来……你直接把所有工作做完，然后我一次性验收」。图标方案取推荐（阅读模式 B · 纸页、翻译 A · 文/A）；浏览器翻译取「一键转成阅读页再翻译」；去广告默认开、可临时关。
