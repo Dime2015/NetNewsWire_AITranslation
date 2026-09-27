@@ -197,9 +197,22 @@ That pattern delays ordinary scrolling and produces the observed “sticky” fi
 movement. Do not allow Reader → Browser to begin from any horizontal point; reserve it
 for the configured right-edge region. Browser back uses the same left-edge pop owner.
 
+> **Amendment 2026-09-27 (user-approved, ADR-042): full-surface pop on content routes.**
+> The user asked for back-swipe from anywhere on the feed list, the Reader, and other
+> pushed Babel2 routes. The failure mode above stays prohibited: no descendant
+> `UIScrollView` may be made to wait for the pop recognizer. The approved shape is a
+> second pop recognizer on the navigation container that decides only at its first
+> movement: it begins solely for a rightward, horizontally dominant (`|vx| > 1.2 |vy|`)
+> pan that does not start in the left edge zone (owned by the edge recognizer) and does
+> not start inside a horizontal scroller that can still scroll toward its leading edge
+> (wide tables/code blocks scroll first, then pop). Vertical pans never start it, so
+> ordinary scrolling is not delayed. It may recognize simultaneously with vertical-only
+> scroll views. Routes that host arbitrary web content (in-app Browser) remain
+> edge-only. Progress, projection and visuals are identical to the edge pop.
+
 | Gesture | Start region / gate | Can recognize simultaneously with | Must yield to |
 |---|---|---|---|
-| Pop | left edge; `target` edge width `24–32 pt` (`to-tune`) | none while active | system modal dismissal if present |
+| Pop | left edge; `target` edge width `24–32 pt` (`to-tune`). Amendment ADR-042: also anywhere on non-Browser routes with rightward horizontal intent, outside horizontal scrollers that can still scroll | vertical-only scroll views (amendment) | system modal dismissal if present |
 | Reader → Browser | right edge; `target` edge width `24–32 pt` (`to-tune`), link action eligible | vertical scroll before intent lock | pop, text selection, native control tap |
 | Vertical article pager | full content surface only at scroll boundary; vertical intent lock | chrome observation only | edge pop and right-edge action |
 | WebView/table scroll | ordinary content surface | chrome observer | active edge transition |
@@ -607,7 +620,7 @@ identity and anchor persistence; they cannot certify feel alone.
 |---|---|---|---|
 | Pop | slow edge drag, release below threshold | current route remains; no stack corruption | automated + device |
 | Pop | fast edge drag, reverse mid-flight | visual reversal follows finger; one final outcome | device + signpost |
-| Pop | non-edge table/WebView horizontal movement | no pop recognizer activation | UI test + device |
+| Pop | non-edge table/WebView horizontal movement | ~~no pop recognizer activation~~ Amendment ADR-042: rightward horizontal swipe anywhere pops (non-Browser routes); vertical scroll never starts pop; a horizontal scroller not at its leading edge scrolls instead | unit (decision rule) + device |
 | Browser | right-edge start, cancel at 10/50/90% (`target` checkpoints) | Reader remains identical; Browser not adopted | device |
 | Browser | right-edge finish, Browser cold/warm | first movement is local; no network hitch | signpost + device |
 | Browser | Browser left-edge back | same pop contract and anchor behavior | device |

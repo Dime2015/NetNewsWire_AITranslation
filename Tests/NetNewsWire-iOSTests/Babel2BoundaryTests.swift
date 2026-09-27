@@ -172,11 +172,22 @@ import Babel2UI
 			default:
 				traceOnlyTokens = []
 			}
+			// ADR-041 (2026-09-27, user-approved per LESSONS 30): the reader's web
+			// view needs the *system* configuration type to allow inline video
+			// playback. Exactly this file may name it, and every occurrence of the
+			// legacy token must be part of the system type name (WK prefix); the
+			// legacy 1.x configuration type stays prohibited everywhere.
+			let namesOnlySystemWebConfiguration = fileURL.lastPathComponent == "Babel2ReaderContentView.swift"
+				&& fileURL.path.contains("/Reader/WebKit/")
+				&& source.components(separatedBy: "WebViewConfiguration").count == source.components(separatedBy: "WKWebViewConfiguration").count
+			func isAllowed(_ token: String) -> Bool {
+				token == "WebViewConfiguration" && namesOnlySystemWebConfiguration
+			}
 			for token in tokens {
-				#expect(traceOnlyTokens.contains(token) || !source.contains(token), "Babel 2.0 source contains prohibited token \(token): \(fileURL.path)")
+				#expect(traceOnlyTokens.contains(token) || isAllowed(token) || !source.contains(token), "Babel 2.0 source contains prohibited token \(token): \(fileURL.path)")
 			}
 			for token in permanentLegacyTokens {
-				#expect(!source.contains(token), "Babel 2.0 source contains permanent legacy token \(token): \(fileURL.path)")
+				#expect(isAllowed(token) || !source.contains(token), "Babel 2.0 source contains permanent legacy token \(token): \(fileURL.path)")
 			}
 			if source.contains("WebKit") || source.contains("WKWebView") {
 				let normalizedPath = fileURL.standardizedFileURL.path

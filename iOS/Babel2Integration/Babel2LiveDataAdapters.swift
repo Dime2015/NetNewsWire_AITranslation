@@ -426,6 +426,26 @@ enum Babel2LiveArticleLookup {
 	}
 }
 
+/// 阅读页正文上方的播放器信息（ADR-041）：原样复用 1.x 的两个「重新读一次订阅源」的加载器
+/// （YouTubeDescriptionLoader 取视频简介、PodcastEpisodeLocator 找播客音频；都按订阅源缓存，
+/// 包括「这个源没有音频」的结论，所以普通源每次启动最多多读一次订阅源；1.x 文件零改动）。
+/// 只认本地 / iCloud 账户（订阅源编号就是订阅源地址）；同步服务账户拿不到就当没有。
+@MainActor
+enum Babel2LiveArticleMedia {
+	static func extras(for id: ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras? {
+		guard let article = await Babel2LiveArticleLookup.article(for: id) as? Article else { return nil }
+		if let description = await YouTubeDescriptionLoader.shared.description(for: article) {
+			return Babel2ArticleMediaExtras(youTubeDescription: description)
+		}
+		// YouTube 文章没有音频可找（播放器由阅读页按链接自己放）
+		guard Babel2ArticleMedia.youTubeVideoID(from: article.preferredURL) == nil else { return nil }
+		if let episode = await PodcastEpisodeLocator.shared.episode(for: article), let url = URL(string: episode.audioURL) {
+			return Babel2ArticleMediaExtras(audioURL: url)
+		}
+		return nil
+	}
+}
+
 /// 按订阅源的「总是用阅读模式」开关：直接读写现成的 `Feed.readerViewAlwaysEnabled`
 /// （公开接口，Babel 1.x 的订阅源设置页用的就是它，1.x 里设过的在新版继续生效）。ADR-020。
 @MainActor

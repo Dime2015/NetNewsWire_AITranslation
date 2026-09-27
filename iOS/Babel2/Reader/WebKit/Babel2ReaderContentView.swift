@@ -23,12 +23,22 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		case failed
 	}
 
-	/// 一次排版的结果：正文字数和图片数。两者都是 0 说明文章没有正文。
+	/// 一次排版的结果：正文字数、图片数、播放器 / 视频 / 音频数。全是 0 说明文章没有正文。
 	struct RenderResult: Equatable {
 		let textLength: Int
 		let imageCount: Int
+		/// 正文上方的播放器、正文里的视频框 / 视频 / 音频（ADR-041）
+		var mediaCount: Int = 0
 
-		var isEmpty: Bool { textLength == 0 && imageCount == 0 }
+		var isEmpty: Bool { textLength == 0 && imageCount == 0 && mediaCount == 0 }
+	}
+
+	/// 点了正文里的一张图（ADR-040）：图片地址、外面包着的链接、图在本视图里的位置、替代文字。
+	struct ImageTap: Equatable {
+		let imageURL: URL?
+		let linkURL: URL?
+		let frame: CGRect
+		let altText: String
 	}
 
 	/// 点击正文里的链接时的去向判断（抽成纯函数，方便自动化测试）。
@@ -44,6 +54,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	var pageWebView: WKWebView { webView }
 	/// 用户点了正文里的链接，交给外面决定怎么打开。
 	var onLinkActivated: ((URL) -> Void)?
+	/// 用户点了正文里的图片（ADR-040）。图片外面即使包着链接，也只走这里、不再打开链接。
+	var onImageTapped: ((ImageTap) -> Void)?
 	/// 网页内容进程意外退出（系统内存紧张时会发生），外面应显示错误并允许重试。
 	var onContentProcessTerminated: (() -> Void)?
 	/// 滚动位置或正文长度变了（图片加载完正文会变长）。阅读页据此更新紧凑标题栏和进度圆环。
@@ -58,9 +70,15 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	private var shellWaiters = [CheckedContinuation<Bool, Never>]()
 	private var scrollObservations = [NSKeyValueObservation]()
 	private static let heightMessageName = "babel2ArticleHeight"
+	private static let imageTapMessageName = "babel2ImageTapped"
 
 	override init(frame: CGRect) {
-		webView = WKWebView(frame: .zero)
+		// 视频在文章里原地播放（ADR-041，用户 2026-09-27 同意为此给边界测试加精确例外）：
+		// 这两项只能在创建网页控件时给定，之后改不了。自动播放一律关掉，要用户自己点。
+		let configuration = WKWebViewConfiguration()
+		configuration.allowsInlineMediaPlayback = true
+		configuration.mediaTypesRequiringUserActionForPlayback = .all
+		webView = WKWebView(frame: .zero, configuration: configuration)
 		super.init(frame: frame)
 		webView.navigationDelegate = self
 		webView.isOpaque = false
@@ -80,11 +98,10 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			webView.bottomAnchor.constraint(equalTo: bottomAnchor)
 		])
 		// 页内脚本上报正文高度的通道（只在我们自己的隔离脚本环境里可用，文章内容碰不到）
-		webView.configuration.userContentController.add(
-			Babel2ReaderHeightMessageProxy(owner: self),
-			contentWorld: .defaultClient,
-			name: Self.heightMessageName
-		)
+		let messageProxy = Babel2ReaderMessageProxy(owner: self)
+		for name in [Self.heightMessageName, Self.imageTapMessageName] {
+			webView.configuration.userContentController.add(messageProxy, contentWorld: .defaultClient, name: name)
+		}
 		// 只观察、不接管滚动区的代理（代理归网页控件自己所有）
 		let scrollView = webView.scrollView
 		scrollObservations = [
@@ -101,7 +118,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 
 	/// 把文章原文排进页面。返回 nil 表示失败（外壳页没加载成功或脚本出错）。
 	/// - title: 写进隐藏标题元素，只给翻译引擎读写（用户看到的是原生标题）。
-	func render(body: String, baseURL: URL?, title: String = "") async -> RenderResult? {
+	/// - youTubeVideoID: 非 nil 时在正文上方放 YouTube 播放器（ADR-041）。
+	func render(body: String, baseURL: URL?, title: String = "", youTubeVideoID: String? = nil) async -> RenderResult? {
 		renderState = .loadingShell
 		articleHeight = nil
 		guard await loadShellIfNeeded(baseURL: baseURL) else {
@@ -114,7 +132,7 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		do {
 			let raw = try await webView.callAsyncJavaScript(
 				Self.renderScript,
-				arguments: ["body": body, "title": title],
+				arguments: ["body": body, "title": title, "youTube": youTubeVideoID ?? ""],
 				in: nil,
 				contentWorld: .defaultClient
 			)
@@ -124,16 +142,48 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 				renderState = .failed
 				return nil
 			}
+			let mediaCount = (values["mediaCount"] as? NSNumber)?.intValue ?? 0
 			await discardTranslationScriptState()
 			renderState = .rendered
 			if let height = (values["articleHeight"] as? NSNumber)?.doubleValue {
 				updateArticleHeight(CGFloat(height))
 			}
-			return RenderResult(textLength: textLength, imageCount: imageCount)
+			return RenderResult(textLength: textLength, imageCount: imageCount, mediaCount: mediaCount)
 		} catch {
 			renderState = .failed
 			return nil
 		}
+	}
+
+	/// 正文是空的时候填一段纯文本（YouTube 视频简介，ADR-041）：按空行分段、段内保留换行，
+	/// 网址变成可点的链接；全部由页内脚本用 textContent 写入，不拼接 HTML。正文不空时什么都不做。
+	/// 返回填完后的排版结果（没填返回 nil）。
+	func fillEmptyBody(withPlainText text: String) async -> RenderResult? {
+		guard renderState == .rendered else { return nil }
+		let raw = try? await webView.callAsyncJavaScript(
+			Self.fillPlainTextScript,
+			arguments: ["text": text],
+			in: nil,
+			contentWorld: .defaultClient
+		)
+		guard let values = raw as? [String: Any],
+			let textLength = (values["textLength"] as? NSNumber)?.intValue,
+			let imageCount = (values["imageCount"] as? NSNumber)?.intValue else { return nil }
+		let mediaCount = (values["mediaCount"] as? NSNumber)?.intValue ?? 0
+		return RenderResult(textLength: textLength, imageCount: imageCount, mediaCount: mediaCount)
+	}
+
+	/// 在正文上方放一个居中的音频条（播客单集，ADR-041）。已经有播放器时不重复放。
+	@discardableResult
+	func installAudioPlayer(url: URL) async -> Bool {
+		guard renderState == .rendered, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+		let raw = try? await webView.callAsyncJavaScript(
+			Self.installAudioScript,
+			arguments: ["src": url.absoluteString],
+			in: nil,
+			contentWorld: .defaultClient
+		)
+		return (raw as? Bool) ?? false
 	}
 
 	/// 翻译引擎的页内脚本（translation.js，跑在网页自己的脚本环境里）会记住「原文备份 / 是否正在显示译文 /
@@ -203,6 +253,37 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	/// 仅供自动化测试：在正文容器里执行一段只读查询脚本。
 	func evaluateForTesting(_ functionBody: String) async -> Any? {
 		try? await webView.callAsyncJavaScript(functionBody, arguments: [:], in: nil, contentWorld: .defaultClient)
+	}
+
+	/// 页内脚本报来的是图片在文档里的位置（CSS 像素 = 点）；换算成本视图里的位置：
+	/// 文档坐标原点就是滚动区内容的原点（标题区挂在负坐标里），所以减去当前滚动偏移即可。
+	fileprivate func handleImageTap(_ body: [String: Any]) {
+		func number(_ key: String) -> CGFloat { CGFloat((body[key] as? NSNumber)?.doubleValue ?? 0) }
+		let offset = webView.scrollView.contentOffset
+		let frameInWebView = CGRect(x: number("docX") - offset.x, y: number("docY") - offset.y, width: number("width"), height: number("height"))
+		let tap = ImageTap(
+			imageURL: (body["src"] as? String).flatMap { URL(string: $0) },
+			linkURL: (body["link"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) },
+			frame: webView.convert(frameInWebView, to: self),
+			altText: body["alt"] as? String ?? ""
+		)
+		onImageTapped?(tap)
+	}
+
+	/// 截下本视图里一块区域的画面（查看器放大动画的起始画面，大图下载完之前先顶上）。
+	func snapshotImage(in rect: CGRect) async -> UIImage? {
+		let rectInWebView = convert(rect, to: webView).intersection(webView.bounds)
+		guard !rectInWebView.isNull, rectInWebView.width >= 1, rectInWebView.height >= 1 else { return nil }
+		let configuration = WKSnapshotConfiguration()
+		configuration.rect = rectInWebView
+		return try? await webView.takeSnapshot(configuration: configuration)
+	}
+
+	/// 仅供自动化测试：模拟点一下正文里的第 index 张图。
+	func tapImageForTesting(at index: Int) async {
+		_ = try? await webView.callAsyncJavaScript(
+			"const img = document.querySelectorAll('#babel2-article img')[index]; if (img) { img.click(); } return true;",
+			arguments: ["index": index], in: nil, contentWorld: .defaultClient)
 	}
 
 	fileprivate func updateArticleHeight(_ height: CGFloat) {
@@ -376,6 +457,14 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 14px; line-height: 21px; margin: 0 0 18px; }
 	td, th { border: 1px solid var(--hairline); padding: 6px 8px; }
 	iframe { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; border: 0; margin: 22px 0; }
+	iframe.babel2-bleed, video.babel2-bleed { width: 100vw; max-width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw); border-radius: 0; }
+	video.babel2-bleed { aspect-ratio: 16 / 9; height: auto; background: #000; }
+	#babel2-media { margin: 0 0 24px; }
+	#babel2-media.babel2-video { width: 100%; aspect-ratio: 16 / 9; background: #000; }
+	#babel2-media.babel2-video iframe { width: 100%; height: 100%; margin: 0; aspect-ratio: auto; }
+	#babel2-media.babel2-audio { padding: 0 20px; }
+	#babel2-media.babel2-audio audio { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
+	.babel2-plain { white-space: pre-line; }
 	"""
 
 	/// 页内排版脚本（在隔离环境里运行，参数 body 是文章原文）。
@@ -384,6 +473,25 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	private static let renderScript = """
 	const root = document.getElementById('babel2-article');
 	if (!root) { return null; }
+	// YouTube 播放器（ADR-041）：放在正文容器外面、紧挨在它上方——翻译只动正文容器，碰不到它。
+	// 同一个视频已经放好了就不重建（切阅读模式时正在播放的不被打断）；不是 YouTube 时不动已有的播放器（播客音频条）。
+	if (youTube && /^[A-Za-z0-9_-]{11}$/.test(youTube)) {
+		const existing = document.getElementById('babel2-media');
+		if (!existing || existing.dataset.video !== youTube) {
+			if (existing) { existing.remove(); }
+			const box = document.createElement('div');
+			box.id = 'babel2-media';
+			box.className = 'babel2-video';
+			box.dataset.video = youTube;
+			const frame = document.createElement('iframe');
+			frame.src = 'https://www.youtube.com/embed/' + youTube + '?playsinline=1&rel=0';
+			frame.setAttribute('allow', 'encrypted-media; picture-in-picture; fullscreen');
+			frame.setAttribute('allowfullscreen', '');
+			frame.setAttribute('title', title);
+			box.appendChild(frame);
+			root.parentNode.insertBefore(box, root);
+		}
+	}
 	// 隐藏标题：翻译引擎按 .articleTitle 找标题读写，避免误改正文里的 h1
 	const titleElement = document.getElementById('babel2-title');
 	if (titleElement) { titleElement.textContent = title; }
@@ -420,6 +528,17 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		if (lazySet && !img.getAttribute('srcset')) { img.setAttribute('srcset', lazySet); }
 	});
 	root.replaceChildren(...Array.from(parsed.body.childNodes).map(node => document.importNode(node, true)));
+	// 正文里自带的视频（ADR-041）：视频网站的播放框和 <video> 贴满屏幕两边；<video> 补上控件、原地播放
+	root.querySelectorAll('iframe').forEach(frame => {
+		if (/youtube|youtu\\.be|vimeo|bilibili|dailymotion|player\\./i.test(frame.getAttribute('src') || '')) { frame.classList.add('babel2-bleed'); }
+	});
+	root.querySelectorAll('video').forEach(video => {
+		video.setAttribute('controls', '');
+		video.setAttribute('playsinline', '');
+		if (!video.getAttribute('preload')) { video.setAttribute('preload', 'metadata'); }
+		video.classList.add('babel2-bleed');
+	});
+	root.querySelectorAll('audio').forEach(audio => { audio.setAttribute('controls', ''); });
 	const classify = img => {
 		const width = img.naturalWidth;
 		const height = img.naturalHeight;
@@ -434,6 +553,24 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			img.addEventListener('load', () => classify(img), { once: true });
 		}
 	});
+	// 点图片（ADR-040）：拦在捕获阶段，阻止外层链接跳转，把图片信息交给原生查看器。
+	// 太小的图（表情、图标，≤ 24pt）不拦，外层链接照常可点。整个网页只装一次。
+	if (!window.babel2ImageTapInstalled) {
+		window.babel2ImageTapInstalled = true;
+		document.addEventListener('click', event => {
+			const img = event.target && event.target.closest ? event.target.closest('#babel2-article img') : null;
+			if (!img || img.classList.contains('babel2-hidden')) { return; }
+			const rect = img.getBoundingClientRect();
+			if (rect.width <= 24 || rect.height <= 24) { return; }
+			event.preventDefault();
+			event.stopPropagation();
+			const link = img.closest('a');
+			window.webkit.messageHandlers.babel2ImageTapped.postMessage({
+				src: img.currentSrc || img.src || '', link: link ? link.href : '', alt: img.alt || '',
+				docX: rect.left + window.scrollX, docY: rect.top + window.scrollY, width: rect.width, height: rect.height
+			});
+		}, true);
+	}
 	// 正文高度：先量一次随结果返回；之后正文尺寸变化（图片加载、旋转）时再上报
 	const measure = () => Math.ceil(root.getBoundingClientRect().bottom + window.scrollY);
 	if (window.babel2HeightObserver) { window.babel2HeightObserver.disconnect(); }
@@ -441,7 +578,50 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 		window.webkit.messageHandlers.babel2ArticleHeight.postMessage(measure());
 	});
 	window.babel2HeightObserver.observe(root);
-	return { textLength: root.innerText.trim().length, imageCount: images.length, articleHeight: measure() };
+	const mediaCount = root.querySelectorAll('iframe, video, audio').length + (document.getElementById('babel2-media') ? 1 : 0);
+	return { textLength: root.innerText.trim().length, imageCount: images.length, mediaCount: mediaCount, articleHeight: measure() };
+	"""
+
+	/// 空正文填纯文本（参数 text）。按空行分段，段内保留换行；网址用 DOM 拆成可点的链接。
+	private static let fillPlainTextScript = """
+	const root = document.getElementById('babel2-article');
+	if (!root || root.innerText.trim().length > 0) { return null; }
+	const pattern = /(https?:\\/\\/[^\\s]+)/g;
+	for (const chunk of text.split(/\\n\\s*\\n/)) {
+		const trimmed = chunk.trim();
+		if (!trimmed) { continue; }
+		const p = document.createElement('p');
+		p.className = 'babel2-plain';
+		let last = 0;
+		for (const match of trimmed.matchAll(pattern)) {
+			p.appendChild(document.createTextNode(trimmed.slice(last, match.index)));
+			const link = document.createElement('a');
+			link.href = match[0];
+			link.textContent = match[0];
+			p.appendChild(link);
+			last = match.index + match[0].length;
+		}
+		p.appendChild(document.createTextNode(trimmed.slice(last)));
+		root.appendChild(p);
+	}
+	const mediaCount = root.querySelectorAll('iframe, video, audio').length + (document.getElementById('babel2-media') ? 1 : 0);
+	return { textLength: root.innerText.trim().length, imageCount: root.querySelectorAll('img').length, mediaCount: mediaCount };
+	"""
+
+	/// 正文上方放居中的音频条（参数 src）。已经有播放器时不重复放。
+	private static let installAudioScript = """
+	const root = document.getElementById('babel2-article');
+	if (!root || document.getElementById('babel2-media')) { return false; }
+	const box = document.createElement('div');
+	box.id = 'babel2-media';
+	box.className = 'babel2-audio';
+	const audio = document.createElement('audio');
+	audio.setAttribute('controls', '');
+	audio.setAttribute('preload', 'none');
+	audio.src = src;
+	box.appendChild(audio);
+	root.parentNode.insertBefore(box, root);
+	return true;
 	"""
 
 	private static func hex(_ color: UIColor, _ traits: UITraitCollection) -> String {
@@ -458,9 +638,9 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	}
 }
 
-/// 转发页内上报的正文高度。单独一个弱引用小对象，避免网页控件和显示面互相强引用导致内存泄漏。
+/// 转发页内上报的消息（正文高度、点了哪张图）。单独一个弱引用小对象，避免网页控件和显示面互相强引用导致内存泄漏。
 @MainActor
-private final class Babel2ReaderHeightMessageProxy: NSObject, WKScriptMessageHandler {
+private final class Babel2ReaderMessageProxy: NSObject, WKScriptMessageHandler {
 	private weak var owner: Babel2ReaderContentView?
 
 	init(owner: Babel2ReaderContentView) {
@@ -468,7 +648,15 @@ private final class Babel2ReaderHeightMessageProxy: NSObject, WKScriptMessageHan
 	}
 
 	func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-		guard let height = (message.body as? NSNumber)?.doubleValue else { return }
-		owner?.updateArticleHeight(CGFloat(height))
+		switch message.name {
+		case "babel2ArticleHeight":
+			guard let height = (message.body as? NSNumber)?.doubleValue else { return }
+			owner?.updateArticleHeight(CGFloat(height))
+		case "babel2ImageTapped":
+			guard let body = message.body as? [String: Any] else { return }
+			owner?.handleImageTap(body)
+		default:
+			break
+		}
 	}
 }

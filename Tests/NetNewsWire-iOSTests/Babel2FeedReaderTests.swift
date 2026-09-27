@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import WebKit
 import Babel2Core
 import Babel2UI
 @testable import NetNewsWire
@@ -1898,6 +1899,197 @@ final class Babel2FeedReaderTests: XCTestCase {
 		}
 	}
 
+	// MARK: - 图片查看器（ADR-040，2026-09-27 用户反馈第 3 条）
+
+	/// 点正文里的图：弹出卡片式查看器，不再顺着图片外面的链接进浏览器。
+	func testTappingImageOpensCardViewerInsteadOfFollowingItsLink() async throws {
+		var opened = [URL]()
+		let png = pngDataURI(size: CGSize(width: 400, height: 300))
+		let viewController = makeReader(
+			body: "<p>Intro paragraph with some words.</p><a href=\"https://example.com/photo.jpg\"><img src=\"\(png)\" alt=\"A photo\"></a><p>After the image.</p>",
+			makeBrowser: { url in
+				opened.append(url)
+				return StubBrowser(url: url)
+			}
+		)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		await viewController.readerContentView.tapImageForTesting(at: 0)
+		await waitUntil { viewController.presentedViewController is Babel2ImageViewerViewController }
+		XCTAssertTrue(opened.isEmpty, "the link around the image is not followed")
+		let viewer = try XCTUnwrap(viewController.presentedViewController as? Babel2ImageViewerViewController)
+		viewer.view.layoutIfNeeded()
+		XCTAssertFalse(viewer.hasOpenLinkButton, "a link to the image file itself is not offered")
+		XCTAssertEqual(viewer.imageView.accessibilityLabel, "A photo")
+		XCTAssertEqual(viewer.imageView.layer.cornerRadius, Babel2ImageViewerViewController.cornerRadius)
+		let size = viewer.imageView.bounds.size
+		XCTAssertEqual(size.width / size.height, 4.0 / 3.0, accuracy: 0.03, "card keeps the image's shape")
+		XCTAssertLessThanOrEqual(size.width, window.bounds.width - 2 * Babel2ImageViewerViewController.margin + 0.5)
+
+		viewer.dismissViewer()
+		await waitUntil { viewController.presentedViewController == nil }
+	}
+
+	/// 查看器规则：什么时候给「打开链接」；卡片位置；小图最多放大 3 倍；拖多远 / 甩多快算关闭；双击放大。
+	func testImageViewerRules() async throws {
+		let image = URL(string: "https://example.com/a.jpg")
+		XCTAssertEqual(Babel2ImageViewerViewController.meaningfulLink(URL(string: "https://example.com/post"), imageURL: image), URL(string: "https://example.com/post"))
+		XCTAssertNil(Babel2ImageViewerViewController.meaningfulLink(URL(string: "https://cdn.example.com/big.PNG"), imageURL: image))
+		XCTAssertNil(Babel2ImageViewerViewController.meaningfulLink(image, imageURL: image))
+		XCTAssertNil(Babel2ImageViewerViewController.meaningfulLink(URL(string: "mailto:a@b.c"), imageURL: image))
+
+		let bounds = CGRect(x: 0, y: 0, width: 402, height: 874)
+		let safe = UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0)
+		let wide = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 400, height: 300), in: bounds, safeArea: safe)
+		XCTAssertEqual(wide.width, 370, accuracy: 0.5)
+		XCTAssertEqual(wide.midX, 201, accuracy: 0.5)
+		XCTAssertEqual(wide.midY, (62 + 16 + 874 - 34 - 16) / 2, accuracy: 0.5, "centered in the safe area")
+		let tiny = Babel2ImageViewerViewController.fittedFrame(imageSize: CGSize(width: 40, height: 40), in: bounds, safeArea: safe)
+		XCTAssertEqual(tiny.width, 120, accuracy: 0.5, "small images are enlarged at most 3x")
+
+		XCTAssertFalse(Babel2ImageViewerViewController.shouldDismiss(dragDistance: 60, velocity: 200))
+		XCTAssertTrue(Babel2ImageViewerViewController.shouldDismiss(dragDistance: 130, velocity: 0))
+		XCTAssertTrue(Babel2ImageViewerViewController.shouldDismiss(dragDistance: -20, velocity: -1200))
+
+		let format = UIGraphicsImageRendererFormat()
+		format.scale = 1
+		let placeholder = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300), format: format).image { context in
+			UIColor.gray.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+		}
+		let viewer = Babel2ImageViewerViewController(
+			source: .init(placeholder: placeholder, imageURL: nil, linkURL: URL(string: "https://example.com/story"), originFrame: nil, altText: ""),
+			loadImage: nil
+		)
+		let window = hostInWindow(viewer)
+		defer { window.isHidden = true }
+		viewer.view.layoutIfNeeded()
+		XCTAssertTrue(viewer.hasOpenLinkButton, "an image linking to another page offers Open Link")
+		XCTAssertEqual(viewer.maximumZoomScale, 4)
+		viewer.toggleZoom(at: CGPoint(x: viewer.imageView.bounds.midX, y: viewer.imageView.bounds.midY))
+		for _ in 0..<100 where viewer.zoomScale <= 1.01 {
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		XCTAssertGreaterThan(viewer.zoomScale, 1.5, "double tap zooms in")
+	}
+
+	// MARK: - 播客 / YouTube 播放器（ADR-041，2026-09-27 用户反馈第 1 条）
+
+	func testYouTubeVideoIDRecognition() {
+		XCTAssertEqual(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://www.youtube.com/watch?v=DkUuOr21v4s")), "DkUuOr21v4s")
+		XCTAssertEqual(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://m.youtube.com/watch?feature=share&v=DkUuOr21v4s")), "DkUuOr21v4s")
+		XCTAssertEqual(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://youtu.be/DkUuOr21v4s?t=10")), "DkUuOr21v4s")
+		XCTAssertEqual(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://www.youtube.com/shorts/DkUuOr21v4s")), "DkUuOr21v4s")
+		XCTAssertNil(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://www.youtube.com/watch?v=short")), "invalid ids are ignored")
+		XCTAssertNil(Babel2ArticleMedia.youTubeVideoID(from: URL(string: "https://example.com/watch?v=DkUuOr21v4s")))
+		XCTAssertEqual(Babel2ArticleMedia.baseURL(for: URL(string: "https://www.youtube.com/watch?v=DkUuOr21v4s")), URL(string: "https://netnewswire.com/"),
+			"a YouTube article must not claim to be youtube.com (embed error 152)")
+		XCTAssertEqual(Babel2ArticleMedia.baseURL(for: URL(string: "https://example.com/post")), URL(string: "https://example.com/post"))
+	}
+
+	/// YouTube 文章：正文上方放 16:9、贴满屏幕两边的播放器（文章里原地播放），不再显示「没有正文」；
+	/// 视频简介到了就填进空正文（网址可点），之后可以翻译。
+	func testYouTubeArticleShowsEdgeToEdgePlayerAndFillsDescription() async throws {
+		let viewController = makeMediaReader(
+			url: URL(string: "https://www.youtube.com/watch?v=DkUuOr21v4s"),
+			body: "",
+			mediaProvider: { _ in Babel2ArticleMediaExtras(youTubeDescription: "Line one\nhttps://example.com/sponsor\n\nSecond paragraph here.") }
+		)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		XCTAssertTrue(viewController.readerContentView.pageWebView.configuration.allowsInlineMediaPlayback, "video plays inside the article")
+		let player = await viewController.readerContentView.evaluateForTesting("""
+			const frame = document.querySelector('#babel2-media iframe');
+			if (!frame) { return null; }
+			const rect = document.getElementById('babel2-media').getBoundingClientRect();
+			return { src: frame.src, width: rect.width, height: rect.height, base: document.baseURI };
+			""") as? [String: Any]
+		let info = try XCTUnwrap(player, "a YouTube player is placed above the body")
+		XCTAssertTrue((info["src"] as? String)?.contains("youtube.com/embed/DkUuOr21v4s") == true)
+		XCTAssertEqual((info["width"] as? NSNumber)?.doubleValue ?? 0, 402, accuracy: 1, "edge to edge")
+		XCTAssertEqual((info["height"] as? NSNumber)?.doubleValue ?? 0, 402 * 9 / 16, accuracy: 2, "16:9")
+		XCTAssertEqual(info["base"] as? String, "https://netnewswire.com/")
+		let message = try XCTUnwrap(descendant(of: viewController.view, matching: UIStackView.self) { $0.subviews.contains { $0.accessibilityIdentifier == "babel2.article.message" } })
+		XCTAssertTrue(message.isHidden, "no 'this article has no content' under a video")
+
+		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 20 }
+		let text = await viewController.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertTrue(text.contains("Second paragraph here."))
+		let linkCount = await viewController.readerContentView.evaluateForTesting("return document.querySelectorAll('#babel2-article a').length;") as? Int
+		XCTAssertEqual(linkCount, 1, "addresses in the description are tappable")
+		await waitUntil { viewController.isTranslationReadyForTesting }
+	}
+
+	/// 播客：音频条到了放在正文上方、居中；正文为空时原本的「没有正文」提示随之收起。
+	func testPodcastArticleGetsCenteredAudioPlayer() async throws {
+		let viewController = makeMediaReader(
+			url: URL(string: "https://podcast.example.com/episode-1"),
+			body: "",
+			mediaProvider: { _ in Babel2ArticleMediaExtras(audioURL: URL(string: "https://cdn.example.com/episode-1.mp3")) }
+		)
+		let window = hostInWindow(viewController)
+		defer { window.isHidden = true }
+		await waitForReaderRender(viewController)
+		let message = try XCTUnwrap(descendant(of: viewController.view, matching: UIStackView.self) { $0.subviews.contains { $0.accessibilityIdentifier == "babel2.article.message" } })
+		await waitUntil { message.isHidden }
+		let audio = await viewController.readerContentView.evaluateForTesting("""
+			const audio = document.querySelector('#babel2-media audio');
+			if (!audio) { return null; }
+			const rect = audio.getBoundingClientRect();
+			return { src: audio.src, left: rect.left, width: rect.width, controls: audio.controls };
+			""") as? [String: Any]
+		let info = try XCTUnwrap(audio)
+		XCTAssertEqual(info["src"] as? String, "https://cdn.example.com/episode-1.mp3")
+		XCTAssertEqual(info["controls"] as? Bool, true)
+		let left = (info["left"] as? NSNumber)?.doubleValue ?? 0
+		let width = (info["width"] as? NSNumber)?.doubleValue ?? 0
+		XCTAssertEqual(left + width / 2, 201, accuracy: 1, "centered")
+		XCTAssertEqual(width, 362, accuracy: 1)
+	}
+
+	// MARK: - 整页右滑返回（ADR-042，2026-09-27 用户反馈第 2 条）
+
+	func testFullSurfaceBackSwipeRules() throws {
+		typealias Motion = Babel2NavigationPopMotion
+		func begins(velocity: CGPoint, start: CGPoint = CGPoint(x: 200, y: 400), canPop: Bool = true, page: Bool = true, scroller: Bool = false) -> Bool {
+			Motion.shouldBeginContentPan(velocity: velocity, start: start, canPop: canPop, pageAllowsContentPan: page, startsInHorizontalScroller: scroller)
+		}
+		XCTAssertTrue(begins(velocity: CGPoint(x: 600, y: 80)), "a rightward horizontal swipe anywhere goes back")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 100, y: 600)), "vertical scrolling never starts it")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 300, y: 290)), "diagonal swipes are left to scrolling")
+		XCTAssertFalse(begins(velocity: CGPoint(x: -600, y: 0)), "leftward (the Reader's right-edge browser swipe) is not a back swipe")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 600, y: 0), start: CGPoint(x: 10, y: 400)), "the left edge belongs to the edge recognizer")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 600, y: 0), canPop: false), "nothing to go back to")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 600, y: 0), page: false), "edge-only pages (the in-app browser)")
+		XCTAssertFalse(begins(velocity: CGPoint(x: 600, y: 0), scroller: true), "a horizontal scroller scrolls first")
+
+		let root = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+		let scroller = UIScrollView(frame: CGRect(x: 0, y: 100, width: 402, height: 200))
+		scroller.contentSize = CGSize(width: 1000, height: 200)
+		let inner = UIView(frame: CGRect(x: 0, y: 0, width: 1000, height: 200))
+		scroller.addSubview(inner)
+		root.addSubview(scroller)
+		XCTAssertFalse(Motion.startsInHorizontalScroller(inner, stopAt: root), "already at its leading edge: swiping right cannot scroll it, so it goes back")
+		scroller.contentOffset = CGPoint(x: 300, y: 0)
+		XCTAssertTrue(Motion.startsInHorizontalScroller(inner, stopAt: root), "scrolled: a rightward swipe scrolls it back first")
+		let list = UITableView(frame: root.bounds)
+		root.addSubview(list)
+		XCTAssertFalse(Motion.startsInHorizontalScroller(list, stopAt: root), "vertical lists do not block the back swipe")
+
+		let browser: Any = Babel2BrowserViewController(url: URL(string: "https://example.com")!, openExternally: { _ in })
+		XCTAssertTrue(browser is Babel2EdgeOnlyBackGesture, "the in-app browser keeps edge-only back")
+		let navigation = Babel2NavigationController(rootViewController: UIViewController())
+		navigation.loadViewIfNeeded()
+		let popMotion = try XCTUnwrap(navigation.popMotion)
+		let pan = try XCTUnwrap(popMotion.contentPanForTesting)
+		XCTAssertTrue(navigation.view.gestureRecognizers?.contains { $0 === pan } ?? false)
+		XCTAssertTrue(pan.delegate === popMotion)
+		popMotion.tearDown()
+		XCTAssertFalse(navigation.view.gestureRecognizers?.contains { $0 === pan } ?? false, "removed on tear down")
+	}
+
 	// MARK: - 长文翻译可靠性（ADR-037，2026-09-27 用户报「长文翻译失败 / 依然显示原文 / 空白」）
 
 	/// 同一网页里重排正文（切阅读模式）后，翻译脚本不能再记着上一版正文：
@@ -3287,6 +3479,31 @@ private func makeReader(
 		fullTextProvider: fullTextProvider,
 		feedReaderModeSetting: feedReaderModeSetting,
 		makeBrowser: makeBrowser
+	)
+}
+
+/// 播放器测试用的阅读页（自定义原文地址与播放器信息来源）。
+@MainActor
+private func makeMediaReader(
+	url: URL?,
+	body: String,
+	mediaProvider: @escaping @MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?
+) -> Babel2ArticleViewController {
+	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+	let article = ArticleSnapshot(
+		id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "media-article"),
+		title: "Media",
+		content: body,
+		url: url,
+		feedID: feedID
+	)
+	return Babel2ArticleViewController(
+		article: article,
+		environment: makeEnvironment(provider: FakeDataProvider(), actionHandler: NoopActionHandler()),
+		feedTitle: "Feed",
+		hostArticleProvider: { _ in NSObject() },
+		fullTextProvider: { _, _ in throw CancellationError() },
+		mediaProvider: mediaProvider
 	)
 }
 

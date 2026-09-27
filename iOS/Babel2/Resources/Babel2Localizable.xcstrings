@@ -1905,6 +1905,23 @@
         }
       }
     },
+    "Open Link" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Link"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开链接"
+          }
+        }
+      }
+    },
     "Open Links" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3316,6 +3333,23 @@
         }
       }
     },
+    "Unable to load image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load image"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载图片"
+          }
+        }
+      }
+    },
     "Unable to load page" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3453,6 +3487,7 @@
       }
     },
     "≈%@ per article" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

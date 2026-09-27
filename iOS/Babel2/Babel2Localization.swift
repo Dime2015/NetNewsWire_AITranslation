@@ -72,6 +72,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case newArticleNotifications = "New Article Notifications"
 	case rename = "Rename"
 	case renameFeed = "Rename Feed"
+	case close = "Close"
+	case openLink = "Open Link"
+	case unableToLoadImage = "Unable to load image"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -123,6 +126,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 			return "babel2.add-subscription"
 		case .refresh: return "babel2.feed.refresh"
 		case .openWebsite, .copyFeedAddress, .newArticleNotifications, .rename, .renameFeed: return "babel2.feed.more"
+		case .close, .openLink, .unableToLoadImage: return "babel2.image-viewer"
 		}
 	}
 }

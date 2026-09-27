@@ -103,7 +103,9 @@ enum Babel2SceneComposition {
 						setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
 					),
 					// 设置「打开链接」选系统浏览器时不建内置浏览器：链接与原文交给系统打开（Slice 6）
-					makeBrowser: resolvedSettings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil
+					makeBrowser: resolvedSettings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil,
+					// 播客音频条、YouTube 简介（ADR-041）
+					mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) }
 				)
 				articleViewController.onOpenOriginal = { url, _ in
 					openURL(url)

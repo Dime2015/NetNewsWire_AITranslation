@@ -13,7 +13,8 @@ import WebKit
 /// 浏览器自己的前进后退历史只留在这里，不影响阅读页。
 /// 放在网页控件专用目录（边界测试规定只有这里能出现网页控件）。
 @MainActor
-final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate {
+/// 只认左边缘返回（ADR-042）：网页里常有左右滑的轮播图、地图，整页右滑会抢它们的手势。
+final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate, Babel2EdgeOnlyBackGesture {
 	private let initialURL: URL
 	private let openExternally: (URL) -> Void
 	private let webView = WKWebView(frame: .zero)

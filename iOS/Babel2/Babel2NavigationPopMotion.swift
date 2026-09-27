@@ -16,6 +16,10 @@ import Babel2UI
 /// 独立测试的 `MotionProjection`/`Babel2MotionDriver`，这个类本身不重新实现
 /// 任何投影/阈值数学，只负责把手势事件翻译成 driver 调用、把 driver 的进度
 /// 渲染成真实的 view transform，并驱动 UIKit 转场上下文的生命周期。
+/// 只认左边缘返回的页面（ADR-042）：内置浏览器——网页里常有左右滑的轮播图、地图，整页右滑会抢它们的手势。
+@MainActor
+protocol Babel2EdgeOnlyBackGesture: AnyObject {}
+
 @MainActor
 final class Babel2NavigationPopMotion: NSObject {
 
@@ -25,6 +29,10 @@ final class Babel2NavigationPopMotion: NSObject {
 	})
 
 	private weak var edgeGesture: UIScreenEdgePanGestureRecognizer?
+	/// 整页右滑返回（ADR-042，2026-09-27 用户要求、同意修订 MOTION-CONTRACT）：
+	/// 页面任何位置明显往右横滑都能返回。不让任何滚动区等它失败（1.x 全屏手势拖慢滚动就是这么来的），
+	/// 只在开始那一刻判断方向：竖着滑直接不开始，滚动照常；横着滑才接管。
+	private weak var contentPan: UIPanGestureRecognizer?
 	private(set) var activeToken: MotionInteractionToken?
 	private var transitionContext: (any UIViewControllerContextTransitioning)?
 	private var fromView: UIView?
@@ -52,13 +60,25 @@ final class Babel2NavigationPopMotion: NSObject {
 		edge.edges = .left
 		navigationController.view.addGestureRecognizer(edge)
 		edgeGesture = edge
+		let pan = UIPanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+		pan.maximumNumberOfTouches = 1
+		pan.delegate = self
+		navigationController.view.addGestureRecognizer(pan)
+		contentPan = pan
 	}
+
+	/// 仅供自动化测试。
+	var contentPanForTesting: UIPanGestureRecognizer? { contentPan }
 
 	func tearDown() {
 		if let edgeGesture {
 			navigationController.view.removeGestureRecognizer(edgeGesture)
 		}
 		edgeGesture = nil
+		if let contentPan {
+			navigationController.view.removeGestureRecognizer(contentPan)
+		}
+		contentPan = nil
 		activeToken = nil
 		transitionContext = nil
 		fromView = nil
@@ -67,7 +87,8 @@ final class Babel2NavigationPopMotion: NSObject {
 		shadowView = nil
 	}
 
-	@objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+	/// 左边缘手势与整页右滑共用：两者只是「从哪里开始」不同，跟手与松手判定完全一样。
+	@objc private func handleEdgePan(_ gesture: UIPanGestureRecognizer) {
 		guard let view = gesture.view else { return }
 		let translation = gesture.translation(in: view)
 		let velocity = gesture.velocity(in: view)
@@ -246,5 +267,68 @@ extension Babel2NavigationPopMotion: UIViewControllerInteractiveTransitioning {
 
 	func startInteractiveTransition(_ transitionContext: any UIViewControllerContextTransitioning) {
 		setUp(using: transitionContext)
+	}
+}
+
+// MARK: - 整页右滑返回（ADR-042）
+
+extension Babel2NavigationPopMotion: UIGestureRecognizerDelegate {
+	/// 左边缘那一条留给边缘手势（它从第一下触摸就认得出来）；整页右滑从边缘以外开始。
+	static let edgeZoneWidth: CGFloat = 24
+	/// 横向速度至少是竖向的这么多倍才算「往右横滑」。
+	static let horizontalDominance: CGFloat = 1.2
+
+	/// 整页右滑该不该开始（纯函数，方便测试）：
+	/// 有上一页可回、这一页没有声明只认边缘、手指明显往右横滑、不是从左边缘开始、
+	/// 起点不在一个还能往左滚的横向滚动区里（正文里的宽表格 / 代码块先滚它自己，滚到头才返回）。
+	static func shouldBeginContentPan(
+		velocity: CGPoint,
+		start: CGPoint,
+		canPop: Bool,
+		pageAllowsContentPan: Bool,
+		startsInHorizontalScroller: Bool
+	) -> Bool {
+		guard canPop, pageAllowsContentPan, !startsInHorizontalScroller else { return false }
+		guard start.x >= edgeZoneWidth else { return false }
+		return velocity.x > 0 && velocity.x > abs(velocity.y) * horizontalDominance
+	}
+
+	/// 从触点往上找：有没有一个能横向滚动、而且此刻还没滚到最左边的滚动区。
+	/// （已经在最左边的不算——这时往右滑本来就滚不动，交给返回。）也不从弹出菜单上开始。
+	static func startsInHorizontalScroller(_ hitView: UIView?, stopAt root: UIView) -> Bool {
+		var view = hitView
+		while let current = view, current !== root {
+			if current is Babel2GlassMenu { return true }
+			if let scrollView = current as? UIScrollView,
+				scrollView.contentSize.width > scrollView.bounds.width + 2,
+				scrollView.contentOffset.x > -scrollView.adjustedContentInset.left + 1 {
+				return true
+			}
+			view = current.superview
+		}
+		return false
+	}
+
+	func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+		guard let pan = gestureRecognizer as? UIPanGestureRecognizer, pan === contentPan, let view = pan.view else { return true }
+		let translation = pan.translation(in: view)
+		let location = pan.location(in: view)
+		let start = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
+		let top = navigationController.topViewController
+		return Self.shouldBeginContentPan(
+			velocity: pan.velocity(in: view),
+			start: start,
+			canPop: activeToken == nil && navigationController.viewControllers.count > 1 && navigationController.presentedViewController == nil,
+			pageAllowsContentPan: !(top is Babel2EdgeOnlyBackGesture),
+			startsInHorizontalScroller: Self.startsInHorizontalScroller(view.hitTest(start, with: nil), stopAt: view)
+		)
+	}
+
+	/// 竖向滚动区（列表、正文）横不动：它的拖动和整页右滑同时进行也无妨（最多顺带滚一两点），
+	/// 这样即使它先认出了拖动，整页右滑也不会被挡掉。能横向滚动的滚动区不在此列。
+	func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+		guard gestureRecognizer === contentPan, let scrollView = otherGestureRecognizer.view as? UIScrollView,
+			otherGestureRecognizer === scrollView.panGestureRecognizer else { return false }
+		return scrollView.contentSize.width <= scrollView.bounds.width + 2
 	}
 }

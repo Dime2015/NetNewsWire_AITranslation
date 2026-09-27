@@ -70,6 +70,9 @@ final class Babel2ArticleViewController: UIViewController {
 	private let feedReaderModeSetting: Babel2FeedReaderModeSetting?
 	/// 内置浏览器工厂（装配层注入；为 nil 时退回用系统浏览器打开）。ADR-021。
 	private let makeBrowser: ((URL) -> (any Babel2PreparableRoute))?
+	/// 正文上方的播放器所需的额外信息（YouTube 简介、播客音频地址），由接入层重新读订阅源拿到（ADR-041）。
+	private let mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)?
+	private var mediaExtras: Babel2ArticleMediaExtras?
 	private var browserMotion: Babel2ReaderBrowserMotion?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
@@ -132,8 +135,10 @@ final class Babel2ArticleViewController: UIViewController {
 			try await Babel2FullTextFetcher.fetch(url: url, hostView: host)
 		},
 		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
-		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil
+		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
+		mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)? = nil
 	) {
+		self.mediaProvider = mediaProvider
 		self.feedReaderModeSetting = feedReaderModeSetting
 		self.makeBrowser = makeBrowser
 		self.hostArticleProvider = hostArticleProvider
@@ -174,6 +179,9 @@ final class Babel2ArticleViewController: UIViewController {
 		contentView.onLinkActivated = { [weak self] url in
 			self?.openLink(url)
 		}
+		contentView.onImageTapped = { [weak self] tap in
+			self?.showImage(tap)
+		}
 		compactHeader.onSourceLinkTapped = { [weak self] in self?.originalTapped() }
 		installBrowserMotion()
 		contentView.onContentProcessTerminated = { [weak self] in
@@ -182,6 +190,7 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 		startRendering()
 		resolveTranslationHostArticle()
+		loadMediaExtras()
 		// 自动取全文：订阅源设了「总是用阅读模式」（ADR-020），或这篇上次开着阅读模式离开（ADR-019）
 		if article.url != nil {
 			if isFeedAlwaysReaderMode {
@@ -298,7 +307,13 @@ final class Babel2ArticleViewController: UIViewController {
 					let self,
 					self.renderGeneration == generation,
 					self.article.id == articleID else { return }
-				let result = await self.contentView.render(body: body, baseURL: article.url, title: article.title)
+				// YouTube 文章：正文上方放播放器，网页身份换成中性地址（ADR-041）
+				let result = await self.contentView.render(
+					body: body,
+					baseURL: Babel2ArticleMedia.baseURL(for: article.url),
+					title: article.title,
+					youTubeVideoID: Babel2ArticleMedia.youTubeVideoID(from: article.url)
+				)
 				guard !Task.isCancelled, self.renderGeneration == generation else { return }
 				self.lastRenderResult = result
 				if scrollToTop { self.scrollToTop() }
@@ -308,6 +323,7 @@ final class Babel2ArticleViewController: UIViewController {
 					} else {
 						self.prepareTranslationIfReady()
 					}
+					self.applyMediaExtrasIfReady()
 				} else {
 					self.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
 				}
@@ -611,7 +627,8 @@ final class Babel2ArticleViewController: UIViewController {
 	private func prepareTranslationIfReady() {
 		guard !isTranslationPrepared,
 			translationHostArticle != nil,
-			let result = lastRenderResult, !result.isEmpty else { return }
+			// 有字才能翻（只有图片 / 播放器的文章不启用翻译）
+			let result = lastRenderResult, result.textLength > 0 else { return }
 		isTranslationPrepared = true
 		toolbar.setTranslationAvailable(true)
 		translation.resetForNewArticle()
@@ -777,6 +794,74 @@ final class Babel2ArticleViewController: UIViewController {
 			pushBrowser(browser, animated: true)
 		} else {
 			onOpenOriginal?(url, article.title)
+		}
+	}
+
+	// MARK: - 播放器（ADR-041）
+
+	/// 打开文章时向接入层要一次播放器信息（YouTube 简介、播客音频地址）。不是这类文章就什么都不做。
+	private func loadMediaExtras() {
+		guard let mediaProvider else { return }
+		let articleID = article.id
+		Task { @MainActor [weak self] in
+			guard let extras = await mediaProvider(articleID), !extras.isEmpty else { return }
+			guard let self, self.article.id == articleID else { return }
+			self.mediaExtras = extras
+			self.applyMediaExtrasIfReady()
+		}
+	}
+
+	/// 正文排好、播放器信息也到了：放音频条；正文为空时填进视频简介（之后可以翻译）。
+	/// 每次排版完都会调一次（切阅读模式后正文变了，简介要按需重新填）。
+	private func applyMediaExtrasIfReady() {
+		guard let extras = mediaExtras, contentView.renderState == .rendered else { return }
+		let generation = renderGeneration
+		Task { @MainActor [weak self] in
+			guard let self else { return }
+			if let audioURL = extras.audioURL, await self.contentView.installAudioPlayer(url: audioURL) {
+				// 原来显示着「这篇文章没有正文」的，有了音频就不算空了
+				if self.renderGeneration == generation, self.lastRenderResult?.isEmpty == true { self.hideMessage() }
+			}
+			if let description = extras.youTubeDescription, self.lastRenderResult?.textLength == 0,
+				self.renderGeneration == generation,
+				let filled = await self.contentView.fillEmptyBody(withPlainText: description),
+				self.renderGeneration == generation {
+				self.lastRenderResult = filled
+				self.hideMessage()
+				self.prepareTranslationIfReady()
+			}
+		}
+	}
+
+	// MARK: - 图片查看器（ADR-040）
+
+	/// 点了正文里的图：先截下那张图当起始画面，弹出卡片式查看器，同时下载原图。
+	/// 图片链到别的网页时，查看器里的「打开链接」走和正文链接一样的路径（内置浏览器）。
+	private func showImage(_ tap: Babel2ReaderContentView.ImageTap) {
+		guard presentedViewController == nil else { return }
+		let provider = environment.imageProvider
+		Task { @MainActor [weak self] in
+			guard let self else { return }
+			let placeholder = await self.contentView.snapshotImage(in: tap.frame)
+			guard self.presentedViewController == nil, self.view.window != nil else { return }
+			let viewer = Babel2ImageViewerViewController(
+				source: .init(
+					placeholder: placeholder,
+					imageURL: tap.imageURL,
+					linkURL: tap.linkURL,
+					originFrame: self.contentView.convert(tap.frame, to: nil),
+					altText: tap.altText
+				),
+				loadImage: { url in
+					if let inline = Babel2ImageViewerViewController.inlineImageData(url) {
+						return Babel2ImageViewerViewController.decodeImage(inline)
+					}
+					guard let data = try? await provider.imageData(for: url) else { return nil }
+					return Babel2ImageViewerViewController.decodeImage(data)
+				}
+			)
+			viewer.onOpenLink = { [weak self] url in self?.openLink(url) }
+			self.present(viewer, animated: false)
 		}
 	}
 
