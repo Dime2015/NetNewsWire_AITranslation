@@ -6,11 +6,18 @@ import UIKit
 
 /// 毛玻璃卡片：背景模糊 + 半透明底色 + 细线描边 + 投影。设置页选单与通用菜单共用。
 final class Babel2GlassCard: UIView {
+	/// 卡片圆角 22、内容离卡片边 6。
+	static let cornerRadius: CGFloat = 22
+	static let contentInset: CGFloat = 6
+	/// 卡片里每一行按下时的高亮底：圆角 = 卡片圆角 − 内边距，与卡片同心（2026-09-27 用户：高亮是直角矩形，
+	/// 套在圆角卡片里很丑）。通用菜单与设置页弹出选单共用。
+	static var rowCornerRadius: CGFloat { cornerRadius - contentInset }
+
 	let contentView = UIView()
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
-		layer.cornerRadius = 22
+		layer.cornerRadius = Self.cornerRadius
 		layer.cornerCurve = .continuous
 		layer.borderWidth = 0.5
 		layer.shadowColor = UIColor.black.cgColor
@@ -18,7 +25,7 @@ final class Babel2GlassCard: UIView {
 		layer.shadowRadius = 14
 		layer.shadowOffset = CGSize(width: 0, height: 10)
 		let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
-		blur.layer.cornerRadius = 22
+		blur.layer.cornerRadius = Self.cornerRadius
 		blur.layer.cornerCurve = .continuous
 		blur.clipsToBounds = true
 		blur.translatesAutoresizingMaskIntoConstraints = false
@@ -38,10 +45,10 @@ final class Babel2GlassCard: UIView {
 			tint.trailingAnchor.constraint(equalTo: blur.contentView.trailingAnchor),
 			tint.topAnchor.constraint(equalTo: blur.contentView.topAnchor),
 			tint.bottomAnchor.constraint(equalTo: blur.contentView.bottomAnchor),
-			contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-			contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-			contentView.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-			contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
+			contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.contentInset),
+			contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.contentInset),
+			contentView.topAnchor.constraint(equalTo: topAnchor, constant: Self.contentInset),
+			contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.contentInset)
 		])
 		updateBorder()
 		registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: Babel2GlassCard, _) in
@@ -293,6 +300,9 @@ private final class Babel2GlassMenuRow: UIControl {
 			addSubview(view)
 		}
 		alpha = item.isEnabled ? 1 : 0.4
+		// 按下时的高亮底是圆角的，与卡片同心
+		layer.cornerRadius = Babel2GlassCard.rowCornerRadius
+		layer.cornerCurve = .continuous
 		NSLayoutConstraint.activate([
 			heightAnchor.constraint(greaterThanOrEqualToConstant: Babel2Type.menuRowHeight),
 			icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),

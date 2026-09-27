@@ -24,6 +24,13 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 第六轮：跨源列表长按文章 + 菜单高亮圆角（2026-09-27，ADR-063 / 064；用户同日真机验收通过，已提交推送）
+
+- **长按文章的来源菜单（ADR-063）**：`Babel2LibraryViewControllers.swift`（`Babel2ArticleSourceActions`、跨源列表长按、菜单、改名同步、取消订阅后原地拿掉）；`Babel2SceneComposition.swift`（跨源入口接线）；`Babel2Localization.swift` + xcstrings（+2；取消订阅确认文字换成「包括加过星标的」）。
+- **菜单高亮圆角（ADR-064）**：`Babel2GlassMenu.swift`（`Babel2GlassCard` 圆角常量、菜单行高亮圆角 16）；`Settings/Babel2SettingsComponents.swift`（设置页弹出选单行同样）。
+- 测试：新增 3 项（来源菜单行为、来源菜单接线、菜单高亮圆角）。反向验证 5 处改坏 → 对应测试均失败，恢复后 `cmp` 一致。全量与 UI Driver 见 VALIDATION。
+- 2026-09-27 用户真机验收：「编译好了，验收没问题，提交并推送」（口头确认，未逐条说明）。验收前用户 Xcode 报「Missing package product Zip / Tidemark」：其 DerivedData 当天重建、没有 SourcePackages，与代码无关；按 File → Packages → Resolve Package Versions 解决。一个提交，不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`。
+
 ## 第五轮：长按手感 + 编辑订阅源（2026-09-27，ADR-060～062；用户同日真机验收通过，已提交推送）
 
 - **长按手感（ADR-060）**：新文件 `Babel2LongPress.swift`；`Babel2RootViewController.swift`（首页各档列表换用新手感）、`Reader/Babel2ImageViewerViewController.swift`（长按分享）、`Babel2GlassMenu.swift`（`pops` 弹性展开）。

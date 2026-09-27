@@ -2500,6 +2500,23 @@
         }
       }
     },
+    "Open This Feed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open This Feed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开这个源"
+          }
+        }
+      }
+    },
     "Open Website" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4047,19 +4064,36 @@
         }
       }
     },
-    "Unsubscribe from “%@”? Its articles will be removed." : {
+    "Unsubscribe from This Feed" : {
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unsubscribe from “%@”? Its articles will be removed."
+            "value" : "Unsubscribe from This Feed"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要取消订阅「%@」吗？它的文章会一并移除。"
+            "value" : "取消订阅该源"
+          }
+        }
+      }
+    },
+    "Unsubscribe from “%@”? Its articles, including starred ones, will be deleted." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsubscribe from “%@”? Its articles, including starred ones, will be deleted."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要取消订阅「%@」吗？它的文章（包括加过星标的）会一并删除。"
           }
         }
       }

@@ -4,7 +4,12 @@
 
 **先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～053、LESSONS.md 第 30～58 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**最近完成（第五轮）：长按手感 + 编辑订阅源 + 刷新按钮圆底 / 警告（ADR-060～062）——2026-09-27 用户真机验收通过（「验收没问题，提交并推送」），一个提交已推送**
+**最近完成（第六轮）：跨源列表长按文章的来源菜单 + 菜单高亮圆角（ADR-063 / 064）——2026-09-27 用户真机验收通过，一个提交已推送；下一任务待用户指定**
+- 明细见 STATUS 顶部「第六轮」。用户选择：所有跨源列表；菜单含打开这个源、加星标 / 取消星标、编辑订阅源、取消订阅该源；取消订阅确认文字全 App 写明「包括加过星标的」。高亮圆角为用户在做这一轮时追加。
+- 已一个提交推送（不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`）。
+- 若用户 Xcode 报「Missing package product」：是其 DerivedData 里没取依赖包（与代码无关），File → Packages → Resolve Package Versions；不行再 Reset Package Caches + Clean Build Folder。
+
+**上一轮（第五轮）：长按手感 + 编辑订阅源 + 刷新按钮圆底 / 警告（ADR-060～062）——2026-09-27 用户真机验收通过（「验收没问题，提交并推送」），一个提交已推送**
 - 明细见 STATUS 顶部「第五轮」。用户四个选择：保留毛玻璃菜单改手感；不选文件夹 = 最外层；移动 / 移出 / 重命名并入编辑、从长按菜单拿掉；列表页「更多」也换成编辑。
 - 追加（ADR-062，用户要求一起验收）：文章列表顶部刷新按钮去掉「圈外套圈」；清掉 Xcode 的 10 个并发检查警告。
 - 已一个提交推送（不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`）。下一任务待用户指定。

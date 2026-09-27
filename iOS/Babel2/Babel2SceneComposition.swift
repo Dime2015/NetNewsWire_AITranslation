@@ -123,6 +123,25 @@ enum Babel2SceneComposition {
 				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead },
 				positionStore: .shared
 			)
+			// 长按文章：这篇文章来源的菜单——打开这个源 / 编辑 / 取消订阅（ADR-063）
+			listViewController.sourceActions = Babel2ArticleSourceActions(
+				openFeed: { [weak root, weak listViewController] feed in
+					root?.onFeedRequested?(feed, listViewController?.scope ?? scope)
+				},
+				edit: { [weak navigationController, weak root] feed, onSaved in
+					guard let navigationController,
+						let page = Babel2FeedEditViewController.make(feed: feed, editing: resolvedEditing) else { return }
+					page.onSaved = onSaved
+					page.onLibraryChanged = { [weak root] in root?.libraryEditor?.onChange?() }
+					navigationController.pushBabel2(page, animated: true)
+				},
+				unsubscribe: { [weak root] feedID in
+					// 与首页长按同一个取消订阅：从所有文件夹里拿走
+					let message = await resolvedEditing.unsubscribe(feedID)
+					if message == nil { root?.libraryEditor?.onChange?() }
+					return message
+				}
+			)
 			wireArticleList(listViewController, root: root, navigationController: navigationController,
 				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
 			navigationController.pushBabel2(listViewController, animated: !pushMode.isRestoring)

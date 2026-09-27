@@ -707,6 +707,9 @@ private final class Babel2SettingsPopoverOptionRow: UIControl {
 		label.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(check)
 		addSubview(label)
+		// 按下时的高亮底是圆角的，与选单卡片同心（与通用菜单同一个数，2026-09-27）
+		layer.cornerRadius = Babel2GlassCard.rowCornerRadius
+		layer.cornerCurve = .continuous
 		var constraints = [
 			heightAnchor.constraint(equalToConstant: 48),
 			check.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),

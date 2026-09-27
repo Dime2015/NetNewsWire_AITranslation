@@ -39,6 +39,16 @@ struct Babel2FeedActions {
 	var edit: (@MainActor (_ currentTitle: String, _ onSaved: @escaping @MainActor (String?) -> Void) -> Void)? = nil
 }
 
+/// 跨源列表里长按文章：对「这篇文章的来源」的操作（2026-09-27，ADR-063），由装配层注入。
+struct Babel2ArticleSourceActions {
+	/// 打开这个源自己的文章列表
+	let openFeed: @MainActor (FeedSnapshot) -> Void
+	/// 打开编辑页（改名、分配文件夹，ADR-061）；保存后回调新名字（没改名为 nil）
+	let edit: @MainActor (FeedSnapshot, _ onSaved: @escaping @MainActor (String?) -> Void) -> Void
+	/// 取消订阅（从所有文件夹里拿走）；失败返回说明
+	let unsubscribe: @MainActor (FeedSnapshot.ID) async -> String?
+}
+
 /// 文章列表页顶部大图的图片来源（订阅源高清图标；读取与下载由装配层注入，页面不碰账户数据）。ADR-027。
 struct Babel2FeedHeroImageSource {
 	/// 已有缓存（内存 / 磁盘），不触发网络；没有返回 nil。
@@ -95,6 +105,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var statusRefreshTimer: Timer?
 	private var statusRefreshTask: Task<Void, Never>?
 	var onSelectArticle: ((ArticleSnapshot) -> Void)?
+	/// 跨源列表长按文章的来源操作（ADR-063）；为 nil 时长按不弹菜单
+	var sourceActions: Babel2ArticleSourceActions?
+	private var articleLongPress: Babel2LongPressFeedback?
 	/// 重开 App 回到上次的页面（Babel2LastPlace）：不带动画直接打开那篇文章；以及这个列表是哪个订阅源。
 	var onRestoreArticle: ((ArticleSnapshot) -> Void)?
 	var placeFeedID: FeedSnapshot.ID { feed.id }
@@ -279,6 +292,100 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				}
 			}
 		}
+	}
+
+	// MARK: - 跨源列表长按文章：来源菜单（ADR-063）
+
+	/// 菜单：打开这个源 / 加星标（取消星标）｜编辑订阅源｜取消订阅该源。顶部写来源名。
+	@discardableResult
+	private func presentSourceMenu(at indexPath: IndexPath) -> Babel2GlassMenu? {
+		guard let actions = sourceActions, loadState == .loaded, let index = articleIndex(for: indexPath),
+			let feed = sourceFeed(for: articles[index]), let cell = tableView.cellForRow(at: indexPath) else { return nil }
+		let article = articles[index]
+		let sections: [[Babel2MenuItem]] = [
+			[
+				Babel2MenuItem(title: Babel2Localization.text(.openSourceFeed), image: UIImage(systemName: "list.bullet"),
+					identifier: "babel2.feed.article-menu.open-feed") { actions.openFeed(feed) },
+				Babel2MenuItem(title: Babel2Localization.text(article.isStarred ? .unstar : .star),
+					image: UIImage(systemName: article.isStarred ? "star.slash" : "star"),
+					identifier: "babel2.feed.article-menu.star") { [weak self] in self?.toggleStar(article.id) }
+			],
+			[
+				Babel2MenuItem(title: Babel2Localization.text(.editFeed), image: UIImage(systemName: "pencil"),
+					identifier: "babel2.feed.article-menu.edit-feed") { [weak self] in
+					actions.edit(feed) { name in
+						if let name { self?.applyRenamedSource(feed, to: name) }
+					}
+				}
+			],
+			[
+				Babel2MenuItem(title: Babel2Localization.text(.unsubscribeSourceFeed), image: UIImage(systemName: "trash"),
+					identifier: "babel2.feed.article-menu.unsubscribe", isDestructive: true) { [weak self] in
+					self?.confirmUnsubscribeSource(feed)
+				}
+			]
+		]
+		return Babel2GlassMenu.present(sections: sections, title: feed.title, from: cell, in: view, pops: true)
+	}
+
+	private func toggleStar(_ id: ArticleSnapshot.ID) {
+		let handler = environment.actionHandler
+		Task { @MainActor [weak self] in
+			try? await handler.handle(.toggleStar(id))
+			self?.refreshStatusesInPlace()
+		}
+	}
+
+	/// 编辑页里改了名：这一页里这个源的每一行来源名跟着换。
+	func applyRenamedSource(_ feed: FeedSnapshot, to name: String) {
+		let old = sourceFeeds[feed.id] ?? feed
+		sourceFeeds[feed.id] = FeedSnapshot(id: old.id, title: name, url: old.url, articleIDs: old.articleIDs,
+			articleCount: old.articleCount, iconData: old.iconData, isMuted: old.isMuted)
+		tableView.reloadData()
+	}
+
+	/// 取消订阅前先确认（写明加过星标的文章也会删除）。
+	private func confirmUnsubscribeSource(_ feed: FeedSnapshot) {
+		guard let actions = sourceActions else { return }
+		let alert = UIAlertController(title: Babel2Localization.text(.unsubscribe),
+			message: String(format: Babel2Localization.text(.unsubscribeConfirm), feed.title), preferredStyle: .alert)
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.cancel), style: .cancel))
+		alert.addAction(UIAlertAction(title: Babel2Localization.text(.unsubscribe), style: .destructive) { [weak self] _ in
+			Task { @MainActor [weak self] in await self?.performUnsubscribeSource(feed, actions: actions) }
+		})
+		present(alert, animated: true)
+	}
+
+	/// 确认后：取消订阅；成功就原地拿掉这个源的文章，失败说明原因。
+	func performUnsubscribeSource(_ feed: FeedSnapshot, actions: Babel2ArticleSourceActions? = nil) async {
+		guard let actions = actions ?? sourceActions else { return }
+		if let message = await actions.unsubscribe(feed.id) {
+			presentMessage(message)
+		} else {
+			removeArticles(of: feed.id)
+		}
+	}
+
+	/// 取消订阅成功：这个源的文章原地从列表里拿掉（其它行、滚动位置不动），篇数跟着变。
+	func removeArticles(of feedID: FeedSnapshot.ID) {
+		let remaining = articles.filter { $0.feedID != feedID }
+		guard remaining.count != articles.count else { return }
+		articles = remaining
+		sourceFeeds[feedID] = nil
+		rebuildDaySections()
+		Babel2Motion.crossfade(tableView) {
+			UIView.performWithoutAnimation { self.tableView.reloadData() }
+		}
+		setCount(articles.count)
+		setState(articles.isEmpty ? .empty : .loaded)
+	}
+
+	/// 仅供自动化测试。
+	var articleLongPressForTesting: Babel2LongPressFeedback? { articleLongPress }
+	@discardableResult
+	func presentSourceMenuForTesting(row: Int, section: Int = 0) -> Babel2GlassMenu? {
+		tableView.layoutIfNeeded()
+		return presentSourceMenu(at: IndexPath(row: row, section: section))
 	}
 
 	/// 仅供自动化测试观察。
@@ -1159,6 +1266,17 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		tableView.delegate = self
 		tableView.register(Babel2ArticleCell.self, forCellReuseIdentifier: Babel2ArticleCell.reuseIdentifier)
 		tableView.accessibilityIdentifier = "babel2.feed.articles.table"
+		// 跨源列表：长按文章 → 这篇文章来源的菜单（ADR-063），手感同首页长按（ADR-060）
+		if smartFeed != nil {
+			articleLongPress = Babel2LongPressFeedback(on: tableView, target: { [weak self] point in
+				guard let self, self.sourceActions != nil, let indexPath = self.tableView.indexPathForRow(at: point),
+					self.articleIndex(for: indexPath) != nil else { return nil }
+				return self.tableView.cellForRow(at: indexPath)
+			}, onCommit: { [weak self] point in
+				guard let self, let indexPath = self.tableView.indexPathForRow(at: point) else { return false }
+				return self.presentSourceMenu(at: indexPath) != nil
+			})
+		}
 		tableView.translatesAutoresizingMaskIntoConstraints = false
 		// 列表铺满全屏、压在大图与窄栏下面：顶部固定留出窄栏高度（系统再自动加上安全区），
 		// 最上面垫 70pt 空白——静止时「窄栏 + 垫片」正好等于大图的 169pt。边距只设这一次，滚动中不改（MOTION-CONTRACT §11）。

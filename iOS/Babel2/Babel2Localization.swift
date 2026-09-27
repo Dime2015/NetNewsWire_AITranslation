@@ -63,7 +63,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case noSubscriptionDestination = "No account is available to subscribe with. Add an account in Settings first."
 	case subscribe = "Subscribe"
 	case unsubscribe = "Unsubscribe"
-	case unsubscribeConfirm = "Unsubscribe from “%@”? Its articles will be removed."
+	case unsubscribeConfirm = "Unsubscribe from “%@”? Its articles, including starred ones, will be deleted."
 	case discoveryWebsites = "Websites"
 	case discoveryPodcasts = "Podcasts"
 	case refresh = "Refresh"
@@ -103,6 +103,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case editFeed = "Edit Feed"
 	case feedNameLabel = "Name"
 	case newFolderEllipsis = "New Folder…"
+	// 跨源列表长按文章的来源菜单（ADR-063）
+	case openSourceFeed = "Open This Feed"
+	case unsubscribeSourceFeed = "Unsubscribe from This Feed"
 	case feedEditFolderNote = "Pick one or more folders. With none selected, the feed sits at the top level of Feeds."
 	case folderFeedCount = "%d feeds"
 	case folderFeedCountOne = "%d feed"
@@ -177,6 +180,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 			.folderFeedCountOne, .moreActions:
 			return "babel2.library.edit"
 		case .editFeedMenu, .editFeed, .feedNameLabel, .newFolderEllipsis, .feedEditFolderNote: return "babel2.feed-edit"
+		case .openSourceFeed, .unsubscribeSourceFeed: return "babel2.feed.article-menu"
 		case .translatePage, .blockAds, .unableToExtractPage: return "babel2.browser.more"
 		case .newArticles, .newArticlesOne, .backToTop: return "babel2.feed.new-articles"
 		}

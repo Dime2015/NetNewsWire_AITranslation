@@ -658,6 +658,172 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(requests, ["all/unread"])
 	}
 
+	/// 菜单按下时的高亮（2026-09-27 用户：直角矩形套在圆角卡片里很丑）：通用菜单、设置页弹出选单的每一行，
+	/// 高亮底都是圆角 16（= 卡片 22 − 内边距 6，与卡片同心）、连续曲线；按下时真的有底色。
+	func testMenuRowHighlightsAreRoundedLikeTheCard() {
+		let host = UIViewController()
+		let window = hostInWindow(host)
+		defer { window.isHidden = true }
+		XCTAssertEqual(Babel2GlassCard.rowCornerRadius, 16)
+		let menu = Babel2GlassMenu.present(sections: [[
+			Babel2MenuItem(title: "A", image: nil, identifier: "a") {},
+			Babel2MenuItem(title: "B", image: nil, identifier: "b") {}
+		]], from: host.view, in: host.view)
+		for row in menu.itemControlsForTesting {
+			XCTAssertEqual(row.layer.cornerRadius, 16)
+			XCTAssertEqual(row.layer.cornerCurve, .continuous)
+		}
+		let first = menu.itemControlsForTesting[0]
+		first.isHighlighted = true
+		first.layer.removeAllAnimations()
+		XCTAssertNotEqual(first.backgroundColor, .clear)
+		XCTAssertNotNil(first.backgroundColor)
+		menu.removeFromSuperview()
+
+		let popover = Babel2SettingsPopover.present(options: [.init(title: "One", isSelected: true), .init(title: "Two", isSelected: false)],
+			from: host.view, in: host.view) { _ in }
+		for row in popover.optionControlsForTesting {
+			XCTAssertEqual(row.layer.cornerRadius, 16)
+			XCTAssertEqual(row.layer.cornerCurve, .continuous)
+		}
+		popover.removeFromSuperview()
+	}
+
+	/// 跨源列表长按文章（ADR-063）：菜单顶部是来源名，项目为「打开这个源 / 加星标」「编辑订阅源」「取消订阅该源」，弹性展开；
+	/// 加星标只改这一篇并原地刷新；编辑改名后每行来源名跟着换；取消订阅先确认（写明星标文章也删），
+	/// 成功后这个源的文章原地拿掉、篇数跟着变，失败说明原因；单个订阅源的列表不装长按。
+	func testSmartListLongPressOffersSourceActions() async throws {
+		let alpha = FeedSnapshot.ID(accountID: "account", feedID: "alpha")
+		let beta = FeedSnapshot.ID(accountID: "account", feedID: "beta")
+		func article(_ id: String, _ feed: FeedSnapshot.ID, minutes: Double, starred: Bool = false) -> ArticleSnapshot {
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: feed.feedID, articleID: id), title: "Story \(id)",
+				url: nil, feedID: feed, publishedAt: Date().addingTimeInterval(-minutes * 60), isStarred: starred)
+		}
+		let first = article("1", alpha, minutes: 1)
+		let second = article("2", beta, minutes: 2, starred: true)
+		let third = article("3", alpha, minutes: 3)
+		let provider = FakeDataProvider()
+		await provider.setSmartArticles(SmartFeedArticlesSnapshot(articles: [first, second, third],
+			feeds: [makeFeed(id: alpha, title: "Alpha"), makeFeed(id: beta, title: "Beta")]), for: .all)
+		let handler = RecordingActionHandler()
+		let list = Babel2FeedViewController(smartFeed: .all, scope: .all,
+			environment: makeEnvironment(provider: provider, actionHandler: handler), confirmMarkAllRead: { false })
+		final class Record {
+			var opened = [FeedSnapshot.ID]()
+			var unsubscribed = [FeedSnapshot.ID]()
+			var failure: String?
+		}
+		let record = Record()
+		list.sourceActions = Babel2ArticleSourceActions(
+			openFeed: { record.opened.append($0.id) },
+			edit: { _, onSaved in onSaved("Alpha Two") },
+			unsubscribe: { id in
+				record.unsubscribed.append(id)
+				return record.failure
+			}
+		)
+		let window = hostInWindow(list)
+		defer { window.isHidden = true }
+		await waitForRows(in: list.tableViewForTesting, count: 3)
+		XCTAssertNotNil(list.articleLongPressForTesting, "cross-source lists get the long press")
+
+		let menu = try XCTUnwrap(list.presentSourceMenuForTesting(row: 0))
+		XCTAssertEqual(menuTitle(menu), "Alpha")
+		XCTAssertTrue(menu.didPopForTesting, "same long-press pop as the home screen")
+		XCTAssertEqual(menu.itemControlsForTesting.map(\.accessibilityIdentifier), [
+			"babel2.feed.article-menu.open-feed", "babel2.feed.article-menu.star",
+			"babel2.feed.article-menu.edit-feed", "babel2.feed.article-menu.unsubscribe"
+		])
+		XCTAssertEqual(menu.itemControlsForTesting[1].accessibilityLabel, localized(.star))
+		menu.selectForTesting("babel2.feed.article-menu.star")
+		for _ in 0..<150 {
+			if await !handler.actions.isEmpty { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		let recorded = await handler.actions
+		XCTAssertEqual(recorded, [.toggleStar(first.id)])
+		// 已加星标的那篇：菜单里是「取消星标」
+		let starredMenu = try XCTUnwrap(list.presentSourceMenuForTesting(row: 1))
+		XCTAssertEqual(starredMenu.itemControlsForTesting[1].accessibilityLabel, localized(.unstar))
+		XCTAssertEqual(menuTitle(starredMenu), "Beta")
+		starredMenu.removeFromSuperview()
+
+		try XCTUnwrap(list.presentSourceMenuForTesting(row: 0)).selectForTesting("babel2.feed.article-menu.open-feed")
+		XCTAssertEqual(record.opened, [alpha])
+		try XCTUnwrap(list.presentSourceMenuForTesting(row: 0)).selectForTesting("babel2.feed.article-menu.edit-feed")
+		XCTAssertEqual(list.sourceFeed(for: first)?.title, "Alpha Two")
+		XCTAssertEqual(list.sourceFeed(for: third)?.title, "Alpha Two", "every row of that source follows the new name")
+
+		// 取消订阅：先确认，确认文字写明星标文章也删
+		try XCTUnwrap(list.presentSourceMenuForTesting(row: 0)).selectForTesting("babel2.feed.article-menu.unsubscribe")
+		await waitUntil { list.presentedViewController is UIAlertController }
+		let confirm = try XCTUnwrap(list.presentedViewController as? UIAlertController)
+		XCTAssertEqual(confirm.message, String(format: localized(.unsubscribeConfirm), "Alpha Two"))
+		await dismissPresented(list)
+		let alphaFeed = try XCTUnwrap(list.sourceFeed(for: first))
+		// 失败：说明原因，列表不动
+		record.failure = "Server said no"
+		await list.performUnsubscribeSource(alphaFeed)
+		XCTAssertEqual(list.articlesForTesting.count, 3)
+		await waitUntil { (list.presentedViewController as? UIAlertController)?.message == "Server said no" }
+		await dismissPresented(list)
+		// 成功：Alpha 的两篇原地拿掉，只剩 Beta 那篇
+		record.failure = nil
+		await list.performUnsubscribeSource(alphaFeed)
+		XCTAssertEqual(record.unsubscribed, [alpha, alpha])
+		XCTAssertEqual(list.articlesForTesting.map(\.id), [second.id])
+		XCTAssertEqual(list.tableViewForTesting.numberOfRows(inSection: 0), 1)
+		XCTAssertNil(list.sourceFeed(for: first))
+
+		// 单个订阅源的列表：不装长按（「更多」里本来就有编辑 / 取消订阅）
+		let single = Babel2FeedViewController(feed: makeFeed(id: alpha, title: "Alpha"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider()))
+		single.loadViewIfNeeded()
+		XCTAssertNil(single.articleLongPressForTesting)
+	}
+
+	/// 装配（ADR-063）：跨源列表的来源菜单接到真的页面——编辑推出编辑页、取消订阅走首页同一个整理接口、打开这个源推出它的列表。
+	func testSmartListSourceActionsAreWired() async throws {
+		let home = try await makeOrganizableHome()
+		let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+		home.window.rootViewController = nil
+		home.window.isHidden = true
+		let window = UIWindow(windowScene: scene)
+		window.rootViewController = home.navigation
+		window.makeKeyAndVisible()
+		defer { window.isHidden = true }
+		let alphaID = FeedSnapshot.ID(accountID: "account", feedID: "a")
+		let alpha = makeFeed(id: alphaID, title: "Alpha", count: 3)
+		let story = ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "a", articleID: "s"), title: "Story",
+			url: nil, feedID: alphaID, publishedAt: Date())
+		await home.provider.setSmartArticles(SmartFeedArticlesSnapshot(articles: [story], feeds: [alpha]), for: .today)
+
+		home.root.onSmartFeedRequested?(.today, .unread)
+		let list = try XCTUnwrap(home.navigation.viewControllers.last as? Babel2FeedViewController)
+		await waitUntil { home.navigation.transitionCoordinator == nil }
+		let actions = try XCTUnwrap(list.sourceActions)
+
+		let message = await actions.unsubscribe(alphaID)
+		XCTAssertNil(message)
+		XCTAssertEqual(home.editing.calls.last, "unsubscribe:a", "same unsubscribe as the home long press (all folders)")
+
+		actions.edit(alpha) { _ in }
+		let page = try XCTUnwrap(home.navigation.viewControllers.last as? Babel2FeedEditViewController)
+		await waitUntil { home.navigation.transitionCoordinator == nil }
+		page.loadViewIfNeeded()
+		XCTAssertEqual(page.nameFieldForTesting.text, "Alpha")
+		XCTAssertEqual(page.selectionForTesting, ["account:1", "account:3"])
+		_ = home.navigation.popBabel2(animated: false)
+		await waitUntil { home.navigation.topViewController === list && home.navigation.transitionCoordinator == nil }
+
+		actions.openFeed(alpha)
+		await waitUntil { home.navigation.viewControllers.count == 3 }
+		let opened = try XCTUnwrap(home.navigation.viewControllers.last as? Babel2FeedViewController)
+		XCTAssertEqual(opened.placeFeedID, alphaID)
+		XCTAssertNil(opened.smartFeed)
+		XCTAssertEqual(opened.scope, .unread, "opens in the same scope as the list")
+	}
+
 	/// 跨源列表：标题按档位（未读档「全部未读」）；每篇显示自己的来源名；不显示标题翻译开关与「更多」；
 	/// 「全部标为已读」只标列出来的未读文章（一次批量）；后台状态变化时按列出的编号取回最新状态。
 	func testSmartListShowsEachSourceAndMarksListedUnreadArticlesRead() async throws {

@@ -9,6 +9,14 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-27 第六轮：跨源列表长按文章 + 菜单高亮圆角（ADR-063 / 064；用户同日真机验收通过，已提交推送）
+
+- 第五轮已提交推送 `972f1c09e`（本地与远端一致），本轮从它开始。
+- 定向：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t8.xcresult` 50/51（接线测试里「打开这个源」紧接在返回之后、导航还在切换中被系统忽略，测试补等待——LESSONS 60 同一现象）；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t9.xcresult` 1/1；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t10.xcresult` 4/4。一次编译失败：测试里被闭包捕获的变量又被修改，改用小对象。
+- 反向验证：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/reverse3.sh`（跨源列表不装长按 / 取消订阅后不拿掉 / 改名不同步 / 接线不调取消订阅）→ 每种对应测试失败；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/rev5.xcresult`（高亮圆角改回 0）失败。恢复后 `cmp` 一致。
+- 全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full6.xcresult` **216/216**（0 失败 0 跳过，102 秒，Babel2 / BabelUI 无警告）；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/ui4.xcresult` **1/1**。pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行未变；`git diff --check` 干净。
+- 缺口：真机上长按文章的菜单手感、取消订阅后列表拿掉的观感、菜单高亮圆角的样子。
+
 ## 2026-09-27 第五轮：长按手感 + 编辑订阅源（ADR-060～062；用户同日真机验收通过，已提交推送）
 
 - 环境同第四轮；测试名批量传参用 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/run-tests.sh`（bash 数组，LESSONS 55 / 60）。
