@@ -80,23 +80,41 @@ final class Babel2GlassMenu: UIView {
 	/// 仅供自动化测试：各项的控件（按顺序）。
 	private(set) var itemControlsForTesting = [UIControl]()
 
+	/// - pops：长按弹出时为 true——菜单带一点弹性展开（ADR-060，与「按满震一下、弹回」连成一个「释放」的动作）；
+	///   点按按钮弹出的菜单照旧先快后缓、不回弹（ADR-034）。
 	@discardableResult
-	static func present(sections: [[Babel2MenuItem]], title: String? = nil, from anchor: UIView, in host: UIView) -> Babel2GlassMenu {
+	static func present(sections: [[Babel2MenuItem]], title: String? = nil, from anchor: UIView, in host: UIView, pops: Bool = false) -> Babel2GlassMenu {
 		let menu = Babel2GlassMenu(sections: sections.filter { !$0.isEmpty }, title: title)
 		menu.frame = host.bounds
 		menu.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 		host.addSubview(menu)
 		menu.place(anchoredTo: anchor)
-		// 从触发按钮那一侧展开（ADR-034）：以卡片上最靠近按钮的点为中心，由 92% 放大到原大并淡入
 		menu.card.alpha = 0
-		menu.card.transform = menu.growTransform(scale: 0.92)
-		Babel2Motion.animate(Babel2Motion.standard) {
-			menu.card.alpha = 1
-			menu.card.transform = .identity
+		if pops, !Babel2Motion.reduceMotion {
+			menu.didPopForTesting = true
+			menu.card.transform = menu.growTransform(scale: Babel2LongPressMotion.menuStartScale)
+			UIView.animate(withDuration: Babel2Motion.quick, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+				menu.card.alpha = 1
+			}
+			UIView.animate(withDuration: Babel2LongPressMotion.menuDuration, delay: 0,
+				usingSpringWithDamping: Babel2LongPressMotion.menuDamping, initialSpringVelocity: 0.4,
+				options: [.beginFromCurrentState, .allowUserInteraction]) {
+				menu.card.transform = .identity
+			}
+		} else {
+			// 从触发按钮那一侧展开（ADR-034）：以卡片上最靠近按钮的点为中心，由 92% 放大到原大并淡入
+			menu.card.transform = menu.growTransform(scale: 0.92)
+			Babel2Motion.animate(Babel2Motion.standard) {
+				menu.card.alpha = 1
+				menu.card.transform = .identity
+			}
 		}
 		UIAccessibility.post(notification: .screenChanged, argument: menu.itemControlsForTesting.first)
 		return menu
 	}
+
+	/// 仅供自动化测试：这次是不是按长按的弹性方式展开的。
+	private(set) var didPopForTesting = false
 
 	private init(sections: [[Babel2MenuItem]], title: String?) {
 		super.init(frame: .zero)

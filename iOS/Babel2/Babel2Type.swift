@@ -162,6 +162,7 @@ enum Babel2BarLayout {
 	static let centerY: CGFloat = 24
 
 	/// 按参考画布比例定位的横向约束（屏幕宽度不同也保持相对位置）。
+	@MainActor
 	static func centerX(_ view: UIView, in bar: UIView, slot: CGFloat) -> NSLayoutConstraint {
 		NSLayoutConstraint(item: view, attribute: .centerX, relatedBy: .equal, toItem: bar, attribute: .trailing,
 			multiplier: slot / referenceWidth, constant: 0)

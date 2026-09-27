@@ -1241,28 +1241,34 @@ enum Babel2LiveLibraryEditing {
 		return await completion { account.removeFolder(folder, completion: $0) }
 	}
 
-	/// 把源从一个位置移到另一个位置（nil = 顶层）。目标位置本来就有它（「重复」的情况）：只从原位置移出。
-	static func moveFeed(_ id: FeedSnapshot.ID, from source: FolderSnapshot.ID?, to destination: FolderSnapshot.ID?) async -> String? {
-		guard source != destination,
-			let (account, feed) = feed(id),
-			let from = container(source, in: account),
-			let to = container(destination, in: account),
-			from.topLevelFeeds.contains(feed) else { return nil }
+	/// 编辑页（ADR-061）：把源放进且只放进这几个文件夹；空 = 账户顶层（首页最外层）。
+	/// 先加进新的位置、再从不要的位置移走——任何时刻它至少在一处（只剩零处在部分同步服务里等于删除）。
+	/// 文件夹必须属于这个源自己的账户（不能跨账户）；认不出的文件夹编号当作没选。
+	static func setFolders(_ id: FeedSnapshot.ID, to folderIDs: [FolderSnapshot.ID]) async -> String? {
+		guard let (account, feed) = feed(id) else { return nil }
+		var targets = [Container]()
+		for folderID in folderIDs {
+			if let folder = container(folderID, in: account), !targets.contains(where: { $0 === folder }) {
+				targets.append(folder)
+			}
+		}
+		if targets.isEmpty {
+			targets = [account]
+		}
+		let current = account.existingContainers(withFeed: feed)
 		BatchUpdate.shared.start()
 		defer { BatchUpdate.shared.end() }
-		if to.topLevelFeeds.contains(feed) {
-			return await completion { account.removeFeed(feed, from: from, completion: $0) }
+		for target in targets where !current.contains(where: { $0 === target }) {
+			if let message = await completion({ account.addFeed(feed, to: target, completion: $0) }) {
+				return message
+			}
 		}
-		return await completion { account.moveFeed(feed, from: from, to: to, completion: $0) }
-	}
-
-	/// 从某个文件夹移出。只在它同时还在别处时才做——只剩这一处时移出就等于取消订阅，那要走「取消订阅」。
-	static func removeFeed(_ id: FeedSnapshot.ID, fromFolder folderID: FolderSnapshot.ID) async -> String? {
-		guard let (account, feed) = feed(id),
-			let folder = container(folderID, in: account),
-			folder.topLevelFeeds.contains(feed),
-			account.existingContainers(withFeed: feed).count > 1 else { return nil }
-		return await completion { account.removeFeed(feed, from: folder, completion: $0) }
+		for container in current where !targets.contains(where: { $0 === container }) {
+			if let message = await completion({ account.removeFeed(feed, from: container, completion: $0) }) {
+				return message
+			}
+		}
+		return nil
 	}
 
 	/// 账户接口是回调式的：等它回调，失败时返回说明。

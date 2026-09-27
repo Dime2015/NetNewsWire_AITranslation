@@ -122,6 +122,7 @@ class Babel2SettingsRowControl: UIControl {
 }
 
 /// 右侧的小图标（箭头 / 下箭头 / 勾），统一次要灰。
+@MainActor
 private func settingsGlyph(_ name: String, side: CGFloat) -> UIImageView {
 	let view = UIImageView(image: UIImage(named: name))
 	view.tintColor = Babel2SettingsStyle.secondaryText

@@ -95,13 +95,15 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case deleteFolderKeepFeeds = "Delete Folder, Move Feeds to Top Level"
 	case deleteFolderAndFeeds = "Delete Folder and Its Feeds"
 	case delete = "Delete"
-	case moveToFolder = "Move to Folder…"
-	case moveFeedTo = "Move “%@” To"
-	case topLevel = "No Folder (Top Level)"
 	case notInFolder = "Not in a folder"
 	case feedInFolder = "In “%@”"
 	case feedAlsoIn = "Also in %@"
-	case removeFromFolder = "Remove from “%@”"
+	// 编辑订阅源（ADR-061）
+	case editFeedMenu = "Edit"
+	case editFeed = "Edit Feed"
+	case feedNameLabel = "Name"
+	case newFolderEllipsis = "New Folder…"
+	case feedEditFolderNote = "Pick one or more folders. With none selected, the feed sits at the top level of Feeds."
 	case folderFeedCount = "%d feeds"
 	case folderFeedCountOne = "%d feed"
 	case changeIcon = "Change Icon…"
@@ -170,10 +172,11 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .foreignSourceToggle: return "babel2.feed.more"
 		case .changeIcon, .resetIcon, .unableToUseImage: return "babel2.feed.more"
 		case .quotedName, .listSeparator, .newFolder, .folderName, .create, .newFolderInAccount, .renameFolder, .deleteFolder,
-			.deleteFolderConfirm, .deleteFolderContents, .deleteFolderKeepFeeds, .deleteFolderAndFeeds, .delete, .moveToFolder,
-			.moveFeedTo, .topLevel, .notInFolder, .feedInFolder, .feedAlsoIn, .removeFromFolder, .folderFeedCount,
+			.deleteFolderConfirm, .deleteFolderContents, .deleteFolderKeepFeeds, .deleteFolderAndFeeds, .delete,
+			.notInFolder, .feedInFolder, .feedAlsoIn, .folderFeedCount,
 			.folderFeedCountOne, .moreActions:
 			return "babel2.library.edit"
+		case .editFeedMenu, .editFeed, .feedNameLabel, .newFolderEllipsis, .feedEditFolderNote: return "babel2.feed-edit"
 		case .translatePage, .blockAds, .unableToExtractPage: return "babel2.browser.more"
 		case .newArticles, .newArticlesOne, .backToTop: return "babel2.feed.new-articles"
 		}

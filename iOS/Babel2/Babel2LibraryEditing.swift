@@ -53,13 +53,14 @@ struct Babel2LibraryEditing {
 	let renameFolder: @MainActor (FolderSnapshot.ID, String) async -> String?
 	/// keepFeeds = true：只删文件夹，只在里面的源移到顶层；false：连同只在这个文件夹里的源一起删除。
 	let deleteFolder: @MainActor (FolderSnapshot.ID, _ keepFeeds: Bool) async -> String?
-	/// from / to 为 nil 表示顶层。目标位置本来就有这个源时，只从原位置移出。
-	let moveFeed: @MainActor (FeedSnapshot.ID, _ from: FolderSnapshot.ID?, _ to: FolderSnapshot.ID?) async -> String?
-	/// 从某个文件夹移出（只在它同时还在别处时提供，否则等于取消订阅）。
-	let removeFeedFromFolder: @MainActor (FeedSnapshot.ID, FolderSnapshot.ID) async -> String?
+	/// 把这个源放进且只放进这几个文件夹（编辑页，ADR-061）；空 = 放在账户顶层（首页最外层）。
+	/// 先加进新选的、再从没选的地方移走，任何时刻都不会「哪儿都不在」（那在部分同步服务里等于删除）。
+	let setFeedFolders: @MainActor (FeedSnapshot.ID, [FolderSnapshot.ID]) async -> String?
 	let renameFeed: @MainActor (FeedSnapshot.ID, String) async -> String?
 	let unsubscribe: @MainActor (FeedSnapshot.ID) async -> String?
 	var customIcons: Babel2CustomFeedIconStore?
+	/// 订阅地址（编辑页标题下的小字）
+	var feedURL: @MainActor (FeedSnapshot.ID) -> String? = { _ in nil }
 }
 
 /// 首页长按菜单与「+」菜单的全部交互（ADR-045）。
@@ -94,11 +95,11 @@ final class Babel2LibraryEditor {
 	}
 
 	@discardableResult
-	private func showMenu(_ sections: [[Babel2MenuItem]], title: String?, from anchor: UIView) -> Babel2GlassMenu? {
+	private func showMenu(_ sections: [[Babel2MenuItem]], title: String?, from anchor: UIView, pops: Bool = false) -> Babel2GlassMenu? {
 		guard let hostView = host?.viewIfLoaded else { return nil }
 		// 触发的那一行在等待期间被列表重用 / 移走了：退到屏幕中间弹出
 		let anchorView = anchor.window != nil && anchor.isDescendant(of: hostView) ? anchor : hostView
-		let menu = Babel2GlassMenu.present(sections: sections, title: title, from: anchorView, in: hostView)
+		let menu = Babel2GlassMenu.present(sections: sections, title: title, from: anchorView, in: hostView, pops: pops)
 		lastMenuForTesting = menu
 		return menu
 	}
@@ -221,9 +222,10 @@ final class Babel2LibraryEditor {
 
 	// MARK: - 长按文件夹：重命名 / 删除
 
-	func presentFolderMenu(_ folder: FolderSnapshot, from anchor: UIView) {
+	/// - pops：长按弹出，菜单弹性展开（ADR-060）
+	func presentFolderMenu(_ folder: FolderSnapshot, from anchor: UIView, pops: Bool = false) {
 		guard let info = editing.folderInfo(folder.id) else { return }
-		showMenu(folderMenuSections(folder.id, info: info), title: folderMenuTitle(info), from: anchor)
+		showMenu(folderMenuSections(folder.id, info: info), title: folderMenuTitle(info), from: anchor, pops: pops)
 	}
 
 	/// 菜单顶部：「文件夹名」· N 个订阅源（多个账户时前面加账户名）。
@@ -285,12 +287,13 @@ final class Babel2LibraryEditor {
 		await run { await editing.deleteFolder(id, keepFeeds) }
 	}
 
-	// MARK: - 长按订阅源：移到文件夹 / 从这个文件夹移出 / 换图标 / 重命名 / 取消订阅
+	// MARK: - 长按订阅源：编辑 / 换图标 / 取消订阅
 
-	func presentFeedMenu(_ feed: FeedSnapshot, in folderID: FolderSnapshot.ID?, from anchor: UIView) {
+	/// - pops：长按弹出，菜单弹性展开（ADR-060）
+	func presentFeedMenu(_ feed: FeedSnapshot, in folderID: FolderSnapshot.ID?, from anchor: UIView, pops: Bool = false) {
 		let placement = editing.placement(feed.id)
-		showMenu(feedMenuSections(feed, in: folderID, placement: placement, anchor: anchor),
-			title: placement.map { feedMenuTitle($0, in: folderID) }, from: anchor)
+		showMenu(feedMenuSections(feed, placement: placement),
+			title: placement.map { feedMenuTitle($0, in: folderID) }, from: anchor, pops: pops)
 	}
 
 	/// 菜单顶部说明：在哪个账户（多账户时）、在哪个文件夹；同时也在别的文件夹里的写出来——这就是首页上「重复」的来由。
@@ -310,21 +313,14 @@ final class Babel2LibraryEditor {
 		return line + "\n" + String(format: text(.feedAlsoIn), names)
 	}
 
-	func feedMenuSections(_ feed: FeedSnapshot, in folderID: FolderSnapshot.ID?, placement: Babel2FeedPlacement?, anchor: UIView) -> [[Babel2MenuItem]] {
-		var organize = [Babel2MenuItem]()
-		if let placement {
-			organize.append(Babel2MenuItem(title: text(.moveToFolder), image: UIImage(systemName: "folder"),
-				identifier: "babel2.library.feed.move") { [weak self, weak anchor] in
-				guard let self, let anchor else { return }
-				self.presentMoveMenu(feed, from: folderID, placement: placement, anchor: anchor)
+	/// 「编辑」（改名、分配文件夹，ADR-061）取代了原来的「移到文件夹」「从这个文件夹移出」「重命名」三项（用户 2026-09-27 选定）。
+	func feedMenuSections(_ feed: FeedSnapshot, placement: Babel2FeedPlacement?) -> [[Babel2MenuItem]] {
+		var edit = [Babel2MenuItem]()
+		if placement != nil {
+			edit.append(Babel2MenuItem(title: text(.editFeedMenu), image: UIImage(systemName: "pencil"),
+				identifier: "babel2.library.feed.edit") { [weak self] in
+				self?.presentFeedEditor(feed)
 			})
-			if let folderID, placement.current.count > 1,
-				let here = placement.current.first(where: { $0.folderID == folderID }) {
-				organize.append(Babel2MenuItem(title: String(format: text(.removeFromFolder), here.title),
-					image: UIImage(systemName: "folder.badge.minus"), identifier: "babel2.library.feed.remove-from-folder") { [weak self] in
-					Task { @MainActor in await self?.performRemoveFromFolder(feed.id, folderID: folderID) }
-				})
-			}
 		}
 		var icon = [Babel2MenuItem]()
 		if let store = editing.customIcons {
@@ -340,64 +336,29 @@ final class Babel2LibraryEditor {
 			}
 		}
 		let manage = [
-			Babel2MenuItem(title: text(.rename), image: UIImage(systemName: "pencil"),
-				identifier: "babel2.library.feed.rename") { [weak self] in
-				self?.presentRenameFeed(feed)
-			},
 			Babel2MenuItem(title: text(.unsubscribe), image: UIImage(systemName: "trash"),
 				identifier: "babel2.library.feed.unsubscribe", isDestructive: true) { [weak self] in
 				self?.presentUnsubscribe(feed)
 			}
 		]
-		return [organize, icon, manage]
+		return [edit, icon, manage]
 	}
 
-	/// 「移到文件夹…」：列出顶层与这个账户的全部文件夹（它现在在的打勾），最后一项「新建文件夹」建好直接移进去。
-	func presentMoveMenu(_ feed: FeedSnapshot, from folderID: FolderSnapshot.ID?, placement: Babel2FeedPlacement, anchor: UIView) {
-		showMenu(moveMenuSections(feed, from: folderID, placement: placement, anchor: anchor),
-			title: String(format: text(.moveFeedTo), feed.title), from: anchor)
-	}
-
-	func moveMenuSections(_ feed: FeedSnapshot, from folderID: FolderSnapshot.ID?, placement: Babel2FeedPlacement, anchor: UIView) -> [[Babel2MenuItem]] {
-		let currentIDs = Set(placement.current.map(\.folderID))
-		let places = placement.destinations.map { location in
-			Babel2MenuItem(title: location.folderID == nil ? text(.topLevel) : location.title,
-				image: UIImage(systemName: location.folderID == nil ? "tray" : "folder"),
-				identifier: "babel2.library.move." + (location.folderID ?? "top-level"),
-				isOn: currentIDs.contains(location.folderID)) { [weak self] in
-				guard location.folderID != folderID else { return }
-				Task { @MainActor in await self?.performMove(feed.id, from: folderID, to: location.folderID) }
-			}
-		}
-		let create = Babel2MenuItem(title: text(.newFolder), image: UIImage(systemName: "folder.badge.plus"),
-			identifier: "babel2.library.move.new-folder") { [weak self, weak anchor] in
-			guard let self, let anchor else { return }
-			self.startNewFolder(from: anchor, accountID: feed.id.accountID) { [weak self] newFolderID in
-				Task { @MainActor in await self?.performMove(feed.id, from: folderID, to: newFolderID) }
-			}
-		}
-		return [places, [create]]
-	}
-
-	func performMove(_ id: FeedSnapshot.ID, from source: FolderSnapshot.ID?, to destination: FolderSnapshot.ID?) async {
-		await run { await editing.moveFeed(id, source, destination) }
-	}
-
-	func performRemoveFromFolder(_ id: FeedSnapshot.ID, folderID: FolderSnapshot.ID) async {
-		await run { await editing.removeFeedFromFolder(id, folderID) }
-	}
-
-	func presentRenameFeed(_ feed: FeedSnapshot) {
-		presentNameAlert(title: text(.renameFeed), initial: feed.title, placeholder: nil, actionTitle: text(.ok),
-			identifier: "babel2.library.feed-name") { [weak self] name in
-			guard name != feed.title else { return }
-			await self?.performRenameFeed(feed.id, to: name)
+	/// 打开编辑页（推在导航栈上，✕ 取消 / ✓ 保存）。保存或在里面新建了文件夹后首页立即重新加载。
+	func presentFeedEditor(_ feed: FeedSnapshot) {
+		guard let navigation = host?.navigationController,
+			let page = Babel2FeedEditViewController.make(feed: feed, editing: editing, bundle: bundle) else { return }
+		page.onLibraryChanged = { [weak self] in self?.onChange?() }
+		lastEditorForTesting = page
+		if let babel2 = navigation as? Babel2NavigationController {
+			babel2.pushBabel2(page, animated: true)
+		} else {
+			navigation.pushViewController(page, animated: true)
 		}
 	}
 
-	func performRenameFeed(_ id: FeedSnapshot.ID, to name: String) async {
-		await run { await editing.renameFeed(id, name) }
-	}
+	/// 仅供自动化测试：最近一次打开的编辑页。
+	private(set) weak var lastEditorForTesting: Babel2FeedEditViewController?
 
 	func presentUnsubscribe(_ feed: FeedSnapshot) {
 		let alert = UIAlertController(title: text(.unsubscribe),

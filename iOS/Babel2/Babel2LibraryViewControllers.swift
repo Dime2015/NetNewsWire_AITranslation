@@ -34,6 +34,9 @@ struct Babel2FeedActions {
 	let unsubscribe: @MainActor () async -> String?
 	/// 打开网页（按设置：内置浏览器或系统浏览器）。
 	let openURL: @MainActor (URL) -> Void
+	/// 「编辑」（改名、分配文件夹，ADR-061）：打开编辑页；保存后回调新名字（没改名为 nil）。
+	/// 为 nil 时菜单里退回原来的「重命名」。
+	var edit: (@MainActor (_ currentTitle: String, _ onSaved: @escaping @MainActor (String?) -> Void) -> Void)? = nil
 }
 
 /// 文章列表页顶部大图的图片来源（订阅源高清图标；读取与下载由装配层注入，页面不碰账户数据）。ADR-027。
@@ -1001,9 +1004,22 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
 			}
 		] + foreignToggle(feedActions)
+		let editItem: Babel2MenuItem
+		if let edit = feedActions.edit {
+			// 「编辑」取代「重命名」（2026-09-27 用户选定，与首页长按同一个编辑页）
+			editItem = Babel2MenuItem(title: Babel2Localization.text(.editFeedMenu), image: UIImage(systemName: "pencil"),
+				identifier: "babel2.feed.more.edit") { [weak self] in
+				guard let self else { return }
+				edit(self.displayTitle) { [weak self] name in
+					if let name { self?.applyRenamedTitle(name) }
+				}
+			}
+		} else {
+			editItem = Babel2MenuItem(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
+				identifier: "babel2.feed.more.rename") { [weak self] in self?.presentRename() }
+		}
 		let manage = [
-			Babel2MenuItem(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
-				identifier: "babel2.feed.more.rename") { [weak self] in self?.presentRename() },
+			editItem,
 			Babel2MenuItem(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
 				identifier: "babel2.feed.more.unsubscribe", isDestructive: true) { [weak self] in self?.confirmUnsubscribe() }
 		]

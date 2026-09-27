@@ -1225,6 +1225,40 @@
         }
       }
     },
+    "Edit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑"
+          }
+        }
+      }
+    },
+    "Edit Feed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Feed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑订阅源"
+          }
+        }
+      }
+    },
     "Enter an API key first." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1905,36 +1939,19 @@
         }
       }
     },
-    "Move to Folder…" : {
+    "Name" : {
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Move to Folder…"
+            "value" : "Name"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移到文件夹…"
-          }
-        }
-      }
-    },
-    "Move “%@” To" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Move “%@” To"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "把「%@」移到"
+            "value" : "名称"
           }
         }
       }
@@ -1969,6 +1986,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建文件夹"
+          }
+        }
+      }
+    },
+    "New Folder…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Folder…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹…"
           }
         }
       }
@@ -2105,23 +2139,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有订阅源"
-          }
-        }
-      }
-    },
-    "No Folder (Top Level)" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Folder (Top Level)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不放在文件夹里"
           }
         }
       }
@@ -2551,6 +2568,23 @@
         }
       }
     },
+    "Pick one or more folders. With none selected, the feed sits at the top level of Feeds." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one or more folders. With none selected, the feed sits at the top level of Feeds."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以选多个文件夹。一个都不选，就放在首页最外层。"
+          }
+        }
+      }
+    },
     "Plum" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2785,23 +2819,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刷新"
-          }
-        }
-      }
-    },
-    "Remove from “%@”" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove from “%@”"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从「%@」移出"
           }
         }
       }

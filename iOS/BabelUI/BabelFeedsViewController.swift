@@ -880,6 +880,10 @@ private final class BabelFolderDisclosureControl: UIControl {
 final class BabelSyncGlyphView: UIView {
     private static let rotationAnimationKey = "babel.sync.rotation"
     private var syncing = false
+    /// 是否画自带的灰色圆底（2026-09-27 Babel 2.0：文章列表顶部的刷新按钮外面已有毛玻璃圆底，那里关掉，其余地方照旧）
+    var drawsBackground = true {
+        didSet { setNeedsDisplay() }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -921,8 +925,10 @@ final class BabelSyncGlyphView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        BabelPalette.raisedBackground.withAlphaComponent(0.47).setFill()
-        UIBezierPath(ovalIn: rect).fill()
+        if drawsBackground {
+            BabelPalette.raisedBackground.withAlphaComponent(0.47).setFill()
+            UIBezierPath(ovalIn: rect).fill()
+        }
 
         let path = UIBezierPath()
         path.move(to: CGPoint(x: 11.13, y: 7.08))

@@ -289,6 +289,32 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(shown, [next.id])
 	}
 
+	/// 文章列表顶部的刷新按钮（2026-09-27 用户：圈外套圈）：外面已有毛玻璃圆底，箭头自带的灰色圆底不画；
+	/// 首页标题旁的同步箭头没有别的底，照旧画。画出来核对：圆内、箭头外的一点，关掉后是透明的。
+	func testFeedRefreshGlyphHasNoSecondCircle() throws {
+		let bar = Babel2FeedCompactBar(title: "Feed", icon: nil)
+		XCTAssertFalse(bar.refreshGlyphForTesting.showsBackgroundForTesting)
+		XCTAssertTrue(Babel2SyncSpinner().showsBackgroundForTesting, "the home glyph keeps its own background")
+
+		func alpha(at point: CGPoint, showsBackground: Bool) -> CGFloat {
+			let spinner = Babel2SyncSpinner(frame: CGRect(x: 0, y: 0, width: 24, height: 24), showsBackground: showsBackground)
+			spinner.layoutIfNeeded()
+			let format = UIGraphicsImageRendererFormat()
+			format.scale = 1
+			format.opaque = false
+			let image = UIGraphicsImageRenderer(size: spinner.bounds.size, format: format).image { context in
+				spinner.layer.render(in: context.cgContext)
+			}
+			guard let data = image.cgImage?.dataProvider?.data, let bytes = CFDataGetBytePtr(data),
+				let cgImage = image.cgImage else { return -1 }
+			let offset = Int(point.y) * cgImage.bytesPerRow + Int(point.x) * 4
+			return CGFloat(bytes[offset + 3]) / 255
+		}
+		// (4, 12)：圆的左侧、箭头之外
+		XCTAssertGreaterThan(alpha(at: CGPoint(x: 4, y: 12), showsBackground: true), 0.1)
+		XCTAssertEqual(alpha(at: CGPoint(x: 4, y: 12), showsBackground: false), 0, accuracy: 0.01)
+	}
+
 	/// 同步箭头：开始时加上转动；停止后不再算作转动，图形最终回到正位（模型值无旋转）。
 	func testSyncSpinnerStartsAndSettles() {
 		let host = UIViewController()
@@ -726,9 +752,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 	}
 
 	/// 长按订阅源：顶部写它在哪（多账户时加账户名），同时也在别的文件夹里的写出来（首页「重复」的来由）；
-	/// 可以「从这个文件夹移出」（只剩一处时不提供）、「移到文件夹…」（现在在的打勾，选原位置不动）、
-	/// 在移动菜单里新建文件夹、换图标 / 恢复默认、重命名、取消订阅；失败时弹出原因。
-	func testHomeLongPressFeedExplainsDuplicatesAndMovesOrRemoves() async throws {
+	/// 菜单是「编辑 / 换图标（/ 恢复默认）/ 取消订阅」——原来的「移到文件夹」「移出」「重命名」并入编辑页（ADR-061）；失败时弹出原因。
+	func testHomeLongPressFeedExplainsDuplicatesAndOffersEdit() async throws {
 		let home = try await makeOrganizableHome()
 		defer { home.window.isHidden = true }
 		let root = home.root
@@ -740,48 +765,15 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(menuTitle(menu), String(format: localized(.feedInFolder), "Tech") + "\n"
 			+ String(format: localized(.feedAlsoIn), String(format: localized(.quotedName), "News")))
 		XCTAssertEqual(menu.itemControlsForTesting.map(\.accessibilityIdentifier), [
-			"babel2.library.feed.move", "babel2.library.feed.remove-from-folder", "babel2.library.feed.icon",
-			"babel2.library.feed.rename", "babel2.library.feed.unsubscribe"
+			"babel2.library.feed.edit", "babel2.library.feed.icon", "babel2.library.feed.unsubscribe"
 		])
-		XCTAssertEqual(menu.itemControlsForTesting[1].accessibilityLabel, String(format: localized(.removeFromFolder), "Tech"))
-		menu.selectForTesting("babel2.library.feed.remove-from-folder")
-		await waitUntil { editing.calls.contains("remove:a:account:1") }
+		XCTAssertEqual(menu.itemControlsForTesting[0].accessibilityLabel, localized(.editFeedMenu))
+		menu.removeFromSuperview()
 
-		XCTAssertTrue(root.longPressRowForTesting(scope: .unread, row: 4))
-		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.feed.move")
-		let move = try XCTUnwrap(editor.lastMenuForTesting)
-		XCTAssertEqual(menuTitle(move), String(format: localized(.moveFeedTo), "Alpha"))
-		XCTAssertEqual(move.itemControlsForTesting.map(\.accessibilityIdentifier), [
-			"babel2.library.move.top-level", "babel2.library.move.account:2", "babel2.library.move.account:3",
-			"babel2.library.move.account:1", "babel2.library.move.new-folder"
-		])
-		XCTAssertEqual(move.itemControlsForTesting.map { $0.accessibilityTraits.contains(.selected) }, [false, false, true, true, false])
-		XCTAssertEqual(move.itemControlsForTesting[0].accessibilityLabel, localized(.topLevel))
-		move.selectForTesting("babel2.library.move.account:2")
-		await waitUntil { editing.calls.contains("move:a:account:1->account:2") }
-
-		// 选它现在就在的那个文件夹：不动
-		let callCount = editing.calls.count
-		XCTAssertTrue(root.longPressRowForTesting(scope: .unread, row: 4))
-		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.feed.move")
-		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.move.account:1")
-		try await Task.sleep(for: .milliseconds(50))
-		XCTAssertEqual(editing.calls.count, callCount)
-
-		// 移动菜单里「新建文件夹」：直接弹名字输入（建在这个源自己的账户里）
-		XCTAssertTrue(root.longPressRowForTesting(scope: .unread, row: 4))
-		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.feed.move")
-		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.move.new-folder")
-		let newFolder = try XCTUnwrap(editor.lastAlertForTesting)
-		XCTAssertEqual(newFolder.title, localized(.newFolder))
-		XCTAssertEqual(newFolder.textFields?.first?.placeholder, localized(.folderName))
-		await dismissPresented(home.navigation)
-
-		// 另一个账户里的源：顶部带账户名；只在一处，不提供「移出」
+		// 另一个账户里的源：顶部带账户名
 		XCTAssertTrue(root.longPressRowForTesting(scope: .unread, row: 5))
 		let beta = try XCTUnwrap(editor.lastMenuForTesting)
 		XCTAssertEqual(menuTitle(beta), "iCloud · " + String(format: localized(.feedInFolder), "Tech"))
-		XCTAssertFalse(beta.itemControlsForTesting.contains { $0.accessibilityIdentifier == "babel2.library.feed.remove-from-folder" })
 		beta.removeFromSuperview()
 
 		// 顶层的源：「不在文件夹里」；换过图标的有「恢复默认图标」；取消订阅先确认
@@ -798,12 +790,242 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await dismissPresented(home.navigation)
 		await editor.performUnsubscribe(FeedSnapshot.ID(accountID: "account", feedID: "c"))
 		XCTAssertEqual(editing.calls.last, "unsubscribe:c")
+	}
 
+	/// 长按手感（ADR-060）：按住那一行慢慢缩小；没按满就松手 / 手指挪开 → 恢复原大、不弹菜单、不震；
+	/// 按满 → 弹回原大、震一下、菜单弹性展开；「减弱动态效果」时不缩放、菜单照常淡入、照样震。
+	func testLongPressChargesThenReleasesWithHapticAndPoppingMenu() async throws {
+		let home = try await makeOrganizableHome()
+		defer {
+			home.window.isHidden = true
+			Babel2Motion.reduceMotionOverride = nil
+		}
+		Babel2Motion.reduceMotionOverride = false
+		let root = home.root
+		let editor = try XCTUnwrap(root.libraryEditor)
+		let feedback = try XCTUnwrap(root.longPressFeedbackForTesting(scope: .unread))
+		let tableView = try XCTUnwrap(feedback.longPressGesture.view as? UITableView)
+		XCTAssertEqual(feedback.longPressGesture.minimumPressDuration, Babel2LongPressMotion.commitDuration)
+		let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: 4, section: 0)))
+		let point = CGPoint(x: cell.frame.midX, y: cell.frame.midY)
+
+		// 蓄力：缩到 96%
+		feedback.simulateTouchBeganForTesting(at: point)
+		feedback.simulateChargeForTesting()
+		XCTAssertEqual(cell.transform.a, Babel2LongPressMotion.chargeScale, accuracy: 0.001, "the row is pressed in")
+		// 没按满就松手：回原大，不弹、不震
+		feedback.simulateTouchEndedForTesting()
+		XCTAssertEqual(cell.transform, .identity)
+		XCTAssertNil(editor.lastMenuForTesting)
+		XCTAssertEqual(feedback.hapticCountForTesting, 0)
+		// 手指挪开（开始滚动）：同样回原大
+		feedback.simulateTouchBeganForTesting(at: point)
+		feedback.simulateChargeForTesting()
+		feedback.simulateTouchMovedForTesting(to: CGPoint(x: point.x, y: point.y + 30))
+		XCTAssertEqual(cell.transform, .identity)
+
+		// 按满：弹回、震一下、菜单弹性展开
+		feedback.simulateTouchBeganForTesting(at: point)
+		feedback.simulateChargeForTesting()
+		feedback.simulateCommitForTesting(at: point)
+		XCTAssertEqual(cell.transform, .identity, "the row springs back")
+		XCTAssertEqual(feedback.hapticCountForTesting, 1)
+		let menu = try XCTUnwrap(editor.lastMenuForTesting)
+		XCTAssertTrue(menu.didPopForTesting, "long-press menus pop with a spring")
+		XCTAssertEqual(menu.itemControlsForTesting.first?.accessibilityIdentifier, "babel2.library.feed.edit")
+		// 松手（菜单已经弹出）：什么也不变
+		feedback.simulateTouchEndedForTesting()
+		XCTAssertNotNil(menu.superview)
+		menu.removeFromSuperview()
+
+		// 「+」点按弹出的菜单照旧不回弹
+		let plus = Babel2GlassMenu.present(sections: [[Babel2MenuItem(title: "X", image: nil, identifier: "x") {}]], from: tableView, in: root.view)
+		XCTAssertFalse(plus.didPopForTesting)
+		plus.removeFromSuperview()
+
+		// 减弱动态效果：不缩放；按满照样震、菜单不弹性
+		Babel2Motion.reduceMotionOverride = true
+		feedback.simulateTouchBeganForTesting(at: point)
+		feedback.simulateChargeForTesting()
+		XCTAssertEqual(cell.transform, .identity)
+		feedback.simulateCommitForTesting(at: point)
+		XCTAssertEqual(feedback.hapticCountForTesting, 2)
+		XCTAssertFalse(try XCTUnwrap(editor.lastMenuForTesting).didPopForTesting)
+		editor.lastMenuForTesting?.removeFromSuperview()
+	}
+
+	/// 图片查看器长按分享：同一套手感——按住图片缩小，按满弹回、震一下、出分享面板。
+	func testImageViewerLongPressUsesTheSameFeel() async throws {
+		defer { Babel2Motion.reduceMotionOverride = nil }
+		Babel2Motion.reduceMotionOverride = false
+		let format = UIGraphicsImageRendererFormat()
+		format.scale = 1
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300), format: format).image { context in
+			UIColor.gray.setFill()
+			context.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+		}
+		let viewer = Babel2ImageViewerViewController(
+			source: .init(placeholder: image, imageURL: nil, linkURL: nil, originFrame: nil, altText: ""), loadImage: nil)
+		let window = hostInWindow(viewer)
+		defer { window.isHidden = true }
+		viewer.view.layoutIfNeeded()
+		let feedback = try XCTUnwrap(viewer.longPressFeedbackForTesting)
+		var shared: UIImage?
+		viewer.shareForTesting = { shared = $0 }
+		XCTAssertTrue(feedback.longPressGesture.view === viewer.imageView)
+		let point = CGPoint(x: viewer.imageView.bounds.midX, y: viewer.imageView.bounds.midY)
+		feedback.simulateTouchBeganForTesting(at: point)
+		feedback.simulateChargeForTesting()
+		let pressed = try XCTUnwrap(viewer.imageView.superview as? UIScrollView)
+		XCTAssertEqual(pressed.transform.a, Babel2LongPressMotion.chargeScale, accuracy: 0.001)
+		XCTAssertEqual(viewer.imageView.transform, .identity, "the zoomable image itself is left alone")
+		feedback.simulateCommitForTesting(at: point)
+		XCTAssertEqual(pressed.transform, .identity)
+		XCTAssertEqual(feedback.hapticCountForTesting, 1)
+		XCTAssertTrue(shared === viewer.imageView.image, "the share sheet is asked for with this image")
+	}
+
+	/// 编辑页（ADR-061）：名字 + 订阅地址；「名称」可改；「文件夹」列出这个账户的全部文件夹（不列最外层），
+	/// 现在在的打勾、可多选；「新建文件夹…」建好自动选上；✓ 保存：先改名、再设文件夹；✕ / 什么都没改 → 不写；失败说明原因。
+	/// （测试窗口里带动画的页面切换不会结束，所以入口只核对「推上去了」，保存流程直接建页面核对「写了什么、要求返回了没有」。）
+	func testFeedEditPageRenamesAndAssignsSeveralFolders() async throws {
+		let home = try await makeOrganizableHome()
+		defer { home.window.isHidden = true }
+		let root = home.root
+		let editing = home.editing
+		let editor = try XCTUnwrap(root.libraryEditor)
+		func feed(_ id: String, _ title: String) -> FeedSnapshot {
+			makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: id), title: title)
+		}
+		func open(_ snapshot: FeedSnapshot) throws -> (Babel2FeedEditViewController, UIWindow) {
+			let page = try XCTUnwrap(Babel2FeedEditViewController.make(feed: snapshot, editing: editing.editing))
+			let window = hostInWindow(page)
+			return (page, window)
+		}
+
+		// 入口：长按 Alpha（在 News 和 Tech 里）→ 编辑 → 编辑页推上导航栈
+		XCTAssertTrue(root.longPressRowForTesting(scope: .unread, row: 4))
+		try XCTUnwrap(editor.lastMenuForTesting).selectForTesting("babel2.library.feed.edit")
+		let pushed = try XCTUnwrap(editor.lastEditorForTesting)
+		XCTAssertTrue(home.navigation.viewControllers.last === pushed, "the edit page is pushed")
+
+		// 页面内容
+		var (page, window) = try open(feed("a", "Alpha"))
+		XCTAssertEqual(descendant(of: page.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed-edit.title" }?.text, "Alpha")
+		XCTAssertEqual(descendant(of: page.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.feed-edit.url" }?.text,
+			"example.com/a/feed.xml", "address shown without https://")
+		XCTAssertEqual(page.nameFieldForTesting.text, "Alpha")
+		XCTAssertEqual(page.folderTitlesForTesting, ["Empty", "News", "Tech"], "all folders of the account, no top-level row")
+		XCTAssertEqual(page.selectionForTesting, ["account:1", "account:3"])
+		XCTAssertNotNil(descendant(of: page.view, matching: UIView.self) { $0.accessibilityIdentifier == "babel2.feed-edit.new-folder" })
+		// 什么都没改就 ✓：不写任何东西、直接返回
+		let callsBefore = editing.calls.count
+		page.saveForTesting()
+		XCTAssertTrue(page.didCloseForTesting)
+		XCTAssertEqual(editing.calls.count, callsBefore)
+		window.isHidden = true
+
+		// 改名 + 加进 Empty、从 News 拿掉 → 先改名、再设文件夹（按列表顺序）；保存后告诉列表页新名字
+		(page, window) = try open(feed("a", "Alpha"))
+		var savedName: String??
+		page.onSaved = { savedName = $0 }
+		page.nameFieldForTesting.text = "  Alpha Weekly  "
+		page.tapFolderForTesting("account:2")
+		page.tapFolderForTesting("account:3")
+		XCTAssertEqual(page.selectionForTesting, ["account:1", "account:2"])
+		page.saveForTesting()
+		await waitUntil { page.didCloseForTesting }
+		XCTAssertEqual(Array(editing.calls.suffix(2)), ["renameFeed:a->Alpha Weekly", "folders:a:account:2,account:1"])
+		XCTAssertEqual(savedName, .some("Alpha Weekly"))
+		window.isHidden = true
+
+		// ✕：不写
+		(page, window) = try open(feed("a", "Alpha"))
+		page.tapFolderForTesting("account:2")
+		let callsBeforeCancel = editing.calls.count
+		page.cancelForTesting()
+		XCTAssertTrue(page.didCloseForTesting)
+		XCTAssertEqual(editing.calls.count, callsBeforeCancel)
+		window.isHidden = true
+
+		// 最外层的 Gamma：新建文件夹建在这个源自己的账户里，插进列表并选上
+		(page, window) = try open(feed("c", "Gamma"))
+		XCTAssertEqual(page.selectionForTesting, [], "a top-level feed has no folder ticked")
+		await page.createFolder(named: "Art")
+		XCTAssertEqual(editing.calls.last, "create:Art@account")
+		XCTAssertEqual(page.folderTitlesForTesting, ["Art", "Empty", "News", "Tech"])
+		XCTAssertEqual(page.selectionForTesting, ["account:99"])
+		// 保存失败：说明原因，页面留着
 		editing.failNext = "Server said no"
-		await editor.performRenameFeed(FeedSnapshot.ID(accountID: "account", feedID: "c"), to: "G")
-		XCTAssertEqual(editing.calls.last, "renameFeed:c->G")
-		XCTAssertEqual(editor.lastAlertForTesting?.message, "Server said no", "failures are explained")
-		await dismissPresented(home.navigation)
+		page.saveForTesting()
+		await waitUntil { page.lastAlertForTesting?.message == "Server said no" }
+		XCTAssertEqual(editing.calls.last, "folders:c:account:99")
+		XCTAssertFalse(page.didCloseForTesting)
+		await dismissPresented(page)
+		// 又把新文件夹的勾去掉：回到原样（本来就在最外层），✓ 不再写、直接返回
+		let callsAfterFailure = editing.calls.count
+		page.tapFolderForTesting("account:99")
+		page.saveForTesting()
+		XCTAssertTrue(page.didCloseForTesting)
+		XCTAssertEqual(editing.calls.count, callsAfterFailure)
+		window.isHidden = true
+
+		// 在文件夹里的源全部去掉勾 = 放到最外层（空列表）
+		(page, window) = try open(feed("b", "Beta"))
+		XCTAssertEqual(page.selectionForTesting, ["account:1"])
+		page.tapFolderForTesting("account:1")
+		page.saveForTesting()
+		await waitUntil { page.didCloseForTesting }
+		XCTAssertEqual(editing.calls.last, "folders:b:")
+		window.isHidden = true
+	}
+
+	/// 文章列表页「更多」：「重命名」换成「编辑」，打开同一个编辑页（显示当前名字）；保存改名后列表顶部的名字跟着变。
+	func testFeedMoreMenuEditOpensTheSameEditPage() async throws {
+		let home = try await makeOrganizableHome()
+		// 挂在测试程序自己的场景上的窗口：页面切换动画才会真的播完（没有场景的测试窗口不绘制，切换永远停在半路）
+		let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+		home.window.rootViewController = nil
+		home.window.isHidden = true
+		let window = UIWindow(windowScene: scene)
+		window.rootViewController = home.navigation
+		window.makeKeyAndVisible()
+		defer { window.isHidden = true }
+		let alpha = makeFeed(id: FeedSnapshot.ID(accountID: "account", feedID: "a"), title: "Alpha", count: 3)
+		home.root.onFeedRequested?(alpha, .unread)
+		let list = try XCTUnwrap(home.navigation.viewControllers.last as? Babel2FeedViewController)
+		await waitUntil { home.navigation.transitionCoordinator == nil }
+		list.loadViewIfNeeded()
+		let items = list.moreMenuSectionsForTesting.flatMap { $0 }
+		XCTAssertTrue(items.contains { $0.identifier == "babel2.feed.more.edit" })
+		XCTAssertFalse(items.contains { $0.identifier == "babel2.feed.more.rename" }, "Edit replaces Rename")
+		list.applyRenamedTitle("Alpha Now")
+		try XCTUnwrap(items.first { $0.identifier == "babel2.feed.more.edit" }).handler()
+		let page = try XCTUnwrap(home.navigation.viewControllers.last as? Babel2FeedEditViewController)
+		page.loadViewIfNeeded()
+		XCTAssertEqual(page.nameFieldForTesting.text, "Alpha Now", "shows the list's current name")
+		XCTAssertEqual(page.selectionForTesting, ["account:1", "account:3"])
+		page.nameFieldForTesting.text = "Alpha Later"
+		page.saveForTesting()
+		await waitUntil { page.didCloseForTesting }
+		XCTAssertEqual(home.editing.calls.last, "renameFeed:a->Alpha Later")
+		XCTAssertEqual(list.heroViewForTesting?.titleLabel.text, "Alpha Later", "the list shows the new name")
+	}
+
+	/// 纯规则：名字留空 / 没变不改名；文件夹没动过不改位置；动过就按列表顺序给出（空 = 最外层）。
+	func testFeedEditChangeRules() {
+		let order = ["f:1", "f:2", "f:3"]
+		var plan = Babel2FeedEditViewController.changes(originalName: "A", typedName: " A ", initial: ["f:2"], selection: ["f:2"], order: order)
+		XCTAssertNil(plan.rename)
+		XCTAssertNil(plan.folders)
+		plan = Babel2FeedEditViewController.changes(originalName: "A", typedName: "   ", initial: ["f:2"], selection: [], order: order)
+		XCTAssertNil(plan.rename, "an empty name keeps the old one")
+		XCTAssertEqual(plan.folders, [], "no folder ticked → top level")
+		plan = Babel2FeedEditViewController.changes(originalName: "A", typedName: "B", initial: [], selection: ["f:3", "f:1"], order: order)
+		XCTAssertEqual(plan.rename, "B")
+		XCTAssertEqual(plan.folders, ["f:1", "f:3"])
+		XCTAssertEqual(Babel2FeedEditViewController.displayAddress("https://marginalrevolution.com/feed"), "marginalrevolution.com/feed")
+		XCTAssertEqual(Babel2FeedEditViewController.displayAddress("feed://x"), "feed://x")
 	}
 
 	/// 「+」：添加订阅 / 新建文件夹；多个账户时新建文件夹先选账户，再输入名字。
@@ -998,7 +1220,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 	}
 
 	/// 接入层（真实账户）：新建的空文件夹出现在首页未读 / 全部档（星标档不列）；改名；
-	/// 有顶层的源时把它移进去、再「只删文件夹」——源回到顶层，一个也不丢。
+	/// 有顶层的源时：放进这个文件夹、同时放进两个、一个都不选回到顶层（ADR-061），再放进去后「只删文件夹」——源回到顶层，一个也不丢。
 	func testLiveLibraryEditingFolderLifecycleKeepsFeeds() async throws {
 		guard let account = Babel2LiveLibraryEditing.accounts().first else { throw XCTSkip("no account in the test host") }
 		let name = "Babel2 Test \(UUID().uuidString.prefix(6))"
@@ -1025,14 +1247,25 @@ final class Babel2FeedReaderTests: XCTestCase {
 		}
 		if let feed = topLevel {
 			XCTAssertTrue(Babel2LiveLibraryEditing.placement(feed.id)?.destinations.contains { $0.folderID == folderID } ?? false)
-			let moveError = await Babel2LiveLibraryEditing.moveFeed(feed.id, from: nil, to: folderID)
+			// 编辑页（ADR-061）：放进这个文件夹 → 只在这里（从最外层移走）
+			let moveError = await Babel2LiveLibraryEditing.setFolders(feed.id, to: [folderID])
 			XCTAssertNil(moveError)
 			XCTAssertEqual(Babel2LiveLibraryEditing.placement(feed.id)?.current.map(\.folderID), [folderID])
 			XCTAssertEqual(Babel2LiveLibraryEditing.folderInfo(folderID)?.feedCount, 1)
-			// 只在一处：「移出」不做（那等于取消订阅）
-			let removeError = await Babel2LiveLibraryEditing.removeFeed(feed.id, fromFolder: folderID)
-			XCTAssertNil(removeError)
-			XCTAssertEqual(Babel2LiveLibraryEditing.placement(feed.id)?.current.map(\.folderID), [folderID])
+			// 同时放进第二个文件夹：一个源可以在几个文件夹里
+			let secondID = try await Babel2LiveLibraryEditing.createFolder(named: name + " 2", accountID: account.id).get()
+			let bothError = await Babel2LiveLibraryEditing.setFolders(feed.id, to: [folderID, secondID])
+			XCTAssertNil(bothError)
+			XCTAssertEqual(Set(Babel2LiveLibraryEditing.placement(feed.id)?.current.map(\.folderID) ?? []), [folderID, secondID])
+			// 一个都不选：回到最外层，不会被取消订阅
+			let topError = await Babel2LiveLibraryEditing.setFolders(feed.id, to: [])
+			XCTAssertNil(topError)
+			XCTAssertEqual(Babel2LiveLibraryEditing.placement(feed.id)?.current.map(\.folderID), [nil])
+			let deleteSecondError = await Babel2LiveLibraryEditing.deleteFolder(secondID, keepFeeds: true)
+			XCTAssertNil(deleteSecondError)
+			// 再放进去，然后「只删文件夹」：源回到最外层
+			let againError = await Babel2LiveLibraryEditing.setFolders(feed.id, to: [folderID])
+			XCTAssertNil(againError)
 			let deleteError = await Babel2LiveLibraryEditing.deleteFolder(folderID, keepFeeds: true)
 			deleted = true
 			XCTAssertNil(deleteError)
@@ -5324,8 +5557,7 @@ private final class FakeLibraryEditing {
 			},
 			renameFolder: { id, name in self.record("renameFolder:\(id)->\(name)") },
 			deleteFolder: { id, keepFeeds in self.record("deleteFolder:\(id):\(keepFeeds ? "keep" : "all")") },
-			moveFeed: { id, from, to in self.record("move:\(id.feedID):\(from ?? "top")->\(to ?? "top")") },
-			removeFeedFromFolder: { id, folderID in self.record("remove:\(id.feedID):\(folderID)") },
+			setFeedFolders: { id, folderIDs in self.record("folders:\(id.feedID):\(folderIDs.joined(separator: ","))") },
 			renameFeed: { id, name in self.record("renameFeed:\(id.feedID)->\(name)") },
 			unsubscribe: { id in self.record("unsubscribe:\(id.feedID)") },
 			customIcons: Babel2CustomFeedIconStore(
@@ -5335,7 +5567,8 @@ private final class FakeLibraryEditing {
 					if data == nil { self.customIconIDs.remove(id) } else { self.customIconIDs.insert(id) }
 					return true
 				}
-			)
+			),
+			feedURL: { "https://example.com/\($0.feedID)/feed.xml" }
 		)
 	}
 }

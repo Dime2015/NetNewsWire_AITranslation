@@ -9,6 +9,18 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-27 第五轮：长按手感 + 编辑订阅源（ADR-060～062；用户同日真机验收通过，已提交推送）
+
+- 环境同第四轮；测试名批量传参用 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/run-tests.sh`（bash 数组，LESSONS 55 / 60）。
+- 编译失败两次（均已改）：编辑页属性名 `editing` 与系统页面类撞名；整理接口新字段 `feedURL` 在结构里的位置与构造参数顺序不符。
+- 定向：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t3.xcresult` 13/15（编辑页等页面返回超时、图片查看器分享面板查得太早——见 LESSONS 60；另脚本把 Boundary / FeatureGate 误拼成方法名，那次未跑，已修脚本，全量里已跑）；探针确认没挂场景的测试窗口里推入动画永不结束（空白页面同样），探针已删；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t5.xcresult`、`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t6.xcresult` 通过（编辑页改为直接建页面测保存流程；列表页入口改用挂场景的窗口）。真实账户测试未跳过：测试程序本机账户有 10 个最外层订阅源，放进 / 两个 / 回到最外层分支真实执行。
+- 反向验证 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/rev2.xcresult`（脚本 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/reverse2.sh`，6 个文件备份 + trap 恢复 + `cmp` 一致）：不缩放、点按 / 长按菜单弹性对调、全不选时不回最外层、没动也写文件夹、列表页退回「重命名」、图片查看器缩图片本身 → 对应 6 项全部失败。
+- 全量：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full3.xcresult` 211/212——`testReaderRemembersReadingPositionAcrossOpens` 超时（单独跑 `pos1～3` 各 2/2 通过；原因是紧挨着的图片查看器测试弹了真的系统分享面板，模拟器后台加载分享扩展拖慢网页测试），改为注入替身后 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full4.xcresult` **212/212**，0 失败 0 跳过，126 秒。
+- UI Driver（Release、真实数据）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/ui2.xcresult` **1/1**，231 秒（含 Release 增量编译）。
+- 边界：pbxproj 签名 diff hash、`Shared/Localizable.xcstrings` stale 行 hash 未变；`git diff --check` 干净；账户层（Modules/Account）一行未改。
+- 缺口：真机长按手感；真实同步账户上的多文件夹。
+- 追加（ADR-062）：定向 `{S}/t7.xcresult` 9/9（新增 `testFeedRefreshGlyphHasNoSecondCircle` + 相关旧测试 + Boundary）；两文件已重新编译，构建日志里没有任何警告。反向验证 `{S}/rev3.xcresult`（列表页改回画圆底）、`{S}/rev4.xcresult`（开关失效、恒画圆底）均失败，恢复后 `cmp` 一致。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full5.xcresult` **213/213**（0 失败 0 跳过，102 秒，日志里 Babel2 / BabelUI 无警告）；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/ui3.xcresult` **1/1**。
+
 ## 2026-09-27 第四轮：6 条反馈（ADR-054～059；用户同日真机验收通过，已提交推送）
 
 - 环境：Xcode 27.0，iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/dd`（UI Driver 用 `dd-ui`）；所有测试命令都带 `-collect-test-diagnostics never`。

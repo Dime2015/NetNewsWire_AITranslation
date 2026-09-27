@@ -19,7 +19,8 @@ enum Babel2SceneComposition {
 		let resolvedEnvironment = environment ?? Babel2AppAssembly.makeLiveEnvironment()
 		let root = Babel2RootViewController(environment: resolvedEnvironment, localizationBundle: localizationBundle)
 		// 首页长按整理文件夹 / 订阅源、「+」里新建文件夹（ADR-045）：正式实现走账户公开接口；测试可注入假的实现
-		root.libraryEditing = libraryEditing ?? liveLibraryEditing()
+		let resolvedEditing = libraryEditing ?? liveLibraryEditing()
+		root.libraryEditing = resolvedEditing
 		let navigationController = Babel2NavigationController(rootViewController: root)
 		// 设置页（Slice 6）：接到现有存储的正式实现；测试可注入假的实现
 		let resolvedSettings = settingsService ?? Babel2LiveSettingsService()
@@ -93,6 +94,14 @@ enum Babel2SceneComposition {
 						} else {
 							openURL(url)
 						}
+					},
+					// 「编辑」：与首页长按同一个编辑页（ADR-061）
+					edit: { [weak navigationController, weak root] currentTitle, onSaved in
+						guard let navigationController,
+							let page = Babel2FeedEditViewController.make(feed: feed, currentName: currentTitle, editing: resolvedEditing) else { return }
+						page.onSaved = onSaved
+						page.onLibraryChanged = { [weak root] in root?.libraryEditor?.onChange?() }
+						navigationController.pushBabel2(page, animated: true)
 					}
 				),
 				// 打开时图标还没到的，之后补上（ADR-039）
@@ -337,14 +346,14 @@ enum Babel2SceneComposition {
 			createFolder: { name, accountID in await Babel2LiveLibraryEditing.createFolder(named: name, accountID: accountID) },
 			renameFolder: { id, name in await Babel2LiveLibraryEditing.renameFolder(id, to: name) },
 			deleteFolder: { id, keepFeeds in await Babel2LiveLibraryEditing.deleteFolder(id, keepFeeds: keepFeeds) },
-			moveFeed: { id, from, to in await Babel2LiveLibraryEditing.moveFeed(id, from: from, to: to) },
-			removeFeedFromFolder: { id, folderID in await Babel2LiveLibraryEditing.removeFeed(id, fromFolder: folderID) },
+			setFeedFolders: { id, folderIDs in await Babel2LiveLibraryEditing.setFolders(id, to: folderIDs) },
 			renameFeed: { id, name in await Babel2LiveFeedActions.rename(id, to: name) },
 			unsubscribe: { id in await Babel2LiveFeedActions.unsubscribe(id) },
 			customIcons: Babel2CustomFeedIconStore(
 				hasCustomIcon: { Babel2LiveCustomFeedIcons.hasCustomIcon($0) },
 				setCustomIcon: { id, data in Babel2LiveCustomFeedIcons.set(data, for: id) }
-			)
+			),
+			feedURL: { Babel2LiveFeedActions.feedURL($0) }
 		)
 	}
 

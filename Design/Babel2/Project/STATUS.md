@@ -24,6 +24,14 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 第五轮：长按手感 + 编辑订阅源（2026-09-27，ADR-060～062；用户同日真机验收通过，已提交推送）
+
+- **长按手感（ADR-060）**：新文件 `Babel2LongPress.swift`；`Babel2RootViewController.swift`（首页各档列表换用新手感）、`Reader/Babel2ImageViewerViewController.swift`（长按分享）、`Babel2GlassMenu.swift`（`pops` 弹性展开）。
+- **编辑订阅源（ADR-061）**：新文件 `Babel2FeedEditViewController.swift`；`Babel2LibraryEditing.swift`（接口换成 `setFeedFolders` + `feedURL`，长按菜单改为编辑 / 图标 / 取消订阅，删掉移动 / 移出 / 重命名三段）；`Babel2LibraryViewControllers.swift`（列表页「更多」的「编辑」）；`Babel2SceneComposition.swift`（接线）；接入层 `Babel2LiveDataAdapters.swift`（`setFolders`，删掉 `moveFeed` / `removeFeed(fromFolder:)`）；文案 +5 / −4（`Babel2Localization.swift`、`Babel2Localizable.xcstrings`）。
+- 测试：新增 6 项（长按手感、图片长按、编辑页流程、编辑规则、列表页编辑入口；首页长按订阅源改写），改 1 项（真实账户文件夹生命周期改测放进 / 两个 / 回到最外层）。反向验证 6 处改坏 → 对应 6 项失败，恢复后 `cmp` 一致。全量 212/212；UI Driver 见 VALIDATION。
+- **追加（ADR-062）**：文章列表顶部刷新按钮去掉箭头自带的灰色圆底（`iOS/BabelUI/BabelFeedsViewController.swift` 的 `BabelSyncGlyphView` 加开关、默认不变；`Babel2SyncSpinner.swift`、`Babel2FeedHeroView.swift`）；清掉 10 个并发检查警告（`Settings/Babel2SettingsComponents.swift`、`Babel2Type.swift` 各加 `@MainActor`）。新增测试 1 项（画出来核对圆底有无），反向验证 2 种改坏均失败。
+- 2026-09-27 用户真机验收：「验收没问题，提交并推送」（口头确认，未逐条说明）。一个提交，不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`。未单独确认：真实同步账户（非本机）上的多文件夹。
+
 ## 第四轮 6 条反馈（2026-09-27，ADR-054～059；用户同日真机验收通过，与第三轮分两个提交推送）
 
 - 与上一轮（ADR-052 / 053，同样未提交）改在同一批文件里；动手前把上一轮的工作区拍了本地快照 `refs/babel2/round3-pending`（= `a445bbb85`，含未跟踪的 `Babel2PositionStore.swift`；不是提交、不推送），以后两轮可分开提交。

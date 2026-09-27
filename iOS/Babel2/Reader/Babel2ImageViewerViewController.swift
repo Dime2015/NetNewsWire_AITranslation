@@ -48,6 +48,8 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 	private let failureLabel = UILabel()
 	private var linkButton: UIButton?
 	private var loadTask: Task<Void, Never>?
+	/// 长按分享的手感（ADR-060）
+	private var longPressFeedback: Babel2LongPressFeedback?
 	private var didAnimateIn = false
 	private(set) var isDismissing = false
 	private var lastLayoutSize: CGSize = .zero
@@ -274,8 +276,13 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDismissPan(_:)))
 		pan.delegate = self
 		scrollView.addGestureRecognizer(pan)
-		let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
-		imageView.addGestureRecognizer(longPress)
+		// 长按图片：按住图片慢慢缩小，按满震一下弹回，再出分享面板（ADR-060）。
+		// 缩放的是外面那层滚动区——图片本身的形变由双指缩放占用，动它会把放大状态弄乱
+		longPressFeedback = Babel2LongPressFeedback(on: imageView, target: { [weak self] _ in
+			self?.imageView.image == nil ? nil : self?.scrollView
+		}, onCommit: { [weak self] _ in
+			self?.presentShareSheet() ?? false
+		})
 	}
 
 	/// 双击：没放大时以手指位置为中心放大到 2.5 倍；已放大时还原。
@@ -339,14 +346,25 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		abs(dragDistance) > dismissDistance || abs(velocity) > dismissVelocity
 	}
 
-	/// 长按图片：系统分享面板（里面有「存储图像」）。
-	@objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-		guard gesture.state == .began, let image = imageView.image else { return }
+	/// 长按图片：系统分享面板（里面有「存储图像」）。返回是否弹出了。
+	@discardableResult
+	private func presentShareSheet() -> Bool {
+		guard let image = imageView.image, presentedViewController == nil else { return false }
+		if let shareForTesting {
+			shareForTesting(image)
+			return true
+		}
 		let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
 		activity.popoverPresentationController?.sourceView = imageView
 		activity.popoverPresentationController?.sourceRect = imageView.bounds
 		present(activity, animated: true)
+		return true
 	}
+
+	/// 仅供自动化测试。
+	var longPressFeedbackForTesting: Babel2LongPressFeedback? { longPressFeedback }
+	/// 仅供自动化测试：设了就不弹真的分享面板（它会在模拟器后台加载一批分享扩展，拖慢之后的测试），改为交给这里。
+	var shareForTesting: ((UIImage) -> Void)?
 
 	// MARK: - UIScrollViewDelegate
 

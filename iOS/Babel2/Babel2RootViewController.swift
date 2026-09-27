@@ -212,6 +212,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		localizationBundle: localizationBundle
 	)
 	private var scopeSurfaces = [Babel2FeedScope: ScopeSurface]()
+	/// 各档列表的长按手感（蓄力缩小 → 震一下弹回 → 弹菜单，ADR-060）
+	private var longPressFeedbacks = [Babel2LongPressFeedback]()
 	private var libraryTasks = [Babel2FeedScope: Task<Void, Never>]()
 	/// 后台变化（图标到了、同步进度、状态变化）在一次重算进行中又来了：先记一笔，这次算完再来一次（ADR-039）。
 	private var needsLibraryReloadAfterCurrent = false
@@ -564,8 +566,17 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.onRetry = { [weak self] in
 				self?.retry(scope: scope)
 			}
-			// 长按文件夹 / 订阅源：整理菜单（ADR-045）。长按生效后这次按下不再算「点开」
-			surface.tableView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(rowLongPressed(_:))))
+			// 长按文件夹 / 订阅源：整理菜单（ADR-045）。长按生效后这次按下不再算「点开」。
+			// 手感（ADR-060）：按住那一行慢慢缩小，按满震一下弹回，菜单弹性展开
+			let tableView = surface.tableView
+			longPressFeedbacks.append(Babel2LongPressFeedback(on: tableView, target: { [weak self, weak tableView] point in
+				guard let self, let tableView, let indexPath = tableView.indexPathForRow(at: point),
+					self.canPresentEditMenu(in: tableView, row: indexPath.row) else { return nil }
+				return tableView.cellForRow(at: indexPath)
+			}, onCommit: { [weak self, weak tableView] point in
+				guard let self, let tableView, let indexPath = tableView.indexPathForRow(at: point) else { return false }
+				return self.presentEditMenu(in: tableView, row: indexPath.row, pops: true)
+			}))
 			surface.onSmartFeedTapped = { [weak self] kind in
 				guard let self, self.scopeTransitionAnimator == nil, scope == self.displayedScope else { return }
 				self.onSmartFeedRequested?(kind, scope)
@@ -992,29 +1003,34 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	// MARK: - 长按整理（ADR-045）
 
-	@objc private func rowLongPressed(_ gesture: UILongPressGestureRecognizer) {
-		guard gesture.state == .began, let tableView = gesture.view as? UITableView,
-			let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return }
-		if presentEditMenu(in: tableView, row: indexPath.row) {
-			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-		}
+	/// 这一行能不能长按整理（有整理功能、没在切档、是当前档的文件夹 / 订阅源行）。
+	private func canPresentEditMenu(in tableView: UITableView, row: Int) -> Bool {
+		guard libraryEditor != nil, scopeTransitionAnimator == nil,
+			let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }) else { return false }
+		return surface.scope == displayedScope && row < surface.rows.count
 	}
 
-	/// 在某一行下方弹出整理菜单：文件夹 → 重命名 / 删除；订阅源 → 移到文件夹 / 移出 / 换图标 / 重命名 / 取消订阅。
+	/// 在某一行下方弹出整理菜单：文件夹 → 重命名 / 删除；订阅源 → 编辑 / 换图标 / 取消订阅。
+	/// - pops：长按弹出（菜单弹性展开，ADR-060）
 	@discardableResult
-	private func presentEditMenu(in tableView: UITableView, row: Int) -> Bool {
-		guard let libraryEditor, scopeTransitionAnimator == nil,
-			let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }),
-			surface.scope == displayedScope, row < surface.rows.count else { return false }
+	private func presentEditMenu(in tableView: UITableView, row: Int, pops: Bool = false) -> Bool {
+		guard let libraryEditor, canPresentEditMenu(in: tableView, row: row),
+			let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }) else { return false }
 		tableView.layoutIfNeeded()
 		guard let cell = tableView.cellForRow(at: IndexPath(row: row, section: 0)) else { return false }
 		switch surface.rows[row] {
 		case .folder(let folder, _):
-			libraryEditor.presentFolderMenu(folder, from: cell)
+			libraryEditor.presentFolderMenu(folder, from: cell, pops: pops)
 		case .feed(let feed, let folderID):
-			libraryEditor.presentFeedMenu(feed, in: folderID, from: cell)
+			libraryEditor.presentFeedMenu(feed, in: folderID, from: cell, pops: pops)
 		}
 		return true
+	}
+
+	/// 仅供自动化测试：某一档列表的长按手感。
+	func longPressFeedbackForTesting(scope: Babel2FeedScope) -> Babel2LongPressFeedback? {
+		guard let index = Babel2FeedScope.allCases.firstIndex(of: scope), index < longPressFeedbacks.count else { return nil }
+		return longPressFeedbacks[index]
 	}
 
 	/// 仅供自动化测试：长按某一档的第 row 行。

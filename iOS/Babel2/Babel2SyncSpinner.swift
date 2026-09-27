@@ -2,7 +2,7 @@ import UIKit
 
 /// 同步箭头的转动（ADR-034）：开始时从静止平缓加速，停止时减速转到整圈再停，不再戛然而止。
 ///
-/// 图形本身沿用 1.x 的 `BabelSyncGlyphView`（只借用它的画法，不改它）；转动由这一层自己负责，
+/// 图形本身沿用 1.x 的 `BabelSyncGlyphView`（借用它的画法；只加了一个「画不画灰色圆底」的开关）；转动由这一层自己负责，
 /// 所以从不调用它自带的 setSyncing(true)。
 @MainActor
 final class Babel2SyncSpinner: UIView {
@@ -14,8 +14,10 @@ final class Babel2SyncSpinner: UIView {
 	private(set) var isSpinning = false
 	private var spinToken = 0
 
-	override init(frame: CGRect) {
+	/// - showsBackground：图形自带的灰色圆底。外面已经有圆底的地方（文章列表顶部的毛玻璃圆底）传 false，免得圈外套圈。
+	init(frame: CGRect = .zero, showsBackground: Bool = true) {
 		super.init(frame: frame)
+		glyph.drawsBackground = showsBackground
 		isUserInteractionEnabled = false
 		isAccessibilityElement = false
 		glyph.isHidden = false
@@ -30,6 +32,9 @@ final class Babel2SyncSpinner: UIView {
 	}
 
 	required init?(coder: NSCoder) { nil }
+
+	/// 仅供自动化测试。
+	var showsBackgroundForTesting: Bool { glyph.drawsBackground }
 
 	func setSpinning(_ spinning: Bool) {
 		guard spinning != isSpinning else { return }

@@ -165,7 +165,9 @@ final class Babel2FeedCompactBar: UIView {
 	let searchButton = UIButton(type: .system)
 	/// 刷新（Figma 刷新位 x=201）：浅色圆盘 + 逆时针箭头，同步时旋转（复用首页同步图标）。ADR-031。
 	let refreshButton = UIButton(type: .system)
-	private let refreshGlyph = Babel2SyncSpinner()
+	/// 外面已经有毛玻璃圆底：图形自带的灰色圆底关掉（2026-09-27 用户：圈外套圈，重复；收起后毛玻璃圆底淡出，
+	/// 自带的灰圆却还在，四个按钮里只有它有底色）
+	private let refreshGlyph = Babel2SyncSpinner(showsBackground: false)
 	/// 更多（Figma 更多位 x=370）：点按弹出本订阅源的操作菜单。ADR-031。
 	let moreButton = UIButton(type: .system)
 	let searchField: Babel2FeedSearchField
@@ -365,6 +367,7 @@ final class Babel2FeedCompactBar: UIView {
 
 	/// 仅供自动化测试。
 	var isShowingSyncingForTesting: Bool { refreshButton.accessibilityValue != nil }
+	var refreshGlyphForTesting: Babel2SyncSpinner { refreshGlyph }
 
 	/// 按收缩进度更新透明度（不重新排版）。
 	func apply(progress: CGFloat) {
