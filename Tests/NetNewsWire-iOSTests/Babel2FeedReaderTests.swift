@@ -52,6 +52,64 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(filter.buttons[.all]?.accessibilityValue, "Selected")
 	}
 
+	/// 「● UNREAD」圆点和文字叠在一起（2026-09-27 用户反馈，第一次打开某个源时偶发）：
+	/// 图标和文字的位置由按钮自己算，文字永远从图标右边开始、完整显示；
+	/// 第一次排版发生在动画里（像页面滑入那样）、来回切档、按下缩放后，量真正画出来的视图都不重叠。
+	func testScopeButtonsNeverDrawTitleOverIcon() async throws {
+		// 纯规则：选中时文字起点 = 图标右边 + 间距；没选中只居中画图标
+		let rule = Babel2ScopeButton.contentFrames(in: CGSize(width: 78, height: 44), iconSize: CGSize(width: 9, height: 9),
+			textSize: CGSize(width: 40, height: 12), showsTitle: true, leadingInset: 8, iconSpacing: 7, scale: 3)
+		XCTAssertEqual(rule.icon.minX, 8, accuracy: 0.01)
+		XCTAssertEqual(try XCTUnwrap(rule.text).minX, rule.icon.maxX + 7, accuracy: 0.34)
+		let plain = Babel2ScopeButton.contentFrames(in: CGSize(width: 78, height: 44), iconSize: CGSize(width: 9, height: 9),
+			textSize: CGSize(width: 40, height: 12), showsTitle: false, leadingInset: 8, iconSpacing: 7, scale: 3)
+		XCTAssertNil(plain.text)
+		XCTAssertEqual(plain.icon.midX, 39, accuracy: 0.34)
+
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let provider = FakeDataProvider(feeds: [feedID: []])
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .unread,
+			environment: makeEnvironment(provider: provider))
+		let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+		window.rootViewController = controller
+		window.makeKeyAndVisible()
+		defer { window.isHidden = true }
+		// 第一次排版放在动画里（页面滑入时就是这样）
+		UIView.animate(withDuration: 0.35) { controller.view.layoutIfNeeded() }
+		let filter = controller.scopeFilterForTesting
+
+		func assertSelectedLooksRight(_ scope: Babel2FeedScope, _ note: String, line: UInt = #line) {
+			filter.layoutIfNeeded()
+			guard let button = filter.buttons[scope] else { return XCTFail("no button", line: line) }
+			button.layoutIfNeeded()
+			let icon = button.iconViewForTesting.frame, text = button.textLabelForTesting.frame
+			XCTAssertFalse(button.textLabelForTesting.isHidden, "\(scope) title shown (\(note))", line: line)
+			XCTAssertGreaterThan(icon.width, 0, line: line)
+			XCTAssertGreaterThanOrEqual(text.minX, icon.maxX + 5.5, "\(scope) title starts right of the icon (\(note))", line: line)
+			XCTAssertLessThanOrEqual(text.maxX, button.bounds.width + 0.01, line: line)
+			let fits = button.textLabelForTesting.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 44)).width
+			XCTAssertGreaterThanOrEqual(text.width, fits - 0.01, "\(scope) title is not cut off (\(note))", line: line)
+			for (other, otherButton) in filter.buttons where other != scope {
+				XCTAssertTrue(otherButton.textLabelForTesting.isHidden, "\(other) shows only its icon (\(note))", line: line)
+			}
+		}
+		assertSelectedLooksRight(.unread, "first layout inside an animation")
+		for scope in [Babel2FeedScope.all, .starred, .unread, .starred, .all, .unread] {
+			filter.buttons[scope]?.sendActions(for: .touchUpInside)
+			assertSelectedLooksRight(scope, "after switching")
+		}
+		// 按下缩放（94%）时：相对位置不变
+		let unread = try XCTUnwrap(filter.buttons[.unread])
+		unread.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+		unread.setNeedsLayout()
+		assertSelectedLooksRight(.unread, "while pressed")
+		unread.transform = .identity
+		// 外部同步档位（首页那条底栏走这条路）
+		filter.setSelectedScope(.all, animated: true)
+		filter.setSelectedScope(.unread, animated: false)
+		assertSelectedLooksRight(.unread, "after external sync")
+	}
+
 	/// ADR-033：文章列表底栏五个控件 x = 32 / 116.5 / 201 / 285.5 / 370，同一条中线 y = 24。
 	func testFeedToolbarControlsAreEvenlySpacedOnOneCenterline() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
@@ -1412,7 +1470,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 			XCTAssertEqual(icon.frame.midY, title.frame.minY + Babel2Type.rowTitleLineHeight / 2, accuracy: 1.5, "icon aligned with first title line (row \(row))")
 			heights.append(cell.bounds.height)
 		}
-		XCTAssertLessThan(heights[1], heights[0], "a one-line title row without thumbnail is shorter than a two-line row")
+		// ADR-054（2026-09-27）起标题 + 摘要合计 3 行：一行标题的行摘要显示两行，与两行标题的行一样高（原先断言「更矮」）
+		XCTAssertEqual(heights[1], heights[0], accuracy: 0.5, "one-line and two-line title rows are equally tall (title + summary share three lines)")
 		// 行顶留白 16 + 来源行 14 + 间距 4 → 标题顶；缩略图比标题低 3、边长 64，下面再留 16
 		XCTAssertGreaterThanOrEqual(heights[2], 16 + 14 + 4 + 3 + 64 + 16, "thumbnail row still fits the thumbnail")
 	}
@@ -1496,7 +1555,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 	}
 
 	/// 按天分段后：点第二段的文章打开的是它本身；下一篇仍按列表顺序跨段；第一行显示大写来源名 + 贴右边的时刻；
-	/// 没有订阅源图标时显示首字母方块；摘要只有 1 行；不再有「英文 → 简体中文」提示行。
+	/// 没有订阅源图标时显示首字母方块；标题一行时摘要两行（标题 + 摘要合计 3 行）；不再有「英文 → 简体中文」提示行。
 	func testFeedListGroupsByDayAndRowsFollowReaderLayout() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 		let now = Date()
@@ -1530,7 +1589,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		func label(_ id: String) throws -> UILabel { try XCTUnwrap(labels.first { $0.accessibilityIdentifier == id }) }
 		XCTAssertEqual(try label("babel2.article.feed").text, "MARGINAL REVOLUTION")
 		XCTAssertEqual(try label("babel2.article.title").text, "标题 a", "translated title replaces the original")
-		XCTAssertEqual(try label("babel2.article.summary").numberOfLines, 1)
+		XCTAssertEqual(try label("babel2.article.summary").numberOfLines, 2, "one-line title leaves two lines for the summary")
 		XCTAssertFalse(labels.contains { $0.text == "英文 → 简体中文" }, "no translation hint line")
 		let date = try label("babel2.article.date")
 		XCTAssertEqual(date.convert(date.bounds, to: cell.contentView).maxX, cell.contentView.bounds.width - 20, accuracy: 0.5)
@@ -1550,6 +1609,42 @@ final class Babel2FeedReaderTests: XCTestCase {
 		probe.removeFromSuperview()
 		let capHeight = Babel2Type.rowTitle(read: false).capHeight
 		XCTAssertEqual(icon.convert(icon.bounds, to: cell.contentView).midY, firstBaseline - capHeight / 2, accuracy: 1)
+	}
+
+	/// 标题 + 摘要合计 3 行（2026-09-27 用户选定）：标题一行 → 摘要两行，标题两行 → 摘要一行；
+	/// 两种行一样高（没有缩略图时都是 16 + 14 + 4 + 3×20 + 2 + 16 = 112pt），摘要真的显示成两行。
+	func testRowTitleAndSummaryShareThreeLines() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let longSummary = String(repeating: "A long summary sentence. ", count: 20)
+		let short = ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "short"), title: "Short title",
+			summary: longSummary, url: nil, feedID: feedID, publishedAt: now)
+		let long = ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "long"),
+			title: String(repeating: "A very long headline that wraps ", count: 6),
+			summary: longSummary, url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-60))
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: [short, long]])))
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 2)
+		tableView.layoutIfNeeded()
+		func row(_ index: Int) throws -> (cell: UITableViewCell, title: UILabel, summary: UILabel) {
+			let cell = try XCTUnwrap(tableView.cellForRow(at: IndexPath(row: index, section: 0)))
+			let labels = cell.contentView.subviews.compactMap { $0 as? UILabel }
+			return (cell,
+				try XCTUnwrap(labels.first { $0.accessibilityIdentifier == "babel2.article.title" }),
+				try XCTUnwrap(labels.first { $0.accessibilityIdentifier == "babel2.article.summary" }))
+		}
+		let first = try row(0), second = try row(1)
+		XCTAssertEqual(first.title.bounds.height, 20, accuracy: 0.5, "short title is one line")
+		XCTAssertEqual(first.summary.numberOfLines, 2)
+		XCTAssertEqual(first.summary.bounds.height, 40, accuracy: 0.5, "summary actually shows two lines")
+		XCTAssertEqual(second.title.bounds.height, 40, accuracy: 0.5, "long title is capped at two lines")
+		XCTAssertEqual(second.summary.numberOfLines, 1)
+		XCTAssertEqual(second.summary.bounds.height, 20, accuracy: 0.5)
+		XCTAssertEqual(first.cell.bounds.height, second.cell.bounds.height, accuracy: 0.5, "both rows are equally tall")
+		XCTAssertEqual(first.cell.bounds.height, 112, accuracy: 1)
 	}
 
 	// 数据接入层：普通 RSS 文章没有自带图片地址，要从正文里取第一张像样的配图。
@@ -2067,8 +2162,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertLessThan(Babel2Type.BarOptical.circle, 1, "circles are drawn a bit smaller than stars")
 
 		let filter = Babel2ScopeFilterControl(selectedScope: .unread)
-		XCTAssertEqual(filter.buttons[.starred]?.configuration?.image?.size, CGSize(width: 21, height: 21), "same size as the reader star")
-		XCTAssertEqual(filter.buttons[.all]?.configuration?.image?.size, CGSize(width: 21, height: 21))
+		XCTAssertEqual(filter.buttons[.starred]?.icon?.size, CGSize(width: 21, height: 21), "same size as the reader star")
+		XCTAssertEqual(filter.buttons[.all]?.icon?.size, CGSize(width: 21, height: 21))
 
 		let readAll = Babel2Type.readAllIcon()
 		XCTAssertEqual(readAll.size, CGSize(width: 21, height: 21))
@@ -2601,6 +2696,172 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await waitUntil { viewController.lastRenderResult?.textLength ?? 0 > 30 }
 		let text = await viewController.readerContentView.articleTextForTesting()
 		XCTAssertEqual(text, "Remembered full text for this article.")
+	}
+
+	// MARK: - 重开 App 回到上次的页面（2026-09-27，Babel2LastPlace）
+
+	/// 从导航栈读「现在在哪」：列表 + 上面打开着的文章；停在浏览器里仍算那篇文章；独立网页不算文章；只有首页 → 不记。
+	func testLastPlaceCapturesListAndArticleFromTheStack() {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let environment = makeEnvironment(provider: FakeDataProvider())
+		let root = UIViewController()
+		let list = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all, environment: environment)
+		let reader = makeReader(body: "<p>Body</p>")
+		let browser = UIViewController()
+		let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+		XCTAssertNil(Babel2LastPlace.capture(from: [root], now: now), "home only → start from home")
+		let listOnly = Babel2LastPlace.capture(from: [root, list], now: now)
+		XCTAssertEqual(listOnly?.feedSnapshotID, feedID)
+		XCTAssertEqual(listOnly?.feedScope, .all)
+		XCTAssertNil(listOnly?.article)
+		let inBrowser = Babel2LastPlace.capture(from: [root, list, reader, browser], now: now)
+		XCTAssertEqual(inBrowser?.articleSnapshotID, ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article"),
+			"left from the built-in browser → back to the article")
+		XCTAssertEqual(inBrowser?.savedAt, now)
+
+		let smart = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Today"), scope: .unread, environment: environment, smartFeed: .today)
+		let smartPlace = Babel2LastPlace.capture(from: [root, smart], now: now)
+		XCTAssertEqual(smartPlace?.smartFeedKind, .today)
+		XCTAssertNil(smartPlace?.feedSnapshotID)
+
+		// 24 小时以内才用
+		XCTAssertTrue(listOnly!.isFresh(now: now.addingTimeInterval(23 * 3600)))
+		XCTAssertFalse(listOnly!.isFresh(now: now.addingTimeInterval(25 * 3600)))
+	}
+
+	/// 冷启动：记录不超过 24 小时 → 首页 → 列表 → 文章直接搭好（文章按编号取，不依赖它还在列表里）；
+	/// 超过 24 小时、订阅源已经不在 → 停在首页；退到后台时记下当前位置。
+	func testColdStartResumesLastPlaceWithinOneDay() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let feed = makeFeed(id: feedID, title: "Feed")
+		let first = makeArticle(accountID: "account", feedID: "feed", articleID: "a1", title: "First", body: "<p>First</p>", url: nil)
+		let second = makeArticle(accountID: "account", feedID: "feed", articleID: "a2", title: "Second", body: "<p>Second</p>", url: nil)
+		let provider = FakeDataProvider(feeds: [feedID: [first, second]],
+			librarySnapshots: [.all: LibrarySnapshot(feeds: [feed])])
+		let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-lastplace-\(UUID().uuidString).json")
+		defer { try? FileManager.default.removeItem(at: fileURL) }
+		let store = Babel2LastPlaceStore(fileURL: fileURL)
+
+		func launch() -> (Babel2NavigationController, UIWindow) {
+			let navigation = Babel2SceneComposition.makeRoot(environment: makeEnvironment(provider: provider), lastPlace: store)
+			let window = hostInWindow(navigation)
+			return (navigation, window)
+		}
+
+		// 1 小时前停在「全部」档的这个源、看着第二篇
+		store.save(Babel2LastPlace(accountID: "account", feedID: "feed", scope: "all",
+			article: .init(accountID: "account", feedID: "feed", articleID: "a2"), savedAt: Date().addingTimeInterval(-3600)))
+		var (navigation, window) = launch()
+		XCTAssertNotNil(descendant(of: navigation.view, matching: Babel2ResumeCover.self), "paper cover hides the home screen while resuming")
+		await waitUntil { navigation.viewControllers.count == 3 }
+		XCTAssertEqual(navigation.viewControllers.count, 3)
+		let list = try XCTUnwrap(navigation.viewControllers[1] as? Babel2FeedViewController)
+		XCTAssertEqual(list.placeFeedID, feedID)
+		XCTAssertEqual(list.scope, .all)
+		let reader = try XCTUnwrap(navigation.viewControllers[2] as? Babel2ArticleViewController)
+		XCTAssertEqual(reader.placeArticleID?.articleID, "a2")
+		let root = try XCTUnwrap(navigation.viewControllers.first as? Babel2RootViewController)
+		XCTAssertEqual(root.selectedScope, .all, "home follows the resumed scope")
+		await waitUntil { descendant(of: navigation.view, matching: Babel2ResumeCover.self) == nil }
+		XCTAssertNil(descendant(of: navigation.view, matching: Babel2ResumeCover.self), "cover goes away")
+
+		// 退到后台：记下当前位置（返回列表后 → 只记列表）
+		_ = navigation.popBabel2(animated: false)
+		NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+		XCTAssertEqual(store.load()?.feedSnapshotID, feedID)
+		XCTAssertNil(store.load()?.article)
+		_ = navigation.popBabel2(animated: false)
+		NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+		XCTAssertNil(store.load(), "back on home → next launch starts from home")
+		navigation.tearDown()
+		window.isHidden = true
+
+		// 超过 24 小时：从首页开始
+		store.save(Babel2LastPlace(accountID: "account", feedID: "feed", scope: "all", savedAt: Date().addingTimeInterval(-25 * 3600)))
+		(navigation, window) = launch()
+		XCTAssertNil(descendant(of: navigation.view, matching: Babel2ResumeCover.self))
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertEqual(navigation.viewControllers.count, 1)
+		navigation.tearDown()
+		window.isHidden = true
+
+		// 订阅源已经不在了（退订）：停在首页，底板照样揭开
+		store.save(Babel2LastPlace(accountID: "account", feedID: "gone", scope: "all", savedAt: Date()))
+		(navigation, window) = launch()
+		await waitUntil { descendant(of: navigation.view, matching: Babel2ResumeCover.self) == nil }
+		XCTAssertEqual(navigation.viewControllers.count, 1)
+		navigation.tearDown()
+		window.isHidden = true
+	}
+
+	/// 阅读模式全文缓存（2026-09-27）：第一次抽到就存；再打开（上次开着阅读模式）直接排存着的全文——
+	/// 不再抓网页、不先排摘要；关掉再开也直接用；网址变了不用；抓失败不存；最多存 300 篇。
+	func testReaderModeReusesCachedFullTextInsteadOfFetchingAgain() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent("babel2-fulltext-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let cache = Babel2FullTextCache(directory: directory)
+		var fetches = 0
+		let provider: @MainActor (URL, UIView) async throws -> String = { _, _ in
+			fetches += 1
+			return "<p>Cached full text from the web page.</p><p>Second paragraph.</p>"
+		}
+		// 第一次：手动开阅读模式 → 抓一次、存下
+		let first = makeReader(body: "<p>Summary only.</p>", fullTextProvider: provider, fullTextCache: cache)
+		var window = hostInWindow(first)
+		await waitForReaderRender(first)
+		first.toggleReaderMode()
+		await waitUntil { first.isReaderModeOn }
+		await waitUntil { first.lastRenderResult?.textLength ?? 0 > 30 }
+		XCTAssertEqual(fetches, 1)
+		window.isHidden = true
+
+		// 再打开（这篇记着阅读模式）：一打开就是阅读模式，第一次排版就是全文，不再抓
+		let second = makeReader(body: "<p>Summary only.</p>", fullTextProvider: provider, fullTextCache: cache)
+		window = hostInWindow(second)
+		defer { window.isHidden = true }
+		XCTAssertTrue(second.isReaderModeOn, "reader mode is on right away")
+		XCTAssertFalse(second.isFetchingFullTextForTesting)
+		XCTAssertEqual(second.toolbarView.readingModeButton.accessibilityValue, "on")
+		await waitForReaderRender(second)
+		let text = await second.readerContentView.articleTextForTesting()
+		XCTAssertTrue(text?.hasPrefix("Cached full text") == true, "first render is the cached full text, got \(text ?? "nil")")
+		XCTAssertEqual(fetches, 1, "no second fetch")
+
+		// 关掉再开：直接用存的
+		second.toggleReaderMode()
+		await waitUntil { second.lastRenderResult?.textLength ?? 99 < 30 }
+		second.toggleReaderMode()
+		XCTAssertTrue(second.isReaderModeOn)
+		await waitUntil { second.lastRenderResult?.textLength ?? 0 > 30 }
+		XCTAssertEqual(fetches, 1)
+
+		// 网址变了 → 当没存过
+		let id = ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "reader-article")
+		XCTAssertNotNil(cache.html(for: id, url: URL(string: "https://example.com/post")!))
+		XCTAssertNil(cache.html(for: id, url: URL(string: "https://example.com/moved")!))
+
+		// 抓失败不存
+		struct Blocked: Error {}
+		let failingDirectory = directory.appendingPathComponent("failing")
+		let failingCache = Babel2FullTextCache(directory: failingDirectory)
+		let third = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in throw Blocked() }, fullTextCache: failingCache)
+		let thirdWindow = hostInWindow(third)
+		defer { thirdWindow.isHidden = true }
+		await waitForReaderRender(third)
+		third.toggleReaderMode()
+		await waitUntil { !third.isFetchingFullTextForTesting }
+		XCTAssertNil(failingCache.html(for: id, url: URL(string: "https://example.com/post")!))
+
+		// 上限：多存的删最久没用过的
+		for index in 0..<(Babel2FullTextCache.maxEntries + 5) {
+			cache.store("<p>\(index)</p>", for: ArticleSnapshot.ID(accountID: "a", feedID: "f", articleID: "\(index)"),
+				url: URL(string: "https://example.com/\(index)")!)
+		}
+		let files = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".json") }
+		XCTAssertEqual(files.count, Babel2FullTextCache.maxEntries)
+		XCTAssertNotNil(cache.html(for: ArticleSnapshot.ID(accountID: "a", feedID: "f", articleID: "\(Babel2FullTextCache.maxEntries + 4)"),
+			url: URL(string: "https://example.com/\(Babel2FullTextCache.maxEntries + 4)")!), "newest entry is kept")
 	}
 
 	func testFeedLoadsOnlyRequestedFeedAndPassesSnapshotToReader() async throws {
@@ -3357,15 +3618,41 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(byline.text, "JOHN GRUBER\nFEED")
 		let subtitle = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.compact-subtitle" })
 		XCTAssertEqual(subtitle.text, "FEED · JOHN GRUBER")
-		// 正文为次要灰（设计稿 #787878），不是主墨色
+		// 正文用专用正文色（2026-09-27 加深：浅色 #626262 / 深色 #B4B4B4），不是主墨色
 		await waitForReaderRender(viewController)
 		let color = await viewController.readerContentView.evaluateForTesting(
 			"return getComputedStyle(document.querySelector('#babel2-article p')).color;"
 		) as? String
-		// 与当前外观（浅色 #787878 / 深色 #6C6C6C）下的次要灰一致
 		var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-		BabelPalette.mutedInk.resolvedColor(with: viewController.view.traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
+		Babel2ReaderContentView.bodyInk.resolvedColor(with: viewController.view.traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
 		XCTAssertEqual(color, "rgb(\(Int((r * 255).rounded())), \(Int((g * 255).rounded())), \(Int((b * 255).rounded())))")
+	}
+
+	/// 深色模式正文看不清（2026-09-27 用户反馈）：正文与底色的对比度，深色至少 7:1、浅色至少 5:1；
+	/// 深色下正文不能比日期 / 作者这类次要文字更暗；外壳页的样式里两套外观都用上了正文色。
+	func testReaderBodyTextHasReadableContrastInBothAppearances() {
+		func luminance(_ color: UIColor, _ style: UIUserInterfaceStyle) -> CGFloat {
+			var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+			color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style)).getRed(&r, green: &g, blue: &b, alpha: &a)
+			func channel(_ c: CGFloat) -> CGFloat { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+			return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+		}
+		func contrast(_ fg: UIColor, _ bg: UIColor, _ style: UIUserInterfaceStyle) -> CGFloat {
+			let l1 = luminance(fg, style), l2 = luminance(bg, style)
+			return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+		}
+		let body = Babel2ReaderContentView.bodyInk
+		XCTAssertGreaterThanOrEqual(contrast(body, BabelPalette.background, .dark), 7)
+		XCTAssertGreaterThanOrEqual(contrast(body, BabelPalette.background, .light), 5)
+		// 深色下：正文比次要文字亮，图注不比次要文字暗
+		XCTAssertGreaterThan(luminance(body, .dark), luminance(BabelPalette.tertiaryInk, .dark))
+		XCTAssertGreaterThanOrEqual(luminance(Babel2ReaderContentView.captionInk, .dark), luminance(BabelPalette.tertiaryInk, .dark) - 0.0001)
+		// 外壳页：正文、引用用正文色，浅色 #626262 / 深色 #B4B4B4 两套都写进去了
+		let shell = Babel2ReaderContentView.shellHTML()
+		XCTAssertTrue(shell.contains("--body: #626262;"))
+		XCTAssertTrue(shell.contains("--body: #B4B4B4;"))
+		XCTAssertTrue(shell.contains("body { background: var(--bg); color: var(--body);"))
+		XCTAssertTrue(shell.contains("color: var(--body); }"))
 	}
 
 	// MARK: - 阅读页（Slice 4 第 1 步）
@@ -4550,7 +4837,8 @@ private func makeReader(
 	fullTextProvider: @escaping @MainActor (URL, UIView) async throws -> String = { _, _ in throw CancellationError() },
 	feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
 	makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
-	positionStore: Babel2PositionStore? = nil
+	positionStore: Babel2PositionStore? = nil,
+	fullTextCache: Babel2FullTextCache? = nil
 ) -> Babel2ArticleViewController {
 	let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 	let article = ArticleSnapshot(
@@ -4572,7 +4860,8 @@ private func makeReader(
 		fullTextProvider: fullTextProvider,
 		feedReaderModeSetting: feedReaderModeSetting,
 		makeBrowser: makeBrowser,
-		positionStore: positionStore
+		positionStore: positionStore,
+		fullTextCache: fullTextCache
 	)
 }
 

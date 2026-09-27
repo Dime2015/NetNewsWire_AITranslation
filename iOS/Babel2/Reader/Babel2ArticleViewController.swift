@@ -67,6 +67,8 @@ final class Babel2ArticleViewController: UIViewController {
 	private var fullTextHTML: String?
 	private var fullTextTask: Task<Void, Never>?
 	private let fullTextProvider: @MainActor (URL, UIView) async throws -> String
+	/// 抽成功的全文存在手机上，下次直接用（2026-09-27）；为 nil 时每次都重新抓（测试默认）。
+	private let fullTextCache: Babel2FullTextCache?
 	private let feedReaderModeSetting: Babel2FeedReaderModeSetting?
 	/// 内置浏览器工厂（装配层注入；为 nil 时退回用系统浏览器打开）。ADR-021。
 	private let makeBrowser: ((URL) -> (any Babel2PreparableRoute))?
@@ -76,6 +78,8 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 不在订阅里的独立网页（内置浏览器「翻译此页」打开的，ADR-047）：没有已读 / 星标 / 下一篇，
 	/// 正文已经是抽出来的全文、不再提供阅读模式；打开时不标已读。
 	private let isStandalonePage: Bool
+	/// 重开 App 回到上次的页面（Babel2LastPlace）：这篇文章的编号；「翻译此页」的独立网页不算文章。
+	var placeArticleID: ArticleSnapshot.ID? { isStandalonePage ? nil : article.id }
 	/// 读到哪（ADR-053）：没有注入时不记也不恢复。
 	private let positionStore: Babel2PositionStore?
 	/// 打开时要回到的位置：每次排版完成、正文变长（全文到了、从缓存放回译文、图片加载）都按它再对一次，
@@ -152,8 +156,10 @@ final class Babel2ArticleViewController: UIViewController {
 		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
 		mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)? = nil,
 		standalonePage: Bool = false,
-		positionStore: Babel2PositionStore? = nil
+		positionStore: Babel2PositionStore? = nil,
+		fullTextCache: Babel2FullTextCache? = nil
 	) {
+		self.fullTextCache = fullTextCache
 		self.isStandalonePage = standalonePage
 		self.positionStore = positionStore
 		self.pendingPosition = positionStore?.articlePosition(for: article.id)
@@ -208,11 +214,14 @@ final class Babel2ArticleViewController: UIViewController {
 			self?.cancelRendering()
 			self?.showMessage(Babel2Localization.text(.unableToLoadArticle), allowsRetry: true)
 		}
-		startRendering()
+		// 这篇该用阅读模式、全文又存过：直接排全文，不先排摘要、不联网（2026-09-27）
+		if !showCachedFullTextOnOpen() {
+			startRendering()
+		}
 		resolveTranslationHostArticle()
 		loadMediaExtras()
 		// 自动取全文：订阅源设了「总是用阅读模式」（ADR-020），或这篇上次开着阅读模式离开（ADR-019）
-		if article.url != nil, !isStandalonePage {
+		if article.url != nil, !isStandalonePage, !isReaderModeOn {
 			if isFeedAlwaysReaderMode {
 				startFullTextFetch(rememberForArticle: false)
 			} else if ArticleReadingStateStore.state(for: readingStateKey).readerMode {
@@ -416,25 +425,51 @@ final class Babel2ArticleViewController: UIViewController {
 		}
 	}
 
+	/// 打开文章时：订阅源「总是阅读模式」或这篇上次开着阅读模式，且全文存过 → 直接用存的排版。返回是否用上了。
+	private func showCachedFullTextOnOpen() -> Bool {
+		guard let url = article.url, !isStandalonePage,
+			  isFeedAlwaysReaderMode || ArticleReadingStateStore.state(for: readingStateKey).readerMode,
+			  let cached = fullTextCache?.html(for: article.id, url: url) else { return false }
+		fullTextHTML = cached
+		isReaderModeOn = true
+		readerModeStateDidChange()
+		startRendering(fullText: cached)
+		return true
+	}
+
+	/// 全文到手（刚抽到的或存着的）：切到阅读模式并重排。
+	private func showFullText(_ html: String, rememberForArticle: Bool) {
+		fullTextHTML = html
+		isReaderModeOn = true
+		if rememberForArticle {
+			ArticleReadingStateStore.setReaderMode(true, for: readingStateKey)
+		}
+		readerModeStateDidChange()
+		startRendering(fullText: html, scrollToTop: true)
+	}
+
 	/// - rememberForArticle: 手动打开才记到「这篇文章」上；因订阅源设置自动打开的不记，
 	///   以免关掉订阅源开关后，那些文章仍各自记着全文。
 	private func startFullTextFetch(rememberForArticle: Bool) {
 		guard let url = article.url, fullTextTask == nil else { return }
+		// 存过全文：直接用，不联网（2026-09-27）
+		if let cached = fullTextCache?.html(for: article.id, url: url) {
+			showFullText(cached, rememberForArticle: rememberForArticle)
+			return
+		}
+		let cache = fullTextCache
+		let articleID = article.id
 		// 取全文期间：底栏阅读模式图标本身在动（ADR-043，不再在标题下写「正在获取全文…」）
 		let provider = fullTextProvider
 		let host: UIView = view
 		fullTextTask = Task { @MainActor [weak self] in
 			do {
 				let html = try await provider(url, host)
+				// 抽成功就存下（哪怕页面已经关了），下次打开直接用
+				cache?.store(html, for: articleID, url: url)
 				guard !Task.isCancelled, let self else { return }
 				self.fullTextTask = nil
-				self.fullTextHTML = html
-				self.isReaderModeOn = true
-				if rememberForArticle {
-					ArticleReadingStateStore.setReaderMode(true, for: self.readingStateKey)
-				}
-				self.readerModeStateDidChange()
-				self.startRendering(fullText: html, scrollToTop: true)
+				self.showFullText(html, rememberForArticle: rememberForArticle)
 			} catch {
 				guard !Task.isCancelled, let self else { return }
 				self.fullTextTask = nil

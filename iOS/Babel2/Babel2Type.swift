@@ -40,6 +40,10 @@ enum Babel2Type {
 	static let rowTitleLineHeight: CGFloat = 20
 	/// 摘要 17 → 14.5，与标题同行高
 	static var rowSummary: UIFont { .systemFont(ofSize: 14.5, weight: .regular) }
+	/// 标题 + 摘要一共几行（2026-09-27 用户选定）：标题一行时摘要两行，标题两行时摘要一行。
+	/// 有缩略图的行正好填满缩略图旁边的空白、行高不变；没有缩略图的行高度统一。
+	static let rowTextLines = 3
+	static let rowTitleMaxLines = 2
 	/// 来源图标 24 → 20；缩略图 70 → 64；行上下留白 14 → 16（字小了，留白多一点更透气）
 	static let rowIcon: CGFloat = 20
 	static let rowThumbnail: CGFloat = 64

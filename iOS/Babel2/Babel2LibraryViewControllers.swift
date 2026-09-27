@@ -92,6 +92,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var statusRefreshTimer: Timer?
 	private var statusRefreshTask: Task<Void, Never>?
 	var onSelectArticle: ((ArticleSnapshot) -> Void)?
+	/// 重开 App 回到上次的页面（Babel2LastPlace）：不带动画直接打开那篇文章；以及这个列表是哪个订阅源。
+	var onRestoreArticle: ((ArticleSnapshot) -> Void)?
+	var placeFeedID: FeedSnapshot.ID { feed.id }
 	/// 用户在本页底栏切了档位：档位是全局的，由装配层同步给首页（ADR-023）。
 	var onScopeChanged: ((Babel2FeedScope) -> Void)?
 	private let bottomToolbar = UIView()
@@ -1515,7 +1518,7 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 /// 文章行（Reeder 式，2026-09-25 用户给参考截图）：
 /// 左列来源图标（与标题第一行居中）；文字列从 49pt 起：
 /// 第一行 来源名（大写浅灰）…… 时间（贴右边缘）；
-/// 标题最多 2 行（未读加粗、已读常规）；摘要浅灰 1 行；
+/// 标题最多 2 行（未读加粗、已读常规）；摘要浅灰，与标题合计 3 行（标题一行 → 摘要两行，标题两行 → 摘要一行，2026-09-27）；
 /// 缩略图在时间下方（各尺寸见 Babel2Type「文章列表」，ADR-033 整体收小一档）、顶部与标题齐平，文字在它左边折行。行间无分隔线，只靠留白。
 private final class Babel2ArticleCell: UITableViewCell {
 	static let reuseIdentifier = "Babel2ArticleCell"
@@ -1587,9 +1590,9 @@ private final class Babel2ArticleCell: UITableViewCell {
 		dateLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 		dateLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-		titleLabel.numberOfLines = 2
+		titleLabel.numberOfLines = Babel2Type.rowTitleMaxLines
 		titleLabel.accessibilityIdentifier = "babel2.article.title"
-		summaryLabel.numberOfLines = 1
+		summaryLabel.numberOfLines = Babel2Type.rowTextLines - 1
 		summaryLabel.accessibilityIdentifier = "babel2.article.summary"
 		// 标题、摘要竖直方向不许被拉高：行高有富余时空白留在摘要下面，字不会被上下居中而与图标错位
 		for label in [feedLabel, titleLabel, summaryLabel] {
@@ -1654,6 +1657,45 @@ private final class Babel2ArticleCell: UITableViewCell {
 		summaryLabel.attributedText = nil
 		titleLabel.attributedText = nil
 		dateLabel.attributedText = nil
+	}
+
+	// MARK: 标题 + 摘要合计 3 行（2026-09-27）
+
+	/// 摘要行数要等知道行宽、算出标题占几行才能定。列表算行高时走这里（宽度就是列表宽度），
+	/// 先把摘要行数定好再让自动布局量高度，量出来的行高才对。
+	override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority, verticalFittingPriority: UILayoutPriority) -> CGSize {
+		updateSummaryLines(rowWidth: targetSize.width)
+		return super.systemLayoutSizeFitting(targetSize, withHorizontalFittingPriority: horizontalFittingPriority, verticalFittingPriority: verticalFittingPriority)
+	}
+
+	override func layoutSubviews() {
+		updateSummaryLines(rowWidth: bounds.width)
+		super.layoutSubviews()
+	}
+
+	/// 标题实际占几行（最多 2 行）→ 摘要行数 = 3 − 标题行数。
+	private func updateSummaryLines(rowWidth: CGFloat) {
+		guard rowWidth > 0, let title = titleLabel.attributedText, title.length > 0 else { return }
+		let trailing: CGFloat = thumbnailView.isHidden ? 20 : 20 + Self.thumbSide + 12
+		let lines = Self.lineCount(of: title, width: rowWidth - Self.textLeading - trailing, lineHeight: Self.titleLineHeight)
+		let summaryLines = max(1, Babel2Type.rowTextLines - min(lines, Babel2Type.rowTitleMaxLines))
+		if summaryLabel.numberOfLines != summaryLines {
+			summaryLabel.numberOfLines = summaryLines
+		}
+	}
+
+	/// 一段固定行高的文字在给定宽度下折成几行（量的时候按正常折行，不按「末尾省略」——后者会被量成一行）。
+	static func lineCount(of text: NSAttributedString, width: CGFloat, lineHeight: CGFloat) -> Int {
+		guard width > 0 else { return 1 }
+		let measured = NSMutableAttributedString(attributedString: text)
+		measured.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: measured.length)) { value, range, _ in
+			guard let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle else { return }
+			style.lineBreakMode = .byWordWrapping
+			measured.addAttribute(.paragraphStyle, value: style, range: range)
+		}
+		let height = measured.boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude),
+			options: [.usesLineFragmentOrigin], context: nil).height
+		return max(1, Int((height / lineHeight).rounded()))
 	}
 
 	/// 图标晚到时只换图标（ADR-039）。

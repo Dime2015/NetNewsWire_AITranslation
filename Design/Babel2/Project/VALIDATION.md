@@ -9,7 +9,18 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
-## 2026-09-27 第三轮：位置记忆、新文章提示、底栏图标统一（ADR-052 / 053；uncommitted worktree，待用户真机验收）
+## 2026-09-27 第四轮：6 条反馈（ADR-054～059；用户同日真机验收通过，已提交推送）
+
+- 环境：Xcode 27.0，iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/dd`（UI Driver 用 `dd-ui`）；所有测试命令都带 `-collect-test-diagnostics never`。
+- 开工前快照：第三轮工作区存为本地 ref `refs/babel2/round3-pending` = `a445bbb859219c32eda591c805cff4dc7639b193`（含未跟踪 `Babel2PositionStore.swift`，不含 `icon new/`；不是分支提交、未推送），工作区未因此改变。
+- 定向：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t1.xcresult` 9/9（摘要、正文色、档位按钮、图标资源及相关旧测试）；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t2.xcresult` 55/55（全文缓存、位置读取、冷启动回到上次、阅读模式旧测试、Boundary、FeatureGate）。t2 第一次编译失败：嵌套函数读 MainActor 属性需标 `@MainActor`，已改。
+- 反向验证 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/rev.xcresult`（脚本 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/reverse.sh`，备份 + trap 恢复 + `cmp` 核对 5 个文件均一致）：摘要行数写死 1、正文深色改回 #6C6C6C、文字起点改到图标左侧、缓存读取恒返回空、恢复入口永不触发 → `testRowTitleAndSummaryShareThreeLines`、`testFeedListGroupsByDayAndRowsFollowReaderLayout`、`testReaderBodyTextHasReadableContrastInBothAppearances`、`testScopeButtonsNeverDrawTitleOverIcon`、`testReaderModeReusesCachedFullTextInsteadOfFetchingAgain`、`testColdStartResumesLastPlaceWithinOneDay` 6 项全部失败。第一次反向编译失败（「变量未使用」按错误处理，LESSONS 59），换写法后通过编译。
+- 全量：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full.xcresult` 204/205（`testSingleLineTitleRowsAreNotStretched` 仍断言旧规则「一行标题的行更矮」，按 ADR-054 改为等高，该测试其余断言通过）；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full2.xcresult` **205/205**（设备维度 207/207），0 失败 0 跳过，90 秒。
+- UI Driver（Release、真实数据，启动带 `BABEL2_RESET_READING_POSITIONS=1`，上次位置与全文缓存一并清空）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/ui.xcresult` **1/1**，204 秒（含从零 Release 编译）。
+- 边界：pbxproj 签名 diff hash 仍 `c5f5a8cf…`；`Shared/Localizable.xcstrings` stale 行 hash 仍 `4e9e96a3…`；`git diff --check` 干净，新文件无尾随空白、无调试输出。未改 Shared / Mac，未跑 macOS build。编译产物 `AppIconCustom60x60@2x.png` 目视已是新图标。
+- 缺口（只能真机）：主屏幕三种外观图标；冷启动观感；夜间正文；「● UNREAD」是否根除（模拟器从未复现）；真实网页全文缓存与离线打开。
+
+## 2026-09-27 第三轮：位置记忆、新文章提示、底栏图标统一（ADR-052 / 053；用户同日真机验收通过，已提交推送）
 
 - 环境同上（iPhone 17 / iOS 27 Simulator `555E35FA-…`，独立 DerivedData；所有测试命令都带 `-collect-test-diagnostics never`，含 UI Driver，见 LESSONS 57）。
 - 新增 9 项：底栏图标统一；文章里记与恢复；全文晚到后恢复；列表记与恢复 + 新文章提示；找回规则与共用键；今日未读 → 全部未读接着看；换成第一篇时回到展开的顶部；没滑动过下次从顶部开始；新文章只跟同一档比。列表位置 6 项最后一次定向为 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/6be49cca-9acf-42f6-a25b-f5dece71832f/scratchpad/pos9.xcresult`，6/6。

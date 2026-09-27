@@ -437,6 +437,23 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 
 	// MARK: - 外壳页内容
 
+	/// 正文字色（2026-09-27 用户反馈：深色模式晚上、亮度不高时正文看不清）。
+	/// 原先正文用 BabelPalette.mutedInk：深色 #6C6C6C 在 #1C1C1C 底上对比度只有约 3.2:1，
+	/// 还比日期、作者这类次要文字（#8E8E8E）更暗。改为专用的正文色，只影响阅读页正文，App 其它地方的灰不动：
+	/// 深色 #B4B4B4（约 8:1，不用纯白——暗光下纯白字会刺眼发散）；浅色按用户要求顺带加深，#787878 → #626262（约 3.9:1 → 5.5:1）。
+	static let bodyInk = UIColor { traits in
+		traits.userInterfaceStyle == .dark
+			? UIColor(red: 180.0 / 255.0, green: 180.0 / 255.0, blue: 180.0 / 255.0, alpha: 1)
+			: UIColor(red: 98.0 / 255.0, green: 98.0 / 255.0, blue: 98.0 / 255.0, alpha: 1)
+	}
+
+	/// 图注字色：比正文淡一级。浅色沿用设计稿次要灰 #787878；深色用 #8E8E8E（原先的 #6C6C6C 同样看不清）。
+	static let captionInk = UIColor { traits in
+		traits.userInterfaceStyle == .dark
+			? UIColor(red: 142.0 / 255.0, green: 142.0 / 255.0, blue: 142.0 / 255.0, alpha: 1)
+			: UIColor(red: 120.0 / 255.0, green: 120.0 / 255.0, blue: 120.0 / 255.0, alpha: 1)
+	}
+
 	/// 外壳页：样式 + 空容器。配色取自 BabelPalette 的浅色 / 深色两套值，
 	/// 由网页按系统外观（跟随 app 当前的浅色/深色）自动切换。
 	static func shellHTML() -> String {
@@ -447,6 +464,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 			--bg: \(hex(BabelPalette.background, traits));
 			--ink: \(hex(BabelPalette.ink, traits));
 			--muted: \(hex(BabelPalette.mutedInk, traits));
+			--body: \(hex(bodyInk, traits));
+			--caption: \(hex(captionInk, traits));
 			--tertiary: \(hex(BabelPalette.tertiaryInk, traits));
 			--hairline: \(hex(BabelPalette.hairline, traits));
 			--raised: \(hex(BabelPalette.raisedBackground, traits));
@@ -471,13 +490,13 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	}
 
 	/// 排版数值按 Figma 04A「Article Content」(ADR-018)，ADR-033 整体收小一档：左右边距 20pt，
-	/// 正文 17pt / 行高 28pt（原 19 / 30）、次要灰 #787878；段距 18pt；小标题 20 / 18 / 17；引用块竖线 2pt（距正文左缘 8pt）、文字距竖线 18pt、引用内段距 8pt；
+	/// 正文 17pt / 行高 28pt（原 19 / 30）、正文色见 bodyInk（原设计稿次要灰 #787878，2026-09-27 加深）；段距 18pt；小标题 20 / 18 / 17；引用块竖线 2pt（距正文左缘 8pt）、文字距竖线 18pt、引用内段距 8pt；
 	/// 小标题与链接用主墨色；链接加粗 + 中性下划线（不用绿色）；
 	/// 横图（脚本判定后加 babel2-bleed）贴满屏幕两边、直角；文字和图注保留边距。
 	private static let css = """
 	html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 	html, body { margin: 0; padding: 0; overflow-x: hidden; }
-	body { background: var(--bg); color: var(--muted); font: 17px/28px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
+	body { background: var(--bg); color: var(--body); font: 17px/28px -apple-system, system-ui, sans-serif; overflow-wrap: break-word; }
 	#babel2-title { display: none; }
 	#babel2-snapshot-header { padding: 26px 20px 60px; }
 	#babel2-snapshot-header .babel2-snap-date { font: 600 11px/15px -apple-system, system-ui, sans-serif; letter-spacing: 0.3px; color: var(--tertiary); margin: 0 0 13px; }
@@ -494,8 +513,8 @@ final class Babel2ReaderContentView: UIView, WKNavigationDelegate {
 	img.babel2-hidden { display: none; }
 	figure { margin: 22px 0; }
 	figure img, figure video { margin-top: 0; margin-bottom: 0; }
-	figcaption { font-size: 13px; line-height: 19px; color: var(--muted); margin-top: 8px; }
-	blockquote { margin: 18px 0 25px 8px; padding-left: 18px; border-left: 2px solid var(--hairline); color: var(--muted); }
+	figcaption { font-size: 13px; line-height: 19px; color: var(--caption); margin-top: 8px; }
+	blockquote { margin: 18px 0 25px 8px; padding-left: 18px; border-left: 2px solid var(--hairline); color: var(--body); }
 	blockquote p { margin: 0 0 8px; }
 	blockquote > :last-child { margin-bottom: 0; }
 	pre { overflow-x: auto; font: 13px/19px ui-monospace, Menlo, monospace; background: var(--raised); padding: 12px; margin: 0 0 18px; }

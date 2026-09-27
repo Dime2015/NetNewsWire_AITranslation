@@ -111,7 +111,8 @@ private extension SceneDelegate {
 	func installBabel2Root(in windowScene: UIWindowScene, restoration: Babel2NavigationRestoration?) {
 		guard babel2NavigationController == nil else { return }
 
-		let navigationController = Babel2SceneComposition.makeRoot(restoration: restoration)
+		// 重开 App 回到上次的页面（2026-09-27，Babel2LastPlace）：只有真正的 App 场景才记 / 才恢复，测试里直接建的不会
+		let navigationController = Babel2SceneComposition.makeRoot(restoration: restoration, lastPlace: .shared)
 		let generationToken = sceneGenerationToken
 		navigationController.onContainerAppeared = { [weak self, weak navigationController] in
 			guard let self,

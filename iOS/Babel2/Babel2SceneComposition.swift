@@ -11,7 +11,8 @@ enum Babel2SceneComposition {
 		openURL: @escaping (URL) -> Void = { UIApplication.shared.open($0) },
 		settingsService: Babel2SettingsService? = nil,
 		subscriptionService: Babel2SubscriptionService? = nil,
-		libraryEditing: Babel2LibraryEditing? = nil
+		libraryEditing: Babel2LibraryEditing? = nil,
+		lastPlace: Babel2LastPlaceStore? = nil
 	) -> Babel2NavigationController {
 		// A production scene always gets the live adapter graph. Preview/test
 		// callers can still inject deterministic collaborators explicitly.
@@ -33,6 +34,8 @@ enum Babel2SceneComposition {
 			MainActor.assumeIsolated { navigationController?.applyInterfaceStyle() }
 		}
 		navigationController.onTearDown = { NotificationCenter.default.removeObserver(appearanceObserver) }
+		// 重开 App 回到上次的页面（Babel2LastPlace）：恢复时不带动画地推入列表
+		let pushMode = Babel2PushMode()
 
 		root.onSettingsRequested = { [weak navigationController] in
 			guard let navigationController else { return }
@@ -99,7 +102,7 @@ enum Babel2SceneComposition {
 			)
 			wireArticleList(feedViewController, root: root, navigationController: navigationController,
 				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
-			navigationController.pushBabel2(feedViewController, animated: true)
+			navigationController.pushBabel2(feedViewController, animated: !pushMode.isRestoring)
 		}
 		// 跨源入口（今日未读 / 全部未读 / 外文源 / 全部星标，ADR-044）：同一个列表页，文章来自多个订阅源
 		root.onSmartFeedRequested = { [weak navigationController, weak root] kind, scope in
@@ -113,7 +116,7 @@ enum Babel2SceneComposition {
 			)
 			wireArticleList(listViewController, root: root, navigationController: navigationController,
 				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
-			navigationController.pushBabel2(listViewController, animated: true)
+			navigationController.pushBabel2(listViewController, animated: !pushMode.isRestoring)
 		}
 
 		if let restoration {
@@ -121,7 +124,89 @@ enum Babel2SceneComposition {
 				makeRoute(route, environment: resolvedEnvironment, localizationBundle: localizationBundle, settings: resolvedSettings, subscriptions: resolvedSubscriptions)
 			}
 		}
+		if let lastPlace {
+			installLastPlace(lastPlace, navigationController: navigationController, root: root,
+				environment: resolvedEnvironment, pushMode: pushMode)
+		}
 		return navigationController
+	}
+
+	/// 重开 App 回到上次的页面（2026-09-27）：退到后台时记下「列表 → 文章」；冷启动时记录不超过 24 小时就搭回去。
+	/// 搭的过程中盖一块纸色底板（与启动画面同色），搭好后淡出——看起来就是直接打开在那一页。
+	/// 找不到订阅源 / 文章（退订了、删了）就停在能到的那一层；2 秒内没搭好就放弃、停在首页。
+	private static func installLastPlace(
+		_ store: Babel2LastPlaceStore,
+		navigationController: Babel2NavigationController,
+		root: Babel2RootViewController,
+		environment: AppEnvironment,
+		pushMode: Babel2PushMode
+	) {
+		let backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak navigationController] _ in
+			MainActor.assumeIsolated {
+				guard let navigationController else { return }
+				store.save(Babel2LastPlace.capture(from: navigationController.viewControllers, now: .now))
+			}
+		}
+		let previousTearDown = navigationController.onTearDown
+		navigationController.onTearDown = {
+			previousTearDown?()
+			NotificationCenter.default.removeObserver(backgroundObserver)
+		}
+
+		// 系统恢复了设置 / 添加订阅页（被系统在后台回收过）时，以系统恢复的为准
+		guard navigationController.viewControllers.count == 1,
+			  let place = store.load(), place.isFresh(now: .now) else { return }
+		let cover = Babel2ResumeCover(frame: navigationController.view.bounds)
+		navigationController.view.addSubview(cover)
+		let progress = Babel2ResumeProgress()
+		Task { @MainActor [weak cover] in
+			try? await Task.sleep(for: .seconds(2))
+			progress.isExpired = true
+			cover?.dismiss()
+		}
+		Task { @MainActor [weak navigationController, weak root, weak cover] in
+			defer { cover?.dismiss() }
+			let scope = place.feedScope
+			// 用户已经动过（或已过期）就不再往里推
+			@MainActor func stillWaiting() -> Bool {
+				!progress.isExpired && navigationController?.viewControllers.count == 1
+			}
+			// 等窗口出来、首页先就位，再往上推（启动那一刻直接推会打乱页面出现的顺序）
+			while !progress.isExpired, navigationController?.view.window == nil {
+				try? await Task.sleep(for: .milliseconds(16))
+			}
+			if let kind = place.smartFeedKind {
+				guard stillWaiting(), let root else { return }
+				root.applyScope(scope)
+				pushMode.isRestoring = true
+				root.onSmartFeedRequested?(kind, scope)
+				pushMode.isRestoring = false
+			} else if let feedID = place.feedSnapshotID {
+				let feed = await findFeed(feedID, scope: scope, provider: environment.dataProvider)
+				guard let feed, stillWaiting(), let root else { return }
+				root.applyScope(scope)
+				pushMode.isRestoring = true
+				root.onFeedRequested?(feed, scope)
+				pushMode.isRestoring = false
+			} else {
+				return
+			}
+			guard let articleID = place.articleSnapshotID,
+				  let article = try? await environment.dataProvider.articleSnapshot(for: articleID),
+				  !progress.isExpired,
+				  let list = navigationController?.topViewController as? Babel2FeedViewController else { return }
+			list.onRestoreArticle?(article)
+		}
+	}
+
+	/// 按编号找订阅源：先在那一档的首页数据里找（篇数与那一档一致），找不到再到「全部」里找。
+	private static func findFeed(_ id: FeedSnapshot.ID, scope: Babel2FeedScope, provider: any DataProviding) async -> FeedSnapshot? {
+		for candidate in [scope, .all] {
+			if let feed = try? await provider.librarySnapshot(for: candidate).feeds.first(where: { $0.id == id }) {
+				return feed
+			}
+		}
+		return nil
 	}
 
 	/// 文章列表页（单个订阅源或跨源列表）的共同接线：档位同步给首页、点文章进阅读页、「下一篇」原地换页。
@@ -158,7 +243,9 @@ enum Babel2SceneComposition {
 				// 播客音频条、YouTube 简介（ADR-041）
 				mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) },
 				// 记住读到哪（ADR-053）
-				positionStore: .shared
+				positionStore: .shared,
+				// 阅读模式抽到的全文存在手机上，下次直接用（2026-09-27）
+				fullTextCache: .shared
 			)
 			articleViewController.onOpenOriginal = { url, _ in
 				openURL(url)
@@ -180,6 +267,11 @@ enum Babel2SceneComposition {
 		listViewController.onSelectArticle = { [weak navigationController] article in
 			guard let navigationController else { return }
 			navigationController.pushBabel2(makeReader(article), animated: true)
+		}
+		// 重开 App 回到上次的页面：不带动画直接打开（Babel2LastPlace）
+		listViewController.onRestoreArticle = { [weak navigationController] article in
+			guard let navigationController else { return }
+			navigationController.pushBabel2(makeReader(article), animated: false)
 		}
 	}
 
@@ -273,4 +365,16 @@ enum Babel2SceneComposition {
 			return nil
 		}
 	}
+}
+
+/// 恢复上次页面时，首页的「打开订阅源」照常走同一段装配，只是不带动画（Babel2LastPlace）。
+@MainActor
+final class Babel2PushMode {
+	var isRestoring = false
+}
+
+/// 恢复上次页面的进度：超过 2 秒还没搭好就放弃，之后到的数据不再往里推。
+@MainActor
+final class Babel2ResumeProgress {
+	var isExpired = false
 }

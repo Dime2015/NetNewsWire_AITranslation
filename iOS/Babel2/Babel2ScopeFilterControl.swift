@@ -14,7 +14,7 @@ final class Babel2ScopeFilterControl: UIView {
 	private static let referenceCenters = Babel2BarLayout.scopeSlots
 
 	private let selectionPill = UIView()
-	private(set) var buttons = [Babel2FeedScope: UIButton]()
+	private(set) var buttons = [Babel2FeedScope: Babel2ScopeButton]()
 	private(set) var selectedScope: Babel2FeedScope
 	var onSelect: ((Babel2FeedScope) -> Void)?
 	private var animator: UIViewPropertyAnimator?
@@ -35,15 +35,8 @@ final class Babel2ScopeFilterControl: UIView {
 		selectionPill.accessibilityElementsHidden = true
 		addSubview(selectionPill)
 		for (index, scope) in Self.displayOrder.enumerated() {
-			let button = UIButton(type: .system)
-			button.configuration = .plain()
-			button.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
-				var transformed = attributes
-				transformed.font = .systemFont(ofSize: 10, weight: .semibold)
-				transformed.foregroundColor = BabelPalette.mutedInk
-				return transformed
-			}
-			button.tintColor = BabelPalette.mutedInk
+			let button = Babel2ScopeButton()
+			button.titleText = scope.localizationKey.rawValue.uppercased()
 			button.accessibilityIdentifier = "\(identifierPrefix).\(scope.rawValue)"
 			button.accessibilityLabel = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
 			button.addAction(UIAction { [weak self] _ in self?.tapped(scope) }, for: .touchUpInside)
@@ -126,19 +119,10 @@ final class Babel2ScopeFilterControl: UIView {
 			let isSelected = scope == selectedScope
 			button.accessibilityValue = isSelected ? "Selected" : "Not selected"
 			button.accessibilityTraits = isSelected ? [.button, .selected] : [.button]
-			button.contentHorizontalAlignment = isSelected ? .leading : .center
-			var configuration = button.configuration ?? .plain()
-			configuration.image = Self.image(for: scope, selected: isSelected)
-			configuration.title = isSelected ? scope.localizationKey.rawValue.uppercased() : nil
-			configuration.imagePlacement = .leading
-			configuration.imagePadding = scope == .unread ? 7 : 6
-			configuration.contentInsets = NSDirectionalEdgeInsets(
-				top: 0,
-				leading: isSelected ? (scope == .starred ? 10 : (scope == .unread ? 8 : 9)) : 0,
-				bottom: 0,
-				trailing: 0
-			)
-			button.configuration = configuration
+			button.icon = Self.image(for: scope, selected: isSelected)
+			button.showsTitle = isSelected
+			button.leadingInset = scope == .starred ? 10 : (scope == .unread ? 8 : 9)
+			button.iconSpacing = scope == .unread ? 7 : 6
 		}
 	}
 
@@ -159,4 +143,79 @@ final class Babel2ScopeFilterControl: UIView {
 				.withRenderingMode(.alwaysTemplate)
 		}
 	}
+}
+
+/// 档位按钮（2026-09-27 修「● UNREAD」圆点和文字叠在一起）。
+///
+/// 以前用系统按钮的「配置」自动排图标和文字，在 78pt 宽的固定格子里偶尔会排错（首页 9-25 出过一次，
+/// 当时改用本组件绕开；这次文章列表第一次打开某个源时又出现）。模拟器里复现不了，具体时机没查实（推测是页面滑入动画中第一次排版）。
+/// 现在不交给系统排：图标、文字的位置每次排版都按按钮自己的大小直接算出来——
+/// 选中：图标从左边 leadingInset 起，文字紧跟在图标右边 iconSpacing 处；没选中：只有图标，居中。
+/// 文字的起点永远在图标右边，任何时机都不可能压在图标上。
+/// 按钮大小用 bounds（不受按压缩放影响），按下时整体跟着缩放，相对位置不变。
+@MainActor
+final class Babel2ScopeButton: UIButton {
+	private let iconView = UIImageView()
+	private let textLabel = UILabel()
+
+	var icon: UIImage? {
+		didSet { iconView.image = icon; setNeedsLayout() }
+	}
+	var titleText = "" {
+		didSet { textLabel.text = titleText; setNeedsLayout() }
+	}
+	var showsTitle = false {
+		didSet { setNeedsLayout() }
+	}
+	var leadingInset: CGFloat = 0 {
+		didSet { setNeedsLayout() }
+	}
+	var iconSpacing: CGFloat = 6 {
+		didSet { setNeedsLayout() }
+	}
+
+	init() {
+		super.init(frame: .zero)
+		iconView.tintColor = BabelPalette.mutedInk
+		iconView.contentMode = .center
+		iconView.isUserInteractionEnabled = false
+		textLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+		textLabel.textColor = BabelPalette.mutedInk
+		textLabel.isUserInteractionEnabled = false
+		addSubview(iconView)
+		addSubview(textLabel)
+	}
+
+	required init?(coder: NSCoder) { nil }
+
+	override func layoutSubviews() {
+		super.layoutSubviews()
+		let frames = Self.contentFrames(in: bounds.size, iconSize: icon?.size ?? .zero,
+			textSize: textLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: bounds.height)),
+			showsTitle: showsTitle, leadingInset: leadingInset, iconSpacing: iconSpacing,
+			scale: max(traitCollection.displayScale, 1))
+		iconView.frame = frames.icon
+		textLabel.frame = frames.text ?? .zero
+		textLabel.isHidden = frames.text == nil
+	}
+
+	/// 图标、文字在按钮里的位置（纯计算，测试直接核对）。
+	static func contentFrames(in size: CGSize, iconSize: CGSize, textSize: CGSize, showsTitle: Bool,
+		leadingInset: CGFloat, iconSpacing: CGFloat, scale: CGFloat) -> (icon: CGRect, text: CGRect?) {
+		func pixel(_ value: CGFloat) -> CGFloat { (value * scale).rounded() / scale }
+		guard showsTitle else {
+			return (CGRect(x: pixel((size.width - iconSize.width) / 2), y: pixel((size.height - iconSize.height) / 2),
+				width: iconSize.width, height: iconSize.height), nil)
+		}
+		let icon = CGRect(x: pixel(leadingInset), y: pixel((size.height - iconSize.height) / 2),
+			width: iconSize.width, height: iconSize.height)
+		let textX = icon.maxX + iconSpacing
+		let text = CGRect(x: pixel(textX), y: pixel((size.height - textSize.height) / 2),
+			width: max(0, min(textSize.width, size.width - textX)), height: textSize.height)
+		return (icon, text)
+	}
+
+	/// 仅供自动化测试：屏幕上真正画出来的图标、文字（不是系统按钮的内部副本，见 LESSONS 36）。
+	var iconViewForTesting: UIImageView { iconView }
+	var textLabelForTesting: UILabel { textLabel }
 }

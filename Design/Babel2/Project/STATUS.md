@@ -24,7 +24,19 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 位置记忆与底栏统一（2026-09-27 用户第三轮反馈，ADR-052 / 053；实现与自动化完成，待真机验收，未提交）
+## 第四轮 6 条反馈（2026-09-27，ADR-054～059；用户同日真机验收通过，与第三轮分两个提交推送）
+
+- 与上一轮（ADR-052 / 053，同样未提交）改在同一批文件里；动手前把上一轮的工作区拍了本地快照 `refs/babel2/round3-pending`（= `a445bbb85`，含未跟踪的 `Babel2PositionStore.swift`；不是提交、不推送），以后两轮可分开提交。
+- **1 摘要（ADR-054）**：标题 + 摘要合计 3 行。改 `Babel2Type.swift`（`rowTextLines` / `rowTitleMaxLines`）、`Babel2LibraryViewControllers.swift`（`Babel2ArticleCell` 算标题行数定摘要行数）。
+- **2 启动与回到上次（ADR-055）**：启动画面改空白纸色（`iOS/Base.lproj/LaunchScreen{Phone,Pad}.storyboard`，新颜色资源 `iOS/Babel2/Assets.xcassets/Babel2LaunchBackground.colorset`）；新文件 `Babel2LastPlace.swift`（位置规则、存储、纸色底板）；`Babel2SceneComposition.swift`（退后台记、冷启动搭回、不带动画推入）；`iOS/SceneDelegate.swift` 一行（传 `lastPlace: .shared`）；列表页 / 阅读页各加只读编号与「恢复时打开文章」回调。
+- **3 图标（ADR-056）**：两套 appiconset 各换 3 张 PNG（文件名不变）；着色版为 Mono 反色。
+- **4 正文色（ADR-057）**：`Reader/WebKit/Babel2ReaderContentView.swift` 正文 / 引用 `--body`（浅 #626262 / 深 #B4B4B4）、图注 `--caption`。
+- **5 档位叠字（ADR-058）**：`Babel2ScopeFilterControl.swift` 新增 `Babel2ScopeButton`，图文位置自己算。根因未在模拟器复现（LESSONS 59）。
+- **6 全文缓存（ADR-059）**：新文件 `Reader/Babel2FullTextCache.swift`；`Reader/Babel2ArticleViewController.swift`（打开即用存的全文、手动开阅读模式先查缓存、抽成功就存）；`Babel2SceneComposition.swift` 传 `.shared`。
+- 测试：新增 6 项（摘要三行、正文对比度、档位图文不重叠、全文缓存、位置读取、冷启动回到上次），改 3 项（摘要行数、正文色取值、档位图标取法）。反向验证 6 处改坏 → 对应 6 项全部失败，恢复后 `cmp` 一致。全量与 UI Driver 见 VALIDATION。
+- 2026-09-27 用户真机验收：「验收没问题，分两个提交并推送」（口头确认，未逐条说明）。第三轮、第四轮各一个提交（第三轮内容取自快照 `refs/babel2/round3-pending`），不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`。
+
+## 位置记忆与底栏统一（2026-09-27 用户第三轮反馈，ADR-052 / 053；用户同日真机验收通过，已提交推送）
 
 - **底栏图标统一（ADR-052，第 4、5 条）**：首页 / 文章列表 / 阅读页三条底栏同一比例（21pt 画布）+ 视觉修正（圆 0.86、向下箭头 0.85、翻译符号 11.5pt）；首页 / 列表的星与横线从 24pt 缩到与阅读页一样；「全部已读」的勾改为镂空（以前被同色吞掉）。改 `Babel2Type.swift`、`Reader/Babel2ReaderToolbarView.swift`、`Babel2ScopeFilterControl.swift`、`Babel2StatusIcons.swift`（翻译符号按新字号画）、`Babel2LibraryViewControllers.swift`。改前 / 改后对比图已发给用户。
 - **位置记忆（ADR-053，第 1～3 条）**：新文件 `Babel2PositionStore.swift`（本机存储 + 「↑ N 篇新文章」胶囊）；文章列表按「最上面那一篇」记与恢复、三档共用、今日未读 / 全部未读共用、新文章提示；文章里按段落记与恢复（全文晚到、译文放回、图片加载后都再对一次，用户一滑就停）。改 `Babel2LibraryViewControllers.swift`、`Reader/Babel2ArticleViewController.swift`、`Reader/WebKit/Babel2ReaderContentView.swift`（两段查位置的脚本）、`Babel2SceneComposition.swift`（注入）、文案 +3。翻译按用户选择不自动接着翻。
