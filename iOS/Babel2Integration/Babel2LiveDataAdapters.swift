@@ -29,6 +29,10 @@ final class Babel2LiveDataProvider: DataProviding {
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .FaviconDidBecomeAvailable, object: nil)
 		// 订阅源增删（添加订阅、取消订阅、导入 OPML、删除账户）：首页重新加载（2026-09-25 添加订阅页时补上）
 		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .ChildrenDidChange, object: nil)
+		// 订阅源 / 文件夹改了名（首页长按或文章列表「更多」里重命名，ADR-045）
+		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .DisplayNameDidChange, object: nil)
+		// 外文源判定变了（自动识别出一批 / 用户拨了开关）：首页「外文源」入口的篇数要跟着变（ADR-044）
+		center.addObserver(self, selector: #selector(libraryDidChange(_:)), name: NNWForeignFeedStore.didChangeNotification, object: nil)
 		// 标题译文入库（或开关变了）：转给 Babel2 文章列表原地刷新（ADR-024）
 		center.addObserver(self, selector: #selector(titleTranslationDidChange(_:)), name: .nnwTitleTranslationDidUpdate, object: nil)
 	}
@@ -86,12 +90,131 @@ final class Babel2LiveDataProvider: DataProviding {
 		feedSnapshots.sort(by: feedComesFirst)
 		let folderSnapshots = makeFolderSnapshots(from: accounts, countsByFeedID: countsByFeedID, scope: scope)
 
+		let smartCounts = try await makeSmartFeedCounts(scope: scope, accounts: accounts, countsByFeedID: countsByFeedID)
 		return LibrarySnapshot(
 			feeds: feedSnapshots,
 			folders: folderSnapshots,
 			generatedAt: Date(),
-			isSyncing: AccountManager.shared.refreshInProgress
+			isSyncing: AccountManager.shared.refreshInProgress,
+			smartFeedCounts: smartCounts,
+			accountTitles: Dictionary(accounts.map { ($0.accountID, $0.nameForDisplay) }, uniquingKeysWith: { first, _ in first })
 		)
+	}
+
+	/// 首页顶部跨源入口的篇数（ADR-044）：按档位——
+	/// 未读档：今日未读（上游「今天」口径的未读数）/ 全部未读 / 外文源未读；
+	/// 全部档：今天的文章数 / 全部文章数 / 外文源文章数；星标档：全部星标。
+	private func makeSmartFeedCounts(scope: Babel2FeedScope, accounts: [Account], countsByFeedID: [FeedSnapshot.ID: Int]) async throws -> [Babel2SmartFeed: Int] {
+		let foreignIDs = Self.foreignFeedIDs(in: accounts)
+		let total = countsByFeedID.values.reduce(0, +)
+		let foreign = countsByFeedID.reduce(0) { $0 + (foreignIDs.contains($1.key) ? $1.value : 0) }
+		switch scope {
+		case .starred:
+			return [.starred: total]
+		case .unread:
+			var today = 0
+			for account in accounts {
+				try Task.checkCancellation()
+				today += await account.fetchUnreadCountForTodayAsync()
+			}
+			return [.today: today, .all: total, .foreign: foreign]
+		case .all:
+			var today = 0
+			for account in accounts {
+				try Task.checkCancellation()
+				today += await account.fetchArticlesAsync(.today(nil)).count
+			}
+			return [.today: today, .all: total, .foreign: foreign]
+		}
+	}
+
+	private static func foreignFeedIDs(in accounts: [Account]) -> Set<FeedSnapshot.ID> {
+		var ids = Set<FeedSnapshot.ID>()
+		for account in accounts {
+			for feed in account.flattenedFeeds() where NNWForeignFeedStore.shared.isForeign(feed) {
+				ids.insert(FeedSnapshot.ID(accountID: account.accountID, feedID: feed.feedID))
+			}
+		}
+		return ids
+	}
+
+	/// 跨源列表最多列多少篇（从新到旧取）。首页入口的篇数仍是真实总数。
+	static let smartFeedLimit = 1000
+	/// 全部档的「全部文章 / 外文源」只看最近这么多天（全库文章可能有几万篇，逐源取全部太重）。
+	static let smartFeedRecentWindow: TimeInterval = 30 * 24 * 60 * 60
+
+	nonisolated func smartFeedArticles(_ kind: Babel2SmartFeed, scope: Babel2FeedScope) async throws -> SmartFeedArticlesSnapshot {
+		try await makeSmartFeedArticles(kind, scope: scope)
+	}
+
+	/// 跨源合并的文章（ADR-044）。按「这个档位下实际显示哪个入口」取（星标档一律全部星标），
+	/// 从新到旧最多 1000 篇；只留仍在订阅的源里的文章（每行要显示来源名与图标）。
+	private func makeSmartFeedArticles(_ kind: Babel2SmartFeed, scope: Babel2FeedScope) async throws -> SmartFeedArticlesSnapshot {
+		let effective = Babel2SmartFeed.effective(kind, scope: scope)
+		let accounts = AccountManager.shared.sortedActiveAccounts
+		var collected = [Article]()
+		for account in accounts {
+			try Task.checkCancellation()
+			let foreign = Set(account.flattenedFeeds().filter { NNWForeignFeedStore.shared.isForeign($0) }.map(\.feedID))
+			switch (effective, scope) {
+			case (.starred, _):
+				collected += await account.fetchArticlesAsync(.starred(nil))
+			case (.today, .unread):
+				collected += await account.fetchArticlesAsync(.today(nil)).filter { !$0.status.read }
+			case (.today, _):
+				collected += await account.fetchArticlesAsync(.today(nil))
+			case (.all, .unread):
+				collected += await account.fetchArticlesAsync(.unread(nil))
+			case (.foreign, .unread):
+				guard !foreign.isEmpty else { continue }
+				collected += await account.fetchArticlesAsync(.unread(nil)).filter { foreign.contains($0.feedID) }
+			case (.all, _), (.foreign, _):
+				let cutoff = Date().addingTimeInterval(-Self.smartFeedRecentWindow)
+				for feed in account.flattenedFeeds() where effective == .all || foreign.contains(feed.feedID) {
+					try Task.checkCancellation()
+					collected += await account.fetchArticlesAsync(.feed(feed)).filter { $0.logicalDatePublished >= cutoff }
+				}
+			}
+		}
+		try Task.checkCancellation()
+		var feedsByID = [FeedSnapshot.ID: FeedSnapshot]()
+		var articles = [ArticleSnapshot]()
+		for article in collected.sorted(by: { $0.logicalDatePublished > $1.logicalDatePublished }) {
+			guard articles.count < Self.smartFeedLimit else { break }
+			let feedID = FeedSnapshot.ID(accountID: article.accountID, feedID: article.feedID)
+			if feedsByID[feedID] == nil {
+				guard let account = AccountManager.shared.existingAccount(accountID: article.accountID),
+					let feed = account.existingFeed(withFeedID: article.feedID),
+					let snapshot = makeFeedSnapshot(accountID: account.accountID, feed: feed, articleCount: 0) else { continue }
+				feedsByID[feedID] = snapshot
+			}
+			let snapshot = makeArticleSnapshot(article)
+			articleCache[snapshot.id] = snapshot
+			articles.append(snapshot)
+		}
+		return SmartFeedArticlesSnapshot(articles: articles.sorted(by: articleComesFirst), feeds: Array(feedsByID.values))
+	}
+
+	nonisolated func articleSnapshots(for ids: [ArticleSnapshot.ID]) async throws -> [ArticleSnapshot] {
+		try await makeFreshArticleSnapshots(for: ids)
+	}
+
+	/// 一批文章的最新状态（绕过快照缓存直接读数据库，按账户一次取完），并更新缓存。
+	private func makeFreshArticleSnapshots(for ids: [ArticleSnapshot.ID]) async throws -> [ArticleSnapshot] {
+		var result = [ArticleSnapshot]()
+		for (accountID, group) in Dictionary(grouping: ids, by: \.accountID) {
+			try Task.checkCancellation()
+			guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
+			let wanted = Set(group)
+			let articles = await account.fetchArticlesAsync(.articleIDs(Set(group.map(\.articleID))))
+			for article in articles {
+				let snapshot = makeArticleSnapshot(article)
+				guard wanted.contains(snapshot.id) else { continue }
+				articleCache[snapshot.id] = snapshot
+				result.append(snapshot)
+			}
+		}
+		return result
 	}
 
 	private func makeFolderSnapshots(
@@ -121,7 +244,8 @@ final class Babel2LiveDataProvider: DataProviding {
 				visibleFeedIDs.append(feedID)
 				total += count
 			}
-			guard !visibleFeedIDs.isEmpty else { continue }
+			// 空文件夹（刚新建、还没放源）在未读 / 全部档也列出来，不然新建了在首页看不到（ADR-045）
+			guard !visibleFeedIDs.isEmpty || (feedIDs.isEmpty && scope != .starred) else { continue }
 			if scope == .starred, total <= 0 { continue }
 			snapshots.append(
 				FolderSnapshot(
@@ -384,6 +508,12 @@ final class Babel2LiveActionHandler: ActionHandling {
 			let ids = Set(unread.filter { $0.feedID == feedID.feedID }.map(\.articleID))
 			guard !ids.isEmpty else { return }
 			try await account.markArticles(articleIDs: ids, statusKey: .read, flag: true)
+		case .markArticlesRead(let articleIDs):
+			// 跨源列表的「全部标为已读」：按账户分组，每个账户一次批量标记（ADR-044）
+			for (accountID, group) in Dictionary(grouping: articleIDs, by: \.accountID) {
+				guard let account = AccountManager.shared.existingAccount(accountID: accountID) else { continue }
+				try await account.markArticles(articleIDs: Set(group.map(\.articleID)), statusKey: .read, flag: true)
+			}
 		case .toggleStar(let articleID):
 			guard let article = await article(for: articleID) else { return }
 			try await updateStatus(articleID: articleID, key: .starred, value: !article.status.starred)
@@ -446,6 +576,31 @@ enum Babel2LiveArticleMedia {
 	}
 }
 
+/// 外文源（ADR-044）：原样复用 1.x 的判定（NNWForeignFeedStore：看最近 15 个标题的语言，手动开关优先于自动；
+/// 1.x 文件零改动）。启动时和每次同步结束后补做还没判定过的源（新订阅的源）。
+@MainActor
+enum Babel2LiveForeignFeeds {
+	private static var observer: NSObjectProtocol?
+
+	static func start() {
+		NNWForeignFeedStore.shared.refreshDetectionIfNeeded()
+		guard observer == nil else { return }
+		observer = NotificationCenter.default.addObserver(forName: .AccountRefreshDidFinish, object: nil, queue: .main) { _ in
+			MainActor.assumeIsolated { NNWForeignFeedStore.shared.refreshDetectionIfNeeded() }
+		}
+	}
+
+	static func isForeign(_ id: FeedSnapshot.ID) -> Bool {
+		Babel2LiveFeedReaderSetting.feed(id).map { NNWForeignFeedStore.shared.isForeign($0) } ?? false
+	}
+
+	/// 手动拨开关（识别错了时纠正），之后不再听自动判定。
+	static func setForeign(_ foreign: Bool, for id: FeedSnapshot.ID) {
+		guard let feed = Babel2LiveFeedReaderSetting.feed(id) else { return }
+		NNWForeignFeedStore.shared.setManualOverride(foreign, for: feed)
+	}
+}
+
 /// 按订阅源的「总是用阅读模式」开关：直接读写现成的 `Feed.readerViewAlwaysEnabled`
 /// （公开接口，Babel 1.x 的订阅源设置页用的就是它，1.x 里设过的在新版继续生效）。ADR-020。
 @MainActor
@@ -475,6 +630,10 @@ enum Babel2LiveFeedReaderSetting {
 @MainActor
 enum Babel2LiveFeedHeroImage {
 	static func cached(_ id: FeedSnapshot.ID) -> UIImage? {
+		// 用户换过图标的源，大图也用它（ADR-046）
+		if let custom = Babel2LiveCustomFeedIcons.image(for: id) {
+			return custom
+		}
 		guard let feed = Babel2LiveFeedReaderSetting.feed(id),
 			let image = FeedHeroIconLoader.shared.cachedHero(for: feed),
 			FeedHeroIconLoader.isUsableAsHero(image) else { return nil }
@@ -482,7 +641,8 @@ enum Babel2LiveFeedHeroImage {
 	}
 
 	static func fetch(_ id: FeedSnapshot.ID, onImage: @escaping @MainActor (UIImage) -> Void) {
-		guard let feed = Babel2LiveFeedReaderSetting.feed(id) else { return }
+		guard !Babel2LiveCustomFeedIcons.hasCustomIcon(id),
+			let feed = Babel2LiveFeedReaderSetting.feed(id) else { return }
 		FeedHeroIconLoader.shared.fetchHeroIfNeeded(for: feed) { image in
 			guard FeedHeroIconLoader.isUsableAsHero(image) else { return }
 			onImage(image)
@@ -851,6 +1011,10 @@ enum Babel2LiveIconCache {
 	}
 
 	static func iconData(for feed: Feed, accountID: String) -> Data? {
+		// 用户自己换的图标优先（ADR-046）
+		if let custom = Babel2LiveCustomFeedIcons.iconData(for: FeedSnapshot.ID(accountID: accountID, feedID: feed.feedID)) {
+			return custom
+		}
 		installMemoryWarningObserverIfNeeded()
 		loadFromDiskIfNeeded()
 		let key = "\(accountID)|\(feed.feedID)"
@@ -868,6 +1032,9 @@ enum Babel2LiveIconCache {
 	/// 某个订阅源此刻的小图标（ADR-039）：文章列表页 / 阅读页打开时图标还没到的，
 	/// 之后据此补上（以前这两页一直显示首字母，直到重新进入）。找不到订阅源时退回备份。
 	static func currentIconData(for id: FeedSnapshot.ID) -> Data? {
+		if let custom = Babel2LiveCustomFeedIcons.iconData(for: id) {
+			return custom
+		}
 		guard let feed = Babel2LiveFeedReaderSetting.feed(id) else {
 			loadFromDiskIfNeeded()
 			return icons["\(id.accountID)|\(id.feedID)"]
@@ -957,3 +1124,157 @@ enum Babel2LiveIconCache {
 	}
 }
 
+/// 首页整理文件夹与订阅源（2026-09-27 用户反馈第 4 条，ADR-045）。
+///
+/// 全部调用账户的公开接口（addFolder / renameFolder / removeFolder / moveFeed / removeFeed），
+/// 账户模块（A 级禁区）一行不改。改完账户会发「子项变了」的通知，首页随之重新加载。
+///
+/// 首页上「重复」的订阅源从哪来：同一个账户里，一个源可以同时放在几个文件夹里（导入 OPML、
+/// 同步服务的「标签」都会造成），首页就在每个文件夹下各列一次；多个账户各订了同一个地址时也会出现两行。
+/// 长按菜单顶部写明它在哪个账户、哪几个文件夹，并提供「从这个文件夹移出」。
+@MainActor
+enum Babel2LiveLibraryEditing {
+	static func accounts() -> [Babel2AccountChoice] {
+		AccountManager.shared.sortedActiveAccounts.map { Babel2AccountChoice(id: $0.accountID, title: $0.nameForDisplay) }
+	}
+
+	/// 只有一个账户时不显示账户名。
+	private static func accountTitle(_ account: Account) -> String? {
+		AccountManager.shared.activeAccounts.count > 1 ? account.nameForDisplay : nil
+	}
+
+	/// 与首页快照同一种写法：「账户编号:文件夹编号」。
+	static func folderSnapshotID(_ folder: Folder) -> FolderSnapshot.ID {
+		"\(folder.accountID):\(folder.folderID)"
+	}
+
+	/// 「账户编号:文件夹编号」→ 文件夹。账户编号里也可能有冒号，所以从最后一个冒号拆。
+	private static func folder(_ id: FolderSnapshot.ID) -> (Account, Folder)? {
+		guard let separator = id.lastIndex(of: ":"),
+			let number = Int(id[id.index(after: separator)...]),
+			let account = AccountManager.shared.existingAccount(accountID: String(id[..<separator])),
+			let folder = account.existingFolder(withID: number) else { return nil }
+		return (account, folder)
+	}
+
+	private static func feed(_ id: FeedSnapshot.ID) -> (Account, Feed)? {
+		guard let account = AccountManager.shared.existingAccount(accountID: id.accountID),
+			let feed = account.existingFeed(withFeedID: id.feedID),
+			feed.accountID == id.accountID else { return nil }
+		return (account, feed)
+	}
+
+	/// 位置 → 容器：nil 是账户顶层；文件夹必须属于同一个账户（不能跨账户移动）。
+	private static func container(_ folderID: FolderSnapshot.ID?, in account: Account) -> Container? {
+		guard let folderID else { return account }
+		guard let (owner, folder) = folder(folderID), owner.accountID == account.accountID else { return nil }
+		return folder
+	}
+
+	private static func sortedFolders(_ account: Account) -> [Folder] {
+		(account.folders ?? []).sorted {
+			$0.nameForDisplay.localizedCaseInsensitiveCompare($1.nameForDisplay) == .orderedAscending
+		}
+	}
+
+	static func folderInfo(_ id: FolderSnapshot.ID) -> Babel2FolderInfo? {
+		guard let (account, folder) = folder(id) else { return nil }
+		return Babel2FolderInfo(title: folder.nameForDisplay, feedCount: folder.topLevelFeeds.count, accountTitle: accountTitle(account))
+	}
+
+	/// 这个源在哪个账户、现在在哪些位置、可以移去哪些位置（顶层 + 该账户全部文件夹，含空文件夹）。
+	static func placement(_ id: FeedSnapshot.ID) -> Babel2FeedPlacement? {
+		guard let (account, feed) = feed(id) else { return nil }
+		let topLevel = Babel2FeedLocation(folderID: nil, title: "")
+		var current = account.topLevelFeeds.contains(feed) ? [topLevel] : []
+		var destinations = [topLevel]
+		for folder in sortedFolders(account) {
+			let location = Babel2FeedLocation(folderID: folderSnapshotID(folder), title: folder.nameForDisplay)
+			destinations.append(location)
+			if folder.topLevelFeeds.contains(feed) {
+				current.append(location)
+			}
+		}
+		return Babel2FeedPlacement(accountTitle: accountTitle(account), current: current, destinations: destinations)
+	}
+
+	static func createFolder(named name: String, accountID: String) async -> Result<FolderSnapshot.ID, Babel2EditFailure> {
+		guard let account = AccountManager.shared.existingAccount(accountID: accountID) else {
+			return .failure(Babel2EditFailure(message: Babel2Localization.text(.notAvailable)))
+		}
+		do {
+			let folder = try await account.addFolder(name)
+			return .success(folderSnapshotID(folder))
+		} catch {
+			return .failure(Babel2EditFailure(message: error.localizedDescription))
+		}
+	}
+
+	static func renameFolder(_ id: FolderSnapshot.ID, to name: String) async -> String? {
+		guard let (account, folder) = folder(id) else { return nil }
+		do {
+			try await account.renameFolder(folder, to: name)
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// 删除文件夹。
+	/// - keepFeeds = true：只在这个文件夹里的源先移到顶层，再删文件夹（同时也在别处的源本来就不会丢）。
+	/// - keepFeeds = false：与上游「删除文件夹」相同——只在这个文件夹里的源随文件夹一起删除，
+	///   同时也在别的文件夹里的源留在那里。
+	static func deleteFolder(_ id: FolderSnapshot.ID, keepFeeds: Bool) async -> String? {
+		guard let (account, folder) = folder(id) else { return nil }
+		BatchUpdate.shared.start()
+		defer { BatchUpdate.shared.end() }
+		if keepFeeds {
+			let onlyHere = folder.topLevelFeeds
+				.filter { account.existingContainers(withFeed: $0).count == 1 }
+				.sorted { $0.feedID < $1.feedID }
+			for feed in onlyHere {
+				if let message = await completion({ account.moveFeed(feed, from: folder, to: account, completion: $0) }) {
+					return message
+				}
+			}
+		}
+		return await completion { account.removeFolder(folder, completion: $0) }
+	}
+
+	/// 把源从一个位置移到另一个位置（nil = 顶层）。目标位置本来就有它（「重复」的情况）：只从原位置移出。
+	static func moveFeed(_ id: FeedSnapshot.ID, from source: FolderSnapshot.ID?, to destination: FolderSnapshot.ID?) async -> String? {
+		guard source != destination,
+			let (account, feed) = feed(id),
+			let from = container(source, in: account),
+			let to = container(destination, in: account),
+			from.topLevelFeeds.contains(feed) else { return nil }
+		BatchUpdate.shared.start()
+		defer { BatchUpdate.shared.end() }
+		if to.topLevelFeeds.contains(feed) {
+			return await completion { account.removeFeed(feed, from: from, completion: $0) }
+		}
+		return await completion { account.moveFeed(feed, from: from, to: to, completion: $0) }
+	}
+
+	/// 从某个文件夹移出。只在它同时还在别处时才做——只剩这一处时移出就等于取消订阅，那要走「取消订阅」。
+	static func removeFeed(_ id: FeedSnapshot.ID, fromFolder folderID: FolderSnapshot.ID) async -> String? {
+		guard let (account, feed) = feed(id),
+			let folder = container(folderID, in: account),
+			folder.topLevelFeeds.contains(feed),
+			account.existingContainers(withFeed: feed).count > 1 else { return nil }
+		return await completion { account.removeFeed(feed, from: folder, completion: $0) }
+	}
+
+	/// 账户接口是回调式的：等它回调，失败时返回说明。
+	private static func completion(_ start: (@escaping (Result<Void, Error>) -> Void) -> Void) async -> String? {
+		await withCheckedContinuation { continuation in
+			start { result in
+				if case .failure(let error) = result {
+					continuation.resume(returning: error.localizedDescription)
+				} else {
+					continuation.resume(returning: nil)
+				}
+			}
+		}
+	}
+}

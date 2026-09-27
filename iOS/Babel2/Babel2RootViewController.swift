@@ -19,28 +19,37 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	private enum LibraryRow {
 		case folder(FolderSnapshot, expanded: Bool)
-		case feed(FeedSnapshot, nested: Bool)
+		/// folderID：这一行列在哪个文件夹下（nil = 顶层）。同一个源可能在几个文件夹下各有一行（ADR-045）
+		case feed(FeedSnapshot, folderID: FolderSnapshot.ID?)
 	}
 
 	private static let filterDisplayOrder: [Babel2FeedScope] = [.starred, .unread, .all]
 
 	@MainActor
 	private final class ScopeSurface: UIView {
-		private static let listHeaderHeight: CGFloat = 150
+		/// 表头：顶部短线 → 跨源入口（每行 44pt，从 y=16 开始）→ 22pt → 「文件夹」标题（28pt）→ 12pt（ADR-044）。
+		/// 取代原来 150pt 的「未读 N / 文件夹」表头（那行「未读」只是标题、点不开，2026-09-27 用户反馈第 5 条）。
+		static func listHeaderHeight(for scope: Babel2FeedScope) -> CGFloat {
+			16 + CGFloat(Babel2SmartFeed.entries(for: scope).count) * Babel2SmartEntryRow.height + 22 + 28 + 12
+		}
+		private var listHeaderHeight: CGFloat { Self.listHeaderHeight(for: scope) }
 		let scope: Babel2FeedScope
 		let tableView = UITableView(frame: .zero, style: .plain)
 		let stateLabel = UILabel()
 		let retryButton = UIButton(type: .system)
 		private let listHeader = UIView()
 		private let shortRule = UIView()
-		private let summaryTitleLabel = UILabel()
-		private let summaryCountLabel = UILabel()
+		private var smartRows = [Babel2SmartEntryRow]()
+		/// 点了一个跨源入口。
+		var onSmartFeedTapped: ((Babel2SmartFeed) -> Void)?
 		private let foldersTitleLabel = UILabel()
 		var rows = [LibraryRow]()
 		var snapshot: LibrarySnapshot?
 		var state: SurfaceState = .loading
 		var hasLoaded = false
 		var isSyncing = false
+		/// 不在显示时数据变了：切回这一档后补一次重新加载（ADR-045）
+		var needsRefresh = false
 		var requestID = UUID()
 		var pendingUpdate: (UUID, SurfaceUpdate)?
 		var onRetry: (() -> Void)?
@@ -54,23 +63,25 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			accessibilityIdentifier = "babel2.feeds.surface.\(scope.rawValue)"
 
 			listHeader.backgroundColor = BabelPalette.background
-			listHeader.frame = CGRect(x: 0, y: 0, width: 0, height: Self.listHeaderHeight)
+			listHeader.frame = CGRect(x: 0, y: 0, width: 0, height: Self.listHeaderHeight(for: scope))
 			shortRule.backgroundColor = BabelPalette.hairline
 			shortRule.translatesAutoresizingMaskIntoConstraints = false
 			listHeader.addSubview(shortRule)
 
-			summaryTitleLabel.text = Babel2Localization.text(scope.localizationKey, bundle: localizationBundle)
-			summaryTitleLabel.font = Babel2Type.homeSection
-			summaryTitleLabel.textColor = BabelPalette.ink
-			summaryTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-			listHeader.addSubview(summaryTitleLabel)
-
-			summaryCountLabel.font = Babel2Type.homeSectionCount
-			summaryCountLabel.textColor = BabelPalette.tertiaryInk
-			summaryCountLabel.textAlignment = .right
-			summaryCountLabel.isHidden = true
-			summaryCountLabel.translatesAutoresizingMaskIntoConstraints = false
-			listHeader.addSubview(summaryCountLabel)
+			var rowConstraints = [NSLayoutConstraint]()
+			for (index, kind) in Babel2SmartFeed.entries(for: scope).enumerated() {
+				let row = Babel2SmartEntryRow(kind: kind, scope: scope, bundle: localizationBundle)
+				row.addAction(UIAction { [weak self] _ in self?.onSmartFeedTapped?(kind) }, for: .touchUpInside)
+				row.translatesAutoresizingMaskIntoConstraints = false
+				listHeader.addSubview(row)
+				smartRows.append(row)
+				rowConstraints += [
+					row.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor),
+					row.trailingAnchor.constraint(equalTo: listHeader.trailingAnchor),
+					row.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 16 + CGFloat(index) * Babel2SmartEntryRow.height)
+				]
+			}
+			NSLayoutConstraint.activate(rowConstraints)
 
 			foldersTitleLabel.text = Babel2Localization.text(.folders, bundle: localizationBundle)
 			foldersTitleLabel.font = Babel2Type.homeSection
@@ -83,16 +94,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				shortRule.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 2),
 				shortRule.widthAnchor.constraint(equalToConstant: 180),
 				shortRule.heightAnchor.constraint(equalToConstant: 0.5),
-				summaryTitleLabel.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 20),
-				summaryTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 31),
-				summaryTitleLabel.heightAnchor.constraint(equalToConstant: 28),
-				summaryTitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: summaryCountLabel.leadingAnchor, constant: -12),
-				summaryCountLabel.trailingAnchor.constraint(equalTo: listHeader.trailingAnchor, constant: -20),
-				summaryCountLabel.topAnchor.constraint(equalTo: summaryTitleLabel.topAnchor),
-				summaryCountLabel.heightAnchor.constraint(equalToConstant: 28),
-				summaryCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 92),
 				foldersTitleLabel.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 20),
-				foldersTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 99),
+				foldersTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 16 + CGFloat(smartRows.count) * Babel2SmartEntryRow.height + 22),
 				foldersTitleLabel.heightAnchor.constraint(equalToConstant: 28)
 			])
 
@@ -138,7 +141,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			NSLayoutConstraint.activate([
 				skeleton.leadingAnchor.constraint(equalTo: leadingAnchor),
 				skeleton.trailingAnchor.constraint(equalTo: trailingAnchor),
-				skeleton.topAnchor.constraint(equalTo: topAnchor, constant: Self.listHeaderHeight),
+				skeleton.topAnchor.constraint(equalTo: topAnchor, constant: Self.listHeaderHeight(for: scope)),
 				skeleton.heightAnchor.constraint(equalToConstant: 280),
 				tableView.leadingAnchor.constraint(equalTo: leadingAnchor),
 				tableView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -160,18 +163,21 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		override func layoutSubviews() {
 			super.layoutSubviews()
 			guard tableView.bounds.width > 0 else { return }
-			let frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: Self.listHeaderHeight)
+			let frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: listHeaderHeight)
 			guard listHeader.frame != frame else { return }
 			listHeader.frame = frame
 			tableView.tableHeaderView = listHeader
 		}
 
-		func setSummaryCount(_ count: Int?) {
-			let text = count.flatMap { $0 > 0 ? $0.formatted() : nil }
-			summaryCountLabel.text = text
-			summaryCountLabel.accessibilityValue = text
-			summaryCountLabel.isHidden = text == nil
+		/// 跨源入口的篇数（没有数据时都不显示）。
+		func setSmartCounts(_ counts: [Babel2SmartFeed: Int]) {
+			for row in smartRows {
+				row.setCount(counts[row.kind])
+			}
 		}
+
+		/// 仅供自动化测试。
+		var smartRowsForTesting: [Babel2SmartEntryRow] { smartRows }
 
 		func setState(_ state: SurfaceState, text: String) {
 			self.state = state
@@ -228,7 +234,20 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	var onSettingsRequested: (() -> Void)?
 	var onAddRequested: (() -> Void)?
+	/// 首页整理（长按文件夹 / 订阅源、「+」里的新建文件夹，ADR-045）。没有注入时长按无反应、「+」直接进添加订阅页。
+	var libraryEditing: Babel2LibraryEditing? {
+		didSet {
+			libraryEditor = libraryEditing.map { Babel2LibraryEditor(editing: $0, host: self, bundle: localizationBundle) }
+			libraryEditor?.onChange = { [weak self] in self?.reloadLibraryIfVisible() }
+		}
+	}
+	private(set) var libraryEditor: Babel2LibraryEditor?
+	/// 不在屏幕上时（进了文章列表 / 阅读页）数据变了：回到首页时补一次重新加载。
+	/// 以前这期间的变化全被忽略，回来后未读数、改过的名字和图标都是旧的（ADR-045）。
+	private var missedLibraryChange = false
 	var onFeedRequested: ((FeedSnapshot, Babel2FeedScope) -> Void)?
+	/// 点了顶部的跨源入口（今日未读 / 全部未读 / 外文源 / 全部星标，ADR-044）。
+	var onSmartFeedRequested: ((Babel2SmartFeed, Babel2FeedScope) -> Void)?
 	var onContentFirstFramePresented: (() -> Void)?
 
 	@MainActor
@@ -272,6 +291,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		scheduleContentFirstFrameOnNextDisplayTickIfReady()
 		applyLaunchScopeOverrideIfNeeded()
 		loadLibraryIfNeeded()
+		if missedLibraryChange {
+			missedLibraryChange = false
+			reloadLibraryIfVisible()
+		}
 	}
 
 	/// Evidence/simctl-only override via `SIMCTL_CHILD_BABEL2_FEEDS_SCOPE=unread|starred|all`.
@@ -539,6 +562,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.onRetry = { [weak self] in
 				self?.retry(scope: scope)
 			}
+			// 长按文件夹 / 订阅源：整理菜单（ADR-045）。长按生效后这次按下不再算「点开」
+			surface.tableView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(rowLongPressed(_:))))
+			surface.onSmartFeedTapped = { [weak self] kind in
+				guard let self, self.scopeTransitionAnimator == nil, scope == self.displayedScope else { return }
+				self.onSmartFeedRequested?(kind, scope)
+			}
 			surface.alpha = scope == .unread ? 1 : 0
 			surface.accessibilityElementsHidden = scope != .unread
 			view.insertSubview(surface, belowSubview: bottomBar)
@@ -556,7 +585,14 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	/// 重算被接连打断，要等通知停了才出一次结果。现在正在重算时不打断，只记一笔，算完再补一次：
 	/// 每一轮都能算完、先到的图标先显示。用户自己的操作（切档、重试）仍然立刻重来。
 	private func reloadLibraryIfVisible() {
-		guard hasAppeared else { return }
+		guard hasAppeared else {
+			missedLibraryChange = true
+			return
+		}
+		// 其它两档的数据也旧了：切过去时先显示原来的（切换不等加载），切完再补一次重新加载
+		for surface in scopeSurfaces.values where surface.scope != displayedScope && surface.hasLoaded {
+			surface.needsRefresh = true
+		}
 		if libraryTasks[displayedScope] != nil {
 			needsLibraryReloadAfterCurrent = true
 			return
@@ -623,6 +659,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.snapshot = snapshot
 			surface.rows = Self.makeRows(from: snapshot, scope: surface.scope, collapsedFolders: collapsedFolders)
 			surface.hasLoaded = true
+			surface.needsRefresh = false
 			surface.isSyncing = snapshot.isSyncing
 			let summaryCount = snapshot.feeds.reduce(into: 0) { total, feed in
 				guard !feed.isMuted else { return }
@@ -634,7 +671,12 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 					if count > 0 { total += count }
 				}
 			}
-			surface.setSummaryCount(summaryCount)
+			// 跨源入口的篇数由数据层算好（ADR-044）；数据层没给时，「全部未读 / 全部文章 / 全部星标」退回按订阅源累加
+			var smartCounts = snapshot.smartFeedCounts
+			if smartCounts.isEmpty {
+				smartCounts[surface.scope == .starred ? .starred : .all] = summaryCount
+			}
+			surface.setSmartCounts(smartCounts)
 			surface.tableView.reloadData()
 			let state: SurfaceState = surface.rows.isEmpty ? .empty : .loaded
 			let textKey: Babel2LocalizationKey = surface.rows.isEmpty ? .noFeeds : .loading
@@ -648,7 +690,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			surface.rows.removeAll(keepingCapacity: true)
 			surface.hasLoaded = true
 			surface.isSyncing = false
-			surface.setSummaryCount(nil)
+			surface.setSmartCounts([:])
 			surface.tableView.reloadData()
 			surface.setState(.error, text: Babel2Localization.text(.unableToLoadFeeds, bundle: localizationBundle))
 			if surface.scope == displayedScope {
@@ -677,19 +719,20 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		var rows = [LibraryRow]()
 		for folder in snapshot.folders.sorted(by: { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) {
 			let childFeeds = folder.feedIDs.compactMap { feedsByID[$0] }.filter(isVisible)
-			guard !childFeeds.isEmpty else { continue }
+			// 空文件夹（刚新建、还没放源）照样列出，不然新建了看不到（ADR-045）
+			guard !childFeeds.isEmpty || folder.feedIDs.isEmpty else { continue }
 			let expanded = !collapsedFolders.contains(folder.id)
 			rows.append(.folder(folder, expanded: expanded))
 			if expanded {
 				for feed in childFeeds.sorted(by: feedComesFirst) {
-					rows.append(.feed(feed, nested: true))
+					rows.append(.feed(feed, folderID: folder.id))
 				}
 			}
 		}
 		let topLevel = snapshot.feeds
 			.filter { isVisible($0) && !nestedIDs.contains($0.id) }
 			.sorted(by: feedComesFirst)
-		rows.append(contentsOf: topLevel.map { LibraryRow.feed($0, nested: false) })
+		rows.append(contentsOf: topLevel.map { LibraryRow.feed($0, folderID: nil) })
 		return rows
 	}
 
@@ -862,6 +905,10 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 				self.updateSyncState(destinationSurface.isSyncing)
 				destinationSurface.tableView.setContentOffset(.zero, animated: false)
 				self.applyPendingSurfaceUpdates()
+				if destinationSurface.needsRefresh, self.libraryTasks[target] == nil {
+					destinationSurface.needsRefresh = false
+					self.reloadLibraryIfVisible()
+				}
 				if self.activeFilterMotionToken == motionToken {
 					self.recordFilterMotionEvent(token: motionToken, from: fromScope, to: target, progress: .one, phase: .end)
 					self.activeFilterMotionToken = nil
@@ -932,8 +979,65 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		onSettingsRequested?() ?? presentNotAvailable()
 	}
 
+	/// 「+」：能整理时弹菜单（添加订阅 / 新建文件夹，ADR-045），否则直接进添加订阅页。
 	@objc private func addTapped() {
-		onAddRequested?() ?? presentNotAvailable()
+		guard let libraryEditor, onAddRequested != nil else {
+			onAddRequested?() ?? presentNotAvailable()
+			return
+		}
+		libraryEditor.presentAddMenu(from: addButton) { [weak self] in self?.onAddRequested?() }
+	}
+
+	// MARK: - 长按整理（ADR-045）
+
+	@objc private func rowLongPressed(_ gesture: UILongPressGestureRecognizer) {
+		guard gesture.state == .began, let tableView = gesture.view as? UITableView,
+			let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return }
+		if presentEditMenu(in: tableView, row: indexPath.row) {
+			UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+		}
+	}
+
+	/// 在某一行下方弹出整理菜单：文件夹 → 重命名 / 删除；订阅源 → 移到文件夹 / 移出 / 换图标 / 重命名 / 取消订阅。
+	@discardableResult
+	private func presentEditMenu(in tableView: UITableView, row: Int) -> Bool {
+		guard let libraryEditor, scopeTransitionAnimator == nil,
+			let surface = scopeSurfaces.values.first(where: { $0.tableView === tableView }),
+			surface.scope == displayedScope, row < surface.rows.count else { return false }
+		tableView.layoutIfNeeded()
+		guard let cell = tableView.cellForRow(at: IndexPath(row: row, section: 0)) else { return false }
+		switch surface.rows[row] {
+		case .folder(let folder, _):
+			libraryEditor.presentFolderMenu(folder, from: cell)
+		case .feed(let feed, let folderID):
+			libraryEditor.presentFeedMenu(feed, in: folderID, from: cell)
+		}
+		return true
+	}
+
+	/// 仅供自动化测试：长按某一档的第 row 行。
+	@discardableResult
+	func longPressRowForTesting(scope: Babel2FeedScope, row: Int) -> Bool {
+		guard let tableView = scopeSurfaces[scope]?.tableView else { return false }
+		return presentEditMenu(in: tableView, row: row)
+	}
+
+	/// 仅供自动化测试：某一档当前的行（文件夹行为 "folder:编号"，订阅源行为 "feed:订阅源编号@所在文件夹编号或 top"）。
+	func rowDescriptionsForTesting(scope: Babel2FeedScope) -> [String] {
+		(scopeSurfaces[scope]?.rows ?? []).map { row in
+			switch row {
+			case .folder(let folder, _): return "folder:\(folder.id)"
+			case .feed(let feed, let folderID): return "feed:\(feed.id.feedID)@\(folderID ?? "top")"
+			}
+		}
+	}
+
+	/// 仅供自动化测试：「+」按钮。
+	var addButtonForTesting: UIButton { addButton }
+
+	/// 仅供自动化测试：某一档顶部的跨源入口（ADR-044）。
+	func smartRowsForTesting(scope: Babel2FeedScope) -> [Babel2SmartEntryRow] {
+		scopeSurfaces[scope]?.smartRowsForTesting ?? []
 	}
 
 	private func presentNotAvailable() {
@@ -1006,13 +1110,22 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			cell.accessibilityIdentifier = "babel2.folder.\(surface.scope.rawValue).\(folder.id)"
 			cell.accessibilityLabel = folder.title
 			cell.accessibilityValue = count.map(String.init)
-		case .feed(let feed, let nested):
+		case .feed(let feed, let folderID):
 			let count = feed.articleCount.flatMap { $0 > 0 ? $0 : nil }
 			let icon = feed.iconData.flatMap(UIImage.init(data:))
-			cell.configureFeed(title: feed.title, count: count, icon: icon, nested: nested)
+			cell.configureFeed(title: feed.title, count: count, icon: icon, nested: folderID != nil)
 			cell.accessibilityIdentifier = "babel2.feed.\(surface.scope.rawValue).\(feed.id.accountID).\(feed.id.feedID)"
 			cell.accessibilityLabel = feed.title
 			cell.accessibilityValue = count.map(String.init)
+		}
+		// 读屏用户没法长按：给每行一个「更多操作」，打开同一个整理菜单
+		if libraryEditor != nil {
+			cell.accessibilityCustomActions = [UIAccessibilityCustomAction(name: Babel2Localization.text(.moreActions, bundle: localizationBundle)) { [weak self, weak tableView, weak cell] _ in
+				guard let self, let tableView, let cell, let path = tableView.indexPath(for: cell) else { return false }
+				return self.presentEditMenu(in: tableView, row: path.row)
+			}]
+		} else {
+			cell.accessibilityCustomActions = nil
 		}
 		return cell
 	}

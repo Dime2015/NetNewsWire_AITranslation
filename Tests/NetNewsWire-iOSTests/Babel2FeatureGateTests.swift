@@ -671,6 +671,9 @@ final class Babel2FeatureGateTests: XCTestCase {
 			XCTAssertEqual(scope.frame.height, 44)
 		}
 		add.sendActions(for: .touchUpInside)
+		// 「+」先弹菜单（添加订阅 / 新建文件夹，ADR-045），选「添加订阅」
+		let menu = try! XCTUnwrap(root.view.subviews.compactMap { $0 as? Babel2GlassMenu }.last)
+		menu.selectForTesting("babel2.add.subscription")
 		XCTAssertEqual(navigation.restorationValue().routes, [.home, .addSubscription])
 	}
 

@@ -10,12 +10,15 @@ enum Babel2SceneComposition {
 		localizationBundle: Bundle = .main,
 		openURL: @escaping (URL) -> Void = { UIApplication.shared.open($0) },
 		settingsService: Babel2SettingsService? = nil,
-		subscriptionService: Babel2SubscriptionService? = nil
+		subscriptionService: Babel2SubscriptionService? = nil,
+		libraryEditing: Babel2LibraryEditing? = nil
 	) -> Babel2NavigationController {
 		// A production scene always gets the live adapter graph. Preview/test
 		// callers can still inject deterministic collaborators explicitly.
 		let resolvedEnvironment = environment ?? Babel2AppAssembly.makeLiveEnvironment()
 		let root = Babel2RootViewController(environment: resolvedEnvironment, localizationBundle: localizationBundle)
+		// 首页长按整理文件夹 / 订阅源、「+」里新建文件夹（ADR-045）：正式实现走账户公开接口；测试可注入假的实现
+		root.libraryEditing = libraryEditing ?? liveLibraryEditing()
 		let navigationController = Babel2NavigationController(rootViewController: root)
 		// 设置页（Slice 6）：接到现有存储的正式实现；测试可注入假的实现
 		let resolvedSettings = settingsService ?? Babel2LiveSettingsService()
@@ -72,6 +75,11 @@ enum Babel2SceneComposition {
 					setAlwaysReadingMode: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: feed.id) },
 					notificationsEnabled: { Babel2LiveFeedActions.notificationsEnabled(feed.id) },
 					setNotificationsEnabled: { Babel2LiveFeedActions.setNotificationsEnabled($0, for: feed.id) },
+					isForeign: { Babel2LiveForeignFeeds.isForeign(feed.id) },
+					setForeign: { Babel2LiveForeignFeeds.setForeign($0, for: feed.id) },
+					// 自定义图标（ADR-046）
+					hasCustomIcon: { Babel2LiveCustomFeedIcons.hasCustomIcon(feed.id) },
+					setCustomIcon: { Babel2LiveCustomFeedIcons.set($0, for: feed.id) },
 					rename: { name in await Babel2LiveFeedActions.rename(feed.id, to: name) },
 					unsubscribe: { await Babel2LiveFeedActions.unsubscribe(feed.id) },
 					// 打开网站主页：按设置「打开链接」用内置浏览器或系统浏览器
@@ -86,49 +94,22 @@ enum Babel2SceneComposition {
 				// 打开时图标还没到的，之后补上（ADR-039）
 				currentIcon: { Babel2LiveIconCache.currentIconData(for: feed.id) }
 			)
-			feedViewController.onScopeChanged = { [weak root] scope in
-				root?.applyScope(scope)
-			}
-			// 同一个装配函数既用于「从列表点进文章」，也用于「下一篇」原地换页（ADR-022）
-			@MainActor func makeReader(_ article: ArticleSnapshot) -> Babel2ArticleViewController {
-				let articleViewController = Babel2ArticleViewController(
-					article: article,
-					environment: resolvedEnvironment,
-					feedTitle: feed.title,
-					// 用此刻的图标（列表打开后图标才到的也能用上，ADR-039）
-					feedIconData: Babel2LiveIconCache.currentIconData(for: feed.id) ?? feed.iconData,
-					hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) },
-					feedReaderModeSetting: Babel2FeedReaderModeSetting(
-						isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },
-						setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
-					),
-					// 设置「打开链接」选系统浏览器时不建内置浏览器：链接与原文交给系统打开（Slice 6）
-					makeBrowser: resolvedSettings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil,
-					// 播客音频条、YouTube 简介（ADR-041）
-					mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) }
-				)
-				articleViewController.onOpenOriginal = { url, _ in
-					openURL(url)
-				}
-				articleViewController.onOpenLink = { url in
-					openURL(url)
-				}
-				articleViewController.nextArticleProvider = { [weak feedViewController] in
-					feedViewController?.nextArticle(after: article.id)
-				}
-				articleViewController.onShowNext = { [weak navigationController, weak feedViewController] next in
-					guard let navigationController else { return }
-					// 列表先滚到这一篇，返回时它就在屏幕上
-					feedViewController?.revealArticle(next.id)
-					navigationController.replaceTopBabel2(with: makeReader(next), animated: true)
-				}
-				return articleViewController
-			}
-			feedViewController.onSelectArticle = { [weak navigationController] article in
-				guard let navigationController else { return }
-				navigationController.pushBabel2(makeReader(article), animated: true)
-			}
+			wireArticleList(feedViewController, root: root, navigationController: navigationController,
+				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
 			navigationController.pushBabel2(feedViewController, animated: true)
+		}
+		// 跨源入口（今日未读 / 全部未读 / 外文源 / 全部星标，ADR-044）：同一个列表页，文章来自多个订阅源
+		root.onSmartFeedRequested = { [weak navigationController, weak root] kind, scope in
+			guard let navigationController else { return }
+			let listViewController = Babel2FeedViewController(
+				smartFeed: kind,
+				scope: scope,
+				environment: resolvedEnvironment,
+				confirmMarkAllRead: { resolvedSettings.confirmMarkAllRead }
+			)
+			wireArticleList(listViewController, root: root, navigationController: navigationController,
+				environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL)
+			navigationController.pushBabel2(listViewController, animated: true)
 		}
 
 		if let restoration {
@@ -137,6 +118,81 @@ enum Babel2SceneComposition {
 			}
 		}
 		return navigationController
+	}
+
+	/// 文章列表页（单个订阅源或跨源列表）的共同接线：档位同步给首页、点文章进阅读页、「下一篇」原地换页。
+	/// 阅读页的来源名、图标、「总是用阅读模式」都按这篇文章自己的订阅源（跨源列表里每篇不同，ADR-044）。
+	private static func wireArticleList(
+		_ listViewController: Babel2FeedViewController,
+		root: Babel2RootViewController?,
+		navigationController: Babel2NavigationController,
+		environment: AppEnvironment,
+		settings: Babel2SettingsService,
+		openURL: @escaping (URL) -> Void
+	) {
+		listViewController.onScopeChanged = { [weak root] scope in
+			root?.applyScope(scope)
+		}
+		// 同一个装配函数既用于「从列表点进文章」，也用于「下一篇」原地换页（ADR-022）
+		@MainActor func makeReader(_ article: ArticleSnapshot) -> Babel2ArticleViewController {
+			let source = listViewController.sourceFeed(for: article)
+			let articleViewController = Babel2ArticleViewController(
+				article: article,
+				environment: environment,
+				feedTitle: source?.title,
+				// 用此刻的图标（列表打开后图标才到的也能用上，ADR-039）
+				feedIconData: Babel2LiveIconCache.currentIconData(for: article.feedID) ?? source?.iconData,
+				hostArticleProvider: { id in await Babel2LiveArticleLookup.article(for: id) },
+				feedReaderModeSetting: Babel2FeedReaderModeSetting(
+					isAlwaysOn: { Babel2LiveFeedReaderSetting.isAlwaysOn(article.feedID) },
+					setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
+				),
+				// 设置「打开链接」选系统浏览器时不建内置浏览器：链接与原文交给系统打开（Slice 6）
+				makeBrowser: settings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil,
+				// 播客音频条、YouTube 简介（ADR-041）
+				mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) }
+			)
+			articleViewController.onOpenOriginal = { url, _ in
+				openURL(url)
+			}
+			articleViewController.onOpenLink = { url in
+				openURL(url)
+			}
+			articleViewController.nextArticleProvider = { [weak listViewController] in
+				listViewController?.nextArticle(after: article.id)
+			}
+			articleViewController.onShowNext = { [weak navigationController, weak listViewController] next in
+				guard let navigationController else { return }
+				// 列表先滚到这一篇，返回时它就在屏幕上
+				listViewController?.revealArticle(next.id)
+				navigationController.replaceTopBabel2(with: makeReader(next), animated: true)
+			}
+			return articleViewController
+		}
+		listViewController.onSelectArticle = { [weak navigationController] article in
+			guard let navigationController else { return }
+			navigationController.pushBabel2(makeReader(article), animated: true)
+		}
+	}
+
+	/// 首页整理的正式实现（ADR-045）：文件夹与订阅源的增删改走账户公开接口，自定义图标存在这台手机上（ADR-046）。
+	static func liveLibraryEditing() -> Babel2LibraryEditing {
+		Babel2LibraryEditing(
+			accounts: { Babel2LiveLibraryEditing.accounts() },
+			folderInfo: { Babel2LiveLibraryEditing.folderInfo($0) },
+			placement: { Babel2LiveLibraryEditing.placement($0) },
+			createFolder: { name, accountID in await Babel2LiveLibraryEditing.createFolder(named: name, accountID: accountID) },
+			renameFolder: { id, name in await Babel2LiveLibraryEditing.renameFolder(id, to: name) },
+			deleteFolder: { id, keepFeeds in await Babel2LiveLibraryEditing.deleteFolder(id, keepFeeds: keepFeeds) },
+			moveFeed: { id, from, to in await Babel2LiveLibraryEditing.moveFeed(id, from: from, to: to) },
+			removeFeedFromFolder: { id, folderID in await Babel2LiveLibraryEditing.removeFeed(id, fromFolder: folderID) },
+			renameFeed: { id, name in await Babel2LiveFeedActions.rename(id, to: name) },
+			unsubscribe: { id in await Babel2LiveFeedActions.unsubscribe(id) },
+			customIcons: Babel2CustomFeedIconStore(
+				hasCustomIcon: { Babel2LiveCustomFeedIcons.hasCustomIcon($0) },
+				setCustomIcon: { id, data in Babel2LiveCustomFeedIcons.set(data, for: id) }
+			)
+		)
 	}
 
 	/// 路由恢复与路由工厂：设置 → 设置首页；添加订阅 → 添加订阅页。

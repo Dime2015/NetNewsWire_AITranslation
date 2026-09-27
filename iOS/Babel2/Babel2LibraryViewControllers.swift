@@ -22,6 +22,12 @@ struct Babel2FeedActions {
 	let setAlwaysReadingMode: @MainActor (Bool) -> Void
 	let notificationsEnabled: @MainActor () -> Bool
 	let setNotificationsEnabled: @MainActor (Bool) -> Void
+	/// 这是不是外文源（首页「外文源」入口按它归类；自动识别错了可以手动改，ADR-044）。
+	var isForeign: (@MainActor () -> Bool)? = nil
+	var setForeign: (@MainActor (Bool) -> Void)? = nil
+	/// 自定义图标（ADR-046）：有没有换过；换成一张图（nil = 恢复默认），成功返回 true。
+	var hasCustomIcon: (@MainActor () -> Bool)? = nil
+	var setCustomIcon: (@MainActor (Data?) -> Bool)? = nil
 	/// 失败返回说明。
 	let rename: @MainActor (String) async -> String?
 	/// 失败返回说明。
@@ -48,6 +54,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private let feed: FeedSnapshot
+	/// 跨源列表（ADR-044）：非 nil 时本页列的是「今日未读 / 全部未读 / 外文源 / 全部星标」，不是一个订阅源；
+	/// 此时 feed 只是一个占位（名字 = 入口名），不拿去查数据。
+	let smartFeed: Babel2SmartFeed?
+	/// 跨源列表里每篇文章所属的订阅源（行上显示各自的来源名与图标）与解码好的图标。
+	private var sourceFeeds = [FeedSnapshot.ID: FeedSnapshot]()
+	private var sourceIcons = [FeedSnapshot.ID: UIImage]()
 	private(set) var scope: Babel2FeedScope
 	private let environment: AppEnvironment
 	private let tableView = UITableView(frame: .zero, style: .plain)
@@ -105,7 +117,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private var isShowingSync = false
 
 	/// - currentIcon: 这个源此刻的小图标。打开页面时图标还没到的，之后据此补上（ADR-039）。
-	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil, currentIcon: (@MainActor () -> Data?)? = nil) {
+	init(feed: FeedSnapshot, scope: Babel2FeedScope = .all, environment: AppEnvironment, titleTranslation: Babel2TitleTranslationSetting? = nil, heroImage: Babel2FeedHeroImageSource? = nil, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }, feedActions: Babel2FeedActions? = nil, currentIcon: (@MainActor () -> Data?)? = nil, smartFeed: Babel2SmartFeed? = nil) {
+		self.smartFeed = smartFeed
 		self.currentIcon = currentIcon
 		self.shouldConfirmMarkAllRead = confirmMarkAllRead
 		self.feedActions = feedActions
@@ -116,10 +129,42 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		self.titleTranslation = titleTranslation
 		self.heroImage = heroImage
 		super.init(nibName: nil, bundle: nil)
-		restorationIdentifier = "babel2.feed.\(feed.id.accountID).\(feed.id.feedID)"
+		restorationIdentifier = smartFeed.map { "babel2.smart.\($0.rawValue)" } ?? "babel2.feed.\(feed.id.accountID).\(feed.id.feedID)"
 		// 已读/星标等状态变化（阅读页操作、后台同步）时，原地刷新每一行的状态
 		NotificationCenter.default.addObserver(self, selector: #selector(libraryDidChange(_:)), name: .babel2LibraryDidChange, object: nil)
 		NotificationCenter.default.addObserver(self, selector: #selector(titleTranslationDidChange(_:)), name: .babel2TitleTranslationDidChange, object: nil)
+	}
+
+	/// 跨源列表页（ADR-044）：今日未读 / 全部未读 / 外文源 / 全部星标。没有订阅源图标、刷新与更多菜单、标题翻译开关；
+	/// 搜索在已列出的文章里筛。名字随档位变（例如「今日未读」切到全部档叫「今天」）。
+	convenience init(smartFeed: Babel2SmartFeed, scope: Babel2FeedScope, environment: AppEnvironment, confirmMarkAllRead: @escaping @MainActor () -> Bool = { true }) {
+		let placeholder = FeedSnapshot(
+			id: FeedSnapshot.ID(accountID: "babel2.smart", feedID: smartFeed.rawValue),
+			title: Babel2Localization.text(smartFeed.titleKey(scope: scope)),
+			url: URL(string: "https://babel2.invalid/smart/\(smartFeed.rawValue)")!
+		)
+		self.init(feed: placeholder, scope: scope, environment: environment, confirmMarkAllRead: confirmMarkAllRead, smartFeed: smartFeed)
+	}
+
+	/// 这篇文章所属的订阅源（跨源列表里各不相同；单个源的页面就是这个源）。装配层据此给阅读页显示来源名与图标。
+	func sourceFeed(for article: ArticleSnapshot) -> FeedSnapshot? {
+		smartFeed == nil ? feed : sourceFeeds[article.feedID]
+	}
+
+	/// 跨源列表切档后改名（ADR-044）。
+	private func updateSmartTitle() {
+		guard let smartFeed else { return }
+		let title = Babel2Localization.text(smartFeed.titleKey(scope: scope))
+		displayTitle = title
+		heroView?.titleLabel.text = title
+		compactBar?.titleLabel.text = title
+	}
+
+	private func icon(forSource id: FeedSnapshot.ID) -> UIImage? {
+		if let cached = sourceIcons[id] { return cached }
+		guard let image = sourceFeeds[id]?.iconData.flatMap(UIImage.init(data:)) else { return nil }
+		sourceIcons[id] = image
+		return image
 	}
 
 	required init?(coder: NSCoder) { nil }
@@ -186,8 +231,11 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let provider = environment.dataProvider
 		let feedID = feed.id
 		let generation = loadGeneration
+		let smart = smartFeed != nil
+		let shownIDs = articles.map(\.id)
 		statusRefreshTask = Task { @MainActor [weak self, provider, feedID, generation] in
-			guard let fresh = try? await provider.feedArticlesSnapshot(for: feedID, scope: .all),
+			// 跨源列表：按已列出的文章编号一次取回最新状态（ADR-044）；单个源：读这个源的全部文章
+			guard let fresh = try? await (smart ? provider.articleSnapshots(for: shownIDs) : provider.feedArticlesSnapshot(for: feedID, scope: .all)),
 				!Task.isCancelled,
 				let self,
 				self.loadGeneration == generation,
@@ -265,6 +313,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		bottomToolbar.addSubview(readAllButton)
 
 		titleTranslationToggle.isEnabled = titleTranslation != nil
+		// 跨源列表没有「按订阅源」的标题翻译开关（已开了翻译的源，行上照样显示译文标题）
+		titleTranslationToggle.isHidden = smartFeed != nil
 		titleTranslationToggle.setState(titleTranslation?.isEnabled() == true ? .translated : .original)
 		titleTranslationToggle.addTarget(self, action: #selector(titleTranslationTapped), for: .touchUpInside)
 		titleTranslationToggle.accessibilityIdentifier = "babel2.feed.title-translation"
@@ -304,6 +354,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let forward = (order.firstIndex(of: newScope) ?? 0) >= (order.firstIndex(of: scope) ?? 0)
 		beginScopeCrossfade(direction: forward ? 1 : -1)
 		scope = newScope
+		updateSmartTitle()
 		scopeFilter.setSelectedScope(newScope, animated: fromUser)
 		headerTitleLabel?.accessibilityValue = newScope.rawValue
 		tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
@@ -313,6 +364,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 
 	/// 全部标为已读：先数一下本订阅源有多少未读，确认后一次性批量标记，再重新加载列表。
 	@objc private func readAllTapped() {
+		if smartFeed != nil {
+			// 跨源列表：标的是列出来的这些文章里还没读的（ADR-044）
+			let count = articles.filter { !$0.isRead }.count
+			guard count > 0 else { return }
+			if shouldConfirmMarkAllRead() { confirmMarkAllRead(count: count) } else { performMarkAllRead() }
+			return
+		}
 		let provider = environment.dataProvider
 		let feedID = feed.id
 		Task { @MainActor [weak self] in
@@ -338,8 +396,9 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private func performMarkAllRead() {
 		let handler = environment.actionHandler
 		let feedID = feed.id
+		let action: LibraryAction = smartFeed == nil ? .markFeedRead(feedID) : .markArticlesRead(articles.filter { !$0.isRead }.map(\.id))
 		Task { @MainActor [weak self] in
-			try? await handler.handle(.markFeedRead(feedID))
+			try? await handler.handle(action)
 			self?.startLoading()
 		}
 	}
@@ -441,6 +500,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let provider = environment.dataProvider
 		let feedID = feed.id
 		let scope = self.scope
+		let smartFeed = self.smartFeed
 		loadTask = Task { @MainActor [weak self, provider, feedID, scope, generation] in
 			defer {
 				if let self, self.loadGeneration == generation {
@@ -448,11 +508,22 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				}
 			}
 			do {
-				let snapshot = try await provider.feedArticlesSnapshot(for: feedID, scope: scope)
+				let snapshot: [ArticleSnapshot]
+				var sources = [FeedSnapshot.ID: FeedSnapshot]()
+				if let smartFeed {
+					let smart = try await provider.smartFeedArticles(smartFeed, scope: scope)
+					snapshot = smart.articles
+					sources = Dictionary(smart.feeds.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+				} else {
+					snapshot = try await provider.feedArticlesSnapshot(for: feedID, scope: scope)
+				}
 				guard !Task.isCancelled, let self,
 					self.loadGeneration == generation,
 					self.feed.id == feedID,
 					self.scope == scope else { return }
+				if smartFeed != nil {
+					self.sourceFeeds.merge(sources) { _, new in new }
+				}
 				self.articles = snapshot
 				self.rebuildDaySections()
 				self.setCount(self.articles.count)
@@ -746,14 +817,66 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				identifier: "babel2.feed.more.notifications", isOn: feedActions.notificationsEnabled()) {
 				feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
 			}
-		]
+		] + foreignToggle(feedActions)
 		let manage = [
 			Babel2MenuItem(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
 				identifier: "babel2.feed.more.rename") { [weak self] in self?.presentRename() },
 			Babel2MenuItem(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
 				identifier: "babel2.feed.more.unsubscribe", isDestructive: true) { [weak self] in self?.confirmUnsubscribe() }
 		]
-		return [top, toggles, manage]
+		return [top, toggles, iconItems(feedActions), manage]
+	}
+
+	/// 「更换图标…」「恢复默认图标」（ADR-046，后者只在换过时出现）。
+	private func iconItems(_ feedActions: Babel2FeedActions) -> [Babel2MenuItem] {
+		guard let hasCustomIcon = feedActions.hasCustomIcon, let setCustomIcon = feedActions.setCustomIcon else { return [] }
+		var items = [Babel2MenuItem(title: Babel2Localization.text(.changeIcon), image: UIImage(systemName: "photo"),
+			identifier: "babel2.feed.more.icon") { [weak self] in self?.pickIcon() }]
+		if hasCustomIcon() {
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.resetIcon), image: UIImage(systemName: "arrow.uturn.backward"),
+				identifier: "babel2.feed.more.icon-reset") { [weak self] in
+				if setCustomIcon(nil) { self?.applyChangedIcon() }
+			})
+		}
+		return items
+	}
+
+	private func pickIcon() {
+		Babel2FeedIconPicker.present(from: self) { [weak self] data in
+			self?.applyPickedIcon(data)
+		}
+	}
+
+	/// 选好的图（已裁成正方形）存起来并立即换上；读不出 / 存不下时说明原因。
+	func applyPickedIcon(_ data: Data?) {
+		guard let setCustomIcon = feedActions?.setCustomIcon else { return }
+		guard let data, setCustomIcon(data) else {
+			presentMessage(Babel2Localization.text(.unableToUseImage))
+			return
+		}
+		applyChangedIcon()
+	}
+
+	/// 换了图标：窄栏、每一行的来源图标、顶部大图立即换成新图（恢复默认时换回网站的图，没有就回到纯纸色底）。
+	private func applyChangedIcon() {
+		let icon = currentIcon?().flatMap(UIImage.init(data:))
+		feedIconImage = icon
+		compactBar?.setIcon(icon, title: displayTitle)
+		tableView.reloadData()
+		guard let heroImage, let heroView else { return }
+		if let art = heroImage.cached() {
+			heroView.setArt(art, animated: true)
+		} else {
+			heroView.clearArt(animated: true)
+			heroImage.fetch { [weak heroView] image in heroView?.setArt(image, animated: true) }
+		}
+	}
+
+	/// 「这是外文源」（勾）：首页「外文源」入口按它归类（ADR-044）。
+	private func foreignToggle(_ feedActions: Babel2FeedActions) -> [Babel2MenuItem] {
+		guard let isForeign = feedActions.isForeign, let setForeign = feedActions.setForeign else { return [] }
+		return [Babel2MenuItem(title: Babel2Localization.text(.foreignSourceToggle), image: UIImage(systemName: "globe"),
+			identifier: "babel2.feed.more.foreign", isOn: isForeign()) { setForeign(!isForeign()) }]
 	}
 
 	private func presentRename() {
@@ -981,11 +1104,23 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		}
 		let provider = environment.dataProvider
 		let feedID = feed.id
+		let smart = smartFeed != nil
+		let pool = articlesBeforeSearch
 		searchTask = Task { @MainActor [weak self] in
 			try? await Task.sleep(for: .milliseconds(250))
 			guard !Task.isCancelled else { return }
 			do {
-				let results = try await provider.searchFeedArticles(feedID, query: trimmed)
+				// 跨源列表：在已列出的文章里筛（标题 / 译文标题 / 摘要包含）；单个源：数据库全文搜索（ADR-044）
+				let results: [ArticleSnapshot]
+				if smart {
+					results = pool.filter { article in
+						[article.title, article.translatedTitle ?? "", article.summary].contains {
+							$0.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+						}
+					}
+				} else {
+					results = try await provider.searchFeedArticles(feedID, query: trimmed)
+				}
 				guard !Task.isCancelled, let self, self.isSearching else { return }
 				self.showSearchResults(results, query: trimmed)
 			} catch {
@@ -1087,7 +1222,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let cell = tableView.dequeueReusableCell(withIdentifier: Babel2ArticleCell.reuseIdentifier, for: indexPath) as! Babel2ArticleCell
 		guard let index = articleIndex(for: indexPath) else { return cell }
 		let article = articles[index]
-		cell.configure(article: article, feedTitle: displayTitle, feedIcon: feedIconImage, imageProvider: environment.imageProvider)
+		if smartFeed != nil {
+			let source = sourceFeeds[article.feedID]
+			cell.configure(article: article, feedTitle: source?.title ?? "", feedIcon: icon(forSource: article.feedID), imageProvider: environment.imageProvider)
+		} else {
+			cell.configure(article: article, feedTitle: displayTitle, feedIcon: feedIconImage, imageProvider: environment.imageProvider)
+		}
 		cell.accessibilityIdentifier = "babel2.article.\(article.id.accountID).\(article.id.feedID).\(article.id.articleID)"
 		return cell
 	}

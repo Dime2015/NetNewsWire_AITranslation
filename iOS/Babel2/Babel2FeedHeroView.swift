@@ -116,6 +116,20 @@ final class Babel2FeedHeroView: UIView {
 		}
 	}
 
+	/// 恢复默认图标后没有高清图可用：图淡出，回到纯纸色底（ADR-046）。
+	func clearArt(animated: Bool) {
+		artTask?.cancel()
+		guard artView.image != nil else { return }
+		guard animated else {
+			artView.alpha = 0
+			artView.image = nil
+			return
+		}
+		Babel2Motion.animate(Babel2Motion.standard, { self.artView.alpha = 0 }, completion: { _ in
+			if self.artView.alpha == 0 { self.artView.image = nil }
+		})
+	}
+
 	/// 按收缩进度更新：整体上移 70pt × 进度，图淡出、大标题更快淡出。只改平移与透明度，不重新排版。
 	func apply(progress newProgress: CGFloat) {
 		progress = newProgress

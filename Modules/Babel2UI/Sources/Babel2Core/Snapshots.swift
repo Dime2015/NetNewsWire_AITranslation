@@ -116,18 +116,37 @@ public struct LibrarySnapshot: Hashable, Sendable {
 	public let articles: [ArticleSnapshot]
 	public let generatedAt: Date
 	public let isSyncing: Bool
+	/// 首页顶部跨源入口（今日未读 / 全部未读 / 外文源 / 全部星标）在当前档位下的篇数（ADR-044）。
+	public let smartFeedCounts: [Babel2SmartFeed: Int]
+	/// 账户编号 → 显示名（首页长按菜单里说明「在哪个账户」，ADR-045）。
+	public let accountTitles: [String: String]
 
 	public init(
 		feeds: [FeedSnapshot] = [],
 		folders: [FolderSnapshot] = [],
 		articles: [ArticleSnapshot] = [],
 		generatedAt: Date = .now,
-		isSyncing: Bool = false
+		isSyncing: Bool = false,
+		smartFeedCounts: [Babel2SmartFeed: Int] = [:],
+		accountTitles: [String: String] = [:]
 	) {
 		self.feeds = feeds
 		self.folders = folders
 		self.articles = articles
 		self.generatedAt = generatedAt
 		self.isSyncing = isSyncing
+		self.smartFeedCounts = smartFeedCounts
+		self.accountTitles = accountTitles
+	}
+}
+
+/// 跨源合并的文章列表（ADR-044）：文章 + 这些文章所属的订阅源（每行显示自己的来源名与图标）。
+public struct SmartFeedArticlesSnapshot: Hashable, Sendable {
+	public let articles: [ArticleSnapshot]
+	public let feeds: [FeedSnapshot]
+
+	public init(articles: [ArticleSnapshot] = [], feeds: [FeedSnapshot] = []) {
+		self.articles = articles
+		self.feeds = feeds
 	}
 }

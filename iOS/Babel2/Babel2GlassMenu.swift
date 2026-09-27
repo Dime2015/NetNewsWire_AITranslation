@@ -71,6 +71,9 @@ struct Babel2MenuItem {
 /// 锚定在触发按钮下方（放不下时在上方），水平方向尽量对齐按钮、不出屏；点空白处关闭，选中后关闭并执行。
 final class Babel2GlassMenu: UIView {
 	private let card = Babel2GlassCard()
+	/// 项多到屏幕放不下时（例如文件夹很多的「移到文件夹」），卡片高度封顶、里面可以上下滚（ADR-045）。
+	private let scrollView = UIScrollView()
+	private let stack = UIStackView()
 	private var items = [Babel2MenuItem]()
 	/// 卡片上最靠近触发按钮的点（展开 / 收起的中心）
 	private var growOrigin: CGPoint = .zero
@@ -104,15 +107,24 @@ final class Babel2GlassMenu: UIView {
 		dismissTap.cancelsTouchesInView = false
 		addGestureRecognizer(dismissTap)
 
-		let stack = UIStackView()
 		stack.axis = .vertical
 		stack.translatesAutoresizingMaskIntoConstraints = false
-		card.contentView.addSubview(stack)
+		scrollView.translatesAutoresizingMaskIntoConstraints = false
+		scrollView.isScrollEnabled = false
+		scrollView.showsHorizontalScrollIndicator = false
+		scrollView.contentInsetAdjustmentBehavior = .never
+		scrollView.addSubview(stack)
+		card.contentView.addSubview(scrollView)
 		NSLayoutConstraint.activate([
-			stack.leadingAnchor.constraint(equalTo: card.contentView.leadingAnchor),
-			stack.trailingAnchor.constraint(equalTo: card.contentView.trailingAnchor),
-			stack.topAnchor.constraint(equalTo: card.contentView.topAnchor),
-			stack.bottomAnchor.constraint(equalTo: card.contentView.bottomAnchor)
+			scrollView.leadingAnchor.constraint(equalTo: card.contentView.leadingAnchor),
+			scrollView.trailingAnchor.constraint(equalTo: card.contentView.trailingAnchor),
+			scrollView.topAnchor.constraint(equalTo: card.contentView.topAnchor),
+			scrollView.bottomAnchor.constraint(equalTo: card.contentView.bottomAnchor),
+			stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+			stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+			stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+			stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+			stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
 		])
 		if let title, !title.isEmpty {
 			let label = UILabel()
@@ -166,12 +178,16 @@ final class Babel2GlassMenu: UIView {
 		return wrapper
 	}
 
-	/// 宽度 272（Figma 选单宽度）、最多屏宽 − 40；按内容算高度。放在按钮下方 6pt，放不下就放到上方。
+	/// 宽度 272（Figma 选单宽度）、最多屏宽 − 40；按内容算高度（卡片内边距上下各 6pt）。放在按钮下方 6pt，放不下就放到上方。
+	/// 内容比屏幕可用高度还高时，卡片高度封顶、里面可以滚。
 	private func place(anchoredTo anchor: UIView) {
 		let width = min(272, bounds.width - 40)
 		card.frame = CGRect(x: 0, y: 0, width: width, height: 10)
-		let height = card.systemLayoutSizeFitting(CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
-			withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
+		let contentHeight = stack.systemLayoutSizeFitting(CGSize(width: width - 12, height: UIView.layoutFittingCompressedSize.height),
+			withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height + 12
+		let available = max(Babel2Type.menuRowHeight * 2, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 16)
+		let height = min(contentHeight, available)
+		scrollView.isScrollEnabled = contentHeight > available
 		let anchorFrame = anchor.convert(anchor.bounds, to: self)
 		let x = min(max(20, anchorFrame.midX - width / 2), bounds.width - 20 - width)
 		var y = anchorFrame.maxY + 6
@@ -196,6 +212,7 @@ final class Babel2GlassMenu: UIView {
 
 	/// 仅供自动化测试。
 	var cardFrameForTesting: CGRect { card.frame }
+	var isScrollableForTesting: Bool { scrollView.isScrollEnabled }
 	var growOriginForTesting: CGPoint { growOrigin }
 	func growTransformForTesting(scale: CGFloat) -> CGAffineTransform { growTransform(scale: scale) }
 

@@ -33,6 +33,8 @@ public enum Babel2AppAssembly {
 	static func makeLiveEnvironment() -> AppEnvironment {
 		// 标题翻译引擎要在后台更新前就位，才能对新下载的文章提前翻译（ADR-024）
 		Babel2LiveTitleTranslation.start()
+		// 外文源自动识别：补做还没判定过的源（首页「外文源」入口用，ADR-044）
+		Babel2LiveForeignFeeds.start()
 		return Babel2Assembly.makeEnvironment(
 			dataProvider: Babel2LiveDataProvider(),
 			actionHandler: Babel2LiveActionHandler(),

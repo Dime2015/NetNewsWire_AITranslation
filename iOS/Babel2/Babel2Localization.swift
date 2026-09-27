@@ -75,6 +75,39 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case close = "Close"
 	case openLink = "Open Link"
 	case unableToLoadImage = "Unable to load image"
+	case smartTodayUnread = "Today's Unread"
+	case smartToday = "Today"
+	case smartAllUnread = "All Unread"
+	case smartAllArticles = "All Articles"
+	case smartForeign = "Foreign Sources"
+	case smartStarred = "All Starred"
+	case foreignSourceToggle = "This Is a Foreign-Language Source"
+	case quotedName = "“%@”"
+	case listSeparator = ", "
+	case newFolder = "New Folder"
+	case folderName = "Folder Name"
+	case create = "Create"
+	case newFolderInAccount = "Create the Folder In"
+	case renameFolder = "Rename Folder"
+	case deleteFolder = "Delete Folder…"
+	case deleteFolderConfirm = "Delete the folder “%@”?"
+	case deleteFolderContents = "It holds %d feeds. Feeds that are also in another folder will stay there."
+	case deleteFolderKeepFeeds = "Delete Folder, Move Feeds to Top Level"
+	case deleteFolderAndFeeds = "Delete Folder and Its Feeds"
+	case delete = "Delete"
+	case moveToFolder = "Move to Folder…"
+	case moveFeedTo = "Move “%@” To"
+	case topLevel = "No Folder (Top Level)"
+	case notInFolder = "Not in a folder"
+	case feedInFolder = "In “%@”"
+	case feedAlsoIn = "Also in %@"
+	case removeFromFolder = "Remove from “%@”"
+	case folderFeedCount = "%d feeds"
+	case folderFeedCountOne = "%d feed"
+	case changeIcon = "Change Icon…"
+	case resetIcon = "Restore Default Icon"
+	case unableToUseImage = "Unable to use this image. Try another one."
+	case moreActions = "More Actions"
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -127,6 +160,14 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .refresh: return "babel2.feed.refresh"
 		case .openWebsite, .copyFeedAddress, .newArticleNotifications, .rename, .renameFeed: return "babel2.feed.more"
 		case .close, .openLink, .unableToLoadImage: return "babel2.image-viewer"
+		case .smartTodayUnread, .smartToday, .smartAllUnread, .smartAllArticles, .smartForeign, .smartStarred: return "babel2.feeds.smart"
+		case .foreignSourceToggle: return "babel2.feed.more"
+		case .changeIcon, .resetIcon, .unableToUseImage: return "babel2.feed.more"
+		case .quotedName, .listSeparator, .newFolder, .folderName, .create, .newFolderInAccount, .renameFolder, .deleteFolder,
+			.deleteFolderConfirm, .deleteFolderContents, .deleteFolderKeepFeeds, .deleteFolderAndFeeds, .delete, .moveToFolder,
+			.moveFeedTo, .topLevel, .notInFolder, .feedInFolder, .feedAlsoIn, .removeFromFolder, .folderFeedCount,
+			.folderFeedCountOne, .moreActions:
+			return "babel2.library.edit"
 		}
 	}
 }
