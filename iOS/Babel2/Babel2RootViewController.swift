@@ -290,9 +290,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		hasAppeared = true
 		scheduleContentFirstFrameOnNextDisplayTickIfReady()
 		applyLaunchScopeOverrideIfNeeded()
+		let hadMissedChange = missedLibraryChange
+		missedLibraryChange = false
 		loadLibraryIfNeeded()
-		if missedLibraryChange {
-			missedLibraryChange = false
+		// 刚开始的那次加载已经是最新数据，就不再补
+		if hadMissedChange, libraryTasks[displayedScope] == nil {
 			reloadLibraryIfVisible()
 		}
 	}

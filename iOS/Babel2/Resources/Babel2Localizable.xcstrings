@@ -528,6 +528,23 @@
         }
       }
     },
+    "Block Ads" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Block Ads"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去广告"
+          }
+        }
+      }
+    },
     "Bug Tracker" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -864,6 +881,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法刷新模型列表"
+          }
+        }
+      }
+    },
+    "Couldn’t find an article on this page to translate." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t find an article on this page to translate."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个页面找不到可以翻译的正文（首页、列表页、需要登录的页面常常这样）。"
           }
         }
       }
@@ -3669,6 +3703,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "翻译"
+          }
+        }
+      }
+    },
+    "Translate This Page" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translate This Page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译此页"
           }
         }
       }

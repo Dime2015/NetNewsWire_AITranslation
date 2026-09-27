@@ -27,6 +27,15 @@
 | loading/empty/error/offline/sync/translation 统一且不重复 | Slice 0–7；state surfaces | state transition/owner assertions | 每种状态、retry、恢复 | 网络和后台恢复 | 部分实现：首页/列表已有 loading/empty/error/retry；数据库错误仍可能被转为空结果，完整状态未完成 |
 | Light/Dark/Mono AppIcon；Light 为亮桌面+独立暗色封面，非黑蒙版 | Slice 1/7；asset catalog/runtime appearance | asset catalog/actool/name checks | 外观资源解析 | home screen 外观和用户视觉接受 | structural done; runtime pending；静态资产已在 `9fda5c565` 提交；早期烧焦/全局蒙版 Light 已否决，当前 Final 已重生成并通过静态 QA；Dark master 为 `Design/Babel2/Icon Concepts/Final/Babel2AppIcon-Dark.png` |
 | 新代码/资源/测试/文案统一 Babel；历史技术命名和死代码分批清理 | Slice 7；no-new-name、compatibility boundary、cleanup | diff-based name gate、dependency/migration checks | 用户可见零历史名、回滚场景 | 稳定后数据/状态恢复和迁移 | 当前执行 Gate A/B；技术清理延后 |
+| 长文翻译不再「依然原文 / 空白」（2026-09-27 反馈 7，ADR-037） | 翻译引擎宿主 / Shared/Translation | 重排清状态、排队翻全文、失败组拆单段、空白拒收与兜底 | 假翻译服务长文路径 | 真实模型长文 | 已实现，待真机验收 |
+| 模型列表覆盖最热门厂商、含最便宜与最热门（反馈 9，ADR-038） | 设置 / OpenRouter 目录 | 变体不吃热度、用量榜排行、价格与过期刷新 | — | 真实目录与价格显示 | 已实现，待真机验收 |
+| 冷启动订阅源图标立即出现；可自定义图标（反馈 8，ADR-039 / 046） | 首页 / 接入层图标缓存 | 备份落盘、重载合并、列表补图标、自定义图标存取与优先 | — | 冷启动速度、选图裁图 | 已实现，待真机验收 |
+| 正文图片卡片式居中查看、双指缩放（反馈 3，ADR-040） | Reader | 点图不进浏览器、查看器规则 | — | 缩放 / 关闭手感 | 已实现，待真机验收 |
+| 播客音频条居中、YouTube 横版贴边原地播放（反馈 1，ADR-041） | Reader / 接入层 | 视频编号识别、播放器插入 | — | 真实播放 | 已实现，待真机验收 |
+| 阅读模式 / 翻译图标重做：图标本身动效、成功有底色，去掉「正在获取全文」（反馈 6、11，ADR-043） | Reader 底栏 / 文章列表底栏 | 三态映射、失败晃动 | — | 观感 | 已实现，待真机验收 |
+| 首页「未读」可点：今日未读 / 全部未读 / 外文源（跟随档位）（反馈 5，ADR-044） | 首页 / 跨源列表 | 入口随档位、计数、跨源列表来源与批量已读 | — | 真实数据计数与外文源识别 | 已实现，待真机验收 |
+| 文件夹可编辑，重复源可理解、可清理（反馈 4，ADR-045） | 首页长按菜单 / 「+」菜单 / 接入层 | 长按文件夹 / 订阅源、「+」菜单、真实账户文件夹生命周期、回首页补刷新 | — | 真实账户里的重复源、删除文件夹二选一 | 已实现，待真机验收 |
+| 内置浏览器去广告、可翻译当前页（反馈 10，ADR-047） | 浏览器 / 独立阅读页 | 规则编译与匹配、菜单开关、抽正文自动翻译、无正文说明 | — | 真实网页广告与抽取效果 | 已实现，待真机验收 |
 
 ## 当前优先：Feeds/Library 首页 Figma 22:36（2026-09-08）
 

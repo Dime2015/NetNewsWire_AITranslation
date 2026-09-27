@@ -73,6 +73,9 @@ final class Babel2ArticleViewController: UIViewController {
 	/// 正文上方的播放器所需的额外信息（YouTube 简介、播客音频地址），由接入层重新读订阅源拿到（ADR-041）。
 	private let mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)?
 	private var mediaExtras: Babel2ArticleMediaExtras?
+	/// 不在订阅里的独立网页（内置浏览器「翻译此页」打开的，ADR-047）：没有已读 / 星标 / 下一篇，
+	/// 正文已经是抽出来的全文、不再提供阅读模式；打开时不标已读。
+	private let isStandalonePage: Bool
 	private var browserMotion: Babel2ReaderBrowserMotion?
 	private let statusLabel = UILabel()
 	private var statusHideTask: Task<Void, Never>?
@@ -136,8 +139,10 @@ final class Babel2ArticleViewController: UIViewController {
 		},
 		feedReaderModeSetting: Babel2FeedReaderModeSetting? = nil,
 		makeBrowser: ((URL) -> (any Babel2PreparableRoute))? = nil,
-		mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)? = nil
+		mediaProvider: (@MainActor (ArticleSnapshot.ID) async -> Babel2ArticleMediaExtras?)? = nil,
+		standalonePage: Bool = false
 	) {
+		self.isStandalonePage = standalonePage
 		self.mediaProvider = mediaProvider
 		self.feedReaderModeSetting = feedReaderModeSetting
 		self.makeBrowser = makeBrowser
@@ -192,7 +197,7 @@ final class Babel2ArticleViewController: UIViewController {
 		resolveTranslationHostArticle()
 		loadMediaExtras()
 		// 自动取全文：订阅源设了「总是用阅读模式」（ADR-020），或这篇上次开着阅读模式离开（ADR-019）
-		if article.url != nil {
+		if article.url != nil, !isStandalonePage {
 			if isFeedAlwaysReaderMode {
 				startFullTextFetch(rememberForArticle: false)
 			} else if ArticleReadingStateStore.state(for: readingStateKey).readerMode {
@@ -223,7 +228,7 @@ final class Babel2ArticleViewController: UIViewController {
 
 	/// 打开文章即标为已读（用户 2026-09-25 决定；旧版与 Reeder 同样如此）。
 	private func autoMarkReadIfNeeded() {
-		guard !didAutoMarkRead else { return }
+		guard !didAutoMarkRead, !isStandalonePage else { return }
 		didAutoMarkRead = true
 		guard !isRead else { return }
 		performStatusAction(.markRead(article.id)) { controller in
@@ -420,12 +425,15 @@ final class Babel2ArticleViewController: UIViewController {
 		readerModeStateDidChange()
 	}
 
+	/// 有原文网址才能取全文；独立网页的正文本来就是抽出来的全文（ADR-047）。
+	private var isReaderModeAvailable: Bool { article.url != nil && !isStandalonePage }
+
 	/// 阅读模式开关状态变化后，同步底栏按钮与 ••• 菜单。取全文期间图标显示「进行中」。
 	private func readerModeStateDidChange() {
 		if fullTextTask != nil {
 			toolbar.setReaderModeLoading()
 		} else {
-			toolbar.setReaderMode(isReaderModeOn, available: article.url != nil)
+			toolbar.setReaderMode(isReaderModeOn, available: isReaderModeAvailable)
 		}
 		refreshMoreMenu()
 	}
@@ -669,6 +677,17 @@ final class Babel2ArticleViewController: UIViewController {
 			}
 		}
 		translation.toggle()
+	}
+
+	/// 打开后自动翻译（内置浏览器「翻译此页」，ADR-047）：先排队，正文排好、文章对象到位时开始；
+	/// 期间按钮显示「进行中」，再点一下取消。
+	func requestTranslationWhenReady() {
+		wantsTranslation = true
+		isTranslationQueued = true
+		toolbar.setTranslationState(.working)
+		if isTranslationPrepared, fullTextTask == nil {
+			startQueuedTranslation()
+		}
 	}
 
 	/// 开始排队中的翻译。引擎此刻是「原文」态（刚重置过），点一下 = 翻译；它自己会先查有没有可用的缓存。
@@ -1123,8 +1142,12 @@ final class Babel2ArticleViewController: UIViewController {
 		toolbar.onNext = { [weak self] in self?.showNextArticle() }
 		// 页面一建好就确定 ∨ 能不能点，滑入动画期间状态就是对的（出现后还会再刷新一次）
 		refreshNextAvailability()
-		toolbar.setReaderMode(false, available: article.url != nil)
+		toolbar.setReaderMode(false, available: isReaderModeAvailable)
 		toolbar.onToggleStar = { [weak self] in self?.toggleStar() }
+		if isStandalonePage {
+			toolbar.readButton.isEnabled = false
+			toolbar.starButton.isEnabled = false
+		}
 		// 手指离开屏幕时决定是否需要补完显隐（滚动区的代理归网页控件所有，这里只加监听）
 		contentView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanChanged(_:)))
 		// 上拉翻篇：∨ 压在底栏下面；正文不满一屏也要能往上拉

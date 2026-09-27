@@ -24,7 +24,7 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
-## 用户 11 条反馈：调查结论与分批（2026-09-27，ADR-036；第 1 批进行中）
+## 用户 11 条反馈：调查结论与分批（2026-09-27，ADR-036；五批全部实现，待用户一次性真机验收，未提交）
 
 调查只读、未改产品代码；第 7 条用临时探针测试（假翻译服务，不联网）取证，测试已删除。
 - **7 长文翻译**：① 已复现——Babel 2.0 切阅读模式 / 重试是在**同一网页里重排**，翻译脚本（translation.js 的 `window.nnwTranslation`）不重置，仍记着上一版正文与「在显示译文」：重排后点「原文」回到摘要，点「翻译」可能直接还原成英文。② 已复现——「总是阅读模式」的源，全文未到时点翻译，全文一到 `startRendering` 调 `resetForNewArticle` 取消翻译，页面显示英文全文、按钮回「原 翻译」。③ 机制已证实、设备上未证实——模型少还段落或超时，整组被拒收保持英文；重试发同一大组（≤4000 字 / 6 段），易再失败；非流式请求 60 秒超时。④ 模型返回「标签在、文字空」（如 `<p></p>`）时 `applyGroup` 照收、自检也不报——会得到「状态已译 + 正文空白」，且标题译文为空时原生标题保持英文，与截图 7 症状一致（推测，未在设备上证实）。空白未在模拟器复现。长文正常路径（约 3 万字符）通过。
@@ -39,6 +39,31 @@
 - **冷启动图标（ADR-039）**：图标备份落盘（缩到 96px）；首页后台重载合并不打断；文章列表 / 阅读页补上晚到的图标。改动：`Babel2LiveDataAdapters.swift`（Babel2LiveIconCache）、`Babel2RootViewController.swift`、`Babel2LibraryViewControllers.swift`、`Babel2FeedHeroView.swift`（窄栏 setIcon）、`Babel2SceneComposition.swift`。
 - 测试：新增 10 项（翻译 6：重排清状态、排队翻全文、切阅读模式接着翻、失败组拆单段、空白拒收、脚本两道闸；模型 1：变体不吃热度 + 用量榜；图标 3：重载不被打断、备份落盘缩图、列表补图标），改 1 项（模型排行新规则 + 行尾价格 + 过期判断）。反向验证：关掉「清状态 / 拆组 / 排队 / 空白两道防线 / 合并重载」后对应测试均失败，恢复后通过。全量 `scratchpad/b1-full.xcresult` 163/163（上一轮 153 + 10）；UI Driver（Release、真实数据）`scratchpad/b1-ui.xcresult` 1/1；pbxproj diff hash 仍 `c5f5a8cf…`。另用临时探针以当天真实 OpenRouter 数据跑新排行（已删除）。
 - 未能自动验证：真机真实模型下的长文翻译（是否还会空白 / 部分英文）、价格显示、冷启动图标实际快慢——真机验收。
+
+### 第 2 批：图片查看 / 播客与 YouTube / 整页右滑（ADR-040～042；实现与自动化完成，待真机验收，未提交）
+
+- **图片（ADR-040，第 3 条）**：点正文里的图（大于 24pt）不再跟着外层链接进浏览器，改为居中弹出的卡片查看器：双指缩放（最大 4 倍）、双击放大 2.5 倍、单击 / 下拉 / ✕ 关闭、长按分享、背景随深浅色；图外层原本有链接的，右下角「打开链接」。新文件 `Reader/Babel2ImageViewerViewController.swift`；`Reader/WebKit/Babel2ReaderContentView.swift`（捕获点击、快照起点）。
+- **播放器（ADR-041，第 1 条）**：YouTube 文章正文上方 16:9 贴满两边的播放器（原地播放），简介填进正文可翻译；播客正文上方居中音频条（最宽 520pt）。正文自带的视频贴满两边。新文件 `Reader/Babel2ArticleMedia.swift`；接入层复用 1.x `YouTubeDescriptionLoader` / `PodcastEpisodeLocator`；边界测试加精确例外（只允许阅读页网页文件出现系统配置类型名，用户批准）。
+- **整页右滑（ADR-042，第 2 条）**：二级页任意位置往右横滑即返回（竖滑不受影响、横向滚动区先滚自身）；内置浏览器仍只认左边缘。MOTION-CONTRACT 三处按用户批准修订。改动 `Babel2NavigationPopMotion.swift`。
+- 测试：新增 6 项；全量 `scratchpad/b2-full.xcresult` 169/169。
+
+### 第 3 批：阅读模式与翻译图标（ADR-043；实现与自动化完成，待真机验收，未提交）
+
+- 阅读模式「纸页」、翻译「文/A」（第 6、11 条，方案 B / A）：平时线条；进行中图标本身在动；成功是墨色方块底 + 反白；失败轻晃 + 小胶囊。标题下「正在获取全文…」去掉。文章列表底栏标题翻译开关同步换新图标。新文件 `Babel2StatusIcons.swift`；删除 `Reader/Babel2TranslationToggle.swift`；改 `Babel2ReaderToolbarView.swift`、`Babel2ArticleViewController.swift`、`Babel2LibraryViewControllers.swift`。
+- 测试：三态映射替换原 Figma 文字状态测试；工具栏几何改为 44×44；全量 `scratchpad/b3-full.xcresult` 168/169（唯一失败是几何断言仍是旧的 58×44，更新后 `t3b.xcresult` 通过，已并入第 5 批后的最终全量）。
+
+### 第 4 批：首页跨源入口 / 文件夹整理 / 自定义图标（ADR-044～046；实现与自动化完成，待真机验收，未提交）
+
+- **跨源入口（ADR-044，第 5 条）**：首页顶部「今日未读 / 全部未读 / 外文源」（全部档「今天 / 全部文章 / 外文源」，星标档「全部星标」），可点开跨源文章列表；外文源自动识别 + 「更多」里手动改。新文件 `Babel2SmartFeedEntries.swift`；Babel2Core 契约 / 快照扩展；接入层计数与取文章；`Babel2RootViewController.swift`、`Babel2LibraryViewControllers.swift`、`Babel2SceneComposition.swift`、`Babel2AppAssembly.swift`。
+- **文件夹整理（ADR-045，第 4 条）**：首页长按文件夹 / 订阅源弹整理菜单；「+」改为「添加订阅 / 新建文件夹」；删除文件夹二选一；「移到文件夹」「从这个文件夹移出」；菜单顶部写明在哪个账户 / 文件夹、也在哪里（解释「重复」）；空文件夹也列出；回到首页 / 切档时补上错过的数据变化；毛玻璃菜单过长时可滚。新文件 `Babel2LibraryEditing.swift`；接入层 `Babel2LiveLibraryEditing`（在 `Babel2LiveDataAdapters.swift` 内，账户单例只准出现在这个文件）。
+- **自定义图标（ADR-046，第 8 条后半）**：「更换图标…」「恢复默认图标」（首页长按、文章列表「更多」）；裁正方形最多 512px 存在手机上；首页 / 列表 / 阅读页 / 大图都优先用它。新文件 `Babel2Integration/Babel2LiveCustomFeedIcons.swift`；`Babel2FeedHeroView.swift`（大图淡出）。
+- 测试：新增 12 项（入口跟档位与计数、跨源列表来源 / 批量已读 / 状态刷新、长按文件夹、长按订阅源、「+」菜单、回首页补刷新、切档补刷新、菜单可滚、裁图、图标存取、列表页换图标、真实账户文件夹生命周期），改 2 项（「+」先弹菜单）。反向验证：关掉「回首页补刷新 / 切档补刷新 / 空文件夹显示 / 自定义图标优先 / 菜单封顶」后对应测试均失败。第一次全量 `scratchpad/b4-full.xcresult` 180/181：边界测试抓到新文件用了账户单例，已并回指定文件（LESSONS 50）。
+
+### 第 5 批：内置浏览器去广告与翻译此页（ADR-047；实现与自动化完成，待真机验收，未提交）
+
+- 浏览器右上角「•••」：翻译此页 / 去广告（默认开，可对当前页临时关）。去广告用系统内容拦截（只拦第三方广告 / 跟踪域名 + 隐藏广告空位）；翻译此页在当前网页里用 Readability 抽正文，开独立阅读页自动翻译（没有已读 / 星标 / 下一篇 / 阅读模式）。新文件 `Reader/WebKit/Babel2AdBlocker.swift`；改 `Reader/WebKit/Babel2BrowserViewController.swift`、`Reader/Babel2ArticleViewController.swift`（独立网页模式、打开即翻）、`Babel2SceneComposition.swift`（浏览器工厂、网页阅读页）、接入层 `Babel2LiveWebPageArticle`（临时文章对象，不进数据库）。
+- 测试：新增 4 项（规则编译与匹配、「•••」菜单与开关、抽正文 → 独立阅读页自动翻译、没有正文时说明原因）。反向验证：关掉「自动翻译 / 独立网页模式」后测试失败。
+- **五批 + ADR-035 最终验证**：全量 `scratchpad/final-full.xcresult` 185/185（本会话开始时 153）；UI Driver（Release、真实数据）`scratchpad/final-ui.xcresult` 1/1；Babel2UI package 32/32；pbxproj diff hash 仍 `c5f5a8cf…`。
 
 ## 阅读页上拉翻到下一篇（2026-09-26，ADR-035；实现与自动化完成，待用户真机验收，未提交）
 

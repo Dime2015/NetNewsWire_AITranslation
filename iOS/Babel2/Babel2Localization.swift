@@ -108,6 +108,9 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case resetIcon = "Restore Default Icon"
 	case unableToUseImage = "Unable to use this image. Try another one."
 	case moreActions = "More Actions"
+	case translatePage = "Translate This Page"
+	case blockAds = "Block Ads"
+	case unableToExtractPage = "Couldn’t find an article on this page to translate."
 
 	var accessibilityIdentifier: String {
 		switch self {
@@ -168,6 +171,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 			.moveFeedTo, .topLevel, .notInFolder, .feedInFolder, .feedAlsoIn, .removeFromFolder, .folderFeedCount,
 			.folderFeedCountOne, .moreActions:
 			return "babel2.library.edit"
+		case .translatePage, .blockAds, .unableToExtractPage: return "babel2.browser.more"
 		}
 	}
 }

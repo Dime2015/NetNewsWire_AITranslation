@@ -1278,3 +1278,34 @@ enum Babel2LiveLibraryEditing {
 		}
 	}
 }
+
+/// 「翻译此页」的阅读页（ADR-047）：翻译引擎要一个文章对象（缓存键、标题、原文网址都从它取），
+/// 这里按页面快照临时造一个——只在内存里，不存进数据库、不属于任何账户或订阅源。
+@MainActor
+enum Babel2LiveWebPageArticle {
+	/// 独立网页用的账户编号：与真实账户不重名，快照编号也就不会和真实文章撞上。
+	static let accountID = "babel2.web"
+
+	static func hostArticle(for snapshot: ArticleSnapshot) -> AnyObject {
+		let status = ArticleStatus(articleID: snapshot.id.articleID, read: true, starred: false, dateArrived: Date())
+		return Article(
+			accountID: snapshot.id.accountID,
+			articleID: snapshot.id.articleID,
+			feedID: snapshot.id.feedID,
+			uniqueID: snapshot.url?.absoluteString ?? snapshot.id.articleID,
+			title: snapshot.title,
+			contentHTML: snapshot.content,
+			contentText: nil,
+			markdown: nil,
+			url: snapshot.url?.absoluteString,
+			externalURL: nil,
+			summary: nil,
+			imageURL: nil,
+			datePublished: nil,
+			dateModified: nil,
+			authors: nil,
+			status: status
+		)
+	}
+}
+

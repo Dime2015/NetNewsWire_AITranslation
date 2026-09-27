@@ -85,7 +85,8 @@ enum Babel2SceneComposition {
 					// 打开网站主页：按设置「打开链接」用内置浏览器或系统浏览器
 					openURL: { [weak navigationController] url in
 						if resolvedSettings.openLinksInApp, let navigationController {
-							navigationController.pushBabel2(Babel2BrowserViewController(url: url, openExternally: openURL), animated: true)
+							navigationController.pushBabel2(makeBrowser(url, navigationController: navigationController,
+								environment: resolvedEnvironment, settings: resolvedSettings, openURL: openURL), animated: true)
 						} else {
 							openURL(url)
 						}
@@ -148,7 +149,9 @@ enum Babel2SceneComposition {
 					setAlwaysOn: { Babel2LiveFeedReaderSetting.setAlwaysOn($0, for: article.feedID) }
 				),
 				// 设置「打开链接」选系统浏览器时不建内置浏览器：链接与原文交给系统打开（Slice 6）
-				makeBrowser: settings.openLinksInApp ? { url in Babel2BrowserViewController(url: url, openExternally: openURL) } : nil,
+				makeBrowser: settings.openLinksInApp ? { [weak navigationController] url in
+					makeBrowser(url, navigationController: navigationController, environment: environment, settings: settings, openURL: openURL)
+				} : nil,
 				// 播客音频条、YouTube 简介（ADR-041）
 				mediaProvider: { id in await Babel2LiveArticleMedia.extras(for: id) }
 			)
@@ -173,6 +176,58 @@ enum Babel2SceneComposition {
 			guard let navigationController else { return }
 			navigationController.pushBabel2(makeReader(article), animated: true)
 		}
+	}
+
+	/// 内置浏览器（ADR-021）。右上角「翻译此页」（ADR-047）：抽出的正文开一个阅读页（独立网页，不进订阅），自动翻译。
+	static func makeBrowser(
+		_ url: URL,
+		navigationController: Babel2NavigationController?,
+		environment: AppEnvironment,
+		settings: Babel2SettingsService,
+		openURL: @escaping (URL) -> Void
+	) -> Babel2BrowserViewController {
+		Babel2BrowserViewController(url: url, openExternally: openURL) { [weak navigationController] page in
+			guard let navigationController else { return }
+			let reader = makeWebPageReader(page, navigationController: navigationController, environment: environment,
+				settings: settings, openURL: openURL)
+			navigationController.pushBabel2(reader, animated: true)
+		}
+	}
+
+	/// 「翻译此页」的阅读页：正文是抽出来的全文；没有已读 / 星标 / 下一篇 / 阅读模式；打开后自动翻译（ADR-047）。
+	/// 文章编号按网址固定（同一页再翻直接用译文缓存）；翻译引擎需要的文章对象由接入层临时造一个（不存进数据库）。
+	static func makeWebPageReader(
+		_ page: Babel2BrowserViewController.PageContent,
+		navigationController: Babel2NavigationController?,
+		environment: AppEnvironment,
+		settings: Babel2SettingsService,
+		openURL: @escaping (URL) -> Void
+	) -> Babel2ArticleViewController {
+		let site = page.url.host ?? page.url.absoluteString
+		let feedID = FeedSnapshot.ID(accountID: Babel2LiveWebPageArticle.accountID, feedID: site)
+		let article = ArticleSnapshot(
+			id: ArticleSnapshot.ID(accountID: feedID.accountID, feedID: site, articleID: page.articleID),
+			title: page.title,
+			content: page.html,
+			url: page.url,
+			feedID: feedID,
+			isRead: true,
+			author: page.byline
+		)
+		let reader = Babel2ArticleViewController(
+			article: article,
+			environment: environment,
+			feedTitle: site,
+			hostArticleProvider: { _ in Babel2LiveWebPageArticle.hostArticle(for: article) },
+			makeBrowser: settings.openLinksInApp ? { [weak navigationController] url in
+				makeBrowser(url, navigationController: navigationController, environment: environment, settings: settings, openURL: openURL)
+			} : nil,
+			standalonePage: true
+		)
+		reader.onOpenOriginal = { url, _ in openURL(url) }
+		reader.onOpenLink = { url in openURL(url) }
+		reader.requestTranslationWhenReady()
+		return reader
 	}
 
 	/// 首页整理的正式实现（ADR-045）：文件夹与订阅源的增删改走账户公开接口，自定义图标存在这台手机上（ADR-046）。

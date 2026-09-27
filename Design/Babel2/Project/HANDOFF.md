@@ -2,12 +2,14 @@
 
 ## ★ 下一会话从这里开始（2026-09-27 更新）
 
-**先读**：本目录 STATUS.md 顶部各小节（2026-09-24/25 的 Reader、文章列表、首页修复等，均已提交并推送）、DECISIONS.md 的 ADR-016～036、LESSONS.md 第 30～45 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
+**先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～047、LESSONS.md 第 30～53 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**当前：用户 11 条反馈（ADR-036），分 5 批；第 1 批（长文翻译 7、模型列表 9、冷启动图标 8 前半，ADR-037～039）实现与自动化完成，待用户真机验收（未提交）**
-- 调查结论与第 1 批明细在 STATUS 顶部。用户已批准：整页右滑（改合同）、阅读页内联播放（边界测试精确例外）、智能入口随档位。
-- 用户说「一会儿统一验收」：ADR-035 与第 1 批一起真机验收后再提交（不含 pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行）。
-- 下一批：第 2 批（图片查看 3、播客/YouTube 1、整页右滑 2）。
+**当前：用户 11 条反馈（ADR-036）五批全部实现与自动化完成，待用户一次性真机验收（全部未提交）**
+- 用户 2026-09-27 原话：「全部按你的建议来……你直接把所有工作做完，然后我一次性验收」。图标方案取推荐（阅读模式 B · 纸页、翻译 A · 文/A）；浏览器翻译取「一键转成阅读页再翻译」；去广告默认开、可临时关。
+- 各批明细在 STATUS 顶部：第 1 批 ADR-037～039（翻译 / 模型 / 冷启动图标）；第 2 批 ADR-040～042（图片查看 / 播放器 / 整页右滑）；第 3 批 ADR-043（两个图标）；第 4 批 ADR-044～046（跨源入口 / 文件夹整理 / 自定义图标）；第 5 批 ADR-047（浏览器去广告 / 翻译此页）。ADR-035（上拉翻篇）也在同一次验收里。
+- 最终全量 `scratchpad/final-full.xcresult` 185/185；UI Driver（Release、真实数据）`scratchpad/final-ui.xcresult` 1/1；Babel2UI package 32/32；pbxproj 签名 diff hash 仍 `c5f5a8cf…`。
+- **用户验收说「提交」后**：按批提交（每批一个提交，提交信息 `[界面]` / `[翻译]` / `[发现]` 前缀按内容），不含 pbxproj 签名 diff 与 `Shared/Localizable.xcstrings` stale 行；删除的 `iOS/Babel2/Reader/Babel2TranslationToggle.swift` 要一起提交删除。各批改动文件清单在会话 scratchpad `snapshots/batch{1..5}-files.txt`（累计清单；scratchpad 不在仓库，换会话后以 STATUS 各批「改动」为准）。
+- 已知取舍（验收时留意）：全部档「全部文章 / 外文源」列表只列最近 30 天、入口上是总数；「重复」的源没有一键去重（逐个「移出」）；自定义图标不跟账户同步；翻译此页的阅读页没有已读 / 星标。
 
 **待验收：阅读页上拉翻到下一篇（ADR-035）已实现，待用户真机验收（未提交）**
 - 规则与 ∨ 在 `iOS/Babel2/Reader/Babel2ReaderNextPull.swift`（临界点 80pt、∨ 弯曲深度等数字都在这里）。全量 153/153、UI Driver 1/1。详见 STATUS 顶部。

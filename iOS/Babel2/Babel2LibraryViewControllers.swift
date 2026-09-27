@@ -929,6 +929,14 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private func presentMessage(_ message: String) {
 		let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
 		alert.addAction(UIAlertAction(title: Babel2Localization.text(.ok), style: .default))
+		// 上一个弹出页（例如照片选择器）还在收起：等它收起再弹，不然这条说明会被系统丢掉
+		if let presented = presentedViewController, presented.isBeingDismissed {
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(for: .milliseconds(400))
+				self?.present(alert, animated: true)
+			}
+			return
+		}
 		present(alert, animated: true)
 	}
 

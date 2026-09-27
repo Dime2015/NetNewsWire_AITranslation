@@ -1921,6 +1921,136 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(browser.isShowingErrorForTesting)
 	}
 
+	// MARK: - 内置浏览器：去广告与翻译此页（ADR-047）
+
+	/// 去广告规则能编译；只拦第三方请求；按域名匹配（含子域），网址参数里出现这些字样不误伤；另有一条收起广告空位的规则。
+	func testAdBlockRulesCompileAndMatchAdHostsOnly() async throws {
+		let list = await Babel2AdBlocker.ruleList()
+		XCTAssertNotNil(list, "the rule list compiles")
+		let rules = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(Babel2AdBlocker.encodedRules.utf8)) as? [[String: Any]])
+		XCTAssertEqual(rules.count, Babel2AdBlocker.blockedDomains.count + 1)
+		for rule in rules.dropLast() {
+			let trigger = try XCTUnwrap(rule["trigger"] as? [String: Any])
+			XCTAssertEqual(trigger["load-type"] as? [String], ["third-party"])
+			XCTAssertEqual((rule["action"] as? [String: Any])?["type"] as? String, "block")
+		}
+		let hide = try XCTUnwrap(rules.last?["action"] as? [String: Any])
+		XCTAssertEqual(hide["type"] as? String, "css-display-none")
+		XCTAssertTrue((hide["selector"] as? String)?.contains("ins.adsbygoogle") ?? false)
+
+		func blocked(_ address: String) -> Bool {
+			Babel2AdBlocker.blockedDomains.contains { domain in
+				guard let regex = try? NSRegularExpression(pattern: Babel2AdBlocker.urlFilter(for: domain)) else { return false }
+				return regex.firstMatch(in: address, range: NSRange(address.startIndex..., in: address)) != nil
+			}
+		}
+		for address in ["https://securepubads.g.doubleclick.net/tag/js/gpt.js",
+			"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1",
+			"https://adservice.google.com/adsid/integrator.js", "http://cdn.taboola.com:443/libtrc/loader.js",
+			"https://pos.baidu.com/s?hei=250"] {
+			XCTAssertTrue(blocked(address), address)
+		}
+		for address in ["https://www.google.com/search?q=doubleclick.net", "https://example.com/story?ref=taboola.com",
+			"https://notdoubleclick.net/", "https://www.google.com/", "https://news.baidu.com/", "https://www.nytimes.com/"] {
+			XCTAssertFalse(blocked(address), address)
+		}
+	}
+
+	/// 浏览器右上角「•••」：翻译此页（注入了处理方时才有）/ 去广告（默认开，可临时关、再打开）。
+	func testBrowserMoreMenuOffersTranslatePageAndTogglesAdBlock() async throws {
+		let browser = Babel2BrowserViewController(url: URL(string: "https://nonexistent.invalid/")!, openExternally: { _ in }, onTranslatePage: { _ in })
+		let window = hostInWindow(browser)
+		defer { window.isHidden = true }
+		let more = try XCTUnwrap(descendant(of: browser.view, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.browser.more" })
+		XCTAssertEqual(more.convert(CGPoint(x: more.bounds.midX, y: 0), to: browser.view).x, browser.view.bounds.width - 32, accuracy: 0.5,
+			"mirrors the close button")
+		await waitUntil { browser.isAdBlockReadyForTesting }
+		func items() -> [Babel2MenuItem] { browser.makeMoreMenuSections().flatMap { $0 } }
+		XCTAssertEqual(items().map(\.identifier), ["babel2.browser.translate-page", "babel2.browser.adblock"])
+		XCTAssertEqual(items().last?.isOn, true, "ad blocking is on by default")
+		browser.setAdBlock(false)
+		XCTAssertFalse(browser.isAdBlockOn)
+		XCTAssertEqual(items().last?.isOn, false)
+		items().last?.handler()
+		XCTAssertTrue(browser.isAdBlockOn, "can be turned back on")
+
+		let plain = Babel2BrowserViewController(url: URL(string: "https://nonexistent.invalid/")!, openExternally: { _ in })
+		plain.loadViewIfNeeded()
+		XCTAssertEqual(plain.makeMoreMenuSections().flatMap { $0 }.map(\.identifier), ["babel2.browser.adblock"])
+	}
+
+	/// 「翻译此页」：在当前网页里抽出正文（去掉导航、被隐藏的浮层），开一个独立阅读页并自动翻译；
+	/// 独立阅读页没有已读 / 星标 / 下一篇 / 阅读模式，打开时不发任何状态请求。
+	func testTranslatePageExtractsArticleAndOpensStandaloneReaderThatTranslates() async throws {
+		let restore = useFakeTranslationServer()
+		defer { restore() }
+		final class Captured { var page: Babel2BrowserViewController.PageContent? }
+		let captured = Captured()
+		let browser = Babel2BrowserViewController(url: URL(string: "https://nonexistent.invalid/")!, openExternally: { _ in },
+			onTranslatePage: { captured.page = $0 })
+		let window = hostInWindow(browser)
+		defer { window.isHidden = true }
+		let paragraphs = (0..<8).map { index in
+			"<p>Paragraph \(index) of the story explains how a small team rebuilt its reading app, step by step, with care and patience.</p>"
+		}.joined()
+		let html = """
+		<html><head><title>Rebuilding a Reader | Example News</title></head><body>
+		<nav><a href="/">Home</a> <a href="/tech">Tech</a> Site navigation menu</nav>
+		<article><h1>Rebuilding a Reader</h1>\(paragraphs)
+		<p>Inline <span style="display:none">HIDDEN FLOATER that only shows on hover</span> terms stay readable.</p></article>
+		<footer>Copyright footer text</footer></body></html>
+		"""
+		let address = URL(string: "https://example.com/2026/09/rebuilding-\(UUID().uuidString)")!
+		browser.loadHTMLForTesting(html, baseURL: address)
+		try await Task.sleep(for: .milliseconds(300))
+		await waitUntil { !browser.isPageLoadingForTesting }
+		browser.translatePageForTesting()
+		for _ in 0..<100 where captured.page == nil { try await Task.sleep(for: .milliseconds(50)) }
+		let page = try XCTUnwrap(captured.page, "the article is extracted")
+		XCTAssertEqual(page.url, address)
+		XCTAssertTrue(page.title.contains("Rebuilding a Reader"), page.title)
+		XCTAssertTrue(page.html.contains("Paragraph 0 of the story"))
+		XCTAssertFalse(page.html.contains("HIDDEN FLOATER"), "elements hidden on the page are dropped")
+		XCTAssertFalse(page.html.contains("Site navigation menu"))
+		XCTAssertTrue(page.articleID.hasPrefix("web-"))
+		XCTAssertEqual(page.articleID, Babel2BrowserViewController.PageContent(url: address, title: "x", html: "y", byline: nil).articleID,
+			"the same address always gets the same ID (reuses the translation cache)")
+
+		let handler = RecordingActionHandler()
+		let reader = Babel2SceneComposition.makeWebPageReader(page, navigationController: nil,
+			environment: makeEnvironment(provider: FakeDataProvider(), actionHandler: handler), settings: FakeSettingsService(), openURL: { _ in })
+		let readerWindow = hostInWindow(reader)
+		defer { readerWindow.isHidden = true }
+		await waitForReaderRender(reader)
+		await waitForTranslation(reader, toReach: .translated)
+		let translated = await reader.readerContentView.articleTextForTesting() ?? ""
+		XCTAssertGreaterThan(Self.cjkRatio(translated), 0.9, "translated automatically")
+		XCTAssertFalse(reader.toolbarView.readButton.isEnabled)
+		XCTAssertFalse(reader.toolbarView.starButton.isEnabled)
+		XCTAssertFalse(reader.toolbarView.readingModeButton.isEnabled)
+		XCTAssertFalse(reader.toolbarView.nextButton.isEnabled)
+		let actions = await handler.actions
+		XCTAssertTrue(actions.isEmpty, "a standalone page is never marked read / starred: \(actions)")
+	}
+
+	/// 抽不出正文的页面（只有几个链接）：不开阅读页，说明原因。
+	func testTranslatePageExplainsWhenThereIsNoArticle() async throws {
+		final class Captured { var page: Babel2BrowserViewController.PageContent? }
+		let captured = Captured()
+		let browser = Babel2BrowserViewController(url: URL(string: "https://nonexistent.invalid/")!, openExternally: { _ in },
+			onTranslatePage: { captured.page = $0 })
+		let window = hostInWindow(browser)
+		defer { window.isHidden = true }
+		browser.loadHTMLForTesting("<html><body><a href='/a'>A</a> <a href='/b'>B</a></body></html>", baseURL: URL(string: "https://example.com/")!)
+		try await Task.sleep(for: .milliseconds(300))
+		await waitUntil { !browser.isPageLoadingForTesting }
+		browser.translatePageForTesting()
+		await waitUntil { browser.presentedViewController is UIAlertController }
+		XCTAssertNil(captured.page)
+		XCTAssertEqual((browser.presentedViewController as? UIAlertController)?.message, localized(.unableToExtractPage))
+		browser.dismiss(animated: false)
+	}
+
 	// MARK: - 阅读模式（Slice 5 第 2 步）
 
 	func testReaderModeSwapsToFullTextRemembersAndReturnsToOriginal() async throws {
