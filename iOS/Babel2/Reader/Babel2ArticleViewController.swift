@@ -368,7 +368,6 @@ final class Babel2ArticleViewController: UIViewController {
 		if isReaderModeOn || fullTextTask != nil {
 			fullTextTask?.cancel()
 			fullTextTask = nil
-			hideStatus()
 			let wasOn = isReaderModeOn
 			isReaderModeOn = false
 			ArticleReadingStateStore.setReaderMode(false, for: readingStateKey)
@@ -388,7 +387,7 @@ final class Babel2ArticleViewController: UIViewController {
 	///   以免关掉订阅源开关后，那些文章仍各自记着全文。
 	private func startFullTextFetch(rememberForArticle: Bool) {
 		guard let url = article.url, fullTextTask == nil else { return }
-		showStatus(Babel2Localization.text(.fetchingFullText), autoHide: false)
+		// 取全文期间：底栏阅读模式图标本身在动（ADR-043，不再在标题下写「正在获取全文…」）
 		let provider = fullTextProvider
 		let host: UIView = view
 		fullTextTask = Task { @MainActor [weak self] in
@@ -402,7 +401,6 @@ final class Babel2ArticleViewController: UIViewController {
 					ArticleReadingStateStore.setReaderMode(true, for: self.readingStateKey)
 				}
 				self.readerModeStateDidChange()
-				self.hideStatus()
 				self.startRendering(fullText: html, scrollToTop: true)
 			} catch {
 				guard !Task.isCancelled, let self else { return }
@@ -412,7 +410,9 @@ final class Babel2ArticleViewController: UIViewController {
 					ArticleReadingStateStore.setReaderMode(false, for: self.readingStateKey)
 				}
 				self.readerModeStateDidChange()
-				self.showStatus(Babel2Localization.text(.unableToFetchFullText), autoHide: true)
+				// 失败：图标轻晃一下，底栏上方小胶囊提示（ADR-043）
+				self.toolbar.readerModeFailed()
+				self.showToast(Babel2Localization.text(.unableToFetchFullText))
 				// 排队等全文的翻译：全文拿不到，就翻现在显示的这版正文（ADR-037）
 				if self.isTranslationQueued, self.isTranslationPrepared { self.startQueuedTranslation() }
 			}
@@ -420,9 +420,13 @@ final class Babel2ArticleViewController: UIViewController {
 		readerModeStateDidChange()
 	}
 
-	/// 阅读模式开关状态变化后，同步底栏按钮与 ••• 菜单。
+	/// 阅读模式开关状态变化后，同步底栏按钮与 ••• 菜单。取全文期间图标显示「进行中」。
 	private func readerModeStateDidChange() {
-		toolbar.setReaderMode(isReaderModeOn, available: article.url != nil)
+		if fullTextTask != nil {
+			toolbar.setReaderModeLoading()
+		} else {
+			toolbar.setReaderMode(isReaderModeOn, available: article.url != nil)
+		}
 		refreshMoreMenu()
 	}
 

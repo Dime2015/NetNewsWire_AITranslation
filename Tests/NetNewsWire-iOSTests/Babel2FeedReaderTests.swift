@@ -39,7 +39,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let filter = feedViewController.scopeFilterForTesting
 		XCTAssertEqual(filter.selectedScope, .unread)
 		XCTAssertEqual(filter.buttons[.unread]?.accessibilityValue, "Selected")
-		let translation = try XCTUnwrap(descendant(of: feedViewController.view, matching: Babel2TranslationToggle.self))
+		let translation = try XCTUnwrap(descendant(of: feedViewController.view, matching: Babel2TranslateIconButton.self))
 		XCTAssertTrue(translation.isEnabled, "title translation toggle is wired (ADR-024)")
 
 		// 点「全部」：原地换档位重新加载，首页同步到同一档
@@ -66,7 +66,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let toolbar = try XCTUnwrap(descendant(of: feedViewController.view, matching: UIView.self) { $0.accessibilityIdentifier == "babel2.feed.toolbar" })
 		let filter = feedViewController.scopeFilterForTesting
 		let readAll = try XCTUnwrap(descendant(of: toolbar, matching: UIButton.self) { $0.accessibilityIdentifier == "babel2.feed.read-all" })
-		let translation = try XCTUnwrap(descendant(of: toolbar, matching: Babel2TranslationToggle.self))
+		let translation = try XCTUnwrap(descendant(of: toolbar, matching: Babel2TranslateIconButton.self))
 		let controls: [UIView] = [readAll, try XCTUnwrap(filter.buttons[.starred]), try XCTUnwrap(filter.buttons[.unread]), try XCTUnwrap(filter.buttons[.all]), translation]
 		let centers = controls.map { $0.convert(CGPoint(x: $0.bounds.midX, y: $0.bounds.midY), to: toolbar) }
 		for (center, expectedX) in zip(centers, [32, 116.5, 201, 285.5, 370] as [CGFloat]) {
@@ -272,23 +272,25 @@ final class Babel2FeedReaderTests: XCTestCase {
 		let tableView = try XCTUnwrap(descendant(of: feedViewController.view, matching: UITableView.self))
 		await waitForRows(in: tableView, count: 3)
 		let toggle = feedViewController.titleTranslationToggleForTesting
-		XCTAssertEqual(toggle.displayedText.main, "原")
+		XCTAssertEqual(toggle.accessibilityValue, "original")
+		XCTAssertEqual(toggle.phase, .idle)
 		XCTAssertTrue(requested.isEmpty, "nothing is requested while off")
 
-		// 打开：只请求屏幕上、还没有译文、且可能需要翻的（英文那条），显示「译 生成中」
+		// 打开：只请求屏幕上、还没有译文、且可能需要翻的（英文那条），图标进入「进行中」（ADR-043）
 		toggle.sendActions(for: .touchUpInside)
 		XCTAssertTrue(enabled)
 		XCTAssertEqual(requested, [["en"]])
-		XCTAssertEqual(toggle.displayedText.main, "译")
-		XCTAssertEqual(toggle.displayedText.caption, "生成中")
-		// 有译文入库：变成「译 原文」
+		XCTAssertEqual(toggle.accessibilityValue, "working")
+		XCTAssertEqual(toggle.phase, .working)
+		// 有译文入库：变成「已译」（墨色方块底）
 		NotificationCenter.default.post(name: .babel2TitleTranslationDidChange, object: nil)
-		XCTAssertEqual(toggle.displayedText.caption, "原文")
-		// 关掉：回到「原 翻译」
+		XCTAssertEqual(toggle.accessibilityValue, "translated")
+		XCTAssertEqual(toggle.phase, .on)
+		// 关掉：回到平时
 		toggle.sendActions(for: .touchUpInside)
 		XCTAssertFalse(enabled)
-		XCTAssertEqual(toggle.displayedText.main, "原")
-		XCTAssertEqual(toggle.displayedText.caption, "翻译")
+		XCTAssertEqual(toggle.accessibilityValue, "original")
+		XCTAssertEqual(toggle.phase, .idle)
 	}
 
 	func testTitleTranslationSkipsWhenNothingOnScreenNeedsIt() async throws {
@@ -303,7 +305,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await waitForRows(in: tableView, count: 1)
 		feedViewController.requestVisibleTitleTranslationsForTesting()
 		XCTAssertTrue(requested.isEmpty, "Chinese-only titles are not sent (no cost, no stuck 生成中)")
-		XCTAssertEqual(feedViewController.titleTranslationToggleForTesting.displayedText.caption, "原文")
+		XCTAssertEqual(feedViewController.titleTranslationToggleForTesting.accessibilityValue, "translated")
 	}
 
 	/// 用户反馈标题翻译慢：标题请求要和正文请求一样关掉思考（只对 OpenRouter 发该字段）。
@@ -1539,6 +1541,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		await waitUntil { viewController.isReaderModeOn }
 	}
 
+	/// ADR-043：取全文时底栏阅读模式图标本身在动（不再在标题下写「正在获取全文…」）；失败时图标轻晃、底栏上方小胶囊提示。
 	func testReaderModeFailureKeepsOriginalAndShowsStatus() async throws {
 		struct Blocked: Error {}
 		let viewController = makeReader(body: "<p>Summary only.</p>", fullTextProvider: { _, _ in
@@ -1549,10 +1552,12 @@ final class Babel2FeedReaderTests: XCTestCase {
 		defer { window.isHidden = true }
 		await waitForReaderRender(viewController)
 		viewController.toggleReaderMode()
-		// 获取中：署名下方一行状态字，正文照常
-		XCTAssertEqual(viewController.statusTextForTesting, Babel2Localization.text(.fetchingFullText))
+		// 获取中：图标在动，标题下不再有状态字，正文照常
+		XCTAssertEqual(viewController.toolbarView.readingModeButton.accessibilityValue, "loading")
+		XCTAssertNil(viewController.statusTextForTesting)
 		await waitUntil { !viewController.isFetchingFullTextForTesting }
-		XCTAssertEqual(viewController.statusTextForTesting, Babel2Localization.text(.unableToFetchFullText))
+		XCTAssertEqual(viewController.toastTextForTesting, Babel2Localization.text(.unableToFetchFullText))
+		XCTAssertEqual(viewController.toolbarView.readingModeButton.accessibilityValue, "off")
 		XCTAssertFalse(viewController.isReaderModeOn)
 		let text = await viewController.readerContentView.articleTextForTesting()
 		XCTAssertEqual(text, "Summary only.")
@@ -1876,27 +1881,39 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(withArticle.toolbarView.translationToggle.accessibilityValue, "original")
 	}
 
-	func testTranslationToggleMatchesFigmaTextStates() {
+	/// 翻译图标（ADR-043，取代 Figma 的「原 / 译」文字开关）：引擎六种状态 → 图标三态；失败轻晃后回平时。
+	func testTranslateIconMapsEngineStatesToThreePhases() {
 		let toolbar = Babel2ReaderToolbarView()
 		toolbar.setTranslationAvailable(true)
-		// Figma Translation Toggle：原文「原 翻译」、翻译中「译 生成中」、已译「译 原文」；失败「原 重试」
-		let expected: [(TranslationButtonState, String, String, String, String)] = [
-			(.original, "原", "翻译", "original", Babel2Localization.text(.translate)),
-			(.cachedAvailable, "原", "翻译", "cached", Babel2Localization.text(.translate)),
-			(.partialCacheAvailable, "原", "翻译", "partial", Babel2Localization.text(.translate)),
-			(.working, "译", "生成中", "working", Babel2Localization.text(.cancelTranslation)),
-			(.translated, "译", "原文", "translated", Babel2Localization.text(.showOriginal)),
-			(.failed, "原", "重试", "failed", Babel2Localization.text(.translate))
+		let expected: [(TranslationButtonState, Babel2StatusIconControl.Phase, String, String)] = [
+			(.original, .idle, "original", Babel2Localization.text(.translate)),
+			(.cachedAvailable, .idle, "cached", Babel2Localization.text(.translate)),
+			(.partialCacheAvailable, .idle, "partial", Babel2Localization.text(.translate)),
+			(.working, .working, "working", Babel2Localization.text(.cancelTranslation)),
+			(.translated, .on, "translated", Babel2Localization.text(.showOriginal)),
+			(.failed, .idle, "failed", Babel2Localization.text(.translate))
 		]
 		let toggle = toolbar.translationToggle
-		for (state, main, caption, value, label) in expected {
+		for (state, phase, value, label) in expected {
 			toolbar.setTranslationState(state)
-			XCTAssertEqual(toggle.displayedText.main, main)
-			XCTAssertEqual(toggle.displayedText.caption, caption)
+			XCTAssertEqual(toggle.phase, phase)
 			XCTAssertEqual(toggle.accessibilityValue, value)
 			XCTAssertEqual(toggle.accessibilityLabel, label)
 			XCTAssertTrue(toggle.isEnabled, "\(value) stays tappable (working = cancel)")
+			XCTAssertEqual(toggle.chip.alpha, phase == .on ? 1 : 0, "filled chip only when translated")
+			XCTAssertEqual(toggle.isAnimatingWorkForTesting, phase == .working, "the glyph itself animates while working")
 		}
+		// 阅读模式图标：取全文时在动，开着 = 墨色方块底
+		toolbar.setReaderModeLoading()
+		XCTAssertEqual(toolbar.readingModeButton.accessibilityValue, "loading")
+		XCTAssertTrue(toolbar.readingModeButton.isAnimatingWorkForTesting)
+		toolbar.setReaderMode(true, available: true)
+		XCTAssertEqual(toolbar.readingModeButton.phase, .on)
+		XCTAssertFalse(toolbar.readingModeButton.isAnimatingWorkForTesting)
+		XCTAssertEqual(toolbar.readingModeButton.chip.alpha, 1)
+		toolbar.setReaderMode(false, available: false)
+		XCTAssertFalse(toolbar.readingModeButton.isEnabled)
+		XCTAssertEqual(toolbar.readingModeButton.chip.alpha, 0)
 	}
 
 	// MARK: - 图片查看器（ADR-040，2026-09-27 用户反馈第 3 条）
@@ -2134,7 +2151,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 
 		viewController.toolbarView.translationToggle.sendActions(for: .touchUpInside)
 		XCTAssertTrue(viewController.isTranslationQueuedForTesting)
-		XCTAssertEqual(viewController.toolbarView.translationToggle.displayedText.caption, "生成中")
+		XCTAssertEqual(viewController.toolbarView.translationToggle.accessibilityValue, "working", "queued translation shows the working icon")
 		try await Task.sleep(for: .milliseconds(300))
 		XCTAssertEqual(FakeTranslationServer.requestCount, 0, "the summary is not translated while the full text is on its way")
 
@@ -2277,11 +2294,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 			XCTAssertEqual(center.x, expectedX, accuracy: 0.5)
 			XCTAssertEqual(center.y - barTop, 22, accuracy: 0.5)
 		}
-		// 底栏：设计稿图标资源、翻译开关 58×44
+		// 底栏：设计稿图标资源；翻译改为与其它格同样 44×44 的状态图标（ADR-043，取代 58×44 文字开关）
 		let toolbar = viewController.toolbarView
 		XCTAssertEqual(toolbar.starIconName, "Babel2ReaderStar")
 		XCTAssertNotNil(toolbar.readButton.image(for: .normal))
-		XCTAssertEqual(toolbar.translationToggle.bounds.size, CGSize(width: 58, height: 44))
+		XCTAssertEqual(toolbar.translationToggle.bounds.size, CGSize(width: 44, height: 44))
 		// 署名两行：作者 / 订阅源（大写）
 		let byline = try XCTUnwrap(descendant(of: viewController.view, matching: UILabel.self) { $0.accessibilityIdentifier == "babel2.article.byline" })
 		XCTAssertEqual(byline.text, "JOHN GRUBER\nFEED")

@@ -78,7 +78,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private let bottomToolbar = UIView()
 	private lazy var scopeFilter = Babel2ScopeFilterControl(selectedScope: scope)
 	private let readAllButton = UIButton(type: .system)
-	private let titleTranslationToggle = Babel2TranslationToggle()
+	/// 标题翻译开关：与阅读页同一个「文/A」状态图标（ADR-043）；开着 = 墨色方块底。
+	private let titleTranslationToggle = Babel2TranslateIconButton()
 	private weak var headerTitleLabel: UILabel?
 	private weak var heroView: Babel2FeedHeroView?
 	private weak var compactBar: Babel2FeedCompactBar?
@@ -290,8 +291,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			readAllButton.heightAnchor.constraint(equalToConstant: 44),
 			Babel2BarLayout.centerX(titleTranslationToggle, in: bottomToolbar, slot: Babel2BarLayout.slots[4]),
 			titleTranslationToggle.centerYAnchor.constraint(equalTo: bottomToolbar.topAnchor, constant: Babel2BarLayout.centerY),
-			titleTranslationToggle.widthAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.width),
-			titleTranslationToggle.heightAnchor.constraint(equalToConstant: Babel2TranslationToggle.size.height)
+			titleTranslationToggle.widthAnchor.constraint(equalToConstant: 44),
+			titleTranslationToggle.heightAnchor.constraint(equalToConstant: 44)
 		])
 	}
 
@@ -399,7 +400,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		if !decelerate { requestVisibleTitleTranslations() }
 	}
 
-	var titleTranslationToggleForTesting: Babel2TranslationToggle { titleTranslationToggle }
+	var titleTranslationToggleForTesting: Babel2TranslateIconButton { titleTranslationToggle }
 	func requestVisibleTitleTranslationsForTesting() { requestVisibleTitleTranslations() }
 
 	/// 仅供自动化测试。

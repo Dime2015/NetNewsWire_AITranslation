@@ -5,7 +5,8 @@ import UIKit
 /// - 72pt 高、贴屏幕最底（含 Home 指示条区域），顶部 0.5pt 分隔线
 /// - 四个设计稿图标（ADR-033 起 21pt）：已读 / 星标 / 下一篇 / 阅读模式，中心 x = 32 / 116.5 / 201 / 285.5，中心 y = 24
 ///   （ADR-020：第 4 格回到 Figma 原样的「阅读模式」，长图移入顶栏 ••• 菜单）
-/// - 右侧 58×44 的「原 / 译」文字开关（Babel2TranslationToggle），中心 x = 370
+/// - 第 4 格「阅读模式」、第 5 格「翻译」是状态图标（ADR-043，2026-09-27 取代原来的线条图标与「原 / 译」文字开关）：
+///   平时线条、进行中图标本身在动、成功墨色方块底、失败轻晃（Babel2StatusIcons.swift）
 /// - 图标颜色为设计稿的次要灰（BabelPalette.mutedInk = #787878）
 /// 全部接通：已读、星标、下一篇（没有下一篇时变灰）、阅读模式、翻译。
 @MainActor
@@ -15,9 +16,9 @@ final class Babel2ReaderToolbarView: UIView {
 
 	let readButton: UIButton
 	let starButton: UIButton
-	let readingModeButton: UIButton
+	let readingModeButton = Babel2ReaderModeIconButton()
 	let nextButton: UIButton
-	let translationToggle = Babel2TranslationToggle()
+	let translationToggle = Babel2TranslateIconButton()
 	let placeholderButtons: [UIButton]
 	var onToggleRead: (() -> Void)?
 	var onToggleStar: (() -> Void)?
@@ -39,7 +40,6 @@ final class Babel2ReaderToolbarView: UIView {
 		starButton = Self.makeButton(identifier: "babel2.article.toolbar.star")
 		let next = Self.makeButton(identifier: "babel2.article.toolbar.next")
 		nextButton = next
-		readingModeButton = Self.makeButton(identifier: "babel2.article.toolbar.reading-mode")
 		placeholderButtons = []
 		super.init(frame: frame)
 		backgroundColor = BabelPalette.background
@@ -47,7 +47,6 @@ final class Babel2ReaderToolbarView: UIView {
 
 		setIcon("Babel2ReaderNext", on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
-		readingModeButton.accessibilityLabel = Babel2Localization.text(.readingMode)
 		readingModeButton.addTarget(self, action: #selector(readingModeTapped), for: .touchUpInside)
 		next.isEnabled = false
 		next.addTarget(self, action: #selector(nextTapped), for: .touchUpInside)
@@ -56,6 +55,7 @@ final class Babel2ReaderToolbarView: UIView {
 		starButton.addTarget(self, action: #selector(starTapped), for: .touchUpInside)
 		translationToggle.addTarget(self, action: #selector(translateTapped), for: .touchUpInside)
 		translationToggle.translatesAutoresizingMaskIntoConstraints = false
+		readingModeButton.translatesAutoresizingMaskIntoConstraints = false
 
 		let separator = UIView()
 		separator.backgroundColor = BabelPalette.hairline
@@ -72,7 +72,7 @@ final class Babel2ReaderToolbarView: UIView {
 		let controls: [UIView] = [readButton, starButton, next, readingModeButton, translationToggle]
 		for (control, center) in zip(controls, Self.slotCenters) {
 			addSubview(control)
-			let size = control === translationToggle ? Babel2TranslationToggle.size : CGSize(width: 44, height: 44)
+			let size = CGSize(width: 44, height: 44)
 			NSLayoutConstraint.activate([
 				Babel2BarLayout.centerX(control, in: self, slot: center),
 				control.centerYAnchor.constraint(equalTo: topAnchor, constant: Babel2BarLayout.centerY),
@@ -89,12 +89,25 @@ final class Babel2ReaderToolbarView: UIView {
 		setReaderMode(false, available: true)
 	}
 
-	/// 阅读模式按钮：关 = 设计稿图标（次要灰）；开 = 既有的加粗版图标（主墨色）。没有原文地址时不可点。
+	/// 阅读模式按钮（ADR-043）：关 = 线条纸页；开 = 墨色方块底、纸页反白。没有原文地址时不可点。
 	func setReaderMode(_ on: Bool, available: Bool) {
-		setIcon(on ? "BabelReaderReadingModeActive" : "BabelReaderReadingMode", on: readingModeButton)
-		readingModeButton.tintColor = on ? BabelPalette.ink : BabelPalette.mutedInk
+		isReaderModeLoading = false
 		readingModeButton.isEnabled = available
+		readingModeButton.setPhase(on ? .on : .idle)
 		readingModeButton.accessibilityValue = on ? "on" : "off"
+	}
+
+	/// 正在取全文：纸页的三行字依次明灭（取代标题下的「正在获取全文…」）。
+	private(set) var isReaderModeLoading = false
+	func setReaderModeLoading() {
+		isReaderModeLoading = true
+		readingModeButton.setPhase(.working)
+		readingModeButton.accessibilityValue = "loading"
+	}
+
+	/// 取全文失败：图标轻晃一下（提示文字由阅读页用小胶囊给）。
+	func readerModeFailed() {
+		readingModeButton.shake()
 	}
 
 	required init?(coder: NSCoder) { nil }
