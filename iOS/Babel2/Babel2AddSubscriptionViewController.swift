@@ -96,8 +96,8 @@ final class Babel2AddSubscriptionViewController: UIViewController, UITableViewDa
 		box.layer.cornerRadius = 10
 		box.layer.cornerCurve = .continuous
 		box.translatesAutoresizingMaskIntoConstraints = false
-		let glass = UIImageView(image: UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)))
-		glass.tintColor = BabelPalette.mutedInk
+		let glass = UIImageView(image: Babel2Icon.search.image(size: 18))
+		glass.tintColor = Babel2Icon.tint
 		glass.contentMode = .scaleAspectFit
 		glass.translatesAutoresizingMaskIntoConstraints = false
 		searchField.placeholder = Babel2Localization.text(.addSubscriptionPlaceholder)
@@ -440,8 +440,8 @@ private final class Babel2DiscoveryGroupHeader: UIControl {
 		label.text = count > 0 ? "\(title) · \(count)" : title
 		label.font = Babel2SettingsStyle.sectionHeaderFont
 		label.textColor = Babel2SettingsStyle.secondaryText
-		let chevron = UIImageView(image: UIImage(named: "Babel2SettingsChevronDown"))
-		chevron.tintColor = Babel2SettingsStyle.secondaryText
+		let chevron = UIImageView(image: Babel2Icon.chevronDown.image(size: 16))
+		chevron.tintColor = Babel2Icon.tint
 		chevron.transform = expanded ? .identity : CGAffineTransform(rotationAngle: -.pi / 2)
 		for view in [label, chevron] as [UIView] {
 			view.isUserInteractionEnabled = false
@@ -493,14 +493,14 @@ final class Babel2DiscoveryResultCell: UITableViewCell {
 		iconView.clipsToBounds = true
 		iconView.layer.cornerRadius = 8
 		iconView.layer.cornerCurve = .continuous
-		iconView.tintColor = BabelPalette.mutedInk
+		iconView.tintColor = Babel2Icon.tint
 		titleLabel.font = Babel2Type.resultTitle
 		titleLabel.textColor = BabelPalette.ink
 		titleLabel.numberOfLines = 2
 		subtitleLabel.font = Babel2Type.resultSubtitle
 		subtitleLabel.textColor = BabelPalette.tertiaryInk
 		subtitleLabel.numberOfLines = 2
-		actionButton.tintColor = BabelPalette.mutedInk
+		actionButton.tintColor = Babel2Icon.tint
 		actionButton.accessibilityIdentifier = "babel2.add-subscription.action"
 		actionButton.addTarget(self, action: #selector(actionTapped), for: .touchUpInside)
 		spinner.color = BabelPalette.mutedInk
@@ -544,20 +544,21 @@ final class Babel2DiscoveryResultCell: UITableViewCell {
 		titleLabel.text = result.title
 		subtitleLabel.text = result.subtitle ?? result.feedURL
 		stateForTesting = state
-		let symbol: String
+		// 统一图标集（ADR-065）：订阅 = 圆 + 加号，已订阅 = 实心圆里镂空的勾
+		let icon: Babel2Icon?
 		switch state {
-		case .notSubscribed: symbol = "plus.circle"
-		case .subscribed: symbol = "checkmark.circle.fill"
-		case .busy: symbol = ""
+		case .notSubscribed: icon = .subscribe
+		case .subscribed: icon = .subscribed
+		case .busy: icon = nil
 		}
-		actionButton.setImage(symbol.isEmpty ? nil : UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)), for: .normal)
+		actionButton.setImage(icon?.image(size: 26), for: .normal)
 		actionButton.isEnabled = state != .busy
 		actionButton.accessibilityLabel = Babel2Localization.text(state == .subscribed ? .unsubscribe : .subscribe)
 		if state == .busy { spinner.startAnimating() } else { spinner.stopAnimating() }
 		accessibilityLabel = [result.title, result.subtitle].compactMap { $0 }.joined(separator: ", ")
 
 		// 图标：先显示类别符号，取到网络图标再替换
-		iconView.image = UIImage(systemName: Self.symbol(for: result.kind), withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))
+		iconView.image = Self.icon(for: result.kind).image(size: 20)
 		iconView.contentMode = .center
 		iconView.backgroundColor = Babel2SettingsStyle.inputBackground
 		iconTask?.cancel()
@@ -571,12 +572,12 @@ final class Babel2DiscoveryResultCell: UITableViewCell {
 		}
 	}
 
-	private static func symbol(for kind: Babel2DiscoveryKind) -> String {
+	private static func icon(for kind: Babel2DiscoveryKind) -> Babel2Icon {
 		switch kind {
-		case .website: return "globe"
-		case .podcast: return "mic"
-		case .youtube: return "play.rectangle"
-		case .reddit: return "bubble.left.and.bubble.right"
+		case .website: return .globe
+		case .podcast: return .podcast
+		case .youtube: return .video
+		case .reddit: return .chat
 		}
 	}
 

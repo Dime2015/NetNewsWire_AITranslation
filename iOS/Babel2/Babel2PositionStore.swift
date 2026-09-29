@@ -182,7 +182,7 @@ final class Babel2PositionStore {
 /// 外观与阅读页的小提示同款（墨色胶囊、纸色字）；出现时上浮 8pt 淡入，收起时淡出（ADR-034）。
 @MainActor
 final class Babel2NewArticlesPill: UIControl {
-	private let arrow = UIImageView(image: UIImage(systemName: "arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)))
+	private let arrow = UIImageView(image: Babel2Icon.arrowUp.image(size: 15))
 	private let label = UILabel()
 	private(set) var count = 0
 

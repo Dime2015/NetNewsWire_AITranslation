@@ -184,19 +184,20 @@ final class Babel2SettingsHomeViewController: Babel2SettingsPage {
 			}
 		}
 
-		/// Figma 只有「翻译」是正式矢量图标；其余 7 个是生成的占位图，按用户决定用系统图标、统一次要灰。
-		var icon: UIImage? {
-			let configuration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+		/// 统一图标集（ADR-065），设置分类图标 20pt。
+		@MainActor var icon: UIImage? {
+			let icon: Babel2Icon
 			switch self {
-			case .accounts: return UIImage(systemName: "person.crop.circle", withConfiguration: configuration)
-			case .subscriptions: return UIImage(systemName: "dot.radiowaves.up.forward", withConfiguration: configuration)
-			case .timeline: return UIImage(systemName: "list.bullet", withConfiguration: configuration)
-			case .reader: return UIImage(systemName: "doc.plaintext", withConfiguration: configuration)
-			case .translation: return UIImage(named: "Babel2SettingsTranslation")
-			case .appearance: return UIImage(systemName: "circle.lefthalf.filled", withConfiguration: configuration)
-			case .notifications: return UIImage(systemName: "bell", withConfiguration: configuration)
-			case .support: return UIImage(systemName: "questionmark.circle", withConfiguration: configuration)
+			case .accounts: icon = .account
+			case .subscriptions: icon = .feed
+			case .timeline: icon = .list
+			case .reader: icon = .readerMode
+			case .translation: icon = .translate
+			case .appearance: icon = .appearance
+			case .notifications: icon = .bell
+			case .support: icon = .help
 			}
+			return icon.image(size: Babel2Icon.Size.settings)
 		}
 	}
 

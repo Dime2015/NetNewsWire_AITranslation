@@ -28,7 +28,7 @@ final class Babel2ReaderToolbarView: UIView {
 
 	private(set) var isRead = false
 	private(set) var isStarred = false
-	/// 仅供自动化测试：当前已读 / 星标按钮用的资源名。
+	/// 仅供自动化测试：当前已读 / 星标按钮用的图标名（Babel2Icon 的原始值）。
 	private(set) var readIconName = ""
 	private(set) var starIconName = ""
 	/// 每个按钮当前显示的图标名（换图标时才做交叉淡入）
@@ -45,7 +45,7 @@ final class Babel2ReaderToolbarView: UIView {
 		backgroundColor = BabelPalette.background
 		accessibilityIdentifier = "babel2.article.toolbar"
 
-		setIcon("Babel2ReaderNext", on: next)
+		setIcon(.chevronDown, on: next)
 		next.accessibilityLabel = Babel2Localization.text(.nextArticle)
 		readingModeButton.addTarget(self, action: #selector(readingModeTapped), for: .touchUpInside)
 		next.isEnabled = false
@@ -115,8 +115,9 @@ final class Babel2ReaderToolbarView: UIView {
 	/// 已读 = 实心圆，未读 = 空心圈（用户 2026-09-25 决定）；无障碍说明描述「点了会怎样」。
 	func setRead(_ read: Bool) {
 		isRead = read
-		readIconName = read ? "Babel2ReaderReadStateFilled" : "Babel2ReaderReadState"
-		setIcon(readIconName, on: readButton)
+		let readIcon: Babel2Icon = read ? .readOn : .readOff
+		readIconName = readIcon.rawValue
+		setIcon(readIcon, on: readButton)
 		readButton.accessibilityLabel = Babel2Localization.text(read ? .markUnread : .markRead)
 		readButton.accessibilityValue = read ? "read" : "unread"
 	}
@@ -124,8 +125,9 @@ final class Babel2ReaderToolbarView: UIView {
 	func setStarred(_ starred: Bool) {
 		let lightsUp = starred && !isStarred
 		isStarred = starred
-		starIconName = starred ? "Babel2ReaderStarFilled" : "Babel2ReaderStar"
-		setIcon(starIconName, on: starButton)
+		let starIcon: Babel2Icon = starred ? .starOn : .star
+		starIconName = starIcon.rawValue
+		setIcon(starIcon, on: starButton)
 		starButton.accessibilityLabel = Babel2Localization.text(starred ? .unstar : .star)
 		starButton.accessibilityValue = starred ? "starred" : "unstarred"
 		// 星标点亮时轻轻放大再回原（1.12 → 1，不回弹）；减弱动态效果时只有交叉淡入
@@ -155,28 +157,23 @@ final class Babel2ReaderToolbarView: UIView {
 		nextButton.isEnabled = available
 	}
 
-	/// 视觉修正（ADR-052）：已读的圆缩一点、向下箭头缩一点，星形不动。
-	static func optical(for iconName: String) -> CGFloat {
-		if iconName.contains("ReadState") { return Babel2Type.BarOptical.circle }
-		if iconName.contains("Next") { return Babel2Type.BarOptical.chevron }
-		return Babel2Type.BarOptical.star
-	}
-
 	private static func makeButton(identifier: String) -> UIButton {
 		let button = UIButton(type: .system)
-		button.tintColor = BabelPalette.mutedInk
+		button.tintColor = Babel2Icon.tint
 		button.accessibilityIdentifier = identifier
 		button.translatesAutoresizingMaskIntoConstraints = false
 		return button
 	}
 
-	/// 设计稿图标（模板图，按 Babel2Type.toolbarIcon 重画），正常态为次要灰；不可点时用更浅的中性灰，不用主题色。
+	/// 统一图标集（ADR-065，底栏 21pt），正常态为图标色（深一档）；不可点时用更浅的中性灰，不用主题色。
+	/// 圆、星、箭头的视觉大小在设计时就已配平，不再逐个缩放（原 ADR-052 的视觉修正作废）。
 	/// 换图标时交叉淡入（ADR-034，0.22 秒），不再瞬间跳变；同一个图标不重设。
-	private func setIcon(_ name: String, on button: UIButton) {
+	private func setIcon(_ icon: Babel2Icon, on button: UIButton) {
 		let key = ObjectIdentifier(button)
+		let name = icon.rawValue
 		guard iconNames[key] != name else { return }
-		let image = Babel2Type.barIcon(UIImage(named: name), optical: Self.optical(for: name))
-		assert(image != nil, "missing reader icon asset \(name)")
+		let image = icon.image(size: Babel2Icon.Size.bar)
+		assert(image != nil, "missing icon asset \(icon.assetName)")
 		let isFirstIcon = iconNames[key] == nil
 		iconNames[key] = name
 		let change = {

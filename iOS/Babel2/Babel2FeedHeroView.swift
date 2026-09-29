@@ -205,7 +205,7 @@ final class Babel2FeedCompactBar: UIView {
 		backdrop.translatesAutoresizingMaskIntoConstraints = false
 		addSubview(backdrop)
 
-		backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.compactBackSymbol, weight: .semibold)), for: .normal)
+		backButton.setImage(Babel2Icon.back.image(size: Babel2Icon.Size.top), for: .normal)
 		backButton.tintColor = BabelPalette.ink
 		backButton.accessibilityLabel = "Back"
 		backButton.accessibilityIdentifier = "babel2.feed.back"
@@ -238,7 +238,7 @@ final class Babel2FeedCompactBar: UIView {
 		hairline.alpha = 0
 		hairline.translatesAutoresizingMaskIntoConstraints = false
 
-		searchButton.setImage(UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.compactSearchSymbol, weight: .medium)), for: .normal)
+		searchButton.setImage(Babel2Icon.search.image(size: Babel2Icon.Size.top), for: .normal)
 		searchButton.tintColor = BabelPalette.ink
 		searchButton.accessibilityLabel = Babel2Localization.text(.search)
 		searchButton.accessibilityIdentifier = "babel2.feed.search"
@@ -252,7 +252,7 @@ final class Babel2FeedCompactBar: UIView {
 		refreshGlyph.translatesAutoresizingMaskIntoConstraints = false
 		refreshButton.addSubview(refreshGlyph)
 		setSyncing(false)
-		moreButton.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderMore"), side: Babel2Type.readerTopIcon), for: .normal)
+		moreButton.setImage(Babel2Icon.more.image(size: Babel2Icon.Size.top), for: .normal)
 		moreButton.tintColor = BabelPalette.ink
 		moreButton.accessibilityLabel = Babel2Localization.text(.more)
 		moreButton.accessibilityIdentifier = "babel2.feed.more"

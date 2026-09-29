@@ -18,8 +18,8 @@ final class Babel2FeedSearchField: UIView, UITextFieldDelegate {
 		box.layer.cornerCurve = .continuous
 		box.translatesAutoresizingMaskIntoConstraints = false
 
-		let glass = UIImageView(image: UIImage(systemName: "magnifyingglass", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)))
-		glass.tintColor = BabelPalette.mutedInk
+		let glass = UIImageView(image: Babel2Icon.search.image(size: 18))
+		glass.tintColor = Babel2Icon.tint
 		// 固定 16×16、按原比例显示（2026-09-25 用户截图：未定尺寸时被输入框横向拉长变形）
 		glass.contentMode = .scaleAspectFit
 		glass.setContentHuggingPriority(.required, for: .horizontal)

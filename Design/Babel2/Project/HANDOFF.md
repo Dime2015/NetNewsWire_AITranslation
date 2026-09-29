@@ -4,7 +4,11 @@
 
 **先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～053、LESSONS.md 第 30～58 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**最近完成（第六轮）：跨源列表长按文章的来源菜单 + 菜单高亮圆角（ADR-063 / 064）——2026-09-27 用户真机验收通过，一个提交已推送；下一任务待用户指定**
+**当前（第八轮）：图标集换成「Reeder 式」（ADR-066）——已接入，待用户真机验收（未提交）**
+- 明细见 STATUS 顶部「第八轮」。第七轮「瑞士几何」（ADR-065）的接入代码是本轮的底子、没有单独提交，验收通过后两轮合成一个提交（不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`）。
+- 改图标：改 `Design/Babel2/IconSet/icons_reeder.py` → `python3 make.py --export`（重新导出资源）→ `python3 make_reeder_review.py`（更新对比页）。阅读模式四道线若要改，`Babel2StatusIcons.swift` 的 `lineSpecs` 必须同步。
+
+**上一轮（第六轮）：跨源列表长按文章的来源菜单 + 菜单高亮圆角（ADR-063 / 064）——2026-09-27 用户真机验收通过，一个提交已推送；下一任务待用户指定**
 - 明细见 STATUS 顶部「第六轮」。用户选择：所有跨源列表；菜单含打开这个源、加星标 / 取消星标、编辑订阅源、取消订阅该源；取消订阅确认文字全 App 写明「包括加过星标的」。高亮圆角为用户在做这一轮时追加。
 - 已一个提交推送（不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`）。
 - 若用户 Xcode 报「Missing package product」：是其 DerivedData 里没取依赖包（与代码无关），File → Packages → Resolve Package Versions；不行再 Reset Package Caches + Clean Build Folder。

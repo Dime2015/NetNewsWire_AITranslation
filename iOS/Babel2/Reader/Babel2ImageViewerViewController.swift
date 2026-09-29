@@ -201,7 +201,7 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		closeDisc.isUserInteractionEnabled = false
 		closeDisc.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(closeDisc)
-		closeButton.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderClose"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
+		closeButton.setImage(Babel2Icon.close.image(size: Babel2Icon.Size.top), for: .normal)
 		closeButton.tintColor = BabelPalette.ink
 		closeButton.accessibilityLabel = Babel2Localization.text(.close)
 		closeButton.accessibilityIdentifier = "babel2.image-viewer.close"
@@ -228,7 +228,7 @@ final class Babel2ImageViewerViewController: UIViewController, UIScrollViewDeleg
 		guard Self.meaningfulLink(source.linkURL, imageURL: source.imageURL) != nil else { return }
 		var configuration = UIButton.Configuration.filled()
 		configuration.title = Babel2Localization.text(.openLink)
-		configuration.image = UIImage(systemName: "arrow.up.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+		configuration.image = Babel2Icon.openLink.image(size: 16)
 		configuration.imagePlacement = .trailing
 		configuration.imagePadding = 6
 		configuration.baseBackgroundColor = BabelPalette.ink

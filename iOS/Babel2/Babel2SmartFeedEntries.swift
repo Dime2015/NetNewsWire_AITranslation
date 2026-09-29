@@ -17,13 +17,13 @@ extension Babel2SmartFeed {
 		}
 	}
 
-	/// 行首的系统符号（与订阅源图标同一位置、同样大小）。
-	var symbolName: String {
+	/// 行首图标（统一图标集，ADR-065；与订阅源图标同一位置）。
+	var icon: Babel2Icon {
 		switch self {
-		case .today: return "sun.max"
-		case .all: return "tray.full"
-		case .foreign: return "globe"
-		case .starred: return "star"
+		case .today: return .today
+		case .all: return .inbox
+		case .foreign: return .globe
+		case .starred: return .star
 		}
 	}
 }
@@ -52,8 +52,8 @@ final class Babel2SmartEntryRow: UIControl {
 		highlight.alpha = 0
 		highlight.isUserInteractionEnabled = false
 
-		iconView.image = UIImage(systemName: kind.symbolName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
-		iconView.tintColor = BabelPalette.mutedInk
+		iconView.image = kind.icon.image(size: Babel2Icon.Size.entry)
+		iconView.tintColor = Babel2Icon.tint
 		iconView.contentMode = .center
 
 		titleLabel.text = Babel2Localization.text(kind.titleKey(scope: scope), bundle: bundle)

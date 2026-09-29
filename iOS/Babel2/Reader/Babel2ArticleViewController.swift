@@ -794,13 +794,13 @@ final class Babel2ArticleViewController: UIViewController {
 		bar.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(bar)
 
-		let close = makeBarButton(image: Babel2Type.icon(UIImage(named: "Babel2ReaderClose"), side: Babel2Type.readerTopIcon), key: .back, identifier: "babel2.article.back")
+		let close = makeBarButton(image: Babel2Icon.close.image(size: Babel2Icon.Size.top), key: .back, identifier: "babel2.article.back")
 		close.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-		let more = makeBarButton(image: Babel2Type.icon(UIImage(named: "Babel2ReaderMore"), side: Babel2Type.readerTopIcon), key: .more, identifier: "babel2.article.more")
+		let more = makeBarButton(image: Babel2Icon.more.image(size: Babel2Icon.Size.top), key: .more, identifier: "babel2.article.more")
 		more.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
 		more.isEnabled = !makeMoreItems().isEmpty
-		// 顶栏右上是普通系统分享（合同最新决定），设计稿无对应图标，用系统分享符号按同一灰度与视觉尺寸
-		let shareImage = UIImage(systemName: "square.and.arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.readerTopSymbol, weight: .medium))
+		// 顶栏右上是普通系统分享（合同最新决定）；图标用统一图标集（ADR-065）
+		let shareImage = Babel2Icon.share.image(size: Babel2Icon.Size.top)
 		let share = makeBarButton(image: shareImage, key: .share, identifier: "babel2.article.share")
 		share.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
 		[close, more, share].forEach(bar.addSubview)
@@ -842,14 +842,14 @@ final class Babel2ArticleViewController: UIViewController {
 	private func makeMoreItems() -> [Babel2MenuItem] {
 		var items = [Babel2MenuItem]()
 		if article.url != nil, feedReaderModeSetting != nil {
-			items.append(Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(named: "BabelReaderReadingMode"),
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: Babel2Icon.readerMode.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.article.feed-always-reading-mode", isOn: isFeedAlwaysReaderMode) { [weak self] in self?.toggleFeedAlwaysReaderMode() })
 		}
 		if article.url != nil {
-			items.append(Babel2MenuItem(title: Babel2Localization.text(.openOriginal), image: UIImage(systemName: "safari"),
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.openOriginal), image: Babel2Icon.browser.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.article.open-original") { [weak self] in self?.originalTapped() })
 		}
-		items.append(Babel2MenuItem(title: Babel2Localization.text(.longImage), image: UIImage(named: "BabelReaderShareLongImage"),
+		items.append(Babel2MenuItem(title: Babel2Localization.text(.longImage), image: Babel2Icon.longImage.image(size: Babel2Icon.Size.menu),
 			identifier: "babel2.article.long-image", isEnabled: !isGeneratingLongImage) { [weak self] in self?.generateLongImage() })
 		return items
 	}
@@ -857,7 +857,7 @@ final class Babel2ArticleViewController: UIViewController {
 	private func makeBarButton(image: UIImage?, key: Babel2LocalizationKey, identifier: String) -> UIButton {
 		let button = UIButton(type: .system)
 		button.setImage(image?.withRenderingMode(.alwaysTemplate), for: .normal)
-		button.tintColor = BabelPalette.mutedInk
+		button.tintColor = Babel2Icon.tint
 		button.accessibilityLabel = Babel2Localization.text(key)
 		button.accessibilityIdentifier = identifier
 		button.translatesAutoresizingMaskIntoConstraints = false

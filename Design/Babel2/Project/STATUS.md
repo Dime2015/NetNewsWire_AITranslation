@@ -24,6 +24,21 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 第八轮：图标集换成「Reeder 式」（2026-09-27，ADR-066；实现完成，待真机验收，未提交）
+
+- 用户看完对比页 `Design/Babel2/IconSet/review-reeder.html` 后「选这套」。设计源 `icons_reeder.py`，`make.py --export` 已重新导出 47 个素材（资源名不变）。
+- 代码：只改 `iOS/Babel2/Babel2Icons.swift` 的说明注释。测试：`testUnifiedIconSetAcrossBars` 里「全部标为已读」的取样改为实心圆 + 挖空的勾。
+- 第七轮（下一节）的接入代码全部保留、没有单独提交，本轮与它合成一个提交。
+- 只能真机确认：新图标在 18–22pt 下的大小与轻重，尤其实心件（全部已读、账户、首页开关）是否显重。
+- 用户第一次真机看后追加：首页顶栏设置 / 添加 22 → 28pt（`Babel2Icon.Size.homeTop`，改 `Babel2RootViewController.swift` 两行）；已直接编译装到用户 iPhone 17（xcodebuild + devicectl）。
+
+## 第七轮：全 App 统一图标集（2026-09-27，ADR-065；实现与自动化完成，待真机验收，未提交）
+
+- 设计：`Design/Babel2/IconSet/`（`icons.py` 设计源与规则、`make.py` 生成审阅页 / 导出资源、`review.html` 全套审阅页、`directions.html` 被否的四种构造方法、`BRIEF.md` 设计要求、`svg/`）。
+- 接入：新资源 `iOS/Babel2/Assets.xcassets/Babel2Icons/`（47 个矢量模板图）；新文件 `Babel2Icons.swift`；改 `Babel2GlassMenu`、`Babel2LibraryEditing`、`Babel2LibraryViewControllers`、`Babel2ScopeFilterControl`、`Babel2StatusIcons`、`Babel2Type`（删旧画法）、`Babel2RootViewController`、`Babel2SmartFeedEntries`、`Babel2FeedHeroView`、`Babel2FeedSearch`、`Babel2AddSubscriptionViewController`、`Babel2PositionStore`、`Babel2SyncSpinner`、`Reader/Babel2ReaderToolbarView`、`Reader/Babel2ArticleViewController`、`Reader/Babel2ImageViewerViewController`、`Reader/WebKit/Babel2BrowserViewController`、`Settings/Babel2SettingsComponents`、`Settings/Babel2SettingsPages`、`Settings/Babel2SettingsEditors`。
+- 测试：新增 `testUnifiedIconSetAcrossBars`（取代 ADR-052 的底栏视觉修正测试），改 3 项（星标图标名、阅读模式末道线比例下限、刷新圆底取样点）。用临时测试让 App 自己画出全部 47 个图标、阅读页底栏、长按菜单（浅 / 深）核对后删除。反向验证：图标色改回旧灰、角标挪位 → 测试失败，恢复后 `cmp` 一致。全量 216/216、UI Driver 1/1（VALIDATION）。
+- 只能真机确认：各处图标的大小和轻重（尤其菜单 20pt、首页入口 18pt、顶栏 22pt）、深一档的颜色在真机上的感觉。
+
 ## 第六轮：跨源列表长按文章 + 菜单高亮圆角（2026-09-27，ADR-063 / 064；用户同日真机验收通过，已提交推送）
 
 - **长按文章的来源菜单（ADR-063）**：`Babel2LibraryViewControllers.swift`（`Babel2ArticleSourceActions`、跨源列表长按、菜单、改名同步、取消订阅后原地拿掉）；`Babel2SceneComposition.swift`（跨源入口接线）；`Babel2Localization.swift` + xcstrings（+2；取消订阅确认文字换成「包括加过星标的」）。

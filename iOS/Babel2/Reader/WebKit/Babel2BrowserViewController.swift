@@ -140,8 +140,8 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate,
 			view.addSubview($0)
 		}
 		let close = UIButton(type: .system)
-		close.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderClose"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
-		close.tintColor = BabelPalette.mutedInk
+		close.setImage(Babel2Icon.close.image(size: Babel2Icon.Size.top), for: .normal)
+		close.tintColor = Babel2Icon.tint
 		close.accessibilityLabel = Babel2Localization.text(.back)
 		close.accessibilityIdentifier = "babel2.browser.close"
 		close.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
@@ -189,8 +189,8 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate,
 
 	/// 右上角「•••」：与阅读页顶栏同一个图标，位置与 ✕ 左右对称（x = 屏宽 − 32）。抽正文期间换成小转圈。
 	private func configureMoreButton(in bar: UIView, alignedWith close: UIView) {
-		moreButton.setImage(Babel2Type.icon(UIImage(named: "Babel2ReaderMore"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
-		moreButton.tintColor = BabelPalette.mutedInk
+		moreButton.setImage(Babel2Icon.more.image(size: Babel2Icon.Size.top), for: .normal)
+		moreButton.tintColor = Babel2Icon.tint
 		moreButton.accessibilityLabel = Babel2Localization.text(.more)
 		moreButton.accessibilityIdentifier = "babel2.browser.more"
 		moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
@@ -220,12 +220,12 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate,
 	func makeMoreMenuSections() -> [[Babel2MenuItem]] {
 		var translate = [Babel2MenuItem]()
 		if onTranslatePage != nil {
-			translate.append(Babel2MenuItem(title: Babel2Localization.text(.translatePage), image: UIImage(systemName: "translate"),
+			translate.append(Babel2MenuItem(title: Babel2Localization.text(.translatePage), image: Babel2Icon.translate.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.browser.translate-page", isEnabled: extractTask == nil && webView.url != nil) { [weak self] in
 				self?.translatePage()
 			})
 		}
-		let adBlock = [Babel2MenuItem(title: Babel2Localization.text(.blockAds), image: UIImage(systemName: "shield"),
+		let adBlock = [Babel2MenuItem(title: Babel2Localization.text(.blockAds), image: Babel2Icon.shield.image(size: Babel2Icon.Size.menu),
 			identifier: "babel2.browser.adblock", isOn: isAdBlockOn, isEnabled: adBlockList != nil) { [weak self] in
 			self?.setAdBlock(!(self?.isAdBlockOn ?? true))
 		}]
@@ -351,12 +351,12 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate,
 		separator.translatesAutoresizingMaskIntoConstraints = false
 		toolbar.addSubview(separator)
 
-		let items: [(UIButton, String, Babel2LocalizationKey, String, Selector)] = [
-			(backButton, "chevron.left", .browserBack, "babel2.browser.back", #selector(backTapped)),
-			(forwardButton, "chevron.right", .browserForward, "babel2.browser.forward", #selector(forwardTapped)),
-			(reloadButton, "arrow.clockwise", .browserReload, "babel2.browser.reload", #selector(reloadTapped)),
-			(shareButton, "square.and.arrow.up", .share, "babel2.browser.share", #selector(shareTapped)),
-			(safariButton, "safari", .openInSafari, "babel2.browser.safari", #selector(safariTapped))
+		let items: [(UIButton, Babel2Icon, Babel2LocalizationKey, String, Selector)] = [
+			(backButton, .back, .browserBack, "babel2.browser.back", #selector(backTapped)),
+			(forwardButton, .forward, .browserForward, "babel2.browser.forward", #selector(forwardTapped)),
+			(reloadButton, .refresh, .browserReload, "babel2.browser.reload", #selector(reloadTapped)),
+			(shareButton, .share, .share, "babel2.browser.share", #selector(shareTapped)),
+			(safariButton, .browser, .openInSafari, "babel2.browser.safari", #selector(safariTapped))
 		]
 		// 与阅读页底栏相同的五个中心位置（Babel2BarLayout：x = 32 / 116.5 / 201 / 285.5 / 370，中心 y = 24）
 		let centers = Babel2BarLayout.slots
@@ -370,10 +370,10 @@ final class Babel2BrowserViewController: UIViewController, WKNavigationDelegate,
 			separator.topAnchor.constraint(equalTo: toolbar.topAnchor),
 			separator.heightAnchor.constraint(equalToConstant: 0.5)
 		]
-		for ((button, symbol, key, identifier, action), center) in zip(items, centers) {
-			// 设计稿无浏览器图标：系统符号，按阅读页图标的灰度与视觉尺寸
-			button.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.toolbarSymbol, weight: .medium)), for: .normal)
-			button.tintColor = BabelPalette.mutedInk
+		for ((button, icon, key, identifier, action), center) in zip(items, centers) {
+			// 统一图标集（ADR-065），与阅读页底栏同样 21pt、同一图标色
+			button.setImage(icon.image(size: Babel2Icon.Size.bar), for: .normal)
+			button.tintColor = Babel2Icon.tint
 			button.accessibilityLabel = Babel2Localization.text(key)
 			button.accessibilityIdentifier = identifier
 			button.addTarget(self, action: action, for: .touchUpInside)

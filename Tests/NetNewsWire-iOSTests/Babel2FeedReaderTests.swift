@@ -310,9 +310,11 @@ final class Babel2FeedReaderTests: XCTestCase {
 			let offset = Int(point.y) * cgImage.bytesPerRow + Int(point.x) * 4
 			return CGFloat(bytes[offset + 3]) / 255
 		}
-		// (4, 12)：圆的左侧、箭头之外
-		XCTAssertGreaterThan(alpha(at: CGPoint(x: 4, y: 12), showsBackground: true), 0.1)
-		XCTAssertEqual(alpha(at: CGPoint(x: 4, y: 12), showsBackground: false), 0, accuracy: 0.01)
+		// (12, 12)：同步圆弧的圆心（统一图标集的圆弧半径 7，圆心空着，ADR-065）——有圆底是灰的，没有是透明的
+		XCTAssertGreaterThan(alpha(at: CGPoint(x: 12, y: 12), showsBackground: true), 0.1)
+		XCTAssertEqual(alpha(at: CGPoint(x: 12, y: 12), showsBackground: false), 0, accuracy: 0.01)
+		// 圆弧本身画出来了（左侧 x = 5 落在弧上）
+		XCTAssertGreaterThan(alpha(at: CGPoint(x: 5, y: 12), showsBackground: false), 0.5)
 	}
 
 	/// 同步箭头：开始时加上转动；停止后不再算作转动，图形最终回到正位（模型值无旋转）。
@@ -2545,39 +2547,57 @@ final class Babel2FeedReaderTests: XCTestCase {
 		browser.dismiss(animated: false)
 	}
 
-	// MARK: - 底栏图标统一（ADR-052）
+	// MARK: - 统一图标集（ADR-065，取代 ADR-052 的逐个视觉修正）
 
-	/// 三条底栏同一比例：设计稿图标一律画进 21pt 画布；圆、向下箭头按视觉缩小，星、横线不动；
-	/// 首页 / 列表页档位里的星和横线与阅读页一样大；「全部已读」的勾是镂空的；翻译符号 11.5pt。
-	func testBottomBarIconsShareOneScaleWithOpticalCorrections() {
+	/// 47 个图标都在、都是 24pt 模板图；三条底栏的图标一律 21pt（首页 / 列表档位没选中 21、选中 16）；
+	/// 「全部标为已读」是空心圆 + 勾；翻译「文A」右下角空着给角标，实心 / 空心角标都落在那里；
+	/// 阅读模式四道线与图标集同一组坐标（最后一道短）；图标颜色「深一档」。
+	func testUnifiedIconSetAcrossBars() {
+		for icon in Babel2Icon.allCases {
+			let asset = icon.asset
+			XCTAssertNotNil(asset, icon.assetName)
+			XCTAssertEqual(asset?.size, CGSize(width: 24, height: 24), icon.assetName)
+			XCTAssertEqual(icon.image(size: 18)?.renderingMode, .alwaysTemplate, icon.assetName)
+		}
 		let toolbar = Babel2ReaderToolbarView()
 		for button in [toolbar.readButton, toolbar.starButton, toolbar.nextButton] {
 			XCTAssertEqual(button.image(for: .normal)?.size, CGSize(width: 21, height: 21))
+			XCTAssertEqual(button.tintColor, Babel2Icon.tint)
 		}
-		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderReadState"), Babel2Type.BarOptical.circle)
-		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderReadStateFilled"), Babel2Type.BarOptical.circle)
-		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderNext"), Babel2Type.BarOptical.chevron)
-		XCTAssertEqual(Babel2ReaderToolbarView.optical(for: "Babel2ReaderStar"), Babel2Type.BarOptical.star)
-		XCTAssertLessThan(Babel2Type.BarOptical.circle, 1, "circles are drawn a bit smaller than stars")
+		XCTAssertEqual(toolbar.starIconName, Babel2Icon.star.rawValue)
+		XCTAssertEqual(toolbar.readIconName, Babel2Icon.readOff.rawValue)
 
 		let filter = Babel2ScopeFilterControl(selectedScope: .unread)
 		XCTAssertEqual(filter.buttons[.starred]?.icon?.size, CGSize(width: 21, height: 21), "same size as the reader star")
 		XCTAssertEqual(filter.buttons[.all]?.icon?.size, CGSize(width: 21, height: 21))
+		filter.setSelectedScope(.starred, animated: false)
+		XCTAssertEqual(filter.buttons[.starred]?.icon?.size, CGSize(width: 16, height: 16), "the selected star sits in the capsule")
 
-		let readAll = Babel2Type.readAllIcon()
-		XCTAssertEqual(readAll.size, CGSize(width: 21, height: 21))
-		// 勾的拐角处是镂空的，圆里别处是实的（24 网格坐标，按 0.86 缩进 21pt 画布）
-		func gridPoint(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-			let unit = 21 * Babel2Type.BarOptical.circle / 24
-			let origin = (21 - 24 * unit) / 2
-			return CGPoint(x: origin + x * unit, y: origin + y * unit)
+		// 24 网格坐标 → 21pt 画布
+		func grid(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * 21 / 24, y: y * 21 / 24) }
+		let readAll = try! XCTUnwrap(Babel2Icon.readAll.image(size: 21))
+		// 第八轮 Reeder 式（ADR-066）：实心圆 + 反白的勾（Reeder 列表底栏左 1 同款）
+		XCTAssertGreaterThan(alphaAt(readAll, grid(12, 4)), 0.5, "the circle is drawn")
+		XCTAssertGreaterThan(alphaAt(readAll, grid(8, 9)), 0.8, "solid disc")
+		XCTAssertLessThan(alphaAt(readAll, grid(10.9, 14.9)), 0.2, "the check is knocked out of the disc")
+
+		let plain = Babel2TranslateGlyph.image(.none)
+		XCTAssertEqual(plain.size, CGSize(width: 21, height: 21))
+		XCTAssertLessThan(alphaAt(plain, grid(20, 20)), 0.1, "bottom-right corner left free for the badge")
+		XCTAssertGreaterThan(alphaAt(Babel2TranslateGlyph.image(.solidDot), grid(20, 20)), 0.8, "solid badge = whole translation cached")
+		let hollow = Babel2TranslateGlyph.image(.hollowDot)
+		XCTAssertLessThan(alphaAt(hollow, grid(20, 20)), 0.3, "hollow badge = partly translated")
+		XCTAssertGreaterThan(alphaAt(hollow, grid(20, 18.4)), 0.4)
+
+		XCTAssertEqual(Babel2ReaderModeIconButton.lineLengthsForTesting, [13, 13, 13, 7.5])
+
+		func rgb(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {
+			var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+			color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style)).getRed(&r, green: &g, blue: &b, alpha: &a)
+			return [r, g, b].map { Int(($0 * 255).rounded()) }
 		}
-		XCTAssertLessThan(alphaAt(readAll, gridPoint(10.16, 15.2)), 0.2, "the check is cut out of the circle")
-		XCTAssertGreaterThan(alphaAt(readAll, gridPoint(12, 6.5)), 0.8)
-
-		let translate = Babel2TranslateGlyph.image(.none)
-		XCTAssertLessThan(translate.size.height, NNWTranslateIcon.withSolidDot.size.height, "smaller than the 1.x 14.5pt symbol")
-		XCTAssertEqual(Babel2TranslateGlyph.pointSize, 11.5)
+		XCTAssertEqual(rgb(Babel2Icon.tint, .light), [94, 94, 94])
+		XCTAssertEqual(rgb(Babel2Icon.tint, .dark), [168, 168, 168])
 	}
 
 	// MARK: - 位置记忆（ADR-053）
@@ -3585,7 +3605,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		for (state, phase, value, label) in expected {
 			toolbar.setTranslationState(state)
 			XCTAssertEqual(toggle.badge, badges[state] ?? .none, "\(value) badge")
-			XCTAssertNotNil(toggle.glyphImageForTesting, "the system translate symbol is shown")
+			XCTAssertNotNil(toggle.glyphImageForTesting, "the translate glyph (文A) is shown")
 			XCTAssertEqual(toggle.phase, phase)
 			XCTAssertEqual(toggle.accessibilityValue, value)
 			XCTAssertEqual(toggle.accessibilityLabel, label)
@@ -3609,7 +3629,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(lengths.count, 4)
 		XCTAssertEqual(Set(lengths.dropLast()).count, 1)
 		XCTAssertLessThan(lengths.last ?? 0, lengths[0])
-		XCTAssertGreaterThan(lengths.last ?? 0, lengths[0] * 0.6, "only slightly shorter")
+		// 统一图标集（ADR-065，用户审过）最后一道是前三道的 58%——比原来短一些，但仍是「一段文字的最后一行」
+		XCTAssertGreaterThan(lengths.last ?? 0, lengths[0] * 0.5, "shorter, but still reads as the last line of a paragraph")
 		XCTAssertEqual(toolbar.readingModeButton.glyph.layer.sublayers?.count, 4, "no page outline, just the lines")
 	}
 
@@ -4009,7 +4030,7 @@ final class Babel2FeedReaderTests: XCTestCase {
 		}
 		// 底栏：设计稿图标资源；翻译改为与其它格同样 44×44 的状态图标（ADR-043，取代 58×44 文字开关）
 		let toolbar = viewController.toolbarView
-		XCTAssertEqual(toolbar.starIconName, "Babel2ReaderStar")
+		XCTAssertEqual(toolbar.starIconName, Babel2Icon.star.rawValue)
 		XCTAssertNotNil(toolbar.readButton.image(for: .normal))
 		XCTAssertEqual(toolbar.translationToggle.bounds.size, CGSize(width: 44, height: 44))
 		// 署名两行：作者 / 订阅源（大写）

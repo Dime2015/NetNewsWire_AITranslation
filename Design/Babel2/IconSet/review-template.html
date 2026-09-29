@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babel 图标集审阅</title>
+<style>
+:root {
+  --sw: 1.75;
+  --bg: #F5F2F1; --card: #FFFFFF; --ink: #3A3A3A; --muted: #787878; --faint: #A3A0A1; --line: #E0DDDD;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #1C1C1C; --card: #262626; --ink: #D8D8D8; --muted: #8E8E8E; --faint: #6C6C6C; --line: #3A3A3A; }
+}
+:root[data-theme="dark"] { --bg: #1C1C1C; --card: #262626; --ink: #D8D8D8; --muted: #8E8E8E; --faint: #6C6C6C; --line: #3A3A3A; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", system-ui, sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 80px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+h1 { font-size: 26px; font-weight: 650; margin: 0; letter-spacing: -0.3px; }
+h2 { font-size: 13px; font-weight: 650; letter-spacing: 1px; color: var(--muted); margin: 40px 0 12px; text-transform: uppercase; }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.toggle button { border: 0; background: transparent; color: var(--muted); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.rules { margin-top: 18px; color: var(--muted); font-size: 14px; }
+.rules li { margin: 2px 0; }
+.scenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.scene { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+.scene .label { font-size: 12px; color: var(--faint); margin-bottom: 10px; }
+.bar { display: flex; justify-content: space-between; align-items: center; color: var(--muted); padding: 4px 6px; }
+.menu-row, .set-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+.menu-row svg, .set-row svg { color: var(--muted); flex: none; }
+.menu-row.danger, .menu-row.danger svg { color: #E75C57; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(236px, 100%), 1fr)); gap: 10px; }
+.scene svg, .card .slot.new svg { stroke-width: var(--sw); }
+:root[data-icon="mid"] { --icon: #5E5E5E; }
+:root[data-icon="ink"] { --icon: var(--ink); }
+:root[data-theme="dark"][data-icon="mid"] { --icon: #A8A8A8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])[data-icon="mid"] { --icon: #A8A8A8; } }
+.bar, .menu-row svg, .set-row svg { color: var(--icon, var(--muted)); }
+.controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.controls .cap { font-size: 12px; color: var(--faint); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 12px; }
+.pair { display: flex; align-items: center; gap: 14px; }
+.slot { display: flex; align-items: center; gap: 10px; min-height: 52px; }
+.slot .tag { font-size: 11px; color: var(--faint); writing-mode: vertical-rl; letter-spacing: 1px; }
+.slot.new { color: var(--ink); border-left: 1px solid var(--line); padding-left: 14px; }
+img.cur { width: 40px; height: 40px; object-fit: contain; }
+:root[data-theme="dark"] img.cur { filter: invert(0.82); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) img.cur { filter: invert(0.82); } }
+.small { color: var(--muted); display: inline-flex; }
+.meaning { margin-top: 8px; font-weight: 600; }
+.where { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.name { color: var(--faint); font: 11px ui-monospace, Menlo, monospace; margin-top: 4px; }
+.none { color: var(--faint); width: 40px; text-align: center; }
+.note { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; color: var(--muted); font-size: 14px; }
+@media (max-width: 480px) { h1 { font-size: 22px; } .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Babel 图标集 · {{COUNT}} 个</h1>
+  <div class="toggle" role="group" aria-label="外观">
+    <button data-mode="auto" aria-pressed="true">跟随系统</button><button data-mode="light" aria-pressed="false">浅色</button><button data-mode="dark" aria-pressed="false">深色</button>
+  </div>
+</header>
+<div class="controls">
+  <span class="cap">线宽</span>
+  <div class="toggle" role="group" aria-label="线宽"><button data-sw="1.75" aria-pressed="true">1.75（现在）</button><button data-sw="2" aria-pressed="false">2.0</button><button data-sw="2.25" aria-pressed="false">2.25</button></div>
+  <span class="cap">场景里的图标颜色</span>
+  <div class="toggle" role="group" aria-label="图标颜色"><button data-icon="muted" aria-pressed="true">次要灰（App 现在）</button><button data-icon="mid" aria-pressed="false">深一档</button><button data-icon="ink" aria-pressed="false">墨色</button></div>
+</div>
+{{RULES}}
+<h2>放进真实场景（实际大小）</h2>
+{{SCENES}}
+<h2>逐个对照（左：现在 · 右：新，大 + 实际大小）</h2>
+{{ROWS}}
+{{NOTES}}
+</main>
+<script>
+(function () {
+  var root = document.documentElement;
+  var buttons = document.querySelectorAll('.toggle button[data-mode]');
+  document.querySelectorAll('.toggle button[data-sw]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      root.style.setProperty('--sw', b.dataset.sw);
+      document.querySelectorAll('.toggle button[data-sw]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    });
+  });
+  document.querySelectorAll('.toggle button[data-icon]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (b.dataset.icon === 'muted') root.removeAttribute('data-icon'); else root.setAttribute('data-icon', b.dataset.icon);
+      document.querySelectorAll('.toggle button[data-icon]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    });
+  });
+  function apply(mode) {
+    if (mode === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', mode);
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
+    try { localStorage.setItem('babel-icon-review-mode', mode); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener('click', function () { apply(b.dataset.mode); }); });
+  var saved = null;
+  try { saved = localStorage.getItem('babel-icon-review-mode'); } catch (e) {}
+  if (saved) apply(saved);
+})();
+</script>
+</body>
+</html>

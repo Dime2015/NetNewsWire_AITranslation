@@ -304,14 +304,14 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let article = articles[index]
 		let sections: [[Babel2MenuItem]] = [
 			[
-				Babel2MenuItem(title: Babel2Localization.text(.openSourceFeed), image: UIImage(systemName: "list.bullet"),
+				Babel2MenuItem(title: Babel2Localization.text(.openSourceFeed), image: Babel2Icon.list.image(size: Babel2Icon.Size.menu),
 					identifier: "babel2.feed.article-menu.open-feed") { actions.openFeed(feed) },
 				Babel2MenuItem(title: Babel2Localization.text(article.isStarred ? .unstar : .star),
-					image: UIImage(systemName: article.isStarred ? "star.slash" : "star"),
+					image: (article.isStarred ? Babel2Icon.starOff : Babel2Icon.star).image(size: Babel2Icon.Size.menu),
 					identifier: "babel2.feed.article-menu.star") { [weak self] in self?.toggleStar(article.id) }
 			],
 			[
-				Babel2MenuItem(title: Babel2Localization.text(.editFeed), image: UIImage(systemName: "pencil"),
+				Babel2MenuItem(title: Babel2Localization.text(.editFeed), image: Babel2Icon.edit.image(size: Babel2Icon.Size.menu),
 					identifier: "babel2.feed.article-menu.edit-feed") { [weak self] in
 					actions.edit(feed) { name in
 						if let name { self?.applyRenamedSource(feed, to: name) }
@@ -319,7 +319,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				}
 			],
 			[
-				Babel2MenuItem(title: Babel2Localization.text(.unsubscribeSourceFeed), image: UIImage(systemName: "trash"),
+				Babel2MenuItem(title: Babel2Localization.text(.unsubscribeSourceFeed), image: Babel2Icon.trash.image(size: Babel2Icon.Size.menu),
 					identifier: "babel2.feed.article-menu.unsubscribe", isDestructive: true) { [weak self] in
 					self?.confirmUnsubscribeSource(feed)
 				}
@@ -433,8 +433,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		bottomToolbar.addSubview(scopeFilter)
 
 		// 实心圆里挖出勾、按统一的视觉修正缩小（ADR-052），与阅读页「已读」的圆同样大
-		readAllButton.setImage(Babel2Type.readAllIcon(), for: .normal)
-		readAllButton.tintColor = BabelPalette.mutedInk
+		readAllButton.setImage(Babel2Icon.readAll.image(size: Babel2Icon.Size.bar), for: .normal)
+		readAllButton.tintColor = Babel2Icon.tint
 		readAllButton.accessibilityLabel = Babel2Localization.text(.markAllRead)
 		readAllButton.accessibilityIdentifier = "babel2.feed.read-all"
 		readAllButton.addTarget(self, action: #selector(readAllTapped), for: .touchUpInside)
@@ -516,7 +516,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 先确认「将 N 篇文章标为已读？」：全 app 统一的毛玻璃菜单，锚在底栏按钮上方；点空白处即取消。
 	private func confirmMarkAllRead(count: Int) {
 		Babel2GlassMenu.present(sections: [[
-			Babel2MenuItem(title: Babel2Localization.text(.markAllRead), image: Babel2Type.readAllIcon(side: 18, optical: 1),
+			Babel2MenuItem(title: Babel2Localization.text(.markAllRead), image: Babel2Icon.readAll.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.read-all.confirm") { [weak self] in self?.performMarkAllRead() }
 		]], title: String(format: Babel2Localization.text(.markAllReadConfirm), count), from: readAllButton, in: view)
 		pendingMarkAllReadCountForTesting = count
@@ -1094,19 +1094,19 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		guard let feedActions else { return [] }
 		var top = [Babel2MenuItem]()
 		if let home = feedActions.homePageURL() {
-			top.append(Babel2MenuItem(title: Babel2Localization.text(.openWebsite), image: UIImage(systemName: "safari"),
+			top.append(Babel2MenuItem(title: Babel2Localization.text(.openWebsite), image: Babel2Icon.browser.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.website") { feedActions.openURL(home) })
 		}
 		if let address = feedActions.feedURL() {
-			top.append(Babel2MenuItem(title: Babel2Localization.text(.copyFeedAddress), image: UIImage(systemName: "doc.on.doc"),
+			top.append(Babel2MenuItem(title: Babel2Localization.text(.copyFeedAddress), image: Babel2Icon.copy.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.copy") { UIPasteboard.general.string = address })
 		}
 		let toggles = [
-			Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: UIImage(systemName: "doc.plaintext"),
+			Babel2MenuItem(title: Babel2Localization.text(.feedAlwaysReadingMode), image: Babel2Icon.readerMode.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.reading-mode", isOn: feedActions.isAlwaysReadingMode()) {
 				feedActions.setAlwaysReadingMode(!feedActions.isAlwaysReadingMode())
 			},
-			Babel2MenuItem(title: Babel2Localization.text(.newArticleNotifications), image: UIImage(systemName: "bell"),
+			Babel2MenuItem(title: Babel2Localization.text(.newArticleNotifications), image: Babel2Icon.bell.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.notifications", isOn: feedActions.notificationsEnabled()) {
 				feedActions.setNotificationsEnabled(!feedActions.notificationsEnabled())
 			}
@@ -1114,7 +1114,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let editItem: Babel2MenuItem
 		if let edit = feedActions.edit {
 			// 「编辑」取代「重命名」（2026-09-27 用户选定，与首页长按同一个编辑页）
-			editItem = Babel2MenuItem(title: Babel2Localization.text(.editFeedMenu), image: UIImage(systemName: "pencil"),
+			editItem = Babel2MenuItem(title: Babel2Localization.text(.editFeedMenu), image: Babel2Icon.edit.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.edit") { [weak self] in
 				guard let self else { return }
 				edit(self.displayTitle) { [weak self] name in
@@ -1122,12 +1122,12 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 				}
 			}
 		} else {
-			editItem = Babel2MenuItem(title: Babel2Localization.text(.rename), image: UIImage(systemName: "pencil"),
+			editItem = Babel2MenuItem(title: Babel2Localization.text(.rename), image: Babel2Icon.edit.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.rename") { [weak self] in self?.presentRename() }
 		}
 		let manage = [
 			editItem,
-			Babel2MenuItem(title: Babel2Localization.text(.unsubscribe), image: UIImage(systemName: "trash"),
+			Babel2MenuItem(title: Babel2Localization.text(.unsubscribe), image: Babel2Icon.trash.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.unsubscribe", isDestructive: true) { [weak self] in self?.confirmUnsubscribe() }
 		]
 		return [top, toggles, iconItems(feedActions), manage]
@@ -1136,10 +1136,10 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 「更换图标…」「恢复默认图标」（ADR-046，后者只在换过时出现）。
 	private func iconItems(_ feedActions: Babel2FeedActions) -> [Babel2MenuItem] {
 		guard let hasCustomIcon = feedActions.hasCustomIcon, let setCustomIcon = feedActions.setCustomIcon else { return [] }
-		var items = [Babel2MenuItem(title: Babel2Localization.text(.changeIcon), image: UIImage(systemName: "photo"),
+		var items = [Babel2MenuItem(title: Babel2Localization.text(.changeIcon), image: Babel2Icon.image.image(size: Babel2Icon.Size.menu),
 			identifier: "babel2.feed.more.icon") { [weak self] in self?.pickIcon() }]
 		if hasCustomIcon() {
-			items.append(Babel2MenuItem(title: Babel2Localization.text(.resetIcon), image: UIImage(systemName: "arrow.uturn.backward"),
+			items.append(Babel2MenuItem(title: Babel2Localization.text(.resetIcon), image: Babel2Icon.undo.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.feed.more.icon-reset") { [weak self] in
 				if setCustomIcon(nil) { self?.applyChangedIcon() }
 			})
@@ -1181,7 +1181,7 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 「这是外文源」（勾）：首页「外文源」入口按它归类（ADR-044）。
 	private func foreignToggle(_ feedActions: Babel2FeedActions) -> [Babel2MenuItem] {
 		guard let isForeign = feedActions.isForeign, let setForeign = feedActions.setForeign else { return [] }
-		return [Babel2MenuItem(title: Babel2Localization.text(.foreignSourceToggle), image: UIImage(systemName: "globe"),
+		return [Babel2MenuItem(title: Babel2Localization.text(.foreignSourceToggle), image: Babel2Icon.globe.image(size: Babel2Icon.Size.menu),
 			identifier: "babel2.feed.more.foreign", isOn: isForeign()) { setForeign(!isForeign()) }]
 	}
 

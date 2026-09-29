@@ -9,6 +9,24 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-27 第八轮：图标集换成「Reeder 式」（ADR-066；uncommitted worktree，待用户真机验收）
+
+- 设计自查：`icons_reeder.py` 用 macOS 的 SVG 渲染器画出 47 个图标的放大 / 40px / 20px 网格逐个看过；退回 3 处（「文」加粗像「✗」、长图封口像手机、更换图标挖圆像录音键）。对比页 `Design/Babel2/IconSet/review-reeder.html` 在浏览器里 1200 宽与 390 宽检查过，无横向滚动。
+- 导出：`python3 make.py --export` → 47 个 imageset（资源名不变）。
+- 全量 Debug iOS 测试：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/f4619745-a180-44bb-a613-a639ef9de1c4/scratchpad/full1.xcresult`，**TEST SUCCEEDED**，216 passed / 0 failed / 0 skipped。唯一改动的断言：`testUnifiedIconSetAcrossBars` 里「全部标为已读」改为实心圆 + 挖空的勾。
+- App 自绘核对：临时把 `testDumpIconSheet` 追加到 `Babel2FeedReaderTests.swift` 末尾，让 App 在模拟器里把 47 个图标（21pt 两种位置）+ 翻译实心 / 空心角标画成一张图（`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/f4619745-a180-44bb-a613-a639ef9de1c4/scratchpad/app-sheet.png`）人工查看：内层线宽覆盖（细「A」、粗问号）、实心三角箭头、evenodd 挖空的勾、半实心盾牌在 iOS 上都正确；翻译角标不压「A」。跑完用备份还原测试文件，`cmp` 一致。（单独新建测试文件不会被编进测试目标——该目标不自动收新文件，0 tests executed。）
+- 缺口：真机上的大小、轻重（尤其实心件：全部已读、已订阅、账户、首页开关）。UI Driver 没有重跑（本轮没动交互代码，只换资源与一条断言）。
+- 真机追加（首页顶栏设置 / 添加 22 → 28pt）后：全量 `full2.xcresult` **TEST SUCCEEDED**，216 passed / 0 failed；真机 Debug 编译成功，`devicectl` 安装并启动到用户 iPhone 17（00008150-000631520204401C）。放大后的观感由用户真机确认。
+
+## 2026-09-27 第七轮：全 App 统一图标集（ADR-065；uncommitted worktree，待用户真机验收）
+
+- 设计阶段：一轮 4 方向多代理流程（第一版）在评审前被停掉（用户认为四套差别小、不高级）；另画四种构造方法比较页被否；瑞士几何细修后用户在手机上用审阅页（线宽 / 颜色开关）选定 2.0 + 深一档。
+- 编译：三次失败均已改——图标缓存需标界面线程；设置页小图标函数重复标记；设置分类图标属性需标界面线程。最终 Babel2 / BabelUI 无警告。
+- App 自绘核对：临时测试 `testZZProbeRenderIcons` 让 App 画出 47 个图标（浅 / 深）、阅读页底栏、长按菜单，存图人工查看——资源（SVG，含 evenodd 镂空）在 App 里渲染正确；发现菜单图标 18pt 显小 → 菜单图标位改 20pt。临时测试已删除（新测试文件不在自动收录的目录里，改放在已有文件中再删）。
+- 定向：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/t11.xcresult` 3/3。全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full7.xcresult` 215/216（刷新圆底测试的取样点落在新圆弧上，改到圆心）；`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/full8.xcresult` **216/216**，0 失败 0 跳过，112 秒。UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/ui5.xcresult` **1/1**。
+- 反向验证 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/56348a81-892b-4847-8aca-c6b2b8389668/scratchpad/reverse4.sh`：图标色改回 #787878、翻译角标挪到中心 → `testUnifiedIconSetAcrossBars` 均失败；恢复后 `cmp` 一致。
+- 缺口：真机上的大小、轻重、颜色。
+
 ## 2026-09-27 第六轮：跨源列表长按文章 + 菜单高亮圆角（ADR-063 / 064；用户同日真机验收通过，已提交推送）
 
 - 第五轮已提交推送 `972f1c09e`（本地与远端一致），本轮从它开始。

@@ -440,14 +440,15 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		titleLabel.textAlignment = .center
 		titleLabel.accessibilityIdentifier = Babel2LocalizationKey.feeds.accessibilityIdentifier
 
-		addButton.setImage(Babel2Type.icon(UIImage(named: "BabelHomeAdd"), side: Babel2Type.readerTopIcon)?.withRenderingMode(.alwaysTemplate), for: .normal)
-		addButton.tintColor = BabelPalette.mutedInk
+		// 统一图标集（ADR-065 / 066）：首页这两颗用 28pt（用户嫌 22pt 小气），图标色深一档
+		addButton.setImage(Babel2Icon.add.image(size: Babel2Icon.Size.homeTop), for: .normal)
+		addButton.tintColor = Babel2Icon.tint
 		addButton.accessibilityLabel = Babel2Localization.text(.add, bundle: localizationBundle)
 		addButton.accessibilityIdentifier = Babel2LocalizationKey.add.accessibilityIdentifier
 		addButton.configuration = .plain()
 		addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
-		settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: UIImage.SymbolConfiguration(pointSize: Babel2Type.homeSettingsSymbol, weight: .regular)), for: .normal)
-		settingsButton.tintColor = BabelPalette.mutedInk
+		settingsButton.setImage(Babel2Icon.settings.image(size: Babel2Icon.Size.homeTop), for: .normal)
+		settingsButton.tintColor = Babel2Icon.tint
 		settingsButton.accessibilityLabel = Babel2Localization.text(.settings, bundle: localizationBundle)
 		settingsButton.accessibilityIdentifier = Babel2LocalizationKey.settings.accessibilityIdentifier
 		settingsButton.configuration = .plain()
@@ -1201,7 +1202,7 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		contentView.addSubview(initialsLabel)
 
 		chevronView.contentMode = .scaleAspectFit
-		chevronView.tintColor = BabelPalette.mutedInk
+		chevronView.tintColor = Babel2Icon.tint
 		chevronView.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(chevronView)
 
@@ -1271,10 +1272,7 @@ private final class Babel2LibraryRowCell: UITableViewCell {
 		initialsLabel.textColor = isSelected ? BabelPalette.ink : BabelPalette.mutedInk
 		chevronView.isHidden = false
 		// 箭头统一用向右的图，展开时转 90°（ADR-034：切换时旋转过去，而不是换图）
-		chevronView.image = UIImage(
-			systemName: "chevron.right",
-			withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-		)
+		chevronView.image = Babel2Icon.forward.image(size: 18)
 		setExpanded(expanded, animated: false)
 		titleLeadingConstraint.constant = 56
 		countTrailingConstraint.constant = -20

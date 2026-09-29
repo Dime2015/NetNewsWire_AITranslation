@@ -270,7 +270,7 @@ final class Babel2GlassMenu: UIView {
 	}
 }
 
-/// 菜单的一行：左 14，18pt 图标位 → 10 → 文字（最多 2 行）→ 右侧勾（开关开时）。
+/// 菜单的一行：左 14，20pt 图标位（统一图标集，ADR-065；原 18pt 放新图标显小）→ 10 → 文字（最多 2 行）→ 右侧勾（开关开时）。
 private final class Babel2GlassMenuRow: UIControl {
 	init(item: Babel2MenuItem) {
 		super.init(frame: .zero)
@@ -284,15 +284,15 @@ private final class Babel2GlassMenuRow: UIControl {
 		accessibilityTraits = traits
 		let color = item.isDestructive ? Babel2SettingsStyle.destructive : Babel2SettingsStyle.primaryText
 		let icon = UIImageView(image: item.image?.withRenderingMode(.alwaysTemplate))
-		icon.tintColor = item.isDestructive ? Babel2SettingsStyle.destructive : Babel2SettingsStyle.secondaryText
+		icon.tintColor = item.isDestructive ? Babel2SettingsStyle.destructive : Babel2Icon.tint
 		icon.contentMode = .scaleAspectFit
 		let label = UILabel()
 		label.text = item.title
 		label.font = Babel2Type.menuRow
 		label.textColor = color
 		label.numberOfLines = 2
-		let check = UIImageView(image: UIImage(named: "Babel2SettingsCheck"))
-		check.tintColor = Babel2SettingsStyle.secondaryText
+		let check = UIImageView(image: Babel2Icon.check.image(size: Babel2Icon.Size.menu))
+		check.tintColor = Babel2Icon.tint
 		check.isHidden = item.isOn != true
 		for view in [icon, label, check] as [UIView] {
 			view.isUserInteractionEnabled = false
@@ -307,8 +307,8 @@ private final class Babel2GlassMenuRow: UIControl {
 			heightAnchor.constraint(greaterThanOrEqualToConstant: Babel2Type.menuRowHeight),
 			icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
 			icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-			icon.widthAnchor.constraint(equalToConstant: 18),
-			icon.heightAnchor.constraint(equalToConstant: 18),
+			icon.widthAnchor.constraint(equalToConstant: Babel2Icon.Size.menu),
+			icon.heightAnchor.constraint(equalToConstant: Babel2Icon.Size.menu),
 			label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
 			label.trailingAnchor.constraint(lessThanOrEqualTo: check.leadingAnchor, constant: -8),
 			label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 12),
@@ -316,8 +316,8 @@ private final class Babel2GlassMenuRow: UIControl {
 			label.centerYAnchor.constraint(equalTo: centerYAnchor),
 			check.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
 			check.centerYAnchor.constraint(equalTo: centerYAnchor),
-			check.widthAnchor.constraint(equalToConstant: 18),
-			check.heightAnchor.constraint(equalToConstant: 18)
+			check.widthAnchor.constraint(equalToConstant: Babel2Icon.Size.menu),
+			check.heightAnchor.constraint(equalToConstant: Babel2Icon.Size.menu)
 		])
 	}
 

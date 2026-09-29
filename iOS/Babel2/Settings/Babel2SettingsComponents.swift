@@ -26,14 +26,15 @@ final class Babel2SettingsNavigationBar: UIView {
 		super.init(frame: .zero)
 		backgroundColor = Babel2SettingsStyle.background
 
-		let leadingImage = kind == .back ? "Babel2SettingsBack" : "Babel2SettingsClose"
-		leadingButton.setImage(UIImage(named: leadingImage), for: .normal)
-		leadingButton.tintColor = Babel2SettingsStyle.secondaryText
+		// 统一图标集（ADR-065）：导航栏图标 24pt，图标色深一档
+		let leadingIcon: Babel2Icon = kind == .back ? .back : .close
+		leadingButton.setImage(leadingIcon.image(size: 24), for: .normal)
+		leadingButton.tintColor = Babel2Icon.tint
 		leadingButton.accessibilityLabel = Babel2SettingsText.t(kind == .back ? "Back" : (kind == .root ? "Close" : "Cancel"))
 		leadingButton.accessibilityIdentifier = kind == .editor ? "babel2.settings.cancel" : "babel2.settings.back"
 
-		saveButton.setImage(UIImage(named: "Babel2SettingsSave"), for: .normal)
-		saveButton.tintColor = Babel2SettingsStyle.secondaryText
+		saveButton.setImage(Babel2Icon.check.image(size: 24), for: .normal)
+		saveButton.tintColor = Babel2Icon.tint
 		saveButton.accessibilityLabel = Babel2SettingsText.t("Save")
 		saveButton.accessibilityIdentifier = "babel2.settings.save"
 		saveButton.isHidden = kind != .editor
@@ -123,9 +124,9 @@ class Babel2SettingsRowControl: UIControl {
 
 /// 右侧的小图标（箭头 / 下箭头 / 勾），统一次要灰。
 @MainActor
-private func settingsGlyph(_ name: String, side: CGFloat) -> UIImageView {
-	let view = UIImageView(image: UIImage(named: name))
-	view.tintColor = Babel2SettingsStyle.secondaryText
+private func settingsGlyph(_ icon: Babel2Icon, side: CGFloat) -> UIImageView {
+	let view = UIImageView(image: icon.image(size: side))
+	view.tintColor = Babel2Icon.tint
 	view.contentMode = .scaleAspectFit
 	view.translatesAutoresizingMaskIntoConstraints = false
 	NSLayoutConstraint.activate([
@@ -155,14 +156,14 @@ final class Babel2SettingsDisclosureRow: Babel2SettingsRowControl {
 		labels.spacing = 2
 		labels.isUserInteractionEnabled = false
 		labels.translatesAutoresizingMaskIntoConstraints = false
-		let chevron = settingsGlyph("Babel2SettingsChevron", side: 18)
+		let chevron = settingsGlyph(.forward, side: 18)
 		addSubview(labels)
 		addSubview(chevron)
 
 		var textLeading: CGFloat = 0
 		if let icon {
 			let iconView = UIImageView(image: icon)
-			iconView.tintColor = Babel2SettingsStyle.secondaryText
+			iconView.tintColor = Babel2Icon.tint
 			iconView.contentMode = .scaleAspectFit
 			iconView.translatesAutoresizingMaskIntoConstraints = false
 			addSubview(iconView)
@@ -202,7 +203,7 @@ final class Babel2SettingsValueRow: Babel2SettingsRowControl {
 		valueLabel.textColor = Babel2SettingsStyle.secondaryText
 		valueLabel.textAlignment = .right
 		valueLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-		let chevron = settingsGlyph("Babel2SettingsChevron", side: 18)
+		let chevron = settingsGlyph(.forward, side: 18)
 		for view in [titleLabel, valueLabel] as [UIView] {
 			view.translatesAutoresizingMaskIntoConstraints = false
 			addSubview(view)
@@ -245,7 +246,7 @@ final class Babel2SettingsSelectRow: Babel2SettingsRowControl {
 		valueLabel.textColor = Babel2SettingsStyle.secondaryText
 		valueLabel.textAlignment = .right
 		valueLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-		let chevron = settingsGlyph("Babel2SettingsChevronDown", side: 16)
+		let chevron = settingsGlyph(.chevronDown, side: 16)
 		for view in [titleLabel, valueLabel] as [UIView] {
 			view.translatesAutoresizingMaskIntoConstraints = false
 			addSubview(view)
@@ -334,7 +335,7 @@ final class Babel2SettingsActionRow: Babel2SettingsRowControl {
 final class Babel2SettingsChoiceRow: Babel2SettingsRowControl {
 	let titleLabel = UILabel()
 	let detailLabel = UILabel()
-	private let check = settingsGlyph("Babel2SettingsCheck", side: 20)
+	private let check = settingsGlyph(.check, side: 20)
 
 	/// - detail: 行尾（勾的左边）的浅灰小字，例如模型价格（ADR-038）。
 	init(title: String, isSelected: Bool, logo: UIImage? = nil, detail: String? = nil) {
@@ -698,7 +699,7 @@ private final class Babel2SettingsPopoverOptionRow: UIControl {
 		isAccessibilityElement = true
 		accessibilityLabel = option.title
 		accessibilityTraits = option.isSelected ? [.button, .selected] : .button
-		let check = settingsGlyph("Babel2SettingsCheck", side: 18)
+		let check = settingsGlyph(.check, side: 18)
 		check.alpha = option.isSelected ? 1 : 0
 		let label = UILabel()
 		label.text = option.title

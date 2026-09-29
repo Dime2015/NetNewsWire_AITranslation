@@ -167,9 +167,9 @@ final class Babel2LibraryEditor {
 
 	func addMenuSections(from anchor: UIView, addSubscription: @escaping @MainActor () -> Void) -> [[Babel2MenuItem]] {
 		[[
-			Babel2MenuItem(title: text(.addSubscription), image: UIImage(systemName: "plus"),
+			Babel2MenuItem(title: text(.addSubscription), image: Babel2Icon.add.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.add.subscription", handler: addSubscription),
-			Babel2MenuItem(title: text(.newFolder), image: UIImage(systemName: "folder.badge.plus"),
+			Babel2MenuItem(title: text(.newFolder), image: Babel2Icon.folderAdd.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.add.folder") { [weak self, weak anchor] in
 				guard let self, let anchor else { return }
 				self.startNewFolder(from: anchor)
@@ -195,7 +195,7 @@ final class Babel2LibraryEditor {
 			return
 		}
 		let items = accounts.map { account in
-			Babel2MenuItem(title: account.title, image: UIImage(systemName: "person.crop.circle"),
+			Babel2MenuItem(title: account.title, image: Babel2Icon.account.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.add.folder.account.\(account.id)") { [weak self] in
 				self?.presentNewFolderAlert(accountID: account.id, then: then)
 			}
@@ -239,11 +239,11 @@ final class Babel2LibraryEditor {
 
 	func folderMenuSections(_ id: FolderSnapshot.ID, info: Babel2FolderInfo) -> [[Babel2MenuItem]] {
 		[
-			[Babel2MenuItem(title: text(.renameFolder), image: UIImage(systemName: "pencil"),
+			[Babel2MenuItem(title: text(.renameFolder), image: Babel2Icon.edit.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.library.folder.rename") { [weak self] in
 				self?.presentRenameFolder(id, current: info.title)
 			}],
-			[Babel2MenuItem(title: text(.deleteFolder), image: UIImage(systemName: "trash"),
+			[Babel2MenuItem(title: text(.deleteFolder), image: Babel2Icon.trash.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.library.folder.delete", isDestructive: true) { [weak self] in
 				self?.presentDeleteFolder(id, info: info)
 			}]
@@ -317,26 +317,26 @@ final class Babel2LibraryEditor {
 	func feedMenuSections(_ feed: FeedSnapshot, placement: Babel2FeedPlacement?) -> [[Babel2MenuItem]] {
 		var edit = [Babel2MenuItem]()
 		if placement != nil {
-			edit.append(Babel2MenuItem(title: text(.editFeedMenu), image: UIImage(systemName: "pencil"),
+			edit.append(Babel2MenuItem(title: text(.editFeedMenu), image: Babel2Icon.edit.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.library.feed.edit") { [weak self] in
 				self?.presentFeedEditor(feed)
 			})
 		}
 		var icon = [Babel2MenuItem]()
 		if let store = editing.customIcons {
-			icon.append(Babel2MenuItem(title: text(.changeIcon), image: UIImage(systemName: "photo"),
+			icon.append(Babel2MenuItem(title: text(.changeIcon), image: Babel2Icon.image.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.library.feed.icon") { [weak self] in
 				self?.pickIcon(for: feed.id)
 			})
 			if store.hasCustomIcon(feed.id) {
-				icon.append(Babel2MenuItem(title: text(.resetIcon), image: UIImage(systemName: "arrow.uturn.backward"),
+				icon.append(Babel2MenuItem(title: text(.resetIcon), image: Babel2Icon.undo.image(size: Babel2Icon.Size.menu),
 					identifier: "babel2.library.feed.icon-reset") { [weak self] in
 					self?.resetIcon(for: feed.id)
 				})
 			}
 		}
 		let manage = [
-			Babel2MenuItem(title: text(.unsubscribe), image: UIImage(systemName: "trash"),
+			Babel2MenuItem(title: text(.unsubscribe), image: Babel2Icon.trash.image(size: Babel2Icon.Size.menu),
 				identifier: "babel2.library.feed.unsubscribe", isDestructive: true) { [weak self] in
 				self?.presentUnsubscribe(feed)
 			}

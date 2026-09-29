@@ -145,7 +145,7 @@ final class Babel2SettingsTranslationModelViewController: Babel2SettingsPage {
 		// 刷新按钮：362×44、圆角 12、浅底 + 0.5pt 细线，文字 15 半粗
 		var configuration = UIButton.Configuration.plain()
 		configuration.title = Babel2SettingsText.t(isRefreshing ? "Refreshing…" : "Refresh Model List")
-		configuration.image = UIImage(systemName: "arrow.clockwise", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+		configuration.image = Babel2Icon.refresh.image(size: 17)
 		configuration.imagePadding = 8
 		configuration.baseForegroundColor = Babel2SettingsStyle.primaryText
 		configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
