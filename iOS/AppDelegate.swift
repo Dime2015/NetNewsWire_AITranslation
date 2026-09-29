@@ -261,7 +261,7 @@ import Images
 
 	private func updateBadge() {
 		assert(unreadCount == AccountManager.shared.unreadCount)
-		UNUserNotificationCenter.current().setBadgeCount(unreadCount)
+		Babel2AppBadge.update(allUnreadCount: unreadCount) // [界面] 角标显示什么由设置决定（全部未读 / 今日未读 / 今日有更新的源）
 	}
 
 	// MARK: Notifications

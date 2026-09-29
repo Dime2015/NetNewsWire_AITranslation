@@ -460,6 +460,23 @@
         }
       }
     },
+    "App Icon Badge" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Icon Badge"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 图标角标"
+          }
+        }
+      }
+    },
     "Appearance & Language" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -575,6 +592,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "回到顶部"
+          }
+        }
+      }
+    },
+    "Badge Shows" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Badge Shows"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角标显示"
           }
         }
       }
@@ -1323,6 +1357,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "订阅"
+          }
+        }
+      }
+    },
+    "Feeds Updated Today" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feeds Updated Today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日有更新的源"
           }
         }
       }
@@ -2292,6 +2343,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未设置"
+          }
+        }
+      }
+    },
+    "Notification permission and app icon badge" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notification permission and app icon badge"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知权限与 App 图标角标"
           }
         }
       }
@@ -3601,6 +3669,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API Key 只保存在本机钥匙串。服务地址留空时使用 OpenRouter。"
+          }
+        }
+      }
+    },
+    "The badge needs the Badges permission for notifications in iOS Settings." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The badge needs the Badges permission for notifications in iOS Settings."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角标需要在 iOS 设置的通知里打开「标记」。"
           }
         }
       }

@@ -166,7 +166,7 @@ final class Babel2SettingsHomeViewController: Babel2SettingsPage {
 			case .reader: return "How links open"
 			case .translation: return "Model, API and translation service"
 			case .appearance: return "Color mode, accent color and interface language"
-			case .notifications: return "System notification permission"
+			case .notifications: return "Notification permission and app icon badge"
 			case .support: return "Logs, statistics, help and about"
 			}
 		}
@@ -434,6 +434,8 @@ final class Babel2SettingsAppearanceViewController: Babel2SettingsPage {
 // MARK: - 通知（Figma 110:440）
 
 final class Babel2SettingsNotificationsViewController: Babel2SettingsPage {
+	private var badgeRow: Babel2SettingsSelectRow?
+
 	init(service: Babel2SettingsService) {
 		super.init(service: service, kind: .back, title: Babel2SettingsText.t("Notifications"))
 	}
@@ -447,6 +449,21 @@ final class Babel2SettingsNotificationsViewController: Babel2SettingsPage {
 		add(open, identifier: "babel2.settings.notifications.open")
 		addSpacing(4)
 		add(Babel2SettingsNoteLabel(text: Babel2SettingsText.t("Notification permission is managed by iOS. New-article notifications for each feed are still configured in that account or feed's details.")))
+
+		// App 图标角标显示什么（2026-09-29 用户要求，默认今日未读）
+		addSection(Babel2SettingsText.t("App Icon Badge"))
+		let badge = Babel2SettingsSelectRow(title: Babel2SettingsText.t("Badge Shows"), value: Babel2SettingsText.t(Babel2BadgeMode.current.titleKey))
+		badge.onTap = { [weak self, weak badge] in
+			guard let self, let badge else { return }
+			let current = Babel2BadgeMode.current
+			self.presentChoices(Babel2BadgeMode.allCases.map { .init(title: Babel2SettingsText.t($0.titleKey), isSelected: $0 == current) }, from: badge) { [weak self] index in
+				Babel2BadgeMode.current = Babel2BadgeMode.allCases[index]
+				self?.badgeRow?.setValue(Babel2SettingsText.t(Babel2BadgeMode.current.titleKey))
+			}
+		}
+		badgeRow = add(badge, identifier: "babel2.settings.notifications.badge")
+		addSpacing(4)
+		add(Babel2SettingsNoteLabel(text: Babel2SettingsText.t("The badge needs the Badges permission for notifications in iOS Settings.")))
 	}
 }
 
