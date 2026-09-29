@@ -1,17 +1,21 @@
 # Babel 2.0 接手说明
 
-## ★ 下一会话从这里开始（2026-09-28 更新）
+## ★ 下一会话从这里开始（2026-09-29 更新）
 
 **先读**：本目录 STATUS.md 顶部各小节、DECISIONS.md 的 ADR-016～053、LESSONS.md 第 30～58 条。根目录的 NOTES-progress.md / CURRENT-STATE.md 是 1.x 时期的旧记录，不代表当前状态。
 
-**当前（第九轮 + 追加）：头部「微光点阵」（ADR-067）+ 往上滑后的「天幕」与 22pt 缩放归位（ADR-068）——已实现、已装到用户 iPhone，待真机验收（未提交）**
+**最近完成（2026-09-29 用户真机验收通过，「提交并推送」）：第七 + 八轮图标集、第九轮头部与天幕、第十轮列表左右滑等，分三个提交推送；下一任务待用户指定**
+- 三个提交：图标集（ADR-065 / 066）→ 头部微光点阵与天幕（ADR-067 / 068）→ 列表行左右滑、新文章提示 5 秒淡出、重发文章去重（ADR-069）。均不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`、`Design/Babel2/IconSet/__pycache__/`。
+- 用户在这几轮明确要的工作方式：小 bug 直接修、直接编译装到 iPhone（xcodebuild + devicectl，设备 00008150-000631520204401C）让他真机测，不要过度测试。
+
+**第九轮 + 追加：头部「微光点阵」（ADR-067）+ 往上滑后的「天幕」与 22pt 缩放归位（ADR-068）——已验收、已提交**
 - 追加明细见 STATUS「第九轮追加」。天幕的数字（55%、消融带 66 / 96 / 134pt、段标题化开 40pt）都在 `Babel2FeedHeroMotion.swift`；标题目标字号在 `Babel2Type.compactTitle`。
 - 给用户看的 HTML 预览在 Claude App 里不跑脚本（LESSONS 64）：内容要写死在页面里，或提醒用户用浏览器打开。
 - 明细见 STATUS 顶部「第九轮」。六页各自纹路（今日晨光 / 全部方阵 / 外文经纬 / 星标星野 / 订阅源讯号 / 首页蜂巢）；窄栏去圆圈、细线换阴影；眉题；标题 27pt。
 - 要调浓淡：只改 `Babel2HeroPattern.strength`（1 = 用户看过的预览 100%）；某一页的颜色 / 纹路在同一文件对应的 `case` 里。
 - 本轮叠在未提交的第七 / 八轮之上、改了同几个文件；用户若要求分开提交，第八轮开工前的差异见 STATUS「第九轮」提交注意。
 
-**上一轮（第八轮）：图标集换成「Reeder 式」（ADR-066）——已接入，待用户真机验收（未提交）**
+**第八轮：图标集换成「Reeder 式」（ADR-066）——已验收，与第七轮合成一个提交**
 - 明细见 STATUS 顶部「第八轮」。第七轮「瑞士几何」（ADR-065）的接入代码是本轮的底子、没有单独提交，验收通过后两轮合成一个提交（不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`）。
 - 改图标：改 `Design/Babel2/IconSet/icons_reeder.py` → `python3 make.py --export`（重新导出资源）→ `python3 make_reeder_review.py`（更新对比页）。阅读模式四道线若要改，`Babel2StatusIcons.swift` 的 `lineSpecs` 必须同步。
 

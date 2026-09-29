@@ -179,7 +179,7 @@ final class Babel2LiveDataProvider: DataProviding {
 		try Task.checkCancellation()
 		var feedsByID = [FeedSnapshot.ID: FeedSnapshot]()
 		var articles = [ArticleSnapshot]()
-		for article in collected.sorted(by: { $0.logicalDatePublished > $1.logicalDatePublished }) {
+		for article in Self.removingRepublishedDuplicates(collected.sorted(by: { $0.logicalDatePublished > $1.logicalDatePublished })) {
 			guard articles.count < Self.smartFeedLimit else { break }
 			let feedID = FeedSnapshot.ID(accountID: article.accountID, feedID: article.feedID)
 			if feedsByID[feedID] == nil {
@@ -193,6 +193,18 @@ final class Babel2LiveDataProvider: DataProviding {
 			articles.append(snapshot)
 		}
 		return SmartFeedArticlesSnapshot(articles: articles.sorted(by: articleComesFirst), feeds: Array(feedsByID.values))
+	}
+
+	/// 同一个源把同一篇文章发了两次（2026-09-29 用户截图：BBC 中文改稿后重推，编号从「…#0」变成「…#2」，
+	/// 链接、时间完全相同，数据库里就是两篇）：列表里只留一篇。按「同一个账户 + 同一个源 + 同一个链接（去掉 # 之后）」判重，
+	/// 保留排在前面的那篇；没有链接的不判。不同源链接到同一个网址（例如聚合站转链）不算重复。
+	private static func removingRepublishedDuplicates(_ articles: [Article]) -> [Article] {
+		var seen = Set<String>()
+		return articles.filter { article in
+			guard let link = article.rawLink ?? article.rawExternalLink, !link.isEmpty else { return true }
+			let bare = link.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? link
+			return seen.insert("\(article.accountID)\u{1}\(article.feedID)\u{1}\(bare)").inserted
+		}
 	}
 
 	nonisolated func articleSnapshots(for ids: [ArticleSnapshot.ID]) async throws -> [ArticleSnapshot] {
@@ -295,7 +307,7 @@ final class Babel2LiveDataProvider: DataProviding {
 
 		let articles = try await fetchArticles(for: account, feed: feed, scope: scope)
 		try Task.checkCancellation()
-		return articles
+		return Self.removingRepublishedDuplicates(articles.sorted(by: { $0.logicalDatePublished > $1.logicalDatePublished }))
 			.filter { $0.accountID == id.accountID && $0.feedID == id.feedID }
 			.map { article in
 				let snapshot = makeArticleSnapshot(article)

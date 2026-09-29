@@ -58,7 +58,8 @@ struct Babel2FeedHeroImageSource {
 }
 
 @MainActor
-final class Babel2FeedViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+/// 只认左边缘返回（2026-09-29 用户要求）：行上的左右滑留给「标为已读 / 星标」，整页右滑返回会和它抢。
+final class Babel2FeedViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, Babel2EdgeOnlyBackGesture {
 	private enum LoadState: String {
 		case loading
 		case loaded
@@ -335,6 +336,45 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			]
 		]
 		return Babel2GlassMenu.present(sections: sections, title: feed.title, from: cell, in: view, pops: true)
+	}
+
+	// MARK: - 行左右滑（2026-09-29 用户要求，同 Reeder）：往右滑 = 标为已读 / 未读，往左滑 = 加星标 / 取消星标。
+	// 轻滑露出按钮，滑到底直接执行。
+
+	func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+		guard let index = articleIndex(for: indexPath), index < articles.count else { return nil }
+		let article = articles[index]
+		let action = UIContextualAction(style: .normal, title: Babel2Localization.text(article.isRead ? .markUnread : .markRead)) { [weak self] _, _, done in
+			self?.setRead(article.id, read: !article.isRead)
+			done(true)
+		}
+		action.image = (article.isRead ? Babel2Icon.readOff : Babel2Icon.readOn).image(size: Babel2Icon.Size.menu)
+		action.backgroundColor = Self.readSwipeColor
+		return UISwipeActionsConfiguration(actions: [action])
+	}
+
+	func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+		guard let index = articleIndex(for: indexPath), index < articles.count else { return nil }
+		let article = articles[index]
+		let action = UIContextualAction(style: .normal, title: Babel2Localization.text(article.isStarred ? .unstar : .star)) { [weak self] _, _, done in
+			self?.toggleStar(article.id)
+			done(true)
+		}
+		action.image = (article.isStarred ? Babel2Icon.starOff : Babel2Icon.starOn).image(size: Babel2Icon.Size.menu)
+		action.backgroundColor = Self.starSwipeColor
+		return UISwipeActionsConfiguration(actions: [action])
+	}
+
+	/// 滑出来的底色：克制的灰蓝（已读）与暗金（星标），不用系统的亮蓝亮橙。
+	private static let readSwipeColor = UIColor(red: 0.42, green: 0.48, blue: 0.56, alpha: 1)
+	private static let starSwipeColor = UIColor(red: 0.74, green: 0.58, blue: 0.26, alpha: 1)
+
+	private func setRead(_ id: ArticleSnapshot.ID, read: Bool) {
+		let handler = environment.actionHandler
+		Task { @MainActor [weak self] in
+			try? await handler.handle(read ? .markRead(id) : .markUnread(id))
+			self?.refreshStatusesInPlace()
+		}
 	}
 
 	private func toggleStar(_ id: ArticleSnapshot.ID) {
@@ -717,13 +757,22 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	/// 新文章已经在屏幕上（例如本来就停在顶部）就不提示。
+	/// 出现 5 秒后自己淡出（2026-09-29 用户要求）；下次进这一页有新文章时再出现。
 	private func showNewArticlesPill(count: Int, target: ArticleSnapshot.ID) {
 		guard count > 0, !isSearching, !isArticleVisible(target) else { return }
 		newArticlesTarget = target
 		newArticlesPill.show(count: count)
+		newArticlesAutoHide?.cancel()
+		let hide = DispatchWorkItem { [weak self] in self?.hideNewArticlesPill() }
+		newArticlesAutoHide = hide
+		DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: hide)
 	}
 
+	private var newArticlesAutoHide: DispatchWorkItem?
+
 	private func hideNewArticlesPill(animated: Bool = true) {
+		newArticlesAutoHide?.cancel()
+		newArticlesAutoHide = nil
 		newArticlesTarget = nil
 		newArticlesPill.hide(animated: animated)
 	}
