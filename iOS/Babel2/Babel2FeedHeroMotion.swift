@@ -43,4 +43,20 @@ enum Babel2FeedHeroMotion {
 	static func compactContentAlpha(_ progress: CGFloat) -> CGFloat {
 		min(max((progress - 0.4) / 0.6, 0), 1)
 	}
+
+	// MARK: 天幕（ADR-068，没有大图时）
+
+	/// 纹路不随滑动离开，收起后也不变淡，像一直挂在头顶（原 55% → 85% → 100%，2026-09-29 用户真机：收起后太淡）。
+	static func skyPatternAlpha(_ progress: CGFloat) -> CGFloat {
+		1
+	}
+
+	/// 列表顶部的消融带（从安全区顶端量起）：标题下沿（约 82pt）以上完全看不见，往下约 110pt 里逐渐显出。
+	/// 窄栏下沿在 99pt，文章在它下面约 90pt 就开始化开（原 66 / 96 / 134，只有约 40pt，2026-09-29 用户真机：化开得不明显）。
+	static let skyDissolveStops: [(offset: CGFloat, alpha: CGFloat)] = [(82, 0), (120, 0.2), (160, 0.55), (192, 1)]
+
+	/// 日期段标题滑向窄栏下沿时淡掉（吸顶那一刻为 0），日期改由顶栏右侧显示；distance = 离吸顶位置还有多远。
+	static func skyDayHeaderAlpha(distanceToPin distance: CGFloat) -> CGFloat {
+		min(max(distance / 40, 0), 1)
+	}
 }

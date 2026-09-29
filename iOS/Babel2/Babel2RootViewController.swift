@@ -27,7 +27,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 	@MainActor
 	private final class ScopeSurface: UIView {
-		/// 表头：顶部短线 → 跨源入口（每行 44pt，从 y=16 开始）→ 22pt → 「文件夹」标题（28pt）→ 12pt（ADR-044）。
+		/// 表头：跨源入口（每行 44pt，从 y=16 开始）→ 22pt → 「文件夹」标题（28pt）→ 12pt（ADR-044）。
+		/// 顶部原有一根居中短线，ADR-067 去掉（首页标题区改为微光点阵 + 日期，用户 2026-09-28「分隔线很丑」）。
 		/// 取代原来 150pt 的「未读 N / 文件夹」表头（那行「未读」只是标题、点不开，2026-09-27 用户反馈第 5 条）。
 		static func listHeaderHeight(for scope: Babel2FeedScope) -> CGFloat {
 			16 + CGFloat(Babel2SmartFeed.entries(for: scope).count) * Babel2SmartEntryRow.height + 22 + 28 + 12
@@ -38,7 +39,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		let stateLabel = UILabel()
 		let retryButton = UIButton(type: .system)
 		private let listHeader = UIView()
-		private let shortRule = UIView()
 		private var smartRows = [Babel2SmartEntryRow]()
 		/// 点了一个跨源入口。
 		var onSmartFeedTapped: ((Babel2SmartFeed) -> Void)?
@@ -64,9 +64,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 
 			listHeader.backgroundColor = BabelPalette.background
 			listHeader.frame = CGRect(x: 0, y: 0, width: 0, height: Self.listHeaderHeight(for: scope))
-			shortRule.backgroundColor = BabelPalette.hairline
-			shortRule.translatesAutoresizingMaskIntoConstraints = false
-			listHeader.addSubview(shortRule)
 
 			var rowConstraints = [NSLayoutConstraint]()
 			for (index, kind) in Babel2SmartFeed.entries(for: scope).enumerated() {
@@ -90,10 +87,6 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			listHeader.addSubview(foldersTitleLabel)
 
 			NSLayoutConstraint.activate([
-				shortRule.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 111),
-				shortRule.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 2),
-				shortRule.widthAnchor.constraint(equalToConstant: 180),
-				shortRule.heightAnchor.constraint(equalToConstant: 0.5),
 				foldersTitleLabel.leadingAnchor.constraint(equalTo: listHeader.leadingAnchor, constant: 20),
 				foldersTitleLabel.topAnchor.constraint(equalTo: listHeader.topAnchor, constant: 16 + CGFloat(smartRows.count) * Babel2SmartEntryRow.height + 22),
 				foldersTitleLabel.heightAnchor.constraint(equalToConstant: 28)
@@ -202,6 +195,9 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	private let syncArrow = UIButton(type: .system)
 	private let syncGlyph = Babel2SyncSpinner()
 	private let syncSubtitleLabel = UILabel()
+	/// 标题区背后的「蜂巢」微光点阵与标题下的日期（ADR-067）；日期与「正在同步…」共用一个位置，同步时让位。
+	private let headerPattern = Babel2HeroPatternView(pattern: .hive, fadeStart: 0.45)
+	private let dateLabel = UILabel()
 	private let bottomBar = UIView()
 	/// 底部三档：与订阅源文章列表页共用同一组件（2026-09-25 修复切回「未读」时胶囊错位，用户选方案 A）。
 	/// 按钮沿用原无障碍标识 babel2.scope.*；按钮外观与胶囊由组件负责，本页只负责切换列表内容。
@@ -469,6 +465,11 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			syncGlyph.heightAnchor.constraint(equalToConstant: 24)
 		])
 
+		dateLabel.accessibilityIdentifier = "babel2.home.date"
+		dateLabel.numberOfLines = 1
+		updateDateLabel()
+		NotificationCenter.default.addObserver(self, selector: #selector(dayDidChange), name: UIApplication.significantTimeChangeNotification, object: nil)
+
 		syncSubtitleLabel.font = .systemFont(ofSize: 16, weight: .medium)
 		syncSubtitleLabel.textColor = BabelPalette.tertiaryInk
 		syncSubtitleLabel.textAlignment = .center
@@ -485,6 +486,8 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		hairline.tag = 8_021
 		bottomBar.addSubview(hairline)
 
+		view.insertSubview(headerPattern, at: 0)
+		view.addSubview(dateLabel)
 		view.addSubview(titleLabel)
 		view.addSubview(addButton)
 		view.addSubview(settingsButton)
@@ -510,7 +513,7 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 	}
 
 	private func installLayout() {
-		for item in [titleLabel, addButton, settingsButton, syncArrow, syncSubtitleLabel, bottomBar, scopeStack] {
+		for item in [headerPattern, dateLabel, titleLabel, addButton, settingsButton, syncArrow, syncSubtitleLabel, bottomBar, scopeStack] {
 			item.translatesAutoresizingMaskIntoConstraints = false
 		}
 		for surface in scopeSurfaces.values {
@@ -538,6 +541,14 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 			syncSubtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
 			syncSubtitleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 135),
 			syncSubtitleLabel.heightAnchor.constraint(equalToConstant: 22),
+			// 点阵铺满标题区（屏幕顶端到列表开始的 184pt），日期与「正在同步…」同一个位置
+			headerPattern.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			headerPattern.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			headerPattern.topAnchor.constraint(equalTo: view.topAnchor),
+			headerPattern.heightAnchor.constraint(equalToConstant: 184),
+			dateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+			dateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+			dateLabel.centerYAnchor.constraint(equalTo: syncSubtitleLabel.centerYAnchor),
 			bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -757,6 +768,24 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 		return lhs.id.feedID < rhs.id.feedID
 	}
 
+	/// 标题下的日期（ADR-067）：「9月28日 星期日」，每次回到首页、跨过零点时更新。
+	private func updateDateLabel() {
+		dateLabel.attributedText = Babel2HeroEyebrow.attributed(Babel2HeroEyebrow.date(Date()), alignment: .center)
+	}
+
+	@objc private func dayDidChange() {
+		updateDateLabel()
+	}
+
+	override func viewWillAppear(_ animated: Bool) {
+		super.viewWillAppear(animated)
+		updateDateLabel()
+	}
+
+	/// 仅供自动化测试。
+	var headerDateTextForTesting: String? { dateLabel.isHidden ? nil : dateLabel.attributedText?.string }
+	var headerPatternForTesting: Babel2HeroPatternView { headerPattern }
+
 	private func updateSyncState(_ isSyncing: Bool) {
 		if !isSyncing {
 			// 同步结束：箭头与「正在同步…」用截图淡出（ADR-034），真正的控件立即隐藏
@@ -768,12 +797,20 @@ final class Babel2RootViewController: UIViewController, UITableViewDataSource, U
 					Babel2Motion.animate(Babel2Motion.standard, { ghost.alpha = 0 }, completion: { _ in ghost.removeFromSuperview() })
 				}
 			}
+			let wasSyncing = !syncArrow.isHidden
 			syncArrow.isHidden = true
 			syncSubtitleLabel.text = nil
 			syncSubtitleLabel.isHidden = true
 			syncGlyph.setSpinning(false)
+			// 日期回到原位（同步结束时随「正在同步…」的淡出一起淡入）
+			dateLabel.isHidden = false
+			if wasSyncing, view.window != nil {
+				dateLabel.alpha = 0
+				Babel2Motion.animate(Babel2Motion.standard) { self.dateLabel.alpha = 1 }
+			}
 			return
 		}
+		dateLabel.isHidden = true
 		let appearing = syncArrow.isHidden
 		syncArrow.isHidden = false
 		syncSubtitleLabel.text = Babel2Localization.text(.syncing, bundle: localizationBundle)

@@ -24,10 +24,14 @@ enum Babel2Type {
 
 	// MARK: 文章列表
 
-	/// 顶部大图上的订阅源名：28 粗体 → 24 半粗
-	static var heroTitle: UIFont { .systemFont(ofSize: 24, weight: .semibold) }
-	/// 收起后顶栏的订阅源名：17 → 16
-	static var compactTitle: UIFont { .systemFont(ofSize: 16, weight: .semibold) }
+	/// 顶部大图上的订阅源名：28 粗体 → 24 半粗 → 27 半粗（ADR-067，头部改微光点阵时用户选「放大到 27pt」）
+	static var heroTitle: UIFont { .systemFont(ofSize: 27, weight: .semibold) }
+	/// 标题上方的小字「眉题」（日期 / 智能列表 / 网站域名）与首页标题下的日期：11pt 中等、字距 1.5（ADR-067）
+	static var heroEyebrow: UIFont { .systemFont(ofSize: 11, weight: .medium) }
+	static let heroEyebrowKern: CGFloat = 1.5
+	/// 收起后顶栏的订阅源名：17 → 16 → 22（ADR-068，用户：「用字号来做层次」，从 18 / 20 / 22 里选 22）。
+	/// 实际是 heroTitle 按比例缩放到这个字号（缩放归位），这里只提供目标大小。
+	static var compactTitle: UIFont { .systemFont(ofSize: 22, weight: .semibold) }
 	/// 日期分段：14 中等 → 12 半粗（配合大写与字距）
 	static var dayHeader: UIFont { .systemFont(ofSize: 12, weight: .semibold) }
 	/// 来源名 12 → 11；时间 13 → 12

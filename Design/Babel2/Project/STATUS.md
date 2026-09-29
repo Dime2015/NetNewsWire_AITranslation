@@ -24,6 +24,25 @@
 
 整体状态：**基础阅读链路已实现，完整产品未完成**。需求逐行状态以 [REQUIREMENTS](REQUIREMENTS.md) 为准；设计以产品/运动合同为准，旧 `Design/current/` 不再是当前设计来源。
 
+## 第九轮追加：往上滑后的顶栏「天幕」+ 标题 22pt 缩放归位（2026-09-28，ADR-068；实现完成，已装到用户 iPhone，待真机验收，未提交）
+
+- 没有大图时：纹路常驻（淡到 55%）、窄栏透明无下沿、列表顶部消融、日期段标题化开并入顶栏右侧；有大图时：纸色窄栏 + 纸色渐隐（取代黑色阴影），日期段标题照旧吸顶。两种页面的标题都从 27pt 缩放归位到 22pt。
+- 改动：`Babel2FeedHeroView.swift`（大图区透明、纹路移出、占位标题、排版回调；窄栏标题缩放归位、天幕模式、右侧日期）、`Babel2LibraryViewControllers.swift`（纹路垫底层、消融带、段标题化开、按有无大图切换）、`Babel2FeedHeroMotion.swift`（天幕曲线）、`Babel2Type.swift`（compactTitle 22）、`Babel2HeroPattern.swift`（下沿改纸色渐隐）；测试改 3 项、新增 1 项。
+- 自动化：全量 221/221；UI Driver 1/1；真机 Debug 编译并 devicectl 安装。
+- 只能真机确认：消融带的位置与软硬、55% 的纹路是否合适、缩放归位的手感、22pt 在长名字下的截断、顶栏右侧日期的位置。
+- 真机反馈（同日）：收起后顶栏下有一条半透明带——是 iOS 26 列表自带的顶部模糊（滚动边缘效果，盖到吸顶段标题下沿、带硬边），以前被实色窄栏和段标题挡住。天幕时关掉（`tableView.topEdgeEffect.isHidden = sky`），直接装机，未另加测试。
+- 真机反馈（2026-09-29）：浅色下纹路太淡、收起后太淡 → 浅色点阵 ×1.7、色晕 ×1.6（原浅色 ×0.85）；收起后纹路保留 85%（原 55%）。直接装机。
+- 真机第二次（同日，「再浓一点」「浅色还不够」「化开不明显」）：整体浓度 strength 1 → 1.3；浅色点阵 ×2.4、色晕 ×2.2；收起后纹路不再变淡（100%）；消融带改为 82 / 120 / 160 / 192pt（0 / 20% / 55% / 100%）。直接装机。
+- 真机第三次（同日，截图「分界线太明显」）：大图区自带的「渐隐成纸色」层原本藏在实色底里，天幕把大图区改透明后它盖在纹路上、在大图区下沿切出硬边——改为只有铺了大图时才显示。直接装机。
+
+## 第九轮：头部「微光点阵」（2026-09-28，ADR-067；实现完成，待真机验收，未提交）
+
+- 用户选定「四 D · 微光点阵」，六个页面各自颜色与纹路：今日晨光 / 全部方阵 / 外文经纬 / 星标星野 / 订阅源讯号（取图标主色，只在没有高清图时）/ 首页蜂巢。收起窄栏去首字母圆圈、细线换柔和阴影；展开时加眉题；标题 24 → 27pt。
+- 改动：新文件 `iOS/Babel2/Babel2HeroPattern.swift`（纹路、图标主色、眉题文字、柔和阴影）；改 `Babel2FeedHeroView.swift`（大图区纹路层与眉题、窄栏）、`Babel2LibraryViewControllers.swift`（接上纹路 / 眉题、段标题吸顶挂阴影、吸顶判断改用内容坐标）、`Babel2RootViewController.swift`（首页蜂巢 + 日期、删短线）、`Babel2Type.swift`、`Babel2Localization.swift` + `Resources/Babel2Localizable.xcstrings`（「智能列表」）；测试 `Babel2FeedReaderTests.swift` 新增 6 项、扩 1 项。
+- 自动化：全量 220 项中 219 过、1 项为已知偶发的阅读页栏显隐测试（单独重跑 3/3 过）；UI Driver（Release、真实数据）1/1。已编译安装到用户 iPhone 17（devicectl）。
+- 只能真机确认：六种纹路在真机上的浓淡（深 / 浅色）；订阅源取色是否好看；收起后阴影的轻重；27pt 标题在有大图的源上是否太大。
+- 提交注意：本轮叠在未提交的第七 / 八轮（图标集）之上，且改了同几个文件。第八轮本轮开工前的改动已存补丁 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/round8-tracked.patch`（scratchpad 不在仓库；换会话后以各轮 STATUS「改动」清单为准）。按惯例不含 pbxproj 签名 diff、`Shared/Localizable.xcstrings` stale 行、`icon new/`。
+
 ## 第八轮：图标集换成「Reeder 式」（2026-09-27，ADR-066；实现完成，待真机验收，未提交）
 
 - 用户看完对比页 `Design/Babel2/IconSet/review-reeder.html` 后「选这套」。设计源 `icons_reeder.py`，`make.py --export` 已重新导出 47 个素材（资源名不变）。

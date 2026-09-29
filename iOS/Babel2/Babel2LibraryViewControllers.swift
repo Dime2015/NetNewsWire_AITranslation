@@ -121,6 +121,14 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private weak var headerTitleLabel: UILabel?
 	private weak var heroView: Babel2FeedHeroView?
 	private weak var compactBar: Babel2FeedCompactBar?
+	/// 天幕（ADR-068）：没有大图时，微光点阵垫在列表下面、不随滑动离开；列表顶部有一条消融带。
+	private var skyPattern: Babel2HeroPatternView?
+	private let skyDissolveMask = CAGradientLayer()
+	private var usesSky = true
+	/// 仅供自动化测试观察。
+	var skyPatternForTesting: Babel2HeroPatternView? { skyPattern }
+	var usesSkyForTesting: Bool { usesSky }
+	var dissolveMaskForTesting: CAGradientLayer? { tableView.layer.mask as? CAGradientLayer }
 	/// 仅供自动化测试观察。
 	var compactBarForTesting: Babel2FeedCompactBar? { compactBar }
 	var heroProgressForTesting: CGFloat { heroProgress }
@@ -246,7 +254,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private func refreshFeedIconIfMissing() {
 		guard feedIconImage == nil, let data = currentIcon?(), let image = UIImage(data: data) else { return }
 		feedIconImage = image
-		compactBar?.setIcon(image, title: displayTitle)
+		compactBar?.setIcon(image)
+		skyPattern?.pattern = heroPattern
 		for case let cell as Babel2ArticleCell in tableView.visibleCells {
 			cell.setFeedIcon(image)
 		}
@@ -931,13 +940,23 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	/// 上层是收缩后的窄栏（安全区 + 99pt，返回按钮在这层、全程不动）。随列表滚动跟手收缩（第 3 步）。
 	private func configureHeader() {
 		setCount(feed.articleCount)
-		let hero = Babel2FeedHeroView(title: feed.title, countLabel: countLabel)
-		hero.titleLabel.accessibilityValue = scope.rawValue
-		headerTitleLabel = hero.titleLabel
+		// 天幕的纹路：垫在最底层（列表装进来时插在它上面），从屏幕顶端到大图下沿，不随滑动移动
+		let sky = Babel2HeroPatternView(pattern: heroPattern, fadeStart: 0.38)
+		sky.translatesAutoresizingMaskIntoConstraints = false
+		view.insertSubview(sky, at: 0)
+		skyPattern = sky
+		let hero = Babel2FeedHeroView(title: feed.title, countLabel: countLabel, eyebrow: heroEyebrow)
 		hero.translatesAutoresizingMaskIntoConstraints = false
 		view.addSubview(hero)
 		heroView = hero
 		let compact = Babel2FeedCompactBar(title: feed.title, icon: feedIconImage)
+		// 看得见的标题在窄栏里（缩放归位，ADR-068）：档位值、读屏都挂在它上面
+		compact.titleLabel.accessibilityValue = scope.rawValue
+		headerTitleLabel = compact.titleLabel
+		compact.restTitleLabel = hero.titleLabel
+		hero.onArtShownChanged = { [weak self] _ in self?.applyHeaderMode() }
+		// 窄栏与大图区谁先排好版不一定：大图区排好后让窄栏再对一次起点
+		hero.onLayout = { [weak compact] in compact?.refreshTitlePosition() }
 		compact.backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
 		compact.searchButton.addTarget(self, action: #selector(searchTapped), for: .touchUpInside)
 		// 刷新与更多（ADR-031）：没有注入操作时不显示，不放点了没反应的按钮
@@ -952,6 +971,10 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		view.addSubview(compact)
 		compactBar = compact
 		NSLayoutConstraint.activate([
+			sky.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			sky.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			sky.topAnchor.constraint(equalTo: view.topAnchor),
+			sky.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Babel2FeedHeroView.expandedHeight),
 			hero.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			hero.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 			hero.topAnchor.constraint(equalTo: view.topAnchor),
@@ -966,6 +989,16 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 			hero.setArt(heroImage.cached(), animated: false)
 			heroImage.fetch { [weak hero] image in hero?.setArt(image, animated: true) }
 		}
+	}
+
+	/// 头部纹路（ADR-067）：跨源列表各有各的；单个源用「讯号」，颜色取它图标的主色（没有图标时中性暖灰）。
+	private var heroPattern: Babel2HeroPattern {
+		smartFeed.map(Babel2HeroPattern.init(smartFeed:)) ?? .signal(Babel2HeroPattern.signalHue(from: feedIconImage))
+	}
+
+	/// 标题上方的小字（ADR-067）：今日 = 日期，其它跨源列表 =「智能列表」，单个源 = 网站域名。
+	private var heroEyebrow: String? {
+		Babel2HeroEyebrow.text(smartFeed: smartFeed, feedURL: feed.url, homePageURL: feedActions?.homePageURL())
 	}
 
 	/// 文章数：屏幕上显示「N 篇」（同步中显示「正在同步…」）；辅助功能值保持纯数字（UI 自动测试按它核对行数）。
@@ -1167,7 +1200,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 	private func applyChangedIcon() {
 		let icon = currentIcon?().flatMap(UIImage.init(data:))
 		feedIconImage = icon
-		compactBar?.setIcon(icon, title: displayTitle)
+		compactBar?.setIcon(icon)
+		skyPattern?.pattern = heroPattern
 		tableView.reloadData()
 		guard let heroImage, let heroView else { return }
 		if let art = heroImage.cached() {
@@ -1284,7 +1318,13 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let spacer = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: Babel2FeedHeroMotion.collapseDistance))
 		spacer.backgroundColor = .clear
 		tableView.tableHeaderView = spacer
-		view.insertSubview(tableView, at: 0)
+		if let skyPattern {
+			view.insertSubview(tableView, aboveSubview: skyPattern)
+		} else {
+			view.insertSubview(tableView, at: 0)
+		}
+		skyDissolveMask.colors = Babel2FeedHeroMotion.skyDissolveStops.map { UIColor.black.withAlphaComponent($0.alpha).cgColor }
+		applyHeaderMode()
 
 		emptyLabel.text = Babel2Localization.text(.noArticles)
 		emptyLabel.accessibilityIdentifier = "babel2.feed.articles.state"
@@ -1343,6 +1383,8 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		let header = tableView.dequeueReusableHeaderFooterView(withIdentifier: Babel2DayHeaderView.reuseIdentifier) as? Babel2DayHeaderView
 		header?.configure(title: title)
 		header?.setPinned(false)
+		// 列表重新排版时也会再要一次段标题：按此刻的位置给淡出程度，不能一律复原
+		header?.setDissolve(dayHeaderAlpha(section: section))
 		return header
 	}
 
@@ -1351,17 +1393,25 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		return Babel2DayHeaderView.height
 	}
 
-	/// 段标题吸在顶部时，下方显示一根细线（与参考截图一致）；在原位时不显示。
+	/// 段标题吸在顶部时，窄栏的柔和阴影挪到段标题下沿（ADR-067，取代段标题自己的细线）：整块顶栏只有一道阴影。
 	func scrollViewDidScroll(_ scrollView: UIScrollView) {
 		guard scrollView === tableView else { return }
 		updateHeroProgress()
 		hideNewArticlesPillIfReached()
 		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
+		var anyPinned = false
 		for section in 0..<daySections.count {
 			guard let header = tableView.headerView(forSection: section) as? Babel2DayHeaderView else { continue }
-			let naturalTop = tableView.rect(forSection: section).minY
-			header.setPinned(naturalTop < pinnedTop - 0.5 && header.frame.minY > naturalTop + 0.5)
+			// 按这一段在内容里的位置算（段顶已滑过顶栏、段尾还没滑过），不看段标题此刻的 frame：
+			// 滚动回调时表格还没重新排版，frame 是上一帧的，停下那一刻会判错（ADR-067 测试抓到）
+			let sectionRect = tableView.rect(forSection: section)
+			let pinned = sectionRect.minY < pinnedTop - 0.5 && sectionRect.maxY > pinnedTop + 0.5
+			header.setPinned(pinned)
+			anyPinned = anyPinned || pinned
 		}
+		compactBar?.setEdgeOffset(anyPinned && !isSearching ? Babel2DayHeaderView.height : 0)
+		updateSkyDissolveMask()
+		updateDayHeaders()
 	}
 
 	// MARK: - 列表搜索（2026-09-25）
@@ -1533,6 +1583,82 @@ final class Babel2FeedViewController: UIViewController, UITableViewDataSource, U
 		heroProgress = progress
 		heroView?.apply(progress: progress)
 		compactBar?.apply(progress: progress)
+		if usesSky { skyPattern?.alpha = Babel2FeedHeroMotion.skyPatternAlpha(progress) }
+	}
+
+	// MARK: - 天幕（ADR-068）
+
+	/// 有没有大图决定顶栏的做法：没有 = 天幕（纹路常驻、窄栏透明、列表顶部消融、日期并入顶栏）；
+	/// 有 = 原来的「大图收起」（纸色窄栏 + 纸色渐隐，日期段标题照旧吸顶）。大图晚到 / 恢复默认时随时切换。
+	private func applyHeaderMode() {
+		let sky = !(heroView?.isShowingArt ?? false)
+		usesSky = sky
+		compactBar?.usesSky = sky
+		skyPattern?.alpha = sky ? Babel2FeedHeroMotion.skyPatternAlpha(max(heroProgress, 0)) : 0
+		tableView.backgroundColor = sky ? .clear : BabelPalette.background
+		tableView.layer.mask = sky ? skyDissolveMask : nil
+		// iOS 26 列表顶部自带一层模糊（滚动边缘效果，盖到吸顶段标题下沿、带硬边）；天幕时窄栏透明，它就露成一条半透明带
+		if #available(iOS 26.0, *) { tableView.topEdgeEffect.isHidden = sky }
+		updateSkyDissolveMask()
+		updateDayHeaders()
+	}
+
+	/// 消融带跟着列表的可见范围走（滚动视图的 bounds 原点就是滚动位置）。
+	private func updateSkyDissolveMask() {
+		guard usesSky, tableView.bounds.height > 0 else { return }
+		let top = view.safeAreaInsets.top
+		let height = tableView.bounds.height
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		skyDissolveMask.frame = tableView.bounds
+		skyDissolveMask.locations = Babel2FeedHeroMotion.skyDissolveStops.map { NSNumber(value: Double(min((top + $0.offset) / height, 1))) }
+		CATransaction.commit()
+	}
+
+	/// 天幕时：日期段标题滑向窄栏下沿时渐渐淡掉（吸顶那一刻为 0），同时顶栏右侧浮出这一天；
+	/// 之后滑到哪一天，顶栏右侧就写哪一天。有大图或搜索时段标题照旧。
+	private func updateDayHeaders() {
+		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
+		let fading = usesSky && !isSearching
+		var reached: String?
+		var approaching: (title: String, distance: CGFloat)?
+		for (section, day) in daySections.enumerated() {
+			guard let title = day.title else { continue }
+			let rect = tableView.rect(forSection: section)
+			let distance = rect.minY - pinnedTop
+			if distance <= 0.5 { reached = title } else if approaching == nil { approaching = (title, distance) }
+			(tableView.headerView(forSection: section) as? Babel2DayHeaderView)?.setDissolve(dayHeaderAlpha(section: section))
+		}
+		guard fading else {
+			compactBar?.setDay(nil, alpha: 0)
+			return
+		}
+		if let reached {
+			compactBar?.setDay(reached, alpha: 1)
+		} else if let approaching, approaching.distance < 40 {
+			compactBar?.setDay(approaching.title, alpha: 1 - Babel2FeedHeroMotion.skyDayHeaderAlpha(distanceToPin: approaching.distance))
+		} else {
+			compactBar?.setDay(nil, alpha: 0)
+		}
+	}
+
+	/// 天幕时段标题的透明度：按它此刻离吸顶位置多远（被下一段推走时也算 0）；有大图或搜索时为 1。
+	private func dayHeaderAlpha(section: Int) -> CGFloat {
+		guard usesSky, !isSearching, section < tableView.numberOfSections else { return 1 }
+		let pinnedTop = tableView.contentOffset.y + tableView.adjustedContentInset.top
+		let rect = tableView.rect(forSection: section)
+		let visibleTop = min(max(rect.minY, pinnedTop), rect.maxY - Babel2DayHeaderView.height)
+		return Babel2FeedHeroMotion.skyDayHeaderAlpha(distanceToPin: visibleTop - pinnedTop)
+	}
+
+	override func viewDidLayoutSubviews() {
+		super.viewDidLayoutSubviews()
+		updateSkyDissolveMask()
+	}
+
+	func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
+		// 复用来的段标题可能还带着上次的淡出：出现时就按位置算好
+		(view as? Babel2DayHeaderView)?.setDissolve(dayHeaderAlpha(section: section))
 	}
 
 	/// 松手后预计停在半路：改停到最近的一端（不到一半弹回展开，过半收到窄栏）。
@@ -1598,13 +1724,14 @@ struct Babel2DaySection: Equatable {
 	}
 }
 
-/// 日期段标题：12pt 半粗、墨色（ADR-033，原 14 中等），与文字列左对齐（49pt）；吸顶时下方出现细线。
+/// 日期段标题：12pt 半粗、墨色（ADR-033，原 14 中等），与文字列左对齐（49pt）。
+/// 吸顶时不再画自己的细线，改由窄栏把柔和阴影挂到它下沿（ADR-067）。
 private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 	static let reuseIdentifier = "Babel2DayHeaderView"
 	static let height: CGFloat = 46
 
 	private let label = UILabel()
-	private let hairline = UIView()
+	private var isPinned = false
 
 	override init(reuseIdentifier: String?) {
 		super.init(reuseIdentifier: reuseIdentifier)
@@ -1616,19 +1743,11 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 		label.accessibilityIdentifier = "babel2.feed.day-header"
 		label.accessibilityTraits = .header
 		label.translatesAutoresizingMaskIntoConstraints = false
-		hairline.backgroundColor = BabelPalette.hairline
-		hairline.isHidden = true
-		hairline.translatesAutoresizingMaskIntoConstraints = false
 		contentView.addSubview(label)
-		contentView.addSubview(hairline)
 		NSLayoutConstraint.activate([
 			label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 49),
 			label.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -20),
-			label.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
-			hairline.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
-			hairline.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
-			hairline.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-			hairline.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
+			label.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8)
 		])
 	}
 
@@ -1643,10 +1762,22 @@ private final class Babel2DayHeaderView: UITableViewHeaderFooterView {
 	}
 
 	func setPinned(_ pinned: Bool) {
-		hairline.isHidden = !pinned
+		isPinned = pinned
 	}
 
-	var isPinnedForTesting: Bool { !hairline.isHidden }
+	/// 天幕时滑向窄栏下沿渐渐化开（ADR-068）：文字与纸色底一起变淡。
+	/// 不改整个视图的 alpha——表格排版时会把段标题视图的 alpha 改回 1（测试抓到）。
+	private var dissolve: CGFloat = 1
+	func setDissolve(_ alpha: CGFloat) {
+		guard alpha != dissolve else { return }
+		dissolve = alpha
+		contentView.alpha = alpha
+		var background = UIBackgroundConfiguration.clear()
+		background.backgroundColor = BabelPalette.background.withAlphaComponent(alpha)
+		backgroundConfiguration = background
+	}
+
+	var isPinnedForTesting: Bool { isPinned }
 }
 
 /// 文章行（Reeder 式，2026-09-25 用户给参考截图）：

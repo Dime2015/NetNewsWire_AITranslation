@@ -3180,6 +3180,23 @@
         }
       }
     },
+    "Smart List" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart List"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能列表"
+          }
+        }
+      }
+    },
     "Sort Unread Articles" : {
       "extractionState" : "stale",
       "localizations" : {

@@ -81,6 +81,8 @@ enum Babel2LocalizationKey: String, CaseIterable {
 	case smartAllArticles = "All Articles"
 	case smartForeign = "Foreign Sources"
 	case smartStarred = "All Starred"
+	/// 跨源列表头部标题上方的小字（ADR-067）
+	case smartListEyebrow = "Smart List"
 	case foreignSourceToggle = "This Is a Foreign-Language Source"
 	case quotedName = "“%@”"
 	case listSeparator = ", "
@@ -172,6 +174,7 @@ enum Babel2LocalizationKey: String, CaseIterable {
 		case .openWebsite, .copyFeedAddress, .newArticleNotifications, .rename, .renameFeed: return "babel2.feed.more"
 		case .close, .openLink, .unableToLoadImage: return "babel2.image-viewer"
 		case .smartTodayUnread, .smartToday, .smartAllUnread, .smartAllArticles, .smartForeign, .smartStarred: return "babel2.feeds.smart"
+		case .smartListEyebrow: return "babel2.feed.eyebrow"
 		case .foreignSourceToggle: return "babel2.feed.more"
 		case .changeIcon, .resetIcon, .unableToUseImage: return "babel2.feed.more"
 		case .quotedName, .listSeparator, .newFolder, .folderName, .create, .newFolderInAccount, .renameFolder, .deleteFolder,

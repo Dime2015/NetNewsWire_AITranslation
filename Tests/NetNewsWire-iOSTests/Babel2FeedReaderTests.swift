@@ -501,6 +501,164 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertTrue(hero.hasArtForTesting)
 	}
 
+	// MARK: - 头部微光点阵（ADR-067）
+
+	/// 四个跨源列表各有自己的纹路与眉题；没有真实图标时窄栏不画首字母圆圈、名字贴左（x=20）。
+	/// 天幕（ADR-068）：纹路垫在列表下面、铺满屏幕顶端到大图下沿；窄栏收起后也没有底色和下沿；
+	/// 标题静止时在大图标题的位置、27pt，收起后缩放归位到第二行、22pt。
+	func testSmartListHeroPatternsAndEyebrows() async throws {
+		let smartEyebrow = localized(.smartListEyebrow).uppercased()
+		let expected: [(Babel2SmartFeed, String, String)] = [
+			(.today, "dawn", Babel2HeroEyebrow.date(Date())),
+			(.all, "grid", smartEyebrow),
+			(.foreign, "globe", smartEyebrow),
+			(.starred, "stars", smartEyebrow)
+		]
+		for (smart, pattern, eyebrow) in expected {
+			let list = Babel2FeedViewController(smartFeed: smart, scope: .unread, environment: makeEnvironment(provider: FakeDataProvider()))
+			let window = hostInWindow(list)
+			defer { window.isHidden = true }
+			list.view.layoutIfNeeded()
+			let hero = try XCTUnwrap(list.heroViewForTesting)
+			let sky = try XCTUnwrap(list.skyPatternForTesting)
+			XCTAssertEqual(sky.pattern.nameForTesting, pattern, "\(smart)")
+			XCTAssertEqual(hero.eyebrowTextForTesting, eyebrow, "\(smart)")
+			XCTAssertTrue(list.usesSkyForTesting, "\(smart): no art → sky")
+			XCTAssertEqual(sky.alpha, 1, accuracy: 0.01, "\(smart): the pattern shows at rest")
+			XCTAssertEqual(sky.frame, CGRect(x: 0, y: 0, width: list.view.bounds.width, height: list.view.safeAreaInsets.top + 169), "\(smart): screen top to hero bottom")
+			XCTAssertNotNil(list.dissolveMaskForTesting, "\(smart): rows dissolve under the bar")
+			let compact = try XCTUnwrap(list.compactBarForTesting)
+			XCTAssertEqual(compact.titleMinXForTesting, 20, accuracy: 0.5, "\(smart): no initial-letter circle, the name sits at the left edge")
+			// 缩放归位：静止时与大图标题重合、27pt
+			let restFrame = hero.titleLabel.frame
+			XCTAssertEqual(compact.visibleTitlePointSizeForTesting, 27, accuracy: 0.1)
+			XCTAssertEqual(compact.visibleTitleFrameForTesting.minX, restFrame.minX, accuracy: 0.5, "\(smart): starts where the big title is")
+			XCTAssertEqual(compact.visibleTitleFrameForTesting.midY, restFrame.midY, accuracy: 0.5)
+			compact.apply(progress: 1)
+			XCTAssertEqual(compact.visibleTitlePointSizeForTesting, 22, accuracy: 0.1, "\(smart): settles at 22pt")
+			XCTAssertEqual(compact.visibleTitleFrameForTesting.minX, 20, accuracy: 0.5, "\(smart): keeps its left edge while shrinking")
+			XCTAssertEqual(compact.visibleTitleFrameForTesting.midY, list.view.safeAreaInsets.top + 67, accuracy: 0.5, "\(smart): second row of the bar")
+			XCTAssertEqual(compact.backdropAlphaForTesting, 0, accuracy: 0.01, "\(smart): no paper under the collapsed bar")
+			XCTAssertEqual(compact.edgeAlphaForTesting, 0, accuracy: 0.01, "\(smart): no edge at all")
+		}
+	}
+
+	/// 单个订阅源：纹路是「讯号」、颜色取图标主色；眉题是网站域名（去掉 www.）；有图标时窄栏名字让出图标位（x=56）。
+	/// 抓到高清大图后纹路与眉题淡出（眉题会落在图上看不清）。
+	func testFeedHeroSignalPatternFollowsIconAndHidesUnderArt() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let list = [ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "a"), title: "A", url: nil, feedID: feedID)]
+		let iconData = try XCTUnwrap(solidImage(size: CGSize(width: 64, height: 64), color: UIColor(red: 1, green: 0.5, blue: 0, alpha: 1)).pngData())
+		let feed = FeedSnapshot(id: feedID, title: "Feed", url: URL(string: "https://feeds.example.org/rss")!, iconData: iconData)
+		let actions = Babel2FeedActions(
+			refresh: {}, isSyncing: { false }, homePageURL: { URL(string: "https://www.example.org/blog") }, feedURL: { nil },
+			isAlwaysReadingMode: { false }, setAlwaysReadingMode: { _ in },
+			notificationsEnabled: { false }, setNotificationsEnabled: { _ in },
+			rename: { _ in nil }, unsubscribe: { nil }, openURL: { _ in })
+		var deliver: ((UIImage) -> Void)?
+		let controller = Babel2FeedViewController(feed: feed, scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])),
+			heroImage: Babel2FeedHeroImageSource(cached: { nil }, fetch: { deliver = $0 }), feedActions: actions)
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		await waitForRows(in: controller.tableViewForTesting, count: 1)
+		controller.view.layoutIfNeeded()
+
+		let hero = try XCTUnwrap(controller.heroViewForTesting)
+		let sky = try XCTUnwrap(controller.skyPatternForTesting)
+		XCTAssertEqual(sky.pattern.nameForTesting, "signal")
+		var hue: CGFloat = 0
+		sky.pattern.hue.getHue(&hue, saturation: nil, brightness: nil, alpha: nil)
+		XCTAssertEqual(hue, 30.0 / 360, accuracy: 0.02, "the signal takes the icon's orange")
+		XCTAssertEqual(hero.eyebrowTextForTesting, "EXAMPLE.ORG", "home page host, without www.")
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		XCTAssertEqual(compact.titleMinXForTesting, 56, accuracy: 0.5, "a real icon keeps its slot")
+		XCTAssertEqual(compact.visibleTitleFrameForTesting.minX, 20, accuracy: 0.5, "at rest the title still starts where the big title is")
+
+		// 抓到大图：换回「大图收起」——纹路、眉题、消融带都撤掉，窄栏收起后是纸色底 + 纸色渐隐
+		let fetch = try XCTUnwrap(deliver)
+		fetch(solidImage(size: CGSize(width: 400, height: 300), color: .darkGray))
+		await waitUntil { hero.hasArtForTesting }
+		await waitUntil { !controller.usesSkyForTesting }
+		XCTAssertEqual(sky.alpha, 0, accuracy: 0.01)
+		XCTAssertNil(controller.dissolveMaskForTesting)
+		XCTAssertEqual(hero.eyebrowAlphaForTesting, 0, accuracy: 0.01, "the eyebrow would sit on the picture")
+		compact.apply(progress: 1)
+		XCTAssertEqual(compact.backdropAlphaForTesting, 1, accuracy: 0.01)
+		XCTAssertEqual(compact.edgeAlphaForTesting, 1, accuracy: 0.01)
+		XCTAssertEqual(compact.visibleTitlePointSizeForTesting, 22, accuracy: 0.1, "same 22pt title as the sky pages")
+	}
+
+	/// 六种纹路都画得出东西、都很淡，而且彼此确实不同（不是换个颜色的同一张图）。
+	func testHeroPatternsRenderDistinctFaintTextures() throws {
+		let patterns: [Babel2HeroPattern] = [.dawn, .grid, .globe, .stars, .signal(UIColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1)), .hive]
+		let size = CGSize(width: 402, height: 231)
+		func alphas(_ pattern: Babel2HeroPattern) throws -> [UInt8] {
+			var pixels = [UInt8](repeating: 0, count: Int(size.width * size.height) * 4)
+			let ok = pixels.withUnsafeMutableBytes { buffer -> Bool in
+				guard let context = CGContext(data: buffer.baseAddress, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+					bytesPerRow: Int(size.width) * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+					bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+				pattern.draw(in: context, size: size, dark: true)
+				return true
+			}
+			XCTAssertTrue(ok)
+			return stride(from: 3, to: pixels.count, by: 4).map { pixels[$0] }
+		}
+		var rendered = [[UInt8]]()
+		for pattern in patterns {
+			let a = try alphas(pattern)
+			let mean = Double(a.reduce(0) { $0 + Int($1) }) / Double(a.count) / 255
+			let covered = Double(a.filter { $0 > 2 }.count) / Double(a.count)
+			XCTAssertGreaterThan(covered, 0.2, "\(pattern.nameForTesting) draws something across the header")
+			XCTAssertGreaterThan(mean, 0.005, "\(pattern.nameForTesting) is visible")
+			XCTAssertLessThan(mean, 0.12, "\(pattern.nameForTesting) stays faint")
+			rendered.append(a)
+		}
+		for i in rendered.indices {
+			for j in rendered.indices where j > i {
+				let difference = zip(rendered[i], rendered[j]).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }
+				XCTAssertGreaterThan(Double(difference) / Double(rendered[i].count) / 255, 0.004,
+					"\(patterns[i].nameForTesting) and \(patterns[j].nameForTesting) should be different textures")
+			}
+		}
+	}
+
+	/// 图标主色：鲜艳的图标取它的色相（亮度 / 饱和度夹在淡而看得见的范围）；黑白灰或没有图标用中性暖灰。
+	func testSignalHueFromFeedIcon() {
+		func hsb(_ color: UIColor) -> (CGFloat, CGFloat, CGFloat) {
+			var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0
+			color.getHue(&h, saturation: &s, brightness: &b, alpha: nil)
+			return (h, s, b)
+		}
+		XCTAssertEqual(Babel2HeroPattern.signalHue(from: nil), Babel2HeroPattern.neutralSignalHue)
+		XCTAssertEqual(Babel2HeroPattern.signalHue(from: solidImage(size: CGSize(width: 32, height: 32), color: .white)), Babel2HeroPattern.neutralSignalHue)
+		XCTAssertEqual(Babel2HeroPattern.signalHue(from: solidImage(size: CGSize(width: 32, height: 32), color: .black)), Babel2HeroPattern.neutralSignalHue)
+		let navy = hsb(Babel2HeroPattern.signalHue(from: solidImage(size: CGSize(width: 32, height: 32), color: UIColor(red: 0.1, green: 0.16, blue: 0.42, alpha: 1))))
+		XCTAssertEqual(navy.0, 229.0 / 360, accuracy: 0.02, "keeps the icon's hue")
+		XCTAssertGreaterThanOrEqual(navy.2, 0.7 - 0.001, "a dark icon is lifted so the dots stay visible on paper")
+		XCTAssertLessThanOrEqual(navy.1, 0.7 + 0.001, "never loud")
+	}
+
+	/// 首页：标题区背后是「蜂巢」点阵（铺满顶端到列表开始的 184pt），标题下是日期；原来那根居中短线没有了。
+	func testHomeHeaderHasHivePatternAndDateInsteadOfShortRule() async throws {
+		let root = Babel2RootViewController(environment: makeEnvironment(provider: FakeDataProvider()), motionRecorder: RecordingMotionRecorder())
+		let window = hostInWindow(root)
+		defer { window.isHidden = true }
+		root.view.layoutIfNeeded()
+		XCTAssertEqual(root.headerPatternForTesting.pattern.nameForTesting, "hive")
+		XCTAssertEqual(root.headerPatternForTesting.frame, CGRect(x: 0, y: 0, width: root.view.bounds.width, height: 184))
+		XCTAssertEqual(root.headerDateTextForTesting, Babel2HeroEyebrow.date(Date()))
+		XCTAssertNil(descendant(of: root.view, matching: UIView.self) { $0.bounds.width == 180 && $0.bounds.height == 0.5 }, "the short rule is gone")
+	}
+
+	/// 眉题文字：订阅源没有主页时用订阅地址的域名。
+	func testHeroEyebrowFallsBackToFeedHost() {
+		XCTAssertEqual(Babel2HeroEyebrow.text(smartFeed: nil, feedURL: URL(string: "https://www.sspai.com/feed")!, homePageURL: nil), "SSPAI.COM")
+		XCTAssertEqual(Babel2HeroEyebrow.text(smartFeed: .foreign, feedURL: URL(string: "https://x.invalid")!, homePageURL: nil),
+			localized(.smartListEyebrow).uppercased())
+	}
+
 	// MARK: - 大图上的刷新与更多（ADR-031）
 
 	/// 刷新居中、放大镜 x=330、更多 x=370；没有注入操作时不显示刷新与更多。
@@ -1892,8 +2050,8 @@ final class Babel2FeedReaderTests: XCTestCase {
 		XCTAssertEqual(Babel2FeedHeroMotion.compactBackgroundAlpha(1), 1, "compact chrome is fully opaque when collapsed")
 	}
 
-	/// 展开 / 中间 / 收缩 三个状态：大图（或窄栏）下沿与列表内容紧贴、无缝；收缩后窄栏完全不透明、
-	/// 日期段标题吸在窄栏下沿；切换档位回顶后大图重新展开。
+	/// 展开 / 中间 / 收缩 三个状态：大图（或窄栏）下沿与列表内容紧贴、无缝；切换档位回顶后大图重新展开。
+	/// 天幕（没有大图，ADR-068）：收起后窄栏没有底色、纹路留 55%；日期段标题滑到窄栏下沿时淡没，日期改在顶栏右侧。
 	func testFeedHeroCollapsesWithScrollWithoutGaps() async throws {
 		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
 		let now = Date()
@@ -1921,20 +2079,68 @@ final class Babel2FeedReaderTests: XCTestCase {
 			XCTAssertEqual(hero.frame.maxY, expectedHeroBottom, accuracy: 0.5, "hero bottom at travel \(travel)")
 			XCTAssertEqual(contentTop(), hero.frame.maxY, accuracy: 0.5, "no gap between hero and list at travel \(travel)")
 		}
-		XCTAssertEqual(compact.backdropAlphaForTesting, 1, "collapsed compact bar is fully opaque")
+		XCTAssertTrue(controller.usesSkyForTesting)
+		XCTAssertEqual(compact.backdropAlphaForTesting, 0, accuracy: 0.01, "sky: the collapsed bar stays clear")
+		XCTAssertEqual(try XCTUnwrap(controller.skyPatternForTesting).alpha, 1, accuracy: 0.01, "sky: the pattern stays at full strength")
 		XCTAssertEqual(compact.frame.maxY, safeTop + 99, accuracy: 0.5)
+		// 完全收起时第一段的日期标题正好到窄栏下沿：它已淡没，日期并入顶栏
+		XCTAssertEqual(try XCTUnwrap(tableView.headerView(forSection: 0)).contentView.alpha, 0, accuracy: 0.01)
+		XCTAssertNotNil(compact.dayTextForTesting)
+		tableView.contentOffset.y = rest + 20
+		XCTAssertNil(compact.dayTextForTesting, "early in the collapse the day is still only in the list")
+		XCTAssertEqual(try XCTUnwrap(tableView.headerView(forSection: 0)).contentView.alpha, 1, accuracy: 0.01)
+		tableView.contentOffset.y = rest + 70
 
-		// 继续往下：窄栏固定，日期段标题吸在窄栏下沿
+		// 继续往下：窄栏固定；日期段标题到了吸顶位置时已淡没，日期出现在顶栏右侧
 		tableView.contentOffset.y = rest + 600
 		tableView.layoutIfNeeded()
 		XCTAssertEqual(controller.heroProgressForTesting, 1)
 		let header = try XCTUnwrap(tableView.headerView(forSection: 0))
-		XCTAssertEqual(header.convert(header.bounds, to: controller.view).minY, compact.frame.maxY, accuracy: 0.5, "day header pins right under the compact bar")
+		XCTAssertEqual(header.convert(header.bounds, to: controller.view).minY, compact.frame.maxY, accuracy: 0.5, "the day header still pins right under the bar")
+		XCTAssertEqual(header.contentView.alpha, 0, accuracy: 0.01, "…but it has dissolved: no second band under the bar")
+		let dayTitle = descendant(of: header, matching: UILabel.self)?.attributedText?.string
+		XCTAssertNotNil(dayTitle)
+		XCTAssertEqual(compact.dayTextForTesting, dayTitle, "the day moves into the bar")
+		XCTAssertEqual(compact.edgeAlphaForTesting, 0, accuracy: 0.01)
+		// 消融带跟着列表的可见范围走
+		XCTAssertEqual(try XCTUnwrap(controller.dissolveMaskForTesting).frame, tableView.bounds)
 
 		// 切换档位：回顶，大图重新展开
 		controller.selectScope(.unread, fromUser: false)
 		XCTAssertEqual(controller.heroProgressForTesting, 0)
 		XCTAssertEqual(hero.transform, .identity)
+	}
+
+	/// 有大图的订阅源（ADR-068 用户同意「不改天幕」）：收起后纸色底不透明、日期段标题照旧吸顶可见，
+	/// 纸色渐隐挂在段标题下沿（整块顶栏只有一道渐隐），顶栏右侧不显示日期。
+	func testArtFeedKeepsSolidCollapseWithPaperFadeUnderPinnedDay() async throws {
+		let feedID = FeedSnapshot.ID(accountID: "account", feedID: "feed")
+		let now = Date()
+		let list = (1...40).map { index in
+			ArticleSnapshot(id: ArticleSnapshot.ID(accountID: "account", feedID: "feed", articleID: "\(index)"), title: "Title \(index)",
+				summary: "Summary", url: nil, feedID: feedID, publishedAt: now.addingTimeInterval(-Double(index) * 60))
+		}
+		let art = solidImage(size: CGSize(width: 400, height: 300), color: .darkGray)
+		let controller = Babel2FeedViewController(feed: makeFeed(id: feedID, title: "Feed"), scope: .all,
+			environment: makeEnvironment(provider: FakeDataProvider(feeds: [feedID: list])),
+			heroImage: Babel2FeedHeroImageSource(cached: { art }, fetch: { _ in }))
+		let window = hostInWindow(controller)
+		defer { window.isHidden = true }
+		let tableView = try XCTUnwrap(descendant(of: controller.view, matching: UITableView.self))
+		await waitForRows(in: tableView, count: 40)
+		await waitUntil { !controller.usesSkyForTesting }
+		controller.view.layoutIfNeeded()
+		let compact = try XCTUnwrap(controller.compactBarForTesting)
+		let rest = -tableView.adjustedContentInset.top
+		tableView.contentOffset.y = rest + 600
+		tableView.layoutIfNeeded()
+		let header = try XCTUnwrap(tableView.headerView(forSection: 0))
+		XCTAssertEqual(header.contentView.alpha, 1, accuracy: 0.01, "art pages keep the pinned day header")
+		XCTAssertEqual(compact.backdropAlphaForTesting, 1, accuracy: 0.01)
+		XCTAssertEqual(compact.edgeOffsetForTesting, header.bounds.height, accuracy: 0.5, "the paper fade hangs under the pinned day header")
+		XCTAssertEqual(compact.edgeAlphaForTesting, 1, accuracy: 0.01)
+		XCTAssertNil(compact.dayTextForTesting)
+		XCTAssertNil(controller.dissolveMaskForTesting)
 	}
 
 	// MARK: - Reeder 式文章行与按天分组（2026-09-25）

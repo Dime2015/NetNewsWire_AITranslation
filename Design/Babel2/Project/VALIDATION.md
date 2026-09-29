@@ -9,6 +9,25 @@
 - 生成文件边界：常用应用 scheme 的 PreActions 会执行 `buildscripts/updateSecrets.sh`，遍历 `.gyb` 并覆盖对应输出。本轮复用现成 UI Driver scheme，其 BuildAction 指向相同应用 target 且没有该 PreAction；未修改 scheme/脚本。检查前后模板与生成文件 SHA-256 完全一致，未显示或改写其内容。
 - 覆盖范围：Git/源码状态核对、文档链接与 `git diff --check`；没有新应用级测试通过结论，也没有设备、视觉、性能或完整 Phase 1A 验收结论。历史 77/77 保留为 2026-09-05 记录。
 
+## 2026-09-28 第九轮追加：天幕 + 标题缩放归位（ADR-068；uncommitted worktree，待用户真机验收）
+
+- 预览：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/compact-preview.html`、`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/sky-size.html`（后者加了 `?static=1` 定格三帧模式；无界面 Chrome 导出卡住超时，已手动结束，未使用）。
+- 首轮全量：221 项 218 过 / 3 败——都是本轮新断言抓到的真问题：缩放归位起点量到 0（窄栏先于大图区排版）、段标题 alpha 被表格复原（LESSONS 63）；另一条「收起时顶栏还没有日期」是我对设计理解错（第一段日期标题在收起那一刻正好到吸顶位置），改了断言。
+- 修复后：全量 `/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/r10-full2.xcresult` **Passed**，221/221；UI Driver（Release、真实数据）`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/r10-ui.xcresult` 1/1。
+- 真机：Debug 编译成功，devicectl 安装到用户 iPhone 17。pbxproj 签名 diff hash 仍 `c5f5a8cf…`。
+- 缺口：实际观感只能用户真机确认；我没有在模拟器截图自看。
+
+## 2026-09-28 第九轮：头部「微光点阵」（ADR-067；uncommitted worktree，待用户真机验收）
+
+- 设计预览：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/header-preview.html`（8 方案并排）、`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/header-4d.html`（六页纹路 + 浓度滑块），脚本 `node --check` 通过，六种纹路单独试跑各画出 170–868 个点、无 NaN。
+- 编译：独立 `-derivedDataPath /private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/dd`，首次报 `Babel2LocalizationKey.accessibilityIdentifier` 的 switch 缺新键，补上后 **TEST BUILD SUCCEEDED**，改动文件无新警告。
+- 定向测试首轮：12 项中 11 过；`testFeedHeroCollapsesWithScrollWithoutGaps` 新断言「阴影挂到吸顶段标题下沿」失败（偏移 0，应为 46）——吸顶判断读了上一帧的 frame（LESSONS 62），改用内容坐标后通过。
+- 全量 Debug iOS 测试：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/r9-full.xcresult`，220 项 219 passed / 1 failed；失败项为已知偶发的 `testBarsHideAfterPinnedDownwardTravelAndReturnOnUpwardTravel`（阅读页栏显隐，0.37 未小于 0.25），`test-without-building` 单独重跑 3 次全过，未改动该测试与阅读页代码。
+- UI Driver（Release、真实数据）：`/private/tmp/claude-501/-Users-wenbopan-Downloads-AI-Projects-Babel-app/614eccdf-b8f9-4550-ab52-810466f9fd3a/scratchpad/r9-ui.xcresult` **TEST SUCCEEDED** 1/1。
+- 真机：Debug 编译成功，`devicectl` 安装到用户 iPhone 17（00008150-000631520204401C）。
+- pbxproj 签名 diff hash 前后均为 `c5f5a8cf…`。
+- 缺口：纹路的实际观感（浓淡、颜色、深 / 浅色）、阴影轻重、27pt 标题只能用户真机确认——我没有在模拟器里截图自看（CLAUDE.md 第 0 节第 7 条）。
+
 ## 2026-09-27 第八轮：图标集换成「Reeder 式」（ADR-066；uncommitted worktree，待用户真机验收）
 
 - 设计自查：`icons_reeder.py` 用 macOS 的 SVG 渲染器画出 47 个图标的放大 / 40px / 20px 网格逐个看过；退回 3 处（「文」加粗像「✗」、长图封口像手机、更换图标挖圆像录音键）。对比页 `Design/Babel2/IconSet/review-reeder.html` 在浏览器里 1200 宽与 390 宽检查过，无横向滚动。
